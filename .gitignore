@@ -1,4 +1,14 @@
-HELP.md
+video-store/
+*.webm
+*.mp4
+*.avivideo-store/
+*.webm
+*.mp4
+*.avi
+target/
+node_modules/
+target/
+node_modules/HELP.md
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
