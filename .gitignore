@@ -1,20 +1,32 @@
+# =====================
+# Videos
+# =====================
 video-store/
-*.webm
 *.mp4
-*.avivideo-store/
 *.webm
-*.mp4
+*.mov
 *.avi
-target/
-node_modules/
-target/
-node_modules/HELP.md
-target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
 
-### STS ###
+# =====================
+# Build files (Spring Boot / Maven)
+# =====================
+target/
+*.log
+
+# =====================
+# GIS data
+# =====================
+*.tif
+*.tiff
+
+# =====================
+# Node (if used later)
+# =====================
+node_modules/
+
+# =====================
+# STS (Spring Tool Suite)
+# =====================
 .apt_generated
 .classpath
 .factorypath
@@ -23,21 +35,30 @@ target/
 .springBeans
 .sts4-cache
 
-### IntelliJ IDEA ###
+# =====================
+# IntelliJ IDEA
+# =====================
 .idea
 *.iws
 *.iml
 *.ipr
 
-### NetBeans ###
+# =====================
+# NetBeans
+# =====================
 /nbproject/private/
 /nbbuild/
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### VS Code ###
+# =====================
+# VS Code
+# =====================
 .vscode/
+
+# =====================
+# OS files
+# =====================
+.DS_Store
+Thumbs.db
