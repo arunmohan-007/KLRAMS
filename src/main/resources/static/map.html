@@ -1,0 +1,1329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLRAMS · Kerala Road Asset Management System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
+<script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
+  <link rel="stylesheet" href="css/app.css?v=117">
+  <style>
+    /* build 160 — Road Condition Data metric picker on the Layers panel */
+    .cond-metric-row{display:flex;align-items:center;gap:7px;margin:-2px 0 8px 22px;padding:0}
+    .cond-metric-ic{display:flex;align-items:center;color:#2ba66a;flex:0 0 auto}
+    .cond-metric-sel{flex:1 1 auto;font:500 12.5px/1.2 var(--ui,'Inter',sans-serif);color:#1f2b3d;background:#f4f7fb;border:1px solid #dce3ec;border-radius:8px;padding:6px 8px;cursor:pointer;appearance:auto}
+    .cond-metric-sel:hover{border-color:#bfcad8}
+    .cond-metric-sel:focus{outline:none;border-color:#2ba66a;box-shadow:0 0 0 3px rgba(43,166,106,.15)}
+    .pop .lanetbl{font-size:11px;color:#46566e}
+    .pop .lanetbl b{color:#1f2b3d}
+  </style>
+  <style id="panel-slim">
+    /* Slimmer, more refined flyout panel (overrides app.css width) */
+    #fpanes,.fpane{width:268px!important}
+    .fpane{padding:16px 13px 40px!important}
+    .fpane h2,.fpane .pane-title{font-size:16px!important;letter-spacing:.2px}
+    /* group cards: tighter, softer */
+    .fpane .grp{background:#ffffff;border:1px solid #eaeef4;border-radius:12px;box-shadow:0 1px 2px rgba(16,32,64,.04);padding:2px 11px!important;margin-bottom:12px}
+    .fpane .grp .switch{padding:9px 2px!important}
+    .fpane .grp-title{font-size:10px!important;margin:14px 2px 8px!important}
+    /* active accent on the first toggle dot */
+    .fpane .switch input:checked+*{accent-color:#34d399}
+    /* search bar a touch narrower start so map breathes */
+    @media (min-width:900px){#search{max-width:430px}}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <button class="kl-open kl-big" onclick="openLauncher()" title="Explore KLRAMS modules"><svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg></button>
+    <div class="brand"><span class="t">KLRAMS Console</span><span class="s">Kerala Road Asset Management System</span><span class="s" style="opacity:.65;font-family:var(--mono);font-size:11px">build 160</span></div>
+    <span class="spacer"></span>
+    <span class="tag" id="districtTag">Kerala PWD</span>
+    <a class="console" href="/logout" style="margin-left:14px">Sign out</a>
+  </div>
+  <div id="main">
+    <nav id="iconrail">
+  <div class="rail-top">
+    <button class="railbtn" data-pane="layers" onclick="openPane('layers')" title="Layers"><span class="ri"><svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span><span class="rl">Layers</span></button>
+    <button class="railbtn" data-pane="network" onclick="openPane('network')" title="Road Network"><span class="ri"><svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.3"/><circle cx="19" cy="12" r="2.3"/><circle cx="7" cy="19" r="2.3"/><path d="M7 7l10 4M17 13L9 18"/></svg></span><span class="rl">Network</span></button>
+    <button class="railbtn" data-pane="filter" onclick="openPane('filter');refreshFilterLocks()" title="Filters"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 5h16l-6 7v5l-4 2v-7z"/></svg></span><span class="rl">Filter</span></button>
+    <button class="railbtn" data-pane="video" onclick="openPane('video')" title="Survey Video"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></span><span class="rl">Video</span></button>
+    <button class="railbtn" data-pane="basemap" onclick="openPane('basemap')" title="Base Map"><span class="ri"><svg viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span><span class="rl">Base map</span></button>
+    <button class="railbtn" data-pane="measure" onclick="openPane('measure')" title="Measure & Route"><span class="ri"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></svg></span><span class="rl">Measure</span></button>
+  </div>
+  <div class="rail-bottom">
+    <a class="railbtn" href="/" title="Data Console"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H4z"/><path d="M8 20h8M12 16v4"/></svg></span><span class="rl">Console</span></a>
+  </div>
+</nav>
+<div id="fpanes" class="hidden">
+  <button id="paneCollapse" onclick="togglePanes()" title="Hide / show panel">&#10094;</button>
+
+  <section class="fpane active" id="pane-layers">
+    <div class="pane-title">Layers</div>
+    <div class="grp">
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#8a4d1f"></span>Road network</span><input type="checkbox" id="showRoads"></div>
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#3a4ad6"></span>Full Road Network <span class="r2-hint">by road name</span></span><input type="checkbox" id="showRoads2"></div>
+      <div class="r2-row"><button class="btn ghost" onclick="importRoadLayer()">Import layer&hellip;</button><span class="r2-status" id="roads2Status">No layer imported</span><input type="file" id="roads2File" accept=".geojson,.json,.zip" style="display:none"></div>
+    </div>
+    <div class="grp-title">Road condition data &amp; FWD</div>
+    <div class="grp">
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#2ba66a"></span>Road Condition Data</span><input type="checkbox" id="showCond"></div>
+      <div class="cond-metric-row" id="condMetricRow"><span class="cond-metric-ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16M8 16l3-4 3 3 5-7"/></svg></span><select id="condMetricHome" class="cond-metric-sel" title="Choose which condition parameter colours the map"></select></div>
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#7b1fa2"></span>FWD (D0)</span><input type="checkbox" id="showFwd"></div>
+      <div id="fwdLegend" class="fwd-legend" style="display:none"></div>
+    </div>
+    <div class="grp-title">Administrative boundary</div>
+    <div class="grp">
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#0e2038"></span>District boundary</span><input type="checkbox" id="showDist"></div>
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#0d7a51"></span>Constituency boundary</span><input type="checkbox" id="showCons"></div>
+    </div>
+    <div class="grp-title">Structures &amp; furniture</div>
+    <div class="grp">
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#8a5cb8"></span>Bridges</span><input type="checkbox" id="showBridge"></div>
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#e07b2a"></span>Culverts</span><input type="checkbox" id="showCulvert"></div>
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#0fa3a3"></span>Furniture — line</span><input type="checkbox" id="showFurnL"></div>
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#3b6fa0"></span>Furniture — point</span><input type="checkbox" id="showFurnP"></div>
+    </div>
+    <div class="grp-title">PCI</div>
+    <div class="grp">
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#157f3c"></span>Composite PCI</span><input type="checkbox" id="showPciAvg"></div>
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#e8590c"></span>Worst-Lane PCI</span><input type="checkbox" id="showPciWorst"></div>
+    </div>
+    <div class="grp-title">Traffic stations</div>
+    <div class="grp">
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#1565c0"></span>Traffic stations</span><input type="checkbox" id="showTraffic"></div>
+      <div class="trf-status" id="trfStatus"></div>
+    </div>
+    <div class="grp-title">Sub-grade soil, bituminous core &amp; pavement crust</div>
+    <div class="grp">
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#8a4d1f"></span>Sub-Grade Soil</span><input type="checkbox" id="showSoil"></div>
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#2b2b2b"></span>Bituminous Core</span><input type="checkbox" id="showCore"></div>
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#b8860b"></span>Pavement Crust</span><input type="checkbox" id="showCrust"></div>
+    </div>
+    <div class="grp-title">Interaction</div>
+    <div class="grp">
+      <div class="switch"><span class="lname"><b>Video on click</b></span><input type="checkbox" id="videoMode"></div>
+    </div>
+    <div class="note">Click a road to inspect — the popup shows road details and the condition at that chainage for the layers you have on.</div>
+  </section>
+
+  <section class="fpane" id="pane-network">
+    <div class="pane-title">Road Network</div>
+    <div class="eyebrow">Colour by attribute</div>
+    <select id="netColorBy" class="full"><option value="__class__">Default (SH / MDR)</option></select>
+    <div id="netLegend" class="legend" style="margin-top:10px"></div>
+  </section>
+
+
+  <section class="fpane" id="pane-video">
+    <div class="pane-title">Survey Video</div>
+    <div class="note">Turn on <b>Video on click</b>, then click any road to open its survey footage. The NSV vehicle drives the map in sync, showing live chainage and lane-wise IRI.</div>
+    <div class="switch" style="margin-top:10px"><span class="lname"><b>Video on click</b></span><input type="checkbox" id="videoMode2"></div>
+    <div class="hr"></div>
+    <div class="eyebrow">Playback</div>
+    <div class="note">When a video is open, the dock at the bottom carries the <b>Speed</b> (0.25×–2×) and <b>Direction</b> (Front / Back) controls, plus the live chainage and IRI readout.</div>
+  </section>
+
+  <section class="fpane" id="pane-basemap">
+    <div class="pane-title">Base Map</div>
+    <div class="eyebrow">Find a location</div>
+    <div class="locsearch">
+      <div class="lsfield">
+        <span class="lsicon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+        <input id="locInput" type="text" autocomplete="off" placeholder="Search a place, or enter lat, long…">
+        <button class="lsclear" id="locClear" title="Clear location">&times;</button>
+      </div>
+      <div id="locResults"></div>
+      <div class="lshint">Find any place in Kerala and beyond, or enter a coordinate like <b>8.5241, 76.9366</b> to jump straight there. Place search powered by OpenStreetMap.</div>
+    </div>
+    <div class="hr"></div>
+    <div class="eyebrow">Background</div>
+    <select id="basemap" class="full">
+      <option value="osm">Streets (OSM)</option>
+      <option value="sat">Satellite (Esri)</option>
+      <option value="topo">Terrain (OpenTopo)</option>
+      <option value="light">Light (Carto)</option>
+      <option value="dark">Dark — Night</option>
+    </select>
+    <div class="note" style="margin-top:10px">Switch the underlying map. All KLRAMS layers stay on top.</div>
+  </section>
+  <section class="fpane" id="pane-measure">
+    <div class="pane-title">Measure &amp; Route</div>
+    <div class="mtools">
+      <button class="mbtn" id="mLen" onclick="setMeasureMode('length')"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></svg>Length</button>
+      <button class="mbtn" id="mArea" onclick="setMeasureMode('area')"><svg viewBox="0 0 24 24"><path d="M4 8l8-4 8 4v8l-8 4-8-4z"/></svg>Area</button>
+      <button class="mbtn" id="mRoute" onclick="setMeasureMode('route')"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 6h6a4 4 0 0 1 0 8H10a4 4 0 0 0 0 8"/></svg>Route</button>
+    </div>
+    <div class="mhint" id="mHint">Pick a tool, then click on the map.</div>
+    <div class="mout" id="mOut" style="display:none"></div>
+    <div class="mrow"><button class="mghost" onclick="measureUndo()">Undo point</button><button class="mghost" onclick="measureClear()">Clear</button></div>
+    <div class="mnote">Length &amp; area are measured straight between your clicks. Route follows OSM roads (origin → destination; add clicks for stops).</div>
+  </section>
+
+  <section class="fpane" id="pane-filter">
+    <div class="pane-title">Filters</div>
+    <div class="note" style="margin-top:-2px">Filter each data layer below. A layer must be switched on to filter it.</div>
+
+    <details class="flt-sec" id="fsecNet" open>
+      <summary>Road Network</summary>
+      <div class="flt-lock">The <b>Road network</b> layer is off. <button class="btn ghost" onclick="enableLayer('showRoads')">Turn on layer</button></div>
+      <div class="flt-body">
+    <div class="eyebrow">Filter by attribute</div>
+    <div id="netFilters"></div>
+    <div class="row2"><button class="btn ghost" onclick="addNetFilter()">+ Add condition</button><button class="btn ghost" onclick="clearNetFilters()">Clear</button></div>
+    <div class="row2"><span class="note" style="margin:0">Match</span><span class="segmented"><button id="nAll" class="on" onclick="setNetMode('all')">All</button><button id="nAny" onclick="setNetMode('any')">Any</button></span></div>
+    <div class="statusline" id="netMatchInfo"></div>
+      </div>
+    </details>
+
+    <details class="flt-sec" id="fsecCond">
+      <summary>Road Condition</summary>
+      <div class="flt-lock">The <b>Road Condition Data</b> layer is off. <button class="btn ghost" onclick="enableLayer('showCond')">Turn on layer</button></div>
+      <div class="flt-body">
+    <div class="eyebrow">Filter — show matching only</div>
+    <div id="filters"></div>
+    <div class="row2"><button class="btn ghost" onclick="addFilter()">+ Add condition</button><button class="btn ghost" onclick="clearFilters()">Clear</button></div>
+    <div class="row2"><span class="note" style="margin:0">Match</span><span class="segmented"><button id="mAll" class="on" onclick="setMode('all')">All</button><button id="mAny" onclick="setMode('any')">Any</button></span></div>
+    <div class="statusline" id="matchInfo"></div>
+      </div>
+    </details>
+
+    <details class="flt-sec" id="fsecTrf">
+      <summary>Traffic</summary>
+      <div class="flt-lock">The <b>Traffic stations</b> layer is off. <button class="btn ghost" onclick="enableLayer('showTraffic')">Turn on layer</button></div>
+      <div class="flt-body">
+        <div class="eyebrow">Minimum ADT (avg daily traffic)</div>
+        <input id="trfMin" type="number" class="full" placeholder="e.g. 5000">
+        <div class="row2"><button class="btn ghost" onclick="applyTrafficFilter()">Apply</button><button class="btn ghost" onclick="clearTrafficFilter()">Clear</button></div>
+        <div class="note" style="margin:0">Shows stations whose average daily traffic is at least this value.</div>
+      </div>
+    </details>
+
+    <details class="flt-sec" id="fsecFwd">
+      <summary>FWD &middot; D0 deflection</summary>
+      <div class="flt-lock">The <b>FWD (D0)</b> layer is off. <button class="btn ghost" onclick="enableLayer('showFwd')">Turn on layer</button></div>
+      <div class="flt-body">
+        <div class="eyebrow">D0 range (microns)</div>
+        <div class="row2"><input id="fwdMin" type="number" class="full" placeholder="min"><input id="fwdMax" type="number" class="full" placeholder="max"></div>
+        <div class="row2"><button class="btn ghost" onclick="applyFwdFilter()">Apply</button><button class="btn ghost" onclick="clearFwdFilter()">Clear</button></div>
+        <div class="note" style="margin:0">Shows FWD stretches whose D0 deflection falls in the range.</div>
+      </div>
+    </details>
+
+    <details class="flt-sec" id="fsecPci">
+      <summary>PCI &middot; both layers</summary>
+      <div class="flt-lock">No <b>PCI</b> layer is on. <button class="btn ghost" onclick="enableLayer('showPciAvg')">Turn on layer</button></div>
+      <div class="flt-body">
+        <div class="eyebrow">PCI range (0&ndash;100)</div>
+        <div class="row2"><input id="pciMin" type="number" class="full" placeholder="min"><input id="pciMax" type="number" class="full" placeholder="max"></div>
+        <div class="row2"><button class="btn ghost" onclick="applyPciFilter()">Apply</button><button class="btn ghost" onclick="clearPciFilter()">Clear</button></div>
+        <div class="note" style="margin:0">Filters both Composite and Worst-Lane PCI layers.</div>
+      </div>
+    </details>
+  </section>
+</div>
+
+<div id="dashboard">
+  <div class="dash-inner">
+    <div class="dash-head">
+      <div>
+        <div class="dash-eyebrow">Road Network Dashboard</div>
+        <h1 class="dash-h1" id="dashScope">Road Network Overview</h1>
+        <div class="dash-h1-sub" id="dashSub">Kerala PWD — network length, classification and ownership at a glance.</div>
+      </div>
+      <button class="dash-close" onclick="closeDashboard()" title="Back to map">&times;</button>
+    </div>
+    <div class="dash-tabs">
+      <button class="dash-tab on" data-tab="overview" onclick="dashTab('overview')">Network Overview</button>
+      <button class="dash-tab" data-tab="pcia" onclick="dashTab('pcia')">PCI Analysis</button>
+      <button class="dash-tab" data-tab="culv" onclick="dashTab('culv')">Culverts</button>
+      <button class="dash-tab" data-tab="brid" onclick="dashTab('brid')">Bridges</button>
+    </div>
+    <div id="dashBody"><div class="dash-loading">Loading network figures…</div></div>
+  </div>
+</div>
+
+<div id="pciScreen">
+  <div class="dash-inner">
+    <div class="dash-head">
+      <div>
+        <div class="dash-eyebrow">Pavement Condition Index</div>
+        <h1 class="dash-h1">PCI &mdash; IRC:82</h1>
+        <div class="dash-h1-sub">Set the six distress weightages and generate the index, or open the detailed report. The map is hidden while you work here.</div>
+      </div>
+      <button class="dash-close" onclick="closePciScreen()" title="Back to map">&times;</button>
+    </div>
+    <div class="dash-tabs">
+      <button class="dash-tab on" id="pciTabW" onclick="pciScreenTab('weights')">Weightages</button>
+      <button class="dash-tab" id="pciTabR" onclick="pciScreenTab('report')">PCI Report</button>
+    </div>
+
+    <div id="pciViewWeights">
+      <div class="pci-cols">
+        <div class="pci-card">
+          <div class="pci-eq">PCI = &Sigma; ( w<sub>i</sub> &times; I<sub>i</sub> ) &middot; six indices &middot; 0&ndash;100 scale</div>
+          <div class="pci-whead"><span class="eyebrow" style="margin:0">Weightage factor (editable)</span><span class="pci-sum" id="pciSum">&Sigma; weights = <b>1.00</b></span></div>
+          <div class="pci-wgrid" id="pciWeights"></div>
+          <div class="pci-actions">
+            <button class="btn" onclick="generatePCI()">Generate PCI</button>
+            <button class="btn ghost" onclick="resetPciWeights()">Reset to IRC:82</button>
+          </div>
+          <div class="statusline" id="pciStatus"></div>
+          <div id="pciSummary"></div>
+        </div>
+        <div class="pci-card">
+          <div class="eyebrow" style="margin-top:0">PCI rating scale (Table 5.5)</div>
+          <div class="legend pcileg" id="pciLegend"></div>
+          <div class="note" style="margin-top:12px"><b>Generate PCI</b> produces two layers &mdash; <b>Composite PCI</b> (area-weighted distress) and <b>Worst-Lane PCI</b> (maximum distress per parameter). Each parameter&rsquo;s distress is converted to a 0&ndash;100 index; thresholds follow IRC:82 Table&nbsp;5.3 (editable under Road Condition). Default weightages are IRC:82 Table&nbsp;5.4 (&Sigma;&nbsp;=&nbsp;1.00).</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="pciViewReport" style="display:none">
+      <div id="pciScreenReport"><div class="dash-loading">Loading PCI report&hellip;</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="condScreen">
+  <div class="dash-inner">
+    <div class="dash-head">
+      <div>
+        <div class="dash-eyebrow">Road Condition Data</div>
+        <h1 class="dash-h1">Condition Colouring &amp; Thresholds</h1>
+        <div class="dash-h1-sub">Choose the distress parameter to colour the network by and tune the Good / Fair / Poor thresholds. The map is hidden while you work here.</div>
+      </div>
+      <button class="dash-close" onclick="closeCondScreen()" title="Back to map">&times;</button>
+    </div>
+    <div class="pci-cols">
+      <div class="pci-card">
+        <div class="eyebrow" style="margin-top:0">Colour condition by</div>
+        <select id="colorBy" class="full"></select>
+        <div class="thresh" style="margin-top:12px"><span class="nm" id="cbLabel">Value</span><span class="hd">good&lt;</span><span class="hd">poor&gt;</span><span></span><input id="fair" type="number" step="0.1"><input id="poor" type="number" step="0.1"></div>
+        <div class="bandkey">
+          <span class="bk"><span class="bksw" style="background:var(--good)"></span>Good &lt; <i id="kGood">2.55</i></span>
+          <span class="bk"><span class="bksw" style="background:var(--fair)"></span>Fair <i id="kFairLo">2.55</i>&ndash;<i id="kFairHi">3.3</i></span>
+          <span class="bk"><span class="bksw" style="background:var(--poor)"></span>Poor &gt; <i id="kPoor">3.3</i></span>
+        </div>
+        <div class="note" style="margin-top:10px">Defaults per Table 5.3, Draft Revision of IRC:82 (Urban Roads). Editable.</div>
+        <button class="btn ghost" style="margin-top:10px" onclick="resetThresholds()">Reset to IRC defaults</button>
+        <div class="statusline" id="status">Loading&hellip;</div>
+      </div>
+      <div class="pci-card">
+        <div class="eyebrow" style="margin-top:0">Condition legend</div>
+        <div class="legend" style="margin-top:10px">
+          <div class="lg"><span class="bar" style="background:var(--good)"></span> Good</div>
+          <div class="lg"><span class="bar" style="background:var(--fair)"></span> Fair</div>
+          <div class="lg"><span class="bar" style="background:var(--poor)"></span> Poor</div>
+          <div class="lg"><span class="bar" style="background:#b9c2cc"></span> No data at chainage</div>
+        </div>
+        <div class="note" style="margin-top:12px">When a stretch has lane data (CL1, CR1, &hellip;) the lanes are drawn as <b>parallel lines</b>, one per lane. Clicking a stretch shows the lane <b>average</b>. Offset side follows the road digitisation direction, so it may not match the physical left/right.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="regScreen">
+  <div class="dash-inner">
+    <div class="dash-head">
+      <div>
+        <div class="dash-eyebrow">Asset Register</div>
+        <h1 class="dash-h1">Asset Register</h1>
+        <div class="dash-h1-sub">Per-section inventory of roads, culverts and bridges. Filter, then export to Excel or PDF. The map is hidden while you work here.</div>
+      </div>
+      <button class="dash-close" onclick="closeRegScreen()" title="Back to map">&times;</button>
+    </div>
+    <div class="dash-tabs">
+      <button class="dash-tab on" id="regTabRoad" onclick="regScreenTab('road')">Road</button>
+      <button class="dash-tab" id="regTabCulv" onclick="regScreenTab('culvert')">Culvert</button>
+      <button class="dash-tab" id="regTabBrid" onclick="regScreenTab('bridge')">Bridge</button>
+    </div>
+    <div id="regBody"><div class="dash-loading">Loading&hellip;</div></div>
+  </div>
+</div>
+
+<div id="reportHub" style="display:none">
+  <div class="dash-inner">
+    <div class="dash-head">
+      <div>
+        <div class="dash-eyebrow">Report Hub</div>
+        <h1 class="dash-h1">Report Hub</h1>
+        <div class="dash-h1-sub">Survey datasets with Road Name &amp; PWD Section. Filter, then export to Excel or PDF. The map is hidden while you work here.</div>
+      </div>
+      <button class="dash-close" onclick="closeReportHub()" title="Back to map">&times;</button>
+    </div>
+    <div class="dash-tabs">
+      <button class="dash-tab on" id="rhTab_fwd" onclick="rhScreenTab('fwd')">FWD</button>
+      <button class="dash-tab" id="rhTab_cond" onclick="rhScreenTab('cond')">Road Condition Data</button>
+      <button class="dash-tab" id="rhTab_subgrade" onclick="rhScreenTab('subgrade')">Sub-Grade Soil</button>
+      <button class="dash-tab" id="rhTab_core" onclick="rhScreenTab('core')">Bituminous Core</button>
+      <button class="dash-tab" id="rhTab_crust" onclick="rhScreenTab('crust')">Pavement Crust</button>
+      <button class="dash-tab" id="rhTab_flood" onclick="rhScreenTab('flood')">Flood Susceptibility</button>
+    </div>
+    <div id="rhBody"><div class="dash-loading">Loading&hellip;</div></div>
+  </div>
+</div>
+
+<div id="climate" style="display:none">
+  <div class="dash-inner">
+    <div class="dash-head">
+      <div>
+        <div class="dash-eyebrow">Climate</div>
+        <h1 class="dash-h1">Flood Susceptibility</h1>
+        <div class="dash-h1-sub">Road length exposed to flood susceptibility, by road class and land-form. Import your flood CSV to populate the dashboard. The map is hidden while you work here.</div>
+      </div>
+      <button class="dash-close" onclick="closeClimate()" title="Back to map">&times;</button>
+    </div>
+    <div class="reg-bar" style="margin-bottom:16px">
+      <button class="btn ghost" onclick="importClimateCsv()">Import flood CSV&hellip;</button>
+      <span class="reg-count" id="climateStatus">No data imported</span>
+      <input type="file" id="climateFile" accept=".csv,.txt" style="display:none">
+    </div>
+    <div id="climateBody"><div class="dash-loading">Import a flood CSV to see the dashboard.</div></div>
+  </div>
+</div>
+
+    <div id="map"></div>
+    <div id="search">
+      <input id="searchInput" type="text" autocomplete="off" placeholder="Search road name, number, or section label…">
+      <div id="searchResults"></div>
+    </div>
+    <aside id="roadInspector" aria-live="polite">
+      <button id="riClose" onclick="hideInspector()" aria-label="Close" title="Close">&times;</button>
+      <div id="riBody"></div>
+    </aside>
+    <div id="mapLegend"><div class="ml-h">Road class</div><div class="ml-body"></div></div>
+    <style id="riCss">
+      #roadInspector{position:absolute;top:14px;right:14px;bottom:14px;width:324px;z-index:6;background:linear-gradient(168deg,rgba(18,32,50,.98),rgba(10,18,30,.985));border:1px solid rgba(140,170,210,.2);border-radius:18px;box-shadow:0 26px 64px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.07);overflow:hidden;display:none;flex-direction:column;-webkit-backdrop-filter:blur(20px) saturate(125%);backdrop-filter:blur(20px) saturate(125%)}
+      #roadInspector.open{display:flex}
+      #roadInspector #riClose{position:absolute;top:9px;right:10px;z-index:2;width:26px;height:26px;border:0;border-radius:7px;background:rgba(255,255,255,.08);color:#cfe6db;font-size:17px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+      #roadInspector #riClose:hover{background:rgba(255,255,255,.16)}
+      #roadInspector #riBody{overflow:hidden;height:100%}
+      #roadInspector .klpop{width:100%;border:0;border-radius:14px;box-shadow:none;background:transparent}
+      #roadInspector .klpop .kp-head{padding-right:42px}
+      @media (max-width:760px){#roadInspector{left:14px;width:auto}}
+    <style id="klpop-css">
+      .maplibregl-popup-content:has(.klpop){padding:0;background:transparent;box-shadow:none;border-radius:13px}
+      .maplibregl-popup:has(.klpop) .maplibregl-popup-tip{border-top-color:rgba(9,20,16,.97);border-bottom-color:rgba(9,20,16,.97)}
+      .maplibregl-popup-content:has(.klpop) .maplibregl-popup-close-button{color:#7fb9a6;font-size:18px;padding:2px 7px}
+      .klpop{width:272px;font-family:Inter,system-ui,sans-serif;background:rgba(9,20,16,.97);border:1px solid rgba(123,225,180,.22);border-radius:13px;overflow:hidden;color:#fff;box-shadow:0 18px 50px rgba(0,0,0,.5)}
+      .klpop .kp-head{padding:12px 14px 10px;border-bottom:1px solid rgba(255,255,255,.08)}
+      .klpop .kp-name{font-size:13.5px;font-weight:800;color:#fff;line-height:1.25}
+      .klpop .kp-meta{display:flex;gap:7px;align-items:center;margin-top:7px;flex-wrap:wrap}
+      .klpop .kp-chip{font-size:9px;font-weight:800;color:#04241a;background:#34d399;padding:2px 9px;border-radius:5px}
+      .klpop .kp-sec{font-size:10px;color:#9fcdbd;font-family:ui-monospace,Menlo,monospace}
+      .klpop .kp-block{padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.06)}
+      .klpop .kp-eyebrow{font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:#7fb9a6;margin-bottom:8px}
+      .klpop .kp-chrow{display:flex;align-items:center;gap:8px}
+      .klpop .kp-ch{font-size:11px;font-weight:700;color:#dcefe6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);padding:4px 9px;border-radius:7px;font-family:ui-monospace,Menlo,monospace}
+      .klpop .kp-arr{color:#34d399;font-weight:800}
+      .klpop .kp-km{margin-left:auto;font-size:11px;font-weight:800;color:#9af0c9}
+      .klpop .kp-locrow{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#e7f3ed;margin-top:9px;flex-wrap:wrap}
+      .klpop .kp-arr2{color:#5e7d72;margin:0 1px}
+      .klpop .kp-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+      .klpop .kp-dot.s{background:#7ee6b0}.klpop .kp-dot.e{background:#ffd27a}
+      .klpop .kp-attrs{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;gap:6px}
+      .klpop .kp-attr{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+      .klpop .kp-k{font-size:11px;color:#8fb3a8;flex:0 0 auto}
+      .klpop .kp-v{font-size:11.5px;color:#eaf6ef;font-weight:600;text-align:right}
+      .klpop .kp-tbl{width:100%;border-collapse:separate;border-spacing:4px 4px;font-variant-numeric:tabular-nums}
+      .klpop .kp-tbl th{font-size:9.5px;font-weight:700;color:#aebfd6;text-align:center}
+      .klpop .kp-tbl th.avg{color:#ffe39a}
+      .klpop .kp-mk{font-size:11px;color:#c9d6ea;text-align:left;padding-right:4px}
+      .klpop .kp-c{font-size:11px;font-weight:800;color:#fff;text-align:center;border-radius:6px;padding:3px 6px;background:rgba(255,255,255,.05);min-width:38px}
+      .klpop .kp-avg{box-shadow:0 0 0 1.4px rgba(255,227,154,.5) inset}
+      .klpop .kp-none{font-size:11.5px;color:#9fb2cc;padding:2px 0 4px}
+      .klpop .kp-play{padding:11px 14px 13px}
+      .klpop .kp-playbtn{width:100%;border:0;cursor:pointer;font:700 12px Inter,system-ui,sans-serif;color:#04241a;background:#34d399;padding:10px;border-radius:9px;display:flex;align-items:center;justify-content:center;transition:filter .15s}
+      .klpop .kp-playbtn:hover{filter:brightness(1.06)}
+      /* ---- classified TABBED inspector card (build 160) ---- */
+      .klcard{font-family:Inter,system-ui,sans-serif;color:#fff;display:flex;flex-direction:column;height:100%}
+      .klcard .kc-head{flex:0 0 auto;padding:15px 17px 12px;border-bottom:1px solid rgba(140,170,210,.14);background:linear-gradient(180deg,rgba(52,211,153,.08),transparent)}
+      .klcard .kc-back{display:inline-flex;align-items:center;font-size:11.5px;color:#9fc0e6;cursor:pointer;margin-bottom:11px;font-weight:600}
+      .klcard .kc-back:hover{color:#9af0c9}
+      .klcard .kc-name{font-size:16.5px;font-weight:800;color:#fff;line-height:1.22;padding-right:30px;letter-spacing:.2px}
+      .klcard .kc-meta{display:flex;gap:7px;align-items:center;margin-top:7px;flex-wrap:wrap}
+      .klcard .kc-chip{font-size:10px;font-weight:800;color:#fff;background:#e24b4a;padding:3px 11px;border-radius:7px;box-shadow:0 2px 9px rgba(226,75,74,.4)}
+      .klcard .kc-chip.mdr{background:#2f6fe0}.klcard .kc-chip.odr{background:#2ba66a}.klcard .kc-chip.nh{background:#8a4d1f}
+      .klcard .kc-sec{font-size:11px;color:#9fc0e6;font-family:ui-monospace,Menlo,monospace}
+      .klcard .kc-pin{font-size:11px;color:#9fc0e6;display:inline-flex;align-items:center;gap:4px;margin-top:7px;width:100%}
+      .klcard .kc-tabs{flex:0 0 auto;display:flex;gap:3px;margin:13px 15px 2px;background:rgba(8,16,28,.6);border:1px solid rgba(140,170,210,.14);border-radius:11px;padding:4px}
+      .klcard .kc-tab{flex:1;text-align:center;font-size:10.5px;font-weight:700;color:#9fc0e6;padding:7px 2px;border-radius:8px;cursor:pointer;border:0;background:transparent;transition:all .15s}
+      .klcard .kc-tab:hover{color:#eafff6}
+      .klcard .kc-tab.on{background:linear-gradient(135deg,#34d399,#22b67e);color:#04241a;box-shadow:0 5px 15px rgba(52,211,153,.38)}
+      .klcard .kc-panes{flex:1 1 auto;overflow:auto;min-height:0}
+      .klcard .kc-pane{display:none;padding:11px 15px}
+      .klcard .kc-pane.on{display:block}
+      /* Profile pane: stacked 2-col grid */
+      .klcard .kc-invgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px 13px}
+      .klcard .kc-inv .ik{font-size:8.5px;letter-spacing:.5px;text-transform:uppercase;color:#9fc0e6;font-weight:700}
+      .klcard .kc-inv .iv{font-size:12px;font-weight:700;color:#eaf6ef;margin-top:2px;line-height:1.25}
+      /* Chainage pane */
+      .klcard .kc-chrow{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+      .klcard .kc-ch{font-size:11px;font-weight:700;color:#dcefe6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);padding:4px 9px;border-radius:7px;font-family:ui-monospace,Menlo,monospace}
+      .klcard .kc-arr{color:#34d399;font-weight:800}.klcard .kc-km{margin-left:auto;font-size:11px;font-weight:800;color:#9af0c9}
+      .klcard .kc-locrow{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#e7f3ed;flex-wrap:wrap}
+      .klcard .kc-arr2{color:#5e7d72;margin:0 1px}
+      .klcard .kc-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+      .klcard .kc-dot.s{background:#7ee6b0}.klcard .kc-dot.e{background:#ffd27a}
+      .klcard .kc-kvs .kc-kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12px}
+      .klcard .kc-kv .k{color:#8fb3a8}.klcard .kc-kv .v{color:#eaf6ef;font-weight:600;text-align:right}
+      /* Condition pane */
+      .klcard .kc-condhead{font-size:9.5px;letter-spacing:.6px;text-transform:uppercase;color:#9fc0e6;font-weight:800;margin-bottom:9px}
+      .klcard .kc-ctbl{width:100%;border-collapse:separate;border-spacing:4px;font-variant-numeric:tabular-nums}
+      .klcard .kc-ctbl th{font-size:9.5px;font-weight:700;color:#aebfd6;text-align:center;padding-bottom:2px}
+      .klcard .kc-ctbl th.mh{text-align:left;color:#7fb9a6}.klcard .kc-ctbl th.avg{color:#ffe39a}
+      .klcard .kc-ctbl td{font-size:11px;font-weight:800;color:#fff;text-align:center;background:rgba(255,255,255,.05);border-radius:6px;padding:4px 6px;min-width:34px}
+      .klcard .kc-ctbl td.mk{text-align:left;font-weight:600;color:#c9d6ea;background:transparent;padding-left:0}
+      .klcard .kc-ctbl td.mk .u{font-weight:500;color:#6f8597;font-size:9px}
+      .klcard .kc-ctbl td.avgc{box-shadow:0 0 0 1.3px rgba(255,227,154,.5) inset}
+      .klcard .kc-pcirow{display:flex;gap:10px;margin-top:14px}
+      .klcard .kc-pci{flex:1;position:relative;background:linear-gradient(160deg,rgba(255,255,255,.07),rgba(255,255,255,.02));border:1px solid rgba(140,170,210,.18);border-radius:13px;padding:12px 14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+      .klcard .kc-pci .pl{display:block;font-size:8.5px;letter-spacing:.6px;text-transform:uppercase;color:#9fc0e6;font-weight:800}
+      .klcard .kc-pci .pv{font-size:27px;font-weight:800;line-height:1;margin-top:4px;font-variant-numeric:tabular-nums}
+      .klcard .kc-pend{font-size:10.5px;color:#ffd98a;background:rgba(242,194,0,.1);border:1px solid rgba(242,194,0,.28);padding:7px 12px;border-radius:9px}
+      .klcard .kp-none{font-size:11.5px;color:#9fb2cc;line-height:1.5}
+      /* footer */
+      .klcard .kc-foot{flex:0 0 auto;display:flex;gap:8px;padding:11px 15px 13px;border-top:1px solid rgba(140,170,210,.14);background:linear-gradient(0deg,rgba(8,16,28,.55),transparent)}
+      .klcard .kc-playbtn,.klcard .kc-exportbtn{flex:1;cursor:pointer;font:700 11.5px Inter,system-ui,sans-serif;padding:10px 8px;border-radius:9px;display:flex;align-items:center;justify-content:center}
+      .klcard .kc-playbtn{border:0;color:#04241a;background:linear-gradient(135deg,#34d399,#22b67e);box-shadow:0 6px 18px rgba(52,211,153,.32)}
+      .klcard .kc-playbtn:hover{filter:brightness(1.06)}
+      .klcard .kc-exportbtn{border:1px solid rgba(123,225,180,.3);color:#cdeede;background:rgba(255,255,255,.04)}
+      .klcard .kc-exportbtn:hover{background:rgba(52,211,153,.12);color:#eafff6}
+      /* framed map + on-map legend */
+      #map{border-radius:16px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(123,225,180,.16),0 14px 40px rgba(0,0,0,.18)}
+      #mapLegend{position:absolute;left:16px;bottom:46px;z-index:5;background:linear-gradient(180deg,rgba(11,26,21,.94),rgba(9,20,16,.94));border:1px solid rgba(123,225,180,.22);border-radius:13px;padding:12px 14px;min-width:158px;box-shadow:0 12px 34px rgba(0,0,0,.4);backdrop-filter:blur(10px);display:none}
+      #mapLegend.show{display:block}
+      #mapLegend .ml-h{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:#9af0c9;font-weight:800;margin-bottom:9px;display:flex;align-items:center;gap:7px}
+      #mapLegend .ml-h::before{content:"";width:7px;height:7px;border-radius:50%;background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.2)}
+    </style>
+    <script id="maplegend-js">
+      (function(){
+        function mirror(){
+          var src=document.getElementById('netLegend'),dst=document.getElementById('mapLegend');if(!dst)return;
+          var body=dst.querySelector('.ml-body');
+          var hasContent=src&&src.textContent&&src.textContent.trim().length>0;
+          var sel=document.getElementById('netColorBy');
+          var th=dst.querySelector('.ml-h');
+          if(th)th.textContent=(sel&&sel.options&&sel.options[sel.selectedIndex])?sel.options[sel.selectedIndex].text:'Road class';
+          if(body)body.innerHTML=hasContent?src.innerHTML:'';
+          var ro=document.getElementById('showRoads');
+          var roadsOn=ro&&ro.checked;
+          dst.classList.toggle('show',!!(hasContent&&roadsOn));
+        }
+        function start(){
+          var src=document.getElementById('netLegend');
+          if(src&&window.MutationObserver){try{new MutationObserver(mirror).observe(src,{childList:true,subtree:true,characterData:true});}catch(e){}}
+          ['netColorBy','showRoads'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',function(){setTimeout(mirror,60);});});
+          document.querySelectorAll('#iconrail .railbtn').forEach(function(b){b.addEventListener('click',function(){setTimeout(mirror,80);});});
+          setTimeout(mirror,800);setTimeout(mirror,2200);
+        }
+        if(document.readyState!=='loading')start();else document.addEventListener('DOMContentLoaded',start);
+      })();
+    </script>
+<style id="vidhud-css">
+#dock .vid{position:relative;}
+.vidhud{display:none;position:fixed;inset:0;z-index:8;pointer-events:none;font-family:Inter,system-ui,sans-serif;color:#eaf2ff}
+.vidhud *{box-sizing:border-box}
+.vid:fullscreen .vidhud,.vid:-webkit-full-screen .vidhud{display:block}
+#dock .vid:fullscreen,#dock .vid:-webkit-full-screen{width:100vw!important;height:100vh!important;background:radial-gradient(120% 90% at 50% 28%,#13283f 0%,#0a1626 50%,#05080f 100%)!important}
+#dock .vid:fullscreen video,#dock .vid:-webkit-full-screen video{width:100%;height:100%;object-fit:contain;background:transparent}
+/* shared glass card */
+.vidhud .card,.vidhud .vh-id,.vidhud .vh-cond,.vidhud .vidhud-trk,.vidhud .vp-card,.vidhud .vh-chain{
+  background:linear-gradient(158deg,rgba(20,34,54,.80) 0%,rgba(10,18,30,.74) 100%);
+  border:1px solid rgba(140,170,210,.16);border-radius:16px;
+  box-shadow:0 18px 48px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);
+  -webkit-backdrop-filter:blur(18px) saturate(130%);backdrop-filter:blur(18px) saturate(130%)}
+/* ===== LEFT RAIL ===== */
+.vidhud .vh-left{position:fixed;left:30px;top:92px;display:flex;flex-direction:column;gap:14px;width:330px;max-width:32vw}
+.vidhud .vh-id{padding:15px 18px}
+.vidhud .vh-route{display:flex;gap:7px;align-items:center;flex-wrap:wrap;font-size:14.5px;font-weight:800;color:#fff;letter-spacing:.2px}
+.vidhud .vh-route .rt-arrow{color:#34d399;font-weight:800}
+.vidhud .vh-meta{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.vidhud .vh-cls{font-size:10.5px;font-weight:800;letter-spacing:.5px;color:#04241a;background:linear-gradient(120deg,#9bf0c8,#34d399);border-radius:7px;padding:4px 11px;box-shadow:0 2px 10px rgba(52,211,153,.3)}
+.vidhud .vh-sec{font-size:11.5px;color:#9fc0e6;font-weight:600;font-family:ui-monospace,Menlo,monospace}
+.vidhud .vh-chrow{display:flex;gap:8px;margin-top:12px}
+.vidhud .vh-chip{font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:6px 12px;border-radius:9px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);font-family:ui-monospace,Menlo,monospace;color:#dceaff}
+.vidhud .vh-chip.dir{background:rgba(52,211,153,.16);color:#9af0c9;border-color:rgba(52,211,153,.42)}
+.vidhud .vh-attrs{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.vidhud .vh-attr{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#e7f0ff;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:5px 10px}
+.vidhud .vh-attr i{font-style:normal;font-size:8.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#7fa8cf}
+/* AVG IRI hero pill */
+.vidhud .vh-iri{font-size:25px;font-weight:800;letter-spacing:.2px;padding:13px 22px;border-radius:15px;color:#08121f;background:linear-gradient(135deg,#86c232,#5fb030);box-shadow:0 14px 34px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.3);text-align:center;align-self:stretch;transition:background .3s,box-shadow .3s}
+/* PCI hero */
+.vidhud .vh-pci{display:flex;flex-direction:column;gap:11px}
+.vidhud .vp-cls{font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#9fc0e6;align-self:flex-start}
+.vidhud .vp-cards{display:flex;gap:13px}
+.vidhud .vp-card{position:relative;padding:14px 18px 16px;min-width:142px;flex:1;border:1.5px solid var(--pc,#3a465c);box-shadow:0 16px 42px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06),0 0 26px -8px var(--pc,transparent)}
+.vidhud .vp-card::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;border-radius:16px 16px 0 0;background:var(--pc,#3a465c);opacity:.9}
+.vidhud .vp-eye{font-size:9.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#9fc0e6}
+.vidhud .vp-val{font-size:46px;font-weight:800;line-height:1;letter-spacing:-2px;margin-top:5px;color:#fff;font-variant-numeric:tabular-nums}
+.vidhud .vp-100{font-size:15px;font-weight:600;color:#7e93b0;margin-left:3px;letter-spacing:0}
+.vidhud .vp-band{display:inline-block;margin-top:9px;font-size:11px;font-weight:800;letter-spacing:.3px;border-radius:20px;padding:4px 13px}
+/* ===== RIGHT RAIL ===== */
+.vidhud .vh-right{position:fixed;right:30px;top:92px;display:flex;flex-direction:column;align-items:stretch;gap:14px;width:312px;max-width:32vw}
+.vidhud .vidhud-trk{width:100%;height:248px;display:block;padding:6px}
+.vidhud .vh-cond,.vidhud .vh-chain{padding:13px 15px}
+.vidhud .vh-chain:empty{display:none}
+.vidhud .vh-cap{font-size:9.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#9fc0e6;margin-bottom:10px}
+.vidhud .vh-tbl{width:100%;border-collapse:separate;border-spacing:5px 4px;font-variant-numeric:tabular-nums}
+.vidhud .vh-tbl th{font-size:10.5px;font-weight:700;color:#aebfd6;text-align:center;padding:1px 6px}
+.vidhud .vh-tbl tr th:first-child{font-size:11px;color:#dceaff;text-align:left;font-weight:700;padding-right:4px}
+.vidhud .vh-tbl th.avg{color:#ffe39a}
+.vidhud .vc{font-size:12.5px;font-weight:800;text-align:center;color:#fff;border-radius:8px;padding:4px 9px;min-width:44px;background:rgba(120,140,170,.22)}
+.vidhud .vc.avg{box-shadow:0 0 0 1.4px rgba(255,227,154,.6) inset}
+.vidhud .vh-nod{font-size:12.5px;color:#9fb2cc;padding:8px 4px}
+.vidhud .vh-crow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:12.5px}
+.vidhud .vh-crow:last-child{border-bottom:0}
+.vidhud .vh-crow .ck{color:#9fc0e6}.vidhud .vh-crow .cv{color:#fff;font-weight:800;font-variant-numeric:tabular-nums}
+/* bottom-centre road name */
+.vidhud .vh-roadname{position:fixed;left:50%;transform:translateX(-50%);bottom:80px;font-family:Georgia,"Times New Roman",serif;font-size:27px;font-weight:700;letter-spacing:.4px;color:#fff;text-shadow:0 4px 22px rgba(0,0,0,.75);background:linear-gradient(180deg,rgba(15,26,42,.62),rgba(9,16,28,.55));border:1px solid rgba(140,170,210,.2);border-radius:15px;padding:9px 30px;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);text-align:center;max-width:56vw;box-shadow:0 18px 48px rgba(0,0,0,.5)}
+@media (max-height:860px){.vidhud .vp-val{font-size:38px}.vidhud .vidhud-trk{height:200px}.vidhud .vh-iri{font-size:22px;padding:11px 18px}.vidhud .vh-roadname{font-size:22px;bottom:68px}.vidhud .vh-left,.vidhud .vh-right{top:80px;gap:11px}}
+.trackfs-btn{width:100%;background:#15314f;color:#dff;border:1px solid #2b5275;border-radius:8px;padding:8px 12px;font:600 12.5px Inter,system-ui,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+.trackfs-btn:hover{background:#1c4264;}
+</style>
+    <div id="dock">
+      <span class="close" onclick="closeDock()">&times;</span>
+      <div class="vid"><video id="video" controls></video><div class="vidempty" id="vidempty" style="display:none"></div><div class="vidhud" id="vidhud"><div class="vh-left"><div class="vh-id"><div class="vh-route" id="hudRoute">&mdash;</div><div class="vh-meta"><span class="vh-cls" id="hudClass">&mdash;</span><span class="vh-sec" id="hudSec">&mdash;</span></div><div class="vh-chrow"><span class="vh-chip" id="hudCh">CH &ndash; m</span><span class="vh-chip dir" id="hudDir">Forward</span></div><div class="vh-attrs" id="hudAttrs"></div></div><div class="vh-iri" id="hudIri">AVG IRI &ndash;</div><div class="vh-pci" id="hudPci"></div></div><div class="vh-right"><svg class="vidhud-trk" id="hudTrack" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg><div class="vh-cond" id="hudCond"></div><div class="vh-chain" id="hudChain"></div></div><div class="vh-roadname" id="hudRoad">&mdash;</div></div></div>
+      <div class="instr">
+        <div class="road-eyebrow">Now playing</div>
+        <div class="road-name" id="dRoadName">—</div>
+        <div class="road-id" id="dRoadId">—</div>
+        <div class="road-route" id="dRoute">—</div>
+        <div class="meter"><span class="val" id="dCh">0</span><span class="unit">m</span><span class="cap">Chainage</span><span class="val" id="dIri" style="font-size:30px;margin-left:24px">–</span><span class="cap">IRI m/km</span></div>
+        <div class="dirrow"><span class="lbl">Direction</span><span class="seg-dark"><button id="fwd" class="on" onclick="setDir('fwd')">Front</button><button id="rev" onclick="setDir('rev')">Back</button></span><span class="lbl" style="margin-left:auto">Length</span><span class="road-id" id="dLen" style="font-size:13px;color:#cdd9ea">—</span></div>
+        <div class="dirrow"><span class="lbl">Speed</span><span class="seg-dark" id="speedSeg"><button data-spd="0.25" onclick="setSpeed(0.25,this)">0.25&times;</button><button data-spd="0.5" onclick="setSpeed(0.5,this)">0.5&times;</button><button data-spd="1" class="on" onclick="setSpeed(1,this)">1&times;</button><button data-spd="1.5" onclick="setSpeed(1.5,this)">1.5&times;</button><button data-spd="2" onclick="setSpeed(2,this)">2&times;</button></span></div>
+        <div class="dirrow"><button class="trackfs-btn" onclick="toggleVidFs()">&#10530; Fullscreen with live track &amp; IRI</button></div>
+      </div>
+    </div>
+  </div></div>
+</div>
+  <script id="kl-datastore">
+  /* ===== KLRAMS global data store (build 160) =====
+     Captures EVERY layer once it loads — both /api/* fetches AND live MapLibre
+     geojson sources (PCI, FWD, traffic, soil, core, condition) — indexed by road +
+     chainage. Both the NSV HUD and the inspector read the same store, so a value,
+     once generated/loaded, stays available for every later call (inspection card,
+     NSV video, etc.) and is only replaced when that layer is generated again. */
+  (function(){
+    window.KL=window.KL||{byRoad:{},layers:{},_pciCache:{},_srcSig:{}};
+    function roadKey(p){return p.road||p.Road_Name||p.road_name||p.ROAD_NAME||p.RoadName||p.section||p.Section_La||null;}
+    function num(v){return (v==null||v==='')?NaN:+v;}
+    function pickn(p,keys){for(var i=0;i<keys.length;i++){var v=p[keys[i]];if(v!=null&&v!=='')return +v;}return NaN;}
+    var CH_FROM=['from_ch','Rd_Str_cha','chainage_from','from_chainage','start_ch','ch_from','From_Chain','Start_Chai'];
+    var CH_TO  =['to_ch','Rd_End_cha','chainage_to','to_chainage','end_ch','ch_to','To_Chain','End_Chaina'];
+    var CH_PT  =['chainage','chn','ch','chainage_m','Chainage','CHAINAGE','chain','chain_m','ch_m','lrp','LRP','location','Chainage_m','chainage_no','chainage_pt','Chn'];
+    KL._clearLayer=function(layer){for(var r in KL.byRoad){KL.byRoad[r]=KL.byRoad[r].filter(function(e){return e.layer!==layer;});}};
+    /* replace-by-layer, but only when the new data actually has features
+       (so toggling a layer OFF / emptying a source never wipes captured values) */
+    KL.ingest=function(layer,gj){
+      try{
+        if(!gj||!gj.features||!gj.features.length)return;
+        layer=String(layer).toLowerCase();
+        KL._clearLayer(layer); KL.layers[layer]=gj.features.length;
+        for(var i=0;i<gj.features.length;i++){
+          var f=gj.features[i];var pr=f.properties||{};var rk=roadKey(pr);if(!rk)continue;
+          (KL.byRoad[rk]=KL.byRoad[rk]||[]).push({layer:layer,p:pr,
+            from:pickn(pr,CH_FROM),to:pickn(pr,CH_TO),pt:pickn(pr,CH_PT)});
+        }
+      }catch(e){}
+    };
+    KL.ingestUrl=function(url,gj){var m=String(url).match(/\/api\/([a-z0-9_\-]+)/i);KL.ingest(m?m[1]:String(url),gj);};
+    /* guaranteed capture of the already-parsed condition segments (worst PCI + condition) */
+    KL.syncGlobals=function(){
+      try{
+        if(typeof segsByRoad!=='undefined'&&segsByRoad){
+          var n=0,r;for(r in segsByRoad)n+=segsByRoad[r].length;
+          if(KL._segN!==n){KL._segN=n;KL._clearLayer('segments');
+            for(r in segsByRoad){for(var i=0;i<segsByRoad[r].length;i++){var f=segsByRoad[r][i],pr=f.properties||{},rk=pr.road||r;
+              (KL.byRoad[rk]=KL.byRoad[rk]||[]).push({layer:'segments',p:pr,from:num(pr.from_ch!=null?pr.from_ch:pr.Rd_Str_cha),to:num(pr.to_ch!=null?pr.to_ch:pr.Rd_End_cha),pt:NaN});}}
+          }
+        }
+      }catch(e){}
+    };
+    /* pull data straight out of live MapLibre geojson sources (where generated PCI etc. live) */
+    KL.scanSources=function(){
+      try{
+        var m=window.map;if(!m||!m.getStyle)return;
+        var srcs=m.getStyle().sources||{};
+        for(var id in srcs){
+          var src=m.getSource(id);if(!src)continue;
+          var gj=src._data||(src.serialize&&src.serialize().data);
+          if(!gj||typeof gj!=='object'||!gj.features||!gj.features.length){
+            try{var ff=m.querySourceFeatures(id);if(ff&&ff.length)gj={type:'FeatureCollection',features:ff};}catch(e){}
+          }
+          if(!gj||typeof gj!=='object'||!gj.features||!gj.features.length)continue; /* persist on empty */
+          var sig=id+':'+gj.features.length;
+          if(KL._srcSig[id]===sig)continue; /* unchanged since last scan */
+          KL._srcSig[id]=sig; KL.ingest(id,gj);
+        }
+      }catch(e){}
+    };
+    KL.sync=function(force){var t=Date.now();if(!force&&KL._lastSync&&(t-KL._lastSync)<1200)return;KL._lastSync=t;KL.syncGlobals();KL.scanSources();};
+    /* exact match only (no sticky nearest) \u2014 for chainage-varying readings (FWD etc.) */
+    KL.atExact=function(road,ch){
+      KL.sync();
+      var arr=KL.byRoad[road];if(!arr)return {};
+      var out={},k;
+      for(var i=0;i<arr.length;i++){var e=arr[i],hit=false;
+        if(!isNaN(e.from)&&!isNaN(e.to)){var lo=Math.min(e.from,e.to),hi=Math.max(e.from,e.to);hit=(ch>=lo&&ch<=hi);}
+        else if(!isNaN(e.pt))hit=(Math.abs(ch-e.pt)<=30);
+        else hit=false; /* no chainage info -> NOT a per-chainage hit */
+        if(hit){for(k in e.p)out[k]=e.p[k];}
+      }
+      return out;
+    };
+    /* FWD resolver — finds D0..D8 by matching column NAMES with a regex, so the exact
+       header (D0, FWD_D0, deflection, d0_micron, "D0 (mm)"...) no longer matters.
+       Uses range matching (from_ch..to_ch) like condition data. */
+    KL.fwdAt=function(road,ch){
+      KL.sync();
+      var arr=KL.byRoad[road];if(!arr)return null;
+      var props=null;
+      for(var i=0;i<arr.length;i++){var e=arr[i],hit=false;
+        if(!isNaN(e.from)&&!isNaN(e.to)){var lo=Math.min(e.from,e.to),hi=Math.max(e.from,e.to);hit=(ch>=lo&&ch<=hi);}
+        else if(!isNaN(e.pt))hit=(Math.abs(ch-e.pt)<=60);
+        if(!hit)continue;
+        var p=e.p,has=false,k;for(k in p){if(/(^|[_\s(\[])d0([_\s)\].]|$)|fwd.?d0|deflection|central.?defl/i.test(k)&&p[k]!=null&&p[k]!==''){has=true;break;}}
+        if(has){props=props?props:{};for(k in p)props[k]=p[k];}
+      }
+      if(!props)return null;
+      function valByRe(re){for(var k in props){if(re.test(k)){var v=+props[k];if(!isNaN(v))return v;}}return null;}
+      var d0=valByRe(/(^|[_\s(\[])d0([_\s)\].]|$)|fwd.?d0|deflection|central.?defl/i);
+      var ds=[];for(var n=1;n<=8;n++){var v=valByRe(new RegExp('(^|[_\\s(\\[])d'+n+'([_\\s)\\].]|$)|fwd.?d'+n,'i'));if(v!=null)ds.push(['D'+n,v]);}
+      return {d0:d0,ds:ds};
+    };
+    KL.at=function(road,ch){
+      KL.sync();
+      var arr=KL.byRoad[road];if(!arr)return {};
+      var hits=[],near={};
+      for(var i=0;i<arr.length;i++){var e=arr[i],d=Infinity,hit=false;
+        if(!isNaN(e.from)&&!isNaN(e.to)){var lo=Math.min(e.from,e.to),hi=Math.max(e.from,e.to);if(ch>=lo&&ch<=hi){hit=true;d=0;}else d=Math.min(Math.abs(ch-lo),Math.abs(ch-hi));}
+        else if(!isNaN(e.pt)){d=Math.abs(ch-e.pt);hit=(d<=30);}
+        else {hit=true;d=0;}
+        if(hit)hits.push(e.p);
+        if(!(e.layer in near)||d<near[e.layer].d)near[e.layer]={d:d,p:e.p};
+      }
+      var out={},k;
+      for(var L in near){var np=near[L].p;for(k in np)out[k]=np[k];}
+      for(var h=0;h<hits.length;h++){var hp=hits[h];for(k in hp)out[k]=hp[k];}
+      return out;
+    };
+    /* nearest condition segment's full props (for the PCI engine) */
+    KL.segAt=function(road,ch){
+      var arr=KL.byRoad[road];if(!arr)return null;var best=null,bd=Infinity;
+      for(var i=0;i<arr.length;i++){var e=arr[i];if(e.layer!=='segments'&&e.layer!=='segs')continue;var d=Infinity;
+        if(!isNaN(e.from)&&!isNaN(e.to)){var lo=Math.min(e.from,e.to),hi=Math.max(e.from,e.to);d=(ch>=lo&&ch<=hi)?0:Math.min(Math.abs(ch-lo),Math.abs(ch-hi));}
+        else d=0;
+        if(d<bd){bd=d;best=e.p;}}
+      return best;
+    };
+    /* PCI computed LIVE by the real IRC:82 engine (segPCI): avg=Composite, worst=Worst-Lane.
+       Works at any chainage without generating the layer; persists per road. */
+    KL.pci=function(road,ch){
+      KL.sync();
+      var compKeys=['pci_avg','composite_pci','comp_pci','avg_pci','road_pci','pci_composite','pci'],worstKeys=['pci_worst','worst_pci','worst_lane_pci','lane_worst_pci'];
+      function rd(p,keys){if(!p)return null;for(var i=0;i<keys.length;i++){var x=p[keys[i]];if(x!=null&&x!==''){var n=+x;if(!isNaN(n)&&n>=0)return n;}}return null;}
+      function calc(p,basis){if(typeof segPCI==='function'){try{var v=segPCI(p,basis);if(v!=null&&!isNaN(v))return Math.round(v*10)/10;}catch(e){}}return null;}
+      var sp=KL.segAt(road,ch),comp=null,worst=null;
+      if(sp){comp=calc(sp,'avg');if(comp==null)comp=rd(sp,compKeys);worst=calc(sp,'worst');if(worst==null)worst=rd(sp,worstKeys);}
+      var cache=KL._pciCache[road]||(KL._pciCache[road]={comp:null,worst:null});
+      if(comp!=null)cache.comp=comp;if(worst!=null)cache.worst=worst;
+      if(cache.comp==null||cache.worst==null){var arr=KL.byRoad[road]||[],aC=[],aW=[];
+        for(var i=0;i<arr.length;i++){if(arr[i].layer!=='segments'&&arr[i].layer!=='segs')continue;var p=arr[i].p;
+          var cc=calc(p,'avg');if(cc==null)cc=rd(p,compKeys);if(cc!=null)aC.push(cc);
+          var ww=calc(p,'worst');if(ww==null)ww=rd(p,worstKeys);if(ww!=null)aW.push(ww);}
+        if(cache.comp==null&&aC.length)cache.comp=Math.round((aC.reduce(function(x,y){return x+y;},0)/aC.length)*10)/10;
+        if(cache.worst==null&&aW.length)cache.worst=Math.min.apply(null,aW);}
+      return {comp:(comp!=null?comp:cache.comp),worst:(worst!=null?worst:cache.worst)};
+    };
+    if(window.fetch&&!window.__klFetchWrapped){window.__klFetchWrapped=true;var of=window.fetch;
+      window.fetch=function(input){var url=(typeof input==='string')?input:(input&&input.url)||'';var pr=of.apply(this,arguments);
+        if(/\/api\//i.test(url)&&!/\/segments\//i.test(url)){pr.then(function(res){try{res.clone().json().then(function(j){KL.ingestUrl(url,j);}).catch(function(){});}catch(e){}});}
+        return pr;};}
+    /* once the map exists, also capture sources as soon as they receive data */
+    (function hook(){var m=window.map;if(m&&m.on){m.on('sourcedata',function(e){if(e&&e.isSourceLoaded)KL.sync();});}else setTimeout(hook,400);})();
+  })();
+  </script>
+
+  <script src="js/01-config.js?v=117"></script>
+  <script src="js/02-map-core.js?v=117"></script>
+  <script src="js/03-condition-style-filter.js?v=117"></script>
+  <script src="js/04-geo-helpers-boundaries.js?v=117"></script>
+  <script src="js/05-road-network.js?v=117"></script>
+  <script src="js/06-assets.js?v=117"></script>
+  <script src="js/07-data-loaders.js?v=117"></script>
+  <script src="js/08-condition-popup-nsv.js?v=160"></script>
+  <script src="js/09-dashboard-core.js?v=117"></script>
+  <script src="js/10-pci-report.js?v=117"></script>
+  <script src="js/11-dashboard-charts.js?v=117"></script>
+  <script src="js/12-nsv-video.js?v=160"></script>
+  <script src="js/13-search.js?v=117"></script>
+  <script src="js/14-pci-engine.js?v=117"></script>
+  <script src="js/15-main.js?v=117"></script>
+  <script src="js/16-traffic.js?v=117"></script>
+  <script src="js/17-measure.js?v=117"></script>
+  <script src="js/18-filters.js?v=117"></script>
+  <script src="js/19-asset-register.js?v=117"></script>
+  <script src="js/20-asset-dashboard.js?v=117"></script>
+  <script src="js/21-report-hub.js?v=117"></script>
+  <script src="js/22-road-merged.js?v=117"></script>
+  <script src="js/23-climate.js?v=117"></script>
+  <script src="js/24-fwd.js?v=160"></script>
+  <script src="js/launcher.js?v=117"></script>
+  <style id="dock-guard">
+    /* Build 91 — the page must not scroll (full-viewport app); a stray page
+       scrollbar was revealing the hidden dock below the fold. */
+    html,body{overflow:hidden!important;height:100%}
+    /* Dock hidden = removed from layout entirely (display:none), so it cannot be
+       scrolled into view and adds no page height. Shown only via .klshow. */
+    #dock{position:fixed!important;display:none!important;pointer-events:none}
+    #dock.klshow{display:flex!important;transform:translateY(0)!important;pointer-events:auto}
+  </style>
+  <script>
+  /* Build 90 — bulletproof, self-contained dock guard (lives in map.html so it
+     works regardless of which JS files are deployed). The survey-video dock is
+     shown ONLY when: it is open AND a real video frame has loaded AND
+     "Video on click" is on. An empty or leftover dock can never appear. */
+  (function(){
+    var dock=document.getElementById('dock'), vid=document.getElementById('video');
+    if(!dock) return;
+    function vclickOn(){return !!(((document.getElementById('videoMode')||{}).checked)||((document.getElementById('videoMode2')||{}).checked));}
+    function hasRealVideo(){return !!(vid&&(vid.currentSrc||vid.getAttribute('src'))&&vid.readyState>=2);}
+    function refresh(){var show=dock.classList.contains('open')&&hasRealVideo()&&vclickOn();dock.classList.toggle('klshow',show);}
+    try{new MutationObserver(refresh).observe(dock,{attributes:true,attributeFilter:['class']});}catch(e){}
+    if(vid)['loadeddata','canplay','playing','seeked','emptied','error','loadstart','pause'].forEach(function(ev){vid.addEventListener(ev,refresh);});
+    ['videoMode','videoMode2'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',refresh);});
+    dock.classList.remove('open','loaded','klshow');   /* always start fully closed */
+    setTimeout(refresh,0);
+  })();
+  </script>
+  <style id="ui-polish">
+  /* ============================================================
+     Build 92 — professional viewer UI polish (panel · toggles · dropdown ·
+     header). Inline so it lands with map.html and overrides app.css. */
+
+  /* panel surface */
+  #fpanes,.fpane{background:linear-gradient(180deg,#fbfcfe 0%,#f3f6fa 100%)}
+  .fpane{padding:20px 16px 46px!important}
+
+  /* panel title with accent bar */
+  .pane-title{display:flex;align-items:center;gap:11px;font-size:18px;font-weight:800;color:#0e2038;letter-spacing:-.2px;margin:2px 0 16px!important}
+  .pane-title::before{content:"";width:4px;height:19px;border-radius:3px;background:linear-gradient(180deg,#1ec98a,#16a06b);flex:0 0 auto}
+
+  /* section headers */
+  .fpane .grp-title{font-size:10.5px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:#8193ac;margin:18px 2px 10px!important;display:flex;align-items:center;gap:10px}
+  .fpane .grp-title::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,#e2e8f0,transparent)}
+
+  /* elevated group cards */
+  .fpane .grp{background:#fff;border:1px solid #e8edf3;border-radius:14px;padding:2px 14px!important;
+    box-shadow:0 1px 2px rgba(16,32,56,.04),0 10px 24px -16px rgba(16,32,56,.22);margin-bottom:14px}
+
+  /* rows */
+  .fpane .grp .switch{padding:11px 4px!important;border-bottom:1px solid #f1f4f8;border-radius:9px;transition:background .14s}
+  .fpane .grp .switch:hover{background:#f7fafc}
+  .fpane .grp .switch:last-child{border-bottom:0}
+  .switch .lname{display:flex;align-items:center;gap:11px;font-size:13.5px;font-weight:600;color:#2a3a56}
+  .switch .ldot{width:11px;height:11px;border-radius:50%;box-shadow:0 0 0 3px #fff,0 0 0 4px rgba(16,32,56,.08),0 1px 3px rgba(0,0,0,.18)}
+
+  /* toggles — richer */
+  .switch input{width:40px!important;height:22px!important;background:#d4dbe6;box-shadow:inset 0 1px 2px rgba(16,32,56,.14)}
+  .switch input:checked{background:linear-gradient(180deg,#22cc8d,#12a06b)!important}
+  .switch input::after{width:18px!important;height:18px!important;top:2px!important;left:2px!important;box-shadow:0 1px 3px rgba(0,0,0,.3)!important}
+  .switch input:checked::after{transform:translateX(18px)!important}
+
+  /* metric icon + dropdowns */
+  .cond-metric-row{display:flex;align-items:center;gap:9px;margin:8px 0 6px}
+  .cond-metric-ic{width:27px;height:27px;border-radius:8px;background:#eaf7f0;color:#0d7a51;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  select.full,.cond-metric-sel{appearance:none;-webkit-appearance:none;width:100%;
+    background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364718a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") right 11px center/12px no-repeat;
+    border:1px solid #dbe2ec;border-radius:9px;padding:9px 32px 9px 12px;font-size:13px;color:#23304a;font-family:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+  select.full:hover,.cond-metric-sel:hover{border-color:#c4cfdd}
+  select.full:focus,.cond-metric-sel:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(22,160,107,.15)}
+
+  /* header refinement */
+  .topbar .brand .t{font-weight:800;letter-spacing:.4px}
+  .topbar .brand .s{color:#9fb1ca}
+  .topbar .brand .t::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.22);margin-right:9px;vertical-align:middle}
+  .topbar #districtTag,.topbar .tag{background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.34);color:#9af0c9;font-weight:700;letter-spacing:.3px;padding:5px 12px;border-radius:20px;font-size:12px}
+
+  /* tidy panel scrollbar */
+  #fpanes::-webkit-scrollbar,.fpane::-webkit-scrollbar{width:9px}
+  #fpanes::-webkit-scrollbar-thumb,.fpane::-webkit-scrollbar-thumb{background:#cdd7e3;border-radius:9px;border:2px solid #f3f6fa}
+  #fpanes::-webkit-scrollbar-thumb:hover,.fpane::-webkit-scrollbar-thumb:hover{background:#b6c3d4}
+  </style>
+  <style id="dash-extra">
+  /* PCI Analysis — hero summary */
+  .pcia-top{align-items:stretch}
+  .pcia-hero{display:flex;flex-direction:column}
+  .pcia-hero .pcia-big{font-size:46px;font-weight:800;line-height:1;color:#0e2038;letter-spacing:-1px;margin:8px 0 2px}
+  .pcia-hero .pcia-big .u{font-size:14px;font-weight:600;color:#7c8aa0;margin-left:9px;letter-spacing:0}
+  .pcia-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:auto;padding-top:14px}
+  .pcia-stats .ps{background:linear-gradient(180deg,#f7fafc,#eef3f8);border:1px solid #e6ecf3;border-radius:11px;padding:9px 12px}
+  .pcia-stats .ps-k{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#8193ac}
+  .pcia-stats .ps-v{font-size:20px;font-weight:800;color:#22324c;margin-top:2px}
+  .pcia-stats .ps-v.sm{font-size:15px}
+  .pcia-stats .ps-v small{font-size:11px;font-weight:600;color:#8a93a6;margin-left:5px}
+  /* Asset dashboards — district x class matrix */
+  .amx-wrap{overflow-x:auto;margin-top:8px}
+  .amx{border-collapse:collapse;width:100%;font-size:12.5px}
+  .amx th,.amx td{border-bottom:1px solid #eef2f7;padding:7px 11px;text-align:left;white-space:nowrap}
+  .amx th{font-size:11px;font-weight:700;color:#46566f;background:#f5f8fb}
+  .amx th.n,.amx td.n{text-align:right}
+  .amx td{color:#2b3a52}
+  .amx th:first-child,.amx td:first-child{font-weight:600;color:#22324c}
+  .amx tbody tr:hover td{background:#f7fafc}
+  .amx .amx-tot td{border-top:2px solid #dbe3ec;background:#eef3f8;color:#16202e}
+  .amx .amx-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .amx .z{color:#c2ccd8}
+  /* NSV player — direction-aware route label */
+  .road-route{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12.5px;font-weight:600;color:#bcd0ea;margin-top:6px;line-height:1.35}
+  .road-route .rt-arrow{color:#3ad29a;font-weight:800;font-size:14px}
+  .road-route .rt-a,.road-route .rt-b{color:#eef4fb}
+  /* NSV fullscreen HUD — professional info block */
+  #vidhud{min-width:248px;max-width:300px}
+  .vidhud-info{padding:0 2px 9px;border-bottom:1px solid rgba(255,255,255,.14);margin-bottom:9px}
+  .vidhud-info .vh-road{font-size:13.5px;font-weight:800;color:#fff;line-height:1.22;letter-spacing:.2px;word-break:break-word}
+  .vidhud-info .vh-meta{display:flex;align-items:center;gap:8px;margin-top:5px;flex-wrap:wrap}
+  .vidhud-info .vh-cls{font-size:10px;font-weight:800;letter-spacing:.4px;color:#08311f;background:linear-gradient(120deg,#8ee9bf,#36d399);border-radius:6px;padding:2px 8px}
+  .vidhud-info .vh-sec{font-size:10.5px;color:#aac3e2;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .vidhud-info .vh-route{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11.5px;font-weight:600;color:#d4e3f6;margin-top:6px}
+  .vidhud-info .vh-route .rt-arrow{color:#3ad29a;font-weight:800;font-size:13px}
+  .vidhud-info .vh-route .rt-a,.vidhud-info .vh-route .rt-b{color:#fff}
+ /* Full Road Network (imported) layer controls + popup */
+  .r2-hint{font-size:10px;color:#8193ac;font-weight:600;margin-left:4px}
+  .r2-row{display:flex;align-items:center;gap:9px;padding:2px 4px 8px;flex-wrap:wrap}
+  .r2-row .btn.ghost{font-size:12px;padding:6px 11px}
+  .r2-status{font-size:11px;color:#8193ac;font-weight:600}
+  /* Full-road info card (docked top-left so it never hides the clicked road) */
+  .ri-card{position:absolute;top:14px;left:14px;width:290px;max-width:calc(100% - 28px);max-height:calc(100% - 28px);display:flex;flex-direction:column;background:#fff;border:1px solid #e3e9f1;border-radius:15px;box-shadow:0 20px 54px rgba(10,22,40,.30),0 2px 8px rgba(10,22,40,.12);font-family:var(--sans);z-index:5;overflow:hidden}
+  .ri-head{display:flex;align-items:center;gap:11px;padding:13px 13px 13px 14px;background:linear-gradient(120deg,#16305a,#2a5d9c);color:#fff;flex:0 0 auto}
+  .ri-ic{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .ri-ic svg{width:20px;height:20px}
+  .ri-title{flex:1;min-width:0}
+  .ri-eyebrow{font-size:9.5px;font-weight:800;letter-spacing:1.2px;color:#bcd2ee}
+  .ri-name{font-size:15px;font-weight:800;line-height:1.2;word-break:break-word;margin-top:1px}
+  .ri-x{background:rgba(255,255,255,.14);border:0;color:#dce7f5;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:19px;line-height:1;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+  .ri-x:hover{background:rgba(255,255,255,.3);color:#fff}
+  .ri-body{padding:4px 14px 13px;overflow-y:auto}
+  .ri-len{display:flex;align-items:baseline;gap:7px;padding:12px 0 10px;border-bottom:1px solid #eef2f7;margin-bottom:3px}
+  .ri-len .b{font-size:25px;font-weight:800;color:#0e2038;letter-spacing:-.5px}
+  .ri-len .u{font-size:12px;color:#7c8aa0;font-weight:700}
+  .ri-len .cap{margin-left:auto;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#94a2b6}
+  .ri-row{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:1px solid #f4f6fa;font-size:12.5px}
+  .ri-row:last-child{border-bottom:0}
+  .ri-k{color:#7c8aa0;font-weight:600}
+  .ri-v{color:#1d2a40;font-weight:700;text-align:right;word-break:break-word}
+  .ri-body::-webkit-scrollbar{width:8px}.ri-body::-webkit-scrollbar-thumb{background:#cdd7e3;border-radius:8px}
+  /* Report Hub overlay (mirrors #regScreen) */
+  #reportHub,#climate{position:absolute;inset:0 0 0 74px;background:radial-gradient(130% 90% at 100% 0%,#eef4fb 0%,#eaeff6 42%,#e8edf3 100%);z-index:7;overflow-y:auto;display:none}
+  #reportHub.open,#climate.open{display:block!important}
+  #reportHub::-webkit-scrollbar,#climate::-webkit-scrollbar{width:11px}#reportHub::-webkit-scrollbar-thumb,#climate::-webkit-scrollbar-thumb{background:#c7d2e0;border-radius:6px;border:3px solid #eaeff6}
+  </style>
+
+  <!-- ============ Sahaayi · in-app KLRAMS help assistant (build 160) ============ -->
+  <style id="kb-style">
+  #kbFab{position:fixed;right:24px;bottom:26px;z-index:1200;display:flex;align-items:center;gap:10px;
+    background:linear-gradient(135deg,#16a06b,#0d7a51);color:#fff;border:0;border-radius:30px;
+    padding:13px 18px 13px 14px;cursor:pointer;font-family:var(--sans);font-size:14px;font-weight:600;
+    box-shadow:0 10px 28px -6px rgba(13,122,81,.6),0 2px 8px rgba(0,0,0,.18)}
+  #kbFab:hover{filter:brightness(1.06)}
+  #kbFab svg{width:22px;height:22px}
+  #kbFab .kb-pulse{position:absolute;top:-3px;right:-3px;width:13px;height:13px;border-radius:50%;background:#e6c878;border:2px solid #0d7a51}
+  #kbPanel{position:fixed;right:24px;bottom:26px;z-index:1201;width:374px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 90px);
+    background:#fff;border:1px solid #e2e7ee;border-radius:18px;box-shadow:0 30px 80px rgba(10,22,40,.4);
+    display:none;flex-direction:column;overflow:hidden;font-family:var(--sans)}
+  #kbPanel.open{display:flex;animation:kbrise .18s ease}
+  @keyframes kbrise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  .kb-head{display:flex;align-items:center;gap:12px;padding:15px 16px;color:#fff;
+    background:linear-gradient(120deg,#0e2038,#15345c)}
+  .kb-head .kb-av{width:40px;height:40px;border-radius:12px;flex:0 0 auto;background:linear-gradient(135deg,#1ec98a,#0d7a51);
+    display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(13,122,81,.5)}
+  .kb-head .kb-av svg{width:22px;height:22px}
+  .kb-head .kb-id{flex:1;min-width:0}
+  .kb-head .kb-id b{font-size:15.5px;font-weight:700;letter-spacing:.2px}
+  .kb-head .kb-id span{display:block;font-size:11.5px;color:#9fb6d4;margin-top:1px}
+  .kb-head .kb-id .kb-on{display:inline-flex;align-items:center;gap:5px}
+  .kb-head .kb-id .kb-on::before{content:"";width:7px;height:7px;border-radius:50%;background:#36d399;box-shadow:0 0 0 3px rgba(54,211,153,.25)}
+  .kb-x{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);color:#cdd9ea;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:19px;line-height:1;display:flex;align-items:center;justify-content:center}
+  .kb-x:hover{background:rgba(255,255,255,.2);color:#fff}
+  .kb-msgs{flex:1;overflow-y:auto;padding:18px 16px 8px;background:linear-gradient(180deg,#f7f9fc,#f1f5f9);display:flex;flex-direction:column;gap:12px}
+  .kb-b{max-width:84%;font-size:13.5px;line-height:1.55;padding:11px 14px;border-radius:14px;white-space:pre-wrap;word-wrap:break-word}
+  .kb-bot{align-self:flex-start;background:#fff;color:#27344b;border:1px solid #e7ecf3;border-bottom-left-radius:5px;box-shadow:0 1px 2px rgba(16,32,56,.05)}
+  .kb-user{align-self:flex-end;background:linear-gradient(135deg,#16a06b,#0d7a51);color:#fff;border-bottom-right-radius:5px}
+  .kb-b b{font-weight:700}
+  .kb-chips{display:flex;flex-wrap:wrap;gap:8px;padding:6px 16px 14px;background:linear-gradient(180deg,#f1f5f9,#eef3f8);border-top:1px solid #e7ecf3}
+  .kb-chip{background:#fff;border:1px solid #d8e0ea;color:#1f5f47;font-size:12px;font-weight:600;padding:7px 11px;border-radius:18px;cursor:pointer;font-family:inherit;transition:background .14s,border-color .14s}
+  .kb-chip:hover{background:#eaf7f0;border-color:#16a06b}
+  .kb-input{display:flex;gap:9px;padding:12px 14px;border-top:1px solid #e7ecf3;background:#fff}
+  .kb-input input{flex:1;border:1px solid #dbe2ec;border-radius:11px;padding:11px 13px;font-size:13.5px;font-family:inherit;color:#23304a;outline:none}
+  .kb-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(22,160,107,.14)}
+  .kb-send{background:linear-gradient(135deg,#16a06b,#0d7a51);border:0;color:#fff;width:44px;border-radius:11px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .kb-send:hover{filter:brightness(1.07)}
+  .kb-send svg{width:19px;height:19px}
+  @media(max-width:480px){#kbPanel{height:calc(100vh - 80px);right:16px;left:16px;width:auto}}
+  </style>
+
+  <button id="kbFab" onclick="kbOpen()" aria-label="Open KLRAMS assistant">
+    <span class="kb-pulse"></span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.5 7.5L3 21l2-5.5A8.5 8.5 0 1 1 21 11.5z"/><path d="M8.5 12h7M8.5 9h7M8.5 15h4"/></svg>
+    Ask Sahaayi
+  </button>
+
+  <div id="kbPanel" role="dialog" aria-label="Sahaayi KLRAMS assistant">
+    <div class="kb-head">
+      <span class="kb-av"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="2.6"/><path d="M12 21s-6.5-5.6-6.5-10A6.5 6.5 0 0 1 18.5 11c0 4.4-6.5 10-6.5 10z"/></svg></span>
+      <div class="kb-id"><b>Sahaayi</b><span class="kb-on">KLRAMS Assistant · online</span></div>
+      <button class="kb-x" onclick="kbClose()" aria-label="Close">&times;</button>
+    </div>
+    <div class="kb-msgs" id="kbMsgs"></div>
+    <div class="kb-chips" id="kbChips"></div>
+    <div class="kb-input">
+      <input id="kbInput" type="text" placeholder="Ask about KLRAMS…" autocomplete="off"
+             onkeydown="if(event.key==='Enter'){kbSend();}">
+      <button class="kb-send" onclick="kbSend()" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+    </div>
+  </div>
+
+  <script>
+  /* ===== Sahaayi — in-app KLRAMS help assistant =====
+     A self-contained, knowledge-base guide. It only explains how to USE KLRAMS;
+     it declines questions about the system's internals/technical build. */
+  (function(){
+    var KB=[
+      {k:['climate','flood','flood susceptibility','flood data','flood dashboard','flood prone','inundation','water logging','flood length','flood km'],
+       a:"The Climate module shows flood susceptibility \u2014 how much road length (km) lies in flood-prone areas, broken down by road class (SH, MDR, ODR, NH) and by land-form, with charts and a class-by-susceptibility table. Open it from the module launcher (grid icon), then use \u2018Import flood CSV\u2019 to load your data. The same data also appears as a Flood Susceptibility report in the Report Hub (Excel/PDF)."},
+      {k:['report hub','reports module','report module','survey report','data report','reports section'],
+       a:"The Report Hub turns each survey dataset into a filterable, exportable table. Open it from the module launcher (grid icon, top-left). Tabs: FWD, Road Condition Data, Sub-Grade Soil, Bituminous Core and Pavement Crust. Every report shows Road Name and PWD Section and exports to Excel or PDF."},
+      {k:['export excel','export pdf','download excel','download pdf','excel report','pdf report','export the data','save report','download report'],
+       a:"In the Report Hub each dataset has Excel and PDF buttons in the toolbar \u2014 they export exactly what is on screen, so your search and filters are applied. The Asset Register and the Dashboards' PCI views also export."},
+      {k:['filter report','report filter','filter the report','report by district','filter by road name','filter by district','filter by section','report search','narrow report'],
+       a:"Each Report Hub report has a search box plus dropdown filters for Road Name, District and Section Label. Combine them to narrow the rows; the Excel/PDF export then matches what you see."},
+      {k:['fwd report','fwd data','deflection report','d0 report'],
+       a:"The FWD report (Report Hub) lists the Falling Weight Deflectometer readings \u2014 D0 and the other deflections \u2014 with Road Name and PWD Section, exportable to Excel or PDF."},
+      {k:['sub grade report','subgrade report','soil report','cbr report','soil data'],
+       a:"The Sub-Grade Soil report (Report Hub) lists the soil investigation results (such as CBR) per section, with Road Name and PWD Section, exportable to Excel or PDF."},
+      {k:['bituminous core report','core report','pavement crust report','crust report','layer thickness report'],
+       a:"The Report Hub has Bituminous Core and Pavement Crust reports \u2014 each lists those survey columns per section with Road Name and PWD Section, exportable to Excel or PDF."},
+      {k:['lane 1','lane 2','lane columns','condition report lane','two lane values','consolidated lane'],
+       a:"In the Report Hub's Road Condition Data report, each section's two lane readings appear as Lane 1 and Lane 2 for every metric (IRI, Crack, Pothole, Rutting, Texture, Patch Work, Ravelling). The first lane present becomes Lane 1 and the second Lane 2, regardless of whether they were CL1/CR1, CL1/CL2 or CR1/CR2."},
+      {k:['full road network','full road','by road name','merged road','road wise','whole road','consolidated road','road merged','only one road network','one road network at a time','one network at a time'],
+       a:"Full Road Network is a second road layer, by road name, so you can see whole-road information like total length. Turn it on under the Road network group in Layers. Only one road network shows at a time \u2014 it automatically switches off the section-based 'Road network' to avoid confusion."},
+      {k:['import layer','import road','import a road','import network','import road network','upload road network','add road network','second road network','import shapefile','import geojson'],
+       a:"Use the 'Import layer' button next to Full Road Network in the Layers panel to load a road network by road name. Pick a local GeoJSON (recommended) or a zipped shapefile in WGS84 \u2014 it loads in your browser; nothing is uploaded to the server."},
+      {k:['blinking road','road blink','full road popup','road info card','road length popup','full road details'],
+       a:"On the Full Road Network, clicking a road makes it blink as selected and opens a card (top-left) with Road Name, Road Number, Road Class, Road Start & End Chainage, Total Length and Start/End Location. Fields with no data show a dash."},
+      {k:['culvert dashboard','culverts dashboard','culvert analytics','culvert count','culvert chart','culvert summary'],
+       a:"The Culvert Dashboard shows culverts by district and road class \u2014 total count, colourful donuts, ranked bars and a district-by-class table. Open the Dashboard (grid icon) and pick the Culverts tab."},
+      {k:['bridge dashboard','bridges dashboard','bridge analytics','bridge count','bridge chart','total bridge length','bridge summary'],
+       a:"The Bridge Dashboard shows bridges by district and road class \u2014 total count, total bridge length, donuts, ranked bars and a district-by-class table. Open the Dashboard (grid icon) and pick the Bridges tab."},
+      {k:['attribute filter','attribute value','filter attribute','register filter','filter the register','asset filter'],
+       a:"In the Asset Register, choosing an attribute makes the value filter adapt: a text attribute gives a dropdown of its values, while a numeric attribute gives comparison operators (=, \u2260, <, \u2264, >, \u2265) and a number box. You can also filter by class and district, then export to Excel or PDF."},
+      {k:['road chainage','culvert report','culvert columns','bridge report','bridge columns','bridge length report'],
+       a:"In the Asset Register, the Culvert report shows Asset Id, Section Label, District, Road Name, Chainage and Road Chainage. The Bridge report adds Bridge Start Chainage, Bridge End Chainage and Length of Bridge."},
+      {k:['route direction','location to location','start location to end','survey direction location','direction location'],
+       a:"While playing an NSV video, the player shows the road's route as Start Location \u2192 End Location in the Front direction, and End Location \u2192 Start Location in the Back direction. Switch Front/Back to flip it."},
+      {k:['fullscreen hud','live track','video overlay','vehicle on track','hud card','fullscreen video info','track and iri'],
+       a:"In the NSV player, 'Fullscreen with live track & IRI' shows an overlay card with the Road Name, Road Class, Section Label, the Start\u2192End route, the live IRI and chainage, and a mini map track with a moving vehicle marker."},
+      {k:['pwd section','pwd sec','which pwd','section office','sub division'],
+       a:"PWD Section is the PWD sub-division a road belongs to. It is shown in the Report Hub reports, where you can also filter by it."},
+      {k:['lane average','lane-averaged','lane avg','average pci','laneaverage'],
+       a:"Composite PCI is a road section's overall Pavement Condition Index, combining all the surveyed lanes (for example CL1 and CR1) by an area-weighted distress average \u2014 the lane distresses are pooled across the carriageway and a single PCI is computed. It gives a balanced picture of overall pavement health.\n\nTurn it on under the PCI group in the Layers panel, or open the Dashboard → PCI Analysis to see the network split by rating."},
+      {k:['worst lane','worst-lane','worst pci','worstlane'],
+       a:"Worst-Lane PCI uses the lowest-scoring lane for each section instead of the average — so it highlights the most distressed lane that may need attention first.\n\nToggle 'Worst-Lane PCI' under the PCI group in the Layers panel."},
+      {k:['what is pci','pci band','pci rating','pci range','pavement condition index','meaning of pci','about pci'],
+       a:"PCI (Pavement Condition Index) runs 0–100:\n• Excellent 90–100\n• Good 80–90\n• Satisfactory 60–80\n• Fair 40–60\n• Poor 20–40\n• Fail 0–20\n\nClick a road, or open the Dashboard → PCI Analysis, to see PCI values."},
+      {k:['dashboard','dash board','analytics','network average','reports','summary'],
+       a:"Open the Dashboard from the module launcher (the grid icon, top-left). It shows network analytics:\n• Road length by class and overall summaries\n• A PCI Analysis tab — the % of network length in each rating (Excellent → Fail), the network-average PCI, and a per-road-class breakdown (SH / MDR / ODR / NH)\n\nYou can switch between Composite and Worst-Lane there too."},
+      {k:['nsv','video','survey video','footage','watch video','see video','play video'],
+       a:"To watch survey (NSV) videos:\n1. Open the Video panel (camera icon in the left rail).\n2. Turn on 'Video on click'.\n3. Click a road that has survey footage.\n\nThe player opens at the bottom and stays in sync with the map — a vehicle marker drives along the road showing live chainage and lane-wise IRI. Use Front/Back, the speed buttons (0.25×–2×), or 'Fullscreen with live track & IRI'. Press × to close."},
+      {k:['filter','filtering','filter road','filter condition','funnel','narrow down','only show'],
+       a:"Open the Filter panel (funnel icon in the left rail). You can filter by road class, district and PWD section, and by condition thresholds for the chosen metric. Only the matching segments stay highlighted and the map zooms to them. Clear the filter to show everything again."},
+      {k:['condition data','road condition','iri','metric','which parameter','condition layer'],
+       a:"Turn on 'Road Condition Data' in the Layers panel, then pick a metric from the dropdown — IRI, Crack, Pothole, Rutting, Texture, Patch work or Ravelling. The roads colour by that metric, green (good) through red (poor).\n\nClick a road to see the lane-wise values and the average at that chainage. (IRI = roughness in m/km — lower is smoother.)"},
+      {k:['fwd','d0','deflection','falling weight','structural'],
+       a:"FWD (Falling Weight Deflectometer) measures the pavement's structural strength; D0 is the peak deflection under the test load. Toggle 'FWD (D0)' in the Layers panel, then click a point to read its value."},
+      {k:['click','popup','inspect road','road details','what happens when'],
+       a:"Click any road on the map to open a popup. With 'Road network' on you'll see the section's average across all condition metrics. With only 'Road Condition Data' on you'll see the metric you've selected for the exact lane you clicked, plus the average."},
+      {k:['search','find road','find a road','road name','section label','look up'],
+       a:"Use the search box at the top of the map — type a road name, number, or section label and the map will zoom to it."},
+      {k:['road network','inventory','network layer'],
+       a:"'Road network' draws the full road inventory. Turn it on in Layers and click any road to see its details (class, length, ownership) and section condition averages."},
+      {k:['base map','basemap','satellite','terrain','night mode','dark mode','dark map'],
+       a:"Open 'Base map' in the left rail to switch the underlying map — Streets, Satellite, Terrain, Light or Dark. For Night mode, open the module launcher (grid icon, top-left) and flip the Night mode switch — it changes the map to the dark basemap and remembers your choice."},
+      {k:['measure','distance','route','ruler','length between'],
+       a:"The Measure tool (ruler icon in the left rail) lets you measure distances and trace routes directly on the map."},
+      {k:['asset register','register','list of assets','asset list','culvert list','bridge list'],
+       a:"The Asset Register lists road assets — roads, culverts and bridges — in a browsable table. Open it from the module launcher (grid icon, top-left)."},
+      {k:['boundary','border','district','constituency','administrative'],
+       a:"Under 'Administrative boundary' in Layers you can overlay the District boundary and the Constituency boundary."},
+      {k:['bridge','culvert','furniture','structure','road sign','signboard'],
+       a:"Under 'Structures & furniture' in Layers you can show Bridges, Culverts and road Furniture (line and point). Toggle any of them and click a feature for its details."},
+      {k:['threshold','irc','reset','colouring','good fair poor','cut-off','cutoff'],
+       a:"In the Road Condition Data group you can adjust the colour thresholds for the selected metric. Use 'Reset to IRC defaults' to restore the IRC-based good / fair / poor cut-offs."},
+      {k:['what is klrams','about klrams','about','what is this','what does klrams','klrams stand'],
+       a:"KLRAMS — the Kerala Road Asset Management System — is a GIS platform by the RMMS Cell, KHRI (Kerala PWD) for surveying, assessing and managing the condition of Kerala's roads."},
+      {k:['chainage'],
+       a:"Chainage is the distance along a road from its start, shown in metres. The popup and the video player both show the chainage at the point you're looking at."},
+      {k:['layer','layers panel','turn on','toggle','show layer'],
+       a:"The Layers panel (left) groups everything you can show on the map: Road network, Road Condition Data & FWD, Administrative boundary, Structures & furniture, PCI and Traffic stations. Flip a toggle to show or hide each one."},
+      {k:['go portal','government order','g.o','gos portal','circular','notification order'],
+       a:"The GO Portal holds Government Orders (GOs) for the road programme. Open it from the module launcher (grid icon, top-left), or use the 'GOs' tab on the public site, then search and open any order."},
+      {k:['data console','import','upload data','load data','add data','console'],
+       a:"The Data Console is where survey and GIS data is imported and managed. Open it from the module launcher (grid icon, top-left)."},
+      {k:['module','launcher','grid icon','switch module','home screen','other modules','apps ','open module'],
+       a:"Tap the grid icon at the top-left to open the module launcher — your home screen. From there you can jump to the GIS Viewer, Data Console, GO Portal and Site Control, reach the viewer tools (Dashboard, Asset Register, PCI, Road Condition Data, Filters), and flip Night mode."},
+      {k:['traffic station','traffic count','aadt','vehicle count','count station'],
+       a:"'Traffic stations' marks the traffic survey/count locations. Toggle it under Traffic stations in the Layers panel and click a station for its details."},
+      {k:['cl1','cr1','cl2','cr2','lane label','lane name','what lane','lane wise','lanewise','what is cc'],
+       a:"Lanes are labelled by side and number — CL1/CL2 on the left and CR1/CR2 on the right of the centreline (CC is the road centre). Condition values are recorded per lane, and the popup shows each lane plus the average."},
+      {k:['what is crack','cracking','crack %'],
+       a:"Crack is the percentage of the surveyed surface showing cracking — higher means more distress."},
+      {k:['rutting','rut depth'],
+       a:"Rutting is the depth of wheel-path depressions, in millimetres — deeper is worse."},
+      {k:['pothole'],
+       a:"Pothole reflects the extent of potholing on the surface — more is worse."},
+      {k:['texture','macrotexture'],
+       a:"Texture describes the pavement's surface texture, which relates to grip and drainage."},
+      {k:['ravelling','raveling'],
+       a:"Ravelling is the loss of surface aggregate (the road 'fraying'), shown as a percentage."},
+      {k:['patch work','patchwork','patching'],
+       a:"Patch work is the extent of repaired/patched surface, shown as a percentage."},
+      {k:['skid','friction','grip test'],
+       a:"Skid Resistance testing measures the surface friction (grip) of the pavement — important for safety. It's one of the field surveys carried out for the network."},
+      {k:['bituminous core','bituminous','core sample','layer thickness'],
+       a:"Bituminous Core extraction takes core samples from the pavement to check layer thickness and material properties in the lab."},
+      {k:['sub grade','sub-grade','subgrade','soil','cbr'],
+       a:"Sub-Grade Soil investigation samples the soil beneath the pavement to assess its strength (e.g. CBR) — a key input for design and rehabilitation."},
+      {k:['what is nsv','network survey vehicle','survey vehicle'],
+       a:"NSV stands for Network Survey Vehicle — a vehicle fitted with cameras and sensors that records road video and condition data (like IRI and rutting) at traffic speed."},
+      {k:['survey','surveys','field survey','data collection','how is data collected','what surveys'],
+       a:"KLRAMS data comes from several field surveys: NSV (road video + condition), FWD (structural strength), Bituminous Core (layer thickness), Sub-Grade Soil (CBR) and Skid Resistance (grip). You can see survey photos on the public site's home page."},
+      {k:['road class','classification','national highway','state highway','major district road','mdr','odr'],
+       a:"Roads are grouped by administrative class — for example NH (National Highway), SH (State Highway), MDR (Major District Road) and ODR (Other District Road). The Dashboard's PCI Analysis breaks the network down by these classes."},
+      {k:['export','download','excel','csv','pdf','save data','get the data'],
+       a:"You can export to Excel or PDF from the Report Hub (each survey dataset), the Asset Register (Road, Culvert and Bridge) and the Dashboard's PCI views. The export always matches your current search and filters."},
+      {k:['no data','grey road','gray road','no survey','why is the road grey','not coloured','no colour','blank'],
+       a:"If a road appears in a neutral/grey colour, or the popup says 'No survey done at this chainage', it means condition data hasn't been recorded for that segment yet."},
+      {k:['legend','what do the colours','colour mean','color mean','green yellow red','what does green','colour code'],
+       a:"On condition layers the colours run green = good, yellow/amber = fair, and orange/red = poor, based on the thresholds for the chosen metric. A legend is shown alongside the layer."},
+      {k:['collapse','hide panel','close panel','minimise','minimize','arrow button','expand panel','more map'],
+       a:"Use the small arrow (‹) at the top-right of the Layers panel to collapse it and give the map more room; click it again to bring the panel back."},
+      {k:['zoom','pan ','navigate','move map','zoom in','zoom out','plus minus'],
+       a:"Use the + / − buttons at the top-right, your mouse wheel, or pinch to zoom; click and drag to pan around the map."},
+      {k:['sign out','log out','logout','sign in','login','log in'],
+       a:"Use 'Sign out' at the top-right to leave the session. To sign back in, open the login page from the public site."},
+      {k:['reset view','show all','whole network','zoom to all','full network','clear filter','see all roads'],
+       a:"Clearing any active filter brings back the full network. Turning a layer off and on again redraws it and fits the view; you can also zoom out to see the whole network."},
+      {k:['units','m/km','micron','measurement unit','what unit'],
+       a:"Common units: IRI in m/km, rutting in mm, FWD deflection (D0) in microns, and crack / ravelling / patch work in %. PCI is a 0–100 index."},
+      {k:['coverage','which area','which district','how many roads','area covered','how many km'],
+       a:"The Dashboard shows the exact coverage — the number of road sections and the total kilometres surveyed."},
+      {k:['contact','support','help desk','who maintains','phone','email','reach you','who made'],
+       a:"KLRAMS is run by the RMMS Cell at KHRI (Kerala PWD). For data or access requests, please contact the RMMS Cell team."},
+      {k:['average row','what is average','avg row','section average','meaning of average'],
+       a:"In a condition popup, the 'Average' row is the mean of the lane values shown — a single quick figure for that point. With Road Network on, the popup instead shows section-level averages for every metric."},
+      {k:['pci analysis','rating split','length weighted','% of network','network length','length-weighted'],
+       a:"The Dashboard's PCI Analysis shows the share of network length in each PCI rating (Excellent → Fail), the area-weighted network-average PCI, and a per-road-class breakdown. Switch between Composite and Worst-Lane to compare."},
+      {k:['print','printout','take a print','hard copy'],
+       a:"You can print the current view with your browser's print (Ctrl+P). For formatted reports, use the Dashboard."},
+      {k:['thank','thanks','bye','goodbye','well done','that helps','that helped'],
+       a:"You're welcome! 🙂 I'm here whenever you need help with KLRAMS — just tap 'Ask Sahaayi' again."},
+      {k:['who are you','your name','sahaayi','are you a bot','are you ai','what are you'],
+       a:"I'm Sahaayi, the KLRAMS in-app assistant — here to help you use the platform. Ask me about condition data, PCI, NSV videos, filtering, the Dashboard and more."},
+      {k:['hello','hi ','hey','help','what can you','namaskaram','start','good morning','good evening'],
+       a:"Hello! 👋 I'm Sahaayi, your KLRAMS assistant. I can explain how to use the platform — reading condition data and PCI, watching NSV survey videos, filtering roads, the Dashboard, and more. Tap a question below or type your own."}
+    ];
+    var TECH=['backend','database','db ','postgres','postgis','sql','java','spring','redis','mongo','server','source code','codebase','api key','password','credential','token','tech stack','framework','how is it built','how was it built','built with','hosting','deploy','port number','which port','what port','localhost','repository','github','programming','algorithm code','schema'];
+    var CHIPS=["What is the Report Hub?","Full Road Network?","What does the Culvert dashboard show?","How do I watch NSV videos?","How to filter roads?","What is Composite PCI?"];
+    var greeted=false;
+    function el(id){return document.getElementById(id);}
+    function add(text,who){var d=document.createElement('div');d.className='kb-b '+(who==='user'?'kb-user':'kb-bot');d.innerHTML=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');var m=el('kbMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;return d;}
+    function chips(){var c=el('kbChips');c.innerHTML='';CHIPS.forEach(function(q){var b=document.createElement('button');b.className='kb-chip';b.textContent=q;b.onclick=function(){kbAsk(q);};c.appendChild(b);});}
+    function answer(q){
+      var s=(q||'').toLowerCase();
+      if(!s.trim())return "Ask me anything about using KLRAMS — for example how to watch NSV videos, what Composite PCI means, or how to filter roads.";
+      for(var i=0;i<TECH.length;i++){if(s.indexOf(TECH[i])>=0)return "I'm here to help you *use* KLRAMS — finding roads, reading condition and PCI, watching survey videos, filtering, and so on. I can't share the system's technical or internal details, though. Try asking me how to do something in the app!";}
+      var best=null,score=0;
+      for(var j=0;j<KB.length;j++){var sc=0;for(var k=0;k<KB[j].k.length;k++){if(s.indexOf(KB[j].k[k])>=0)sc++;}if(sc>score){score=sc;best=KB[j];}}
+      if(best&&score>0)return best.a;
+      return "I'm not sure I have that one yet. I can help with: Composite & Worst-Lane PCI, the Dashboard, NSV survey videos, filtering roads, condition data & metrics (IRI, crack, rutting…), FWD, base maps & Night mode, search, boundaries, structures, Asset Register and the Measure tool. Try one of the suggestions below.";
+    }
+    window.kbAsk=function(q){add(q,'user');el('kbInput').value='';var t=answer(q);setTimeout(function(){add(t,'bot');},260);};
+    window.kbSend=function(){var v=el('kbInput').value;if(v&&v.trim())kbAsk(v.trim());};
+    window.kbOpen=function(){el('kbPanel').classList.add('open');el('kbFab').style.display='none';if(!greeted){greeted=true;chips();setTimeout(function(){add("Hello! 👋 I'm *Sahaayi*, your KLRAMS assistant. Ask me how to use the platform — condition data, PCI, NSV videos, filtering and more. Tap a question below or type your own.",'bot');},150);}setTimeout(function(){el('kbInput').focus();},60);};
+    window.kbClose=function(){el('kbPanel').classList.remove('open');el('kbFab').style.display='';};
+    document.addEventListener('keydown',function(e){if(e.key==='Escape'&&el('kbPanel').classList.contains('open'))kbClose();});
+  })();
+  </script>
+<style id="mobile-css">
+#fpaneBackdrop{position:fixed;inset:0;background:rgba(8,14,24,.5);z-index:7;opacity:0;visibility:hidden;transition:opacity .22s;display:none}
+/* panel collapsed by default everywhere; shown only when body.panel-open (set by my toggle) */
+#fpanes{transition:transform .28s cubic-bezier(.4,0,.2,1)}
+html body #fpanes.hidden{display:none!important}
+@media (max-width:820px){
+  body.panel-open #fpaneBackdrop{display:block;opacity:1;visibility:visible}
+  #map{position:absolute!important;inset:0!important;height:100%!important;width:100%!important}
+  #iconrail{position:fixed!important;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));top:auto!important;left:auto!important;width:auto!important;height:auto!important;min-width:0!important;display:flex!important;flex-direction:column;gap:11px;background:transparent!important;border:0!important;box-shadow:none!important;z-index:8;padding:0!important;overflow:visible!important}
+  #iconrail .railbtn{width:52px!important;height:52px!important;min-height:0!important;border-radius:50%!important;background:rgba(13,24,40,.94)!important;box-shadow:0 7px 20px rgba(0,0,0,.4)!important;display:flex!important;align-items:center;justify-content:center;border:1px solid rgba(140,170,210,.28)!important;color:#e3eeff!important;padding:0!important;margin:0!important}
+  #iconrail .railbtn .ri{margin:0!important}
+  #iconrail .railbtn .ri svg{width:23px;height:23px}
+  #iconrail .railbtn .rl{display:none!important}
+  #iconrail .railbtn.active{background:linear-gradient(135deg,#34d399,#22b67e)!important;color:#04241a!important;border-color:transparent!important}
+  #fpanes{position:fixed!important;left:0!important;right:0!important;bottom:0!important;top:auto!important;width:100%!important;max-width:100%!important;height:auto!important;max-height:78vh!important;border-radius:22px 22px 0 0!important;z-index:9!important;transition:transform .3s cubic-bezier(.4,0,.2,1);box-shadow:0 -18px 48px rgba(8,20,40,.34)!important;overflow:hidden!important}
+  body #fpanes{display:block!important}
+  html body #fpanes.hidden{display:block!important;transform:translateY(103%)!important}
+  html body #fpanes:not(.hidden){transform:translateY(0)!important}
+  #fpanes::before{content:"";position:absolute;top:9px;left:50%;transform:translateX(-50%);width:44px;height:5px;border-radius:3px;background:#cdd7e3;z-index:3}
+  .fpane{width:100%!important;max-width:100%!important;max-height:78vh!important;overflow-y:auto!important;padding-top:28px!important;-webkit-overflow-scrolling:touch}
+  .topbar{padding:8px 12px!important}
+  .topbar .brand .s,.topbar .sub{display:none!important}
+  #roadInspector{top:auto!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;max-width:100%!important;max-height:74vh!important;border-radius:22px 22px 0 0!important}
+  .vidhud .vh-left{left:9px!important;top:60px!important;width:45vw!important;max-width:240px!important;gap:8px!important}
+  .vidhud .vh-right{right:9px!important;top:60px!important;width:43vw!important;max-width:232px!important;gap:8px!important;align-items:flex-end!important}
+  .vidhud .vidhud-trk{height:140px!important}
+  .vidhud .vp-cards{flex-direction:column!important;gap:7px!important}
+  .vidhud .vp-card{min-width:0!important}
+  .vidhud .vp-val{font-size:26px!important}
+  .vidhud .vh-iri{font-size:17px!important;padding:8px 12px!important;min-width:0!important}
+  .vidhud .vh-roadname{font-size:16px!important;bottom:14px!important;padding:5px 16px!important;max-width:70vw!important}
+  .vidhud .vh-attrs,.vidhud .vh-chain{display:none!important}
+}
+@media (max-height:480px){
+  .vidhud .vh-left,.vidhud .vh-right{top:48px!important}
+  .vidhud .vidhud-trk{height:108px!important}
+  .vidhud .vp-val{font-size:22px!important}
+  .vidhud .vh-iri{font-size:15px!important}
+  .vidhud .vh-roadname{bottom:8px!important;font-size:14px!important}
+}
+</style>
+<script id="mobile-ux">
+(function(){
+  var bd=document.createElement('div');bd.id='fpaneBackdrop';
+  (function add(){if(document.body)document.body.appendChild(bd);else setTimeout(add,60);})();
+  function fp(){return document.getElementById('fpanes');}
+  function clearActive(){document.querySelectorAll('#iconrail .railbtn').forEach(function(b){b.classList.remove('active');});}
+  function sync(){var f=fp();var open=f&&!f.classList.contains('hidden');document.body.classList.toggle('panel-open',!!open);if(!open)clearActive();}
+  function close(){var f=fp();if(f)f.classList.add('hidden');clearActive();document.body.classList.remove('panel-open');}
+  bd.addEventListener('click',close);window.klClosePanes=close;
+  (function wrap(){
+    if(typeof window.openPane!=='function'||typeof window.togglePanes!=='function')return setTimeout(wrap,140);
+    if(window.__paneWrapped)return;window.__paneWrapped=true;
+    var oOpen=window.openPane,oTog=window.togglePanes;
+    window.openPane=function(id){
+      var f=fp();var btn=document.querySelector('#iconrail .railbtn[data-pane="'+id+'"]');
+      var visible=f&&!f.classList.contains('hidden');var active=btn&&btn.classList.contains('active');
+      if(visible&&active){close();return;}        /* re-tap active tool -> collapse */
+      oOpen(id);sync();
+    };
+    window.togglePanes=function(){oTog();sync();};  /* the < chevron now collapses/restores cleanly */
+  })();
+  function collapse(){var f=fp();if(f)f.classList.add('hidden');clearActive();document.body.classList.remove('panel-open');}
+  if(document.readyState!=='loading')collapse();else document.addEventListener('DOMContentLoaded',collapse);
+})();
+</script>
+<style id="layer-cards">
+  .fpane .grp .switch .ldot{width:15px!important;height:15px!important;border-radius:5px!important;box-shadow:0 1px 3px rgba(0,0,0,.22),inset 0 0 0 1.5px rgba(255,255,255,.55)}
+  .fpane .grp .switch .lname{font-weight:700}
+  /* expandable card body revealed when the layer is ON */
+  .lx{max-height:0;overflow:hidden;opacity:0;transition:max-height .26s ease,opacity .2s ease,padding .26s ease;padding:0 2px}
+  .lx.on{max-height:130px;opacity:1;padding:0 2px 11px}
+  .lx-div{height:1px;background:linear-gradient(90deg,#e3e9f1,transparent);margin:3px 0 10px}
+  .lx-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 2px}
+  .lx-k{color:#8193ac;font-weight:800;text-transform:uppercase;letter-spacing:.5px;font-size:9.5px}
+  .lx-col{display:flex;align-items:center;gap:8px;font-weight:700;color:#42526b;font-size:12px}
+  .lx-col i{width:14px;height:14px;border-radius:50%;display:inline-block;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .lx-op{flex:1;height:5px;accent-color:#34d399;cursor:pointer}
+  .lx-val{font-weight:800;color:#0e2038;min-width:40px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
+</style>
+<script id="layer-controls">
+(function(){
+  function init(){
+    if(typeof map==='undefined'||!map||!map.getLayer){return setTimeout(init,300);}
+    var LMAP={
+      showRoads:{layers:['roadnet','roadnet-casing'],color:'#8a4d1f'},
+      showRoads2:{layers:['roadnet2','roadnet2-casing','fullnet','fullnet-casing','roads2','roads2-line'],color:'#3a4ad6'},
+      showCond:{layers:['seg-CC','seg-CL1','seg-CL2','seg-CR1','seg-CR2'],color:'#2ba66a',grad:1},
+      showFwd:{layers:['as-fwd','as-fwd-pt','as-fwd-icon'],color:'#7b1fa2'},
+      showDist:{layers:['district-fill','district-casing','district-line','district-label'],color:'#0e2038'},
+      showCons:{layers:['cons-fill','cons-line','cons-label'],color:'#0d7a51'},
+      showBridge:{layers:['as-bridge','as-bridge-icon'],color:'#8a5cb8'},
+      showCulvert:{layers:['as-culvert','as-culvert-icon'],color:'#e07b2a'},
+      showFurnL:{layers:['as-furnl','as-furnl-icon'],color:'#0fa3a3'},
+      showFurnP:{layers:['as-furnp','as-furnp-icon'],color:'#3b6fa0'},
+      showPciAvg:{layers:['pci-avg'],color:'#157f3c',grad:1},
+      showPciWorst:{layers:['pci-worst'],color:'#e8590c',grad:1},
+      showTraffic:{layers:['trafficstn-lyr'],color:'#1565c0'},
+      showSoil:{layers:['as-soil','as-soil-icon'],color:'#8a4d1f'},
+      showCore:{layers:['as-core','as-core-icon'],color:'#2b2b2b'},
+      showCrust:{layers:['as-crust','as-crust-icon'],color:'#b8860b'}
+    };
+    var NAMES={'#8a4d1f':'Brown','#3a4ad6':'Blue','#2ba66a':'Green','#7b1fa2':'Purple','#0e2038':'Navy','#0d7a51':'Green','#8a5cb8':'Violet','#e07b2a':'Orange','#0fa3a3':'Teal','#3b6fa0':'Steel','#157f3c':'Green','#e8590c':'Orange','#1565c0':'Blue','#2b2b2b':'Black','#b8860b':'Gold'};
+    function setOpacity(layers,v){layers.forEach(function(id){if(!map.getLayer(id))return;var t=map.getLayer(id).type;try{
+      if(t==='line')map.setPaintProperty(id,'line-opacity',v);
+      else if(t==='circle')map.setPaintProperty(id,'circle-opacity',v);
+      else if(t==='symbol'){try{map.setPaintProperty(id,'icon-opacity',v);}catch(e){}try{map.setPaintProperty(id,'text-opacity',v);}catch(e){}}
+      else if(t==='fill')map.setPaintProperty(id,'fill-opacity',Math.min(0.6,v*0.45));
+    }catch(e){}});}
+    Object.keys(LMAP).forEach(function(id){
+      var cb=document.getElementById(id);if(!cb)return;
+      var sw=cb.closest?cb.closest('.switch'):null;if(!sw||sw.__lx)return;sw.__lx=1;
+      var cfg=LMAP[id];
+      var lx=document.createElement('div');lx.className='lx';
+      var nm=cfg.grad?'Graded scale':(NAMES[cfg.color.toLowerCase()]||'');
+      lx.innerHTML='<div class="lx-div"></div>'+
+        '<div class="lx-row"><span class="lx-k">Colour</span><span class="lx-col"><i style="background:'+cfg.color+'"></i>'+nm+'</span></div>'+
+        '<div class="lx-row"><span class="lx-k">Opacity</span><input type="range" class="lx-op" min="15" max="100" value="100"><span class="lx-val">100%</span></div>';
+      sw.parentNode.insertBefore(lx,sw.nextSibling);
+      var rng=lx.querySelector('.lx-op'),val=lx.querySelector('.lx-val');
+      rng.addEventListener('input',function(){val.textContent=rng.value+'%';setOpacity(cfg.layers,+rng.value/100);});
+      function reflect(){lx.classList.toggle('on',cb.checked);if(cb.checked)[140,700,1700].forEach(function(d){setTimeout(function(){if(cb.checked)setOpacity(cfg.layers,+rng.value/100);},d);});}
+      cb.addEventListener('change',reflect);reflect();
+    });
+  }
+  if(document.readyState!=='loading')init();else document.addEventListener('DOMContentLoaded',init);
+})();
+</script>
+<style id="panel-dark">
+/* ===== Dark, colourful Layers / tool panel ===== */
+#fpanes,.fpane{background:linear-gradient(180deg,#10203a 0%,#0a1525 60%,#081120 100%)!important;color:#e7f0ff!important}
+.fpane .pane-title{color:#fff!important}
+.fpane .grp-title{color:#8ee9bf!important;text-shadow:0 1px 8px rgba(52,211,153,.2)}
+.fpane .grp-title::after{background:linear-gradient(90deg,rgba(52,211,153,.45),transparent)!important}
+.fpane .grp{background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.018))!important;border:1px solid rgba(140,170,210,.18)!important;box-shadow:0 8px 24px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06)!important}
+.fpane .grp .switch{border-bottom:1px solid rgba(255,255,255,.06)!important}
+.fpane .grp .switch:hover{background:rgba(255,255,255,.045)!important}
+.fpane .grp .switch:last-child{border-bottom:0!important}
+.fpane .lname,.fpane .lname b{color:#eaf2ff!important;font-weight:700}
+.fpane .ldot{box-shadow:0 0 0 2px rgba(255,255,255,.14),0 2px 7px rgba(0,0,0,.5)!important}
+.fpane .r2-hint{color:#9af0c9!important;background:rgba(52,211,153,.14)!important;border:1px solid rgba(52,211,153,.28)!important}
+.fpane .r2-status,.fpane .trf-status{color:#7fa8cf!important}
+.fpane .note{color:#aac3e2!important;background:rgba(255,255,255,.045)!important;border-color:rgba(140,170,210,.18)!important}
+.fpane .eyebrow{color:#8ee9bf!important}
+.fpane .hr{background:rgba(140,170,210,.2)!important}
+.fpane .btn.ghost{background:rgba(255,255,255,.07)!important;border:1px solid rgba(140,170,210,.24)!important;color:#dceaff!important}
+.fpane .btn.ghost:hover{background:rgba(52,211,153,.18)!important;border-color:rgba(52,211,153,.45)!important;color:#9af0c9!important}
+.fpane select,.fpane .full,.fpane .cond-metric-sel{background:rgba(8,16,28,.72)!important;color:#eaf2ff!important;border:1px solid rgba(140,170,210,.24)!important}
+.fpane select option{background:#10203a;color:#eaf2ff}
+.fpane .cond-metric-ic{background:rgba(52,211,153,.18)!important;color:#9af0c9!important;border-color:rgba(52,211,153,.32)!important}
+.fpane .legend,.fpane .fwd-legend,.fpane .fl-t,.fpane .lg{color:#cfe0f5!important}
+.fpane .locsearch input,.fpane input[type=text],.fpane input[type=search]{background:rgba(8,16,28,.72)!important;color:#eaf2ff!important;border:1px solid rgba(140,170,210,.24)!important}
+.fpane input::placeholder{color:#7fa8cf!important}
+/* expandable card body (opacity/colour) on dark */
+.lx-div{background:linear-gradient(90deg,rgba(140,170,210,.32),transparent)!important}
+.lx-k{color:#7fa8cf!important}
+.lx-col{color:#dceaff!important}
+.lx-val{color:#fff!important}
+.lx-op{accent-color:#34d399}
+/* collapse chevron + drag handle */
+#paneCollapse{background:rgba(255,255,255,.08)!important;color:#cfe0f5!important;border:1px solid rgba(140,170,210,.24)!important}
+#fpanes::before{background:rgba(160,185,215,.5)!important}
+#fpanes::-webkit-scrollbar-thumb,.fpane::-webkit-scrollbar-thumb{background:rgba(140,170,210,.32)!important;border:2px solid transparent!important}
+</style>
+</body>
+</html>

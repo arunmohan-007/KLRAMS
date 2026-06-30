@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RMMS — road survey video</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
+<style>
+  :root{--navy:#0f2545;--ink:#1c2530;--muted:#5e6b7a;--line:#dfe4ea;--green:#1d9e75}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:"Segoe UI",system-ui,Arial,sans-serif;color:var(--ink)}
+  #app{display:flex;flex-direction:column;height:100%}
+  header{background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  header .sub{font-size:12px;color:#aebfd6}
+  header a{color:#aebfd6;font-size:12px;text-decoration:none;margin-left:auto}
+  #map{flex:1;min-height:0}
+  #bar{height:250px;flex:0 0 auto;background:#fff;border-top:1px solid var(--line);display:flex;gap:14px;padding:12px}
+  #videoWrap{width:380px;flex:0 0 auto;background:#0c1622;border-radius:10px;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  #video{width:100%;height:100%;background:#0c1622}
+  #chOverlay{position:absolute;left:10px;top:10px;background:rgba(15,37,69,.82);color:#fff;font-size:13px;font-weight:600;padding:5px 10px;border-radius:8px;pointer-events:none}
+  #ctl{flex:1;min-width:0}
+  #ctl h2{font-size:13px;margin:0 0 6px}
+  .muted{color:var(--muted);font-size:13px}
+  .rowline{display:flex;align-items:center;gap:14px;margin:10px 0;flex-wrap:wrap}
+  .chip{background:#eef1f5;border-radius:7px;padding:6px 10px;font-size:13px}
+  .chip b{color:var(--navy)}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{border:0;background:#fff;padding:7px 14px;font-size:13px;cursor:pointer}
+  .seg button.on{background:var(--navy);color:#fff}
+  .filebtn{font-size:13px}
+  .hintbox{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.5}
+  .carmark{position:relative;width:26px;height:40px}
+  .caricon{width:26px;height:40px;transform-origin:50% 50%;transition:transform .1s linear}
+  .chlabel{position:absolute;left:50%;top:-22px;transform:translateX(-50%);background:#0f2545;color:#fff;font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>RMMS — road survey video <span class="sub">click a road to play its video</span></h1>
+    <a href="/">&larr; home</a>
+  </header>
+  <div id="map"></div>
+  <div id="bar">
+    <div id="videoWrap"><video id="video" controls></video><div id="chOverlay" style="display:none">CH 0 m</div></div>
+    <div id="ctl">
+      <h2 id="roadName">No road selected</h2>
+      <div class="muted" id="roadId">Click a road on the map to begin.</div>
+      <div class="rowline">
+        <span class="chip">Chainage: <b id="chVal">—</b></span>
+        <span class="chip">Length: <b id="lenVal">—</b></span>
+        <span class="chip" id="srcChip" style="display:none">Video: <b id="srcName">—</b></span>
+      </div>
+      <div class="rowline">
+        <span class="muted">Driving direction:</span>
+        <span class="seg">
+          <button id="fwd" class="on" onclick="setDir('fwd')">Front (0 &rarr; end)</button>
+          <button id="rev" onclick="setDir('rev')">Back (end &rarr; 0)</button>
+        </span>
+      </div>
+      <div class="rowline">
+        <label class="filebtn">Or load a local video file:
+          <input type="file" id="vfile" accept="video/*" disabled>
+        </label>
+      </div>
+      <div class="hintbox" id="hint">
+        Click a road. A catalogued video loads automatically; press play and the car
+        drives along the road showing the live chainage. Click the road to jump there.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const map=new maplibregl.Map({
+  container:'map',
+  style:{version:8,sources:{osm:{type:'raster',tiles:['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png','https://b.tile.openstreetmap.org/{z}/{x}/{y}.png','https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap'}},layers:[{id:'osm',type:'raster',source:'osm'}]},
+  center:[76.95,8.52], zoom:9
+});
+map.addControl(new maplibregl.NavigationControl(),'top-right');
+const video=document.getElementById('video');
+const chOverlay=document.getElementById('chOverlay');
+let dir='fwd', cur=null, marker=null, carIcon=null, carLabel=null, seeking=false, lastChainage=0;
+let CATALOG={};
+function setDir(d){ dir=d; document.getElementById('fwd').classList.toggle('on',d==='fwd'); document.getElementById('rev').classList.toggle('on',d==='rev'); }
+function addRoads(gj){
+  if(map.getSource('roads')) return;
+  map.addSource('roads',{type:'geojson',data:gj});
+  map.addLayer({id:'roads',type:'line',source:'roads',paint:{'line-color':'#3b6fa0','line-width':['interpolate',['linear'],['zoom'],9,2,16,6]}});
+  map.addLayer({id:'roads-hi',type:'line',source:'roads',paint:{'line-color':'#1d9e75','line-width':['interpolate',['linear'],['zoom'],9,4,16,9]},filter:['==',['get','road'],'__none__']});
+  const b=new maplibregl.LngLatBounds();
+  gj.features.forEach(f=>{const g=f.geometry;if(!g)return;const w=a=>{if(typeof a[0]==='number')b.extend(a);else a.forEach(w);};if(g.coordinates)w(g.coordinates);});
+  if(!b.isEmpty()) map.fitBounds(b,{padding:40});
+  map.on('click','roads',onRoadClick);
+  map.on('mouseenter','roads',()=>map.getCanvas().style.cursor='pointer');
+  map.on('mouseleave','roads',()=>map.getCanvas().style.cursor='');
+}
+Promise.all([
+  fetch('/api/roads/geojson').then(r=>r.json()),
+  fetch('/api/video/catalog').then(r=>r.json()).catch(()=>[]),
+  new Promise(res=>{ if(map.loaded()) res(); else map.on('load',res); })
+]).then(([gj, cat])=>{
+  (cat||[]).forEach(e=>{ if(e.road) CATALOG[e.road]={file:e.file, direction:e.direction}; });
+  if(!gj || !gj.features || !gj.features.length){ document.getElementById('roadId').textContent='No road geometry returned by the server.'; return; }
+  addRoads(gj);
+}).catch(e=>{ document.getElementById('roadId').textContent='Could not load roads: '+e.message; });
+function lineOf(feature){ const g=feature.geometry; let coords=g.type==='MultiLineString'?g.coordinates.flat():g.coordinates; return turf.lineString(coords); }
+function buildCarMarker(){
+  const el=document.createElement('div'); el.className='carmark'; el.style.pointerEvents='none';
+  el.innerHTML='<div class="chlabel" id="carLabel">0 m</div>'+
+    '<div class="caricon" id="caricon"><svg width="26" height="40" viewBox="0 0 26 40" xmlns="http://www.w3.org/2000/svg">'+
+    '<rect x="4" y="3" width="18" height="34" rx="6" fill="#0f2545" stroke="#ffffff" stroke-width="2"/>'+
+    '<rect x="7" y="7" width="12" height="7" rx="2" fill="#9ec5ff"/>'+
+    '<rect x="7" y="25" width="12" height="6" rx="2" fill="#9ec5ff"/>'+
+    '<circle cx="4" cy="12" r="2.4" fill="#1c1c1c"/><circle cx="22" cy="12" r="2.4" fill="#1c1c1c"/>'+
+    '<circle cx="4" cy="29" r="2.4" fill="#1c1c1c"/><circle cx="22" cy="29" r="2.4" fill="#1c1c1c"/>'+
+    '</svg></div>';
+  marker=new maplibregl.Marker({element:el, anchor:'center'});
+  carIcon=el.querySelector('#caricon'); carLabel=el.querySelector('#carLabel');
+}
+function onRoadClick(e){
+  const f=e.features[0]; const road=f.properties.road, name=f.properties.name||road;
+  const len=parseFloat(f.properties.len)||0; const line=lineOf(f);
+  const geoLenKm=turf.length(line,{units:'kilometers'});
+  const snap=turf.nearestPointOnLine(line,[e.lngLat.lng,e.lngLat.lat],{units:'kilometers'});
+  const frac=geoLenKm>0?snap.properties.location/geoLenKm:0; const chainage=frac*len; lastChainage=chainage;
+  if(!cur || cur.road!==road){
+    cur={road,name,len,line,geoLenKm};
+    document.getElementById('roadName').textContent=name;
+    document.getElementById('roadId').textContent=road;
+    document.getElementById('lenVal').textContent=Math.round(len)+' m';
+    document.getElementById('vfile').disabled=false;
+    map.setFilter('roads-hi',['==',['get','road'],road]);
+    const entry=CATALOG[road]; const srcChip=document.getElementById('srcChip');
+    if(entry && entry.file){
+      const src=/^https?:\/\//i.test(entry.file)?entry.file:('/videos/'+encodeURIComponent(entry.file));
+      setDir(entry.direction==='reverse'?'rev':'fwd');
+      video.src=src; video.load();
+      document.getElementById('srcName').textContent=entry.file; srcChip.style.display='';
+      document.getElementById('hint').textContent='Catalogue video loaded ('+(entry.direction||'front')+'). Press play; the car drives the road.';
+    } else {
+      video.removeAttribute('src'); video.load(); srcChip.style.display='none';
+      document.getElementById('hint').textContent='No catalogue video for this road — load a local file to test.';
+    }
+    chOverlay.style.display='';
+  }
+  updateChainage(frac); placeMarker(frac); seekToChainage(chainage);
+}
+function updateChainage(frac){
+  if(!cur) return;
+  const ch=Math.round(frac*cur.len);
+  document.getElementById('chVal').textContent=ch+' m';
+  if(carLabel) carLabel.textContent=ch+' m';
+  chOverlay.textContent='CH '+ch+' m';
+}
+function placeMarker(frac){
+  if(!cur) return;
+  if(!marker) buildCarMarker();
+  const f=Math.max(0,Math.min(frac,1)); const d=f*cur.geoLenKm;
+  const pt=turf.along(cur.line,d,{units:'kilometers'});
+  marker.setLngLat(pt.geometry.coordinates).addTo(map);
+  const eps=Math.max(cur.geoLenKm*0.003,0.003);
+  const a=turf.along(cur.line,Math.max(0,d-eps),{units:'kilometers'});
+  const b=turf.along(cur.line,Math.min(cur.geoLenKm,d+eps),{units:'kilometers'});
+  let brg=turf.bearing(a,b); if(dir==='rev') brg+=180;
+  if(carIcon) carIcon.style.transform='rotate('+brg+'deg)';
+}
+function seekToChainage(chainage){
+  if(!cur || !video.duration || isNaN(video.duration)) return;
+  const fch=cur.len>0?chainage/cur.len:0; const tFrac=dir==='fwd'?fch:(1-fch);
+  seeking=true; video.currentTime=Math.max(0,Math.min(tFrac,1))*video.duration; setTimeout(()=>seeking=false,50);
+}
+video.addEventListener('loadedmetadata',()=>seekToChainage(lastChainage));
+video.addEventListener('timeupdate',()=>{
+  if(!cur || !video.duration || seeking) return;
+  const tFrac=video.currentTime/video.duration; const fch=dir==='fwd'?tFrac:(1-tFrac);
+  updateChainage(fch); placeMarker(fch);
+});
+document.getElementById('vfile').addEventListener('change',ev=>{
+  const file=ev.target.files[0]; if(!file) return;
+  video.src=URL.createObjectURL(file); video.load();
+  document.getElementById('srcChip').style.display=''; chOverlay.style.display='';
+  document.getElementById('srcName').textContent=file.name+' (local)';
+  document.getElementById('hint').textContent='Local video loaded. Press play; the car drives the road.';
+});
+</script>
+</body>
+</html>

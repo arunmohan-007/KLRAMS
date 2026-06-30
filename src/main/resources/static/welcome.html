@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLRAMS Console — Kerala Road Asset Management System · Kerala PWD</title>
+<meta name="description" content="KLRAMS — a GIS-based platform of the Public Works Department, Government of Kerala, for surveying, assessing and managing the State's road network. Operated by the RMMS Cell at KHRI." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#06120d; --asphalt:#0d1c15; --card:#0e1f17; --card-2:#112619;
+    --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.055);
+    --text:#eceff3; --muted:#9aa2b1; --muted-2:#6a7280;
+    --lane:#9ee23a; --scan:#2bd478; --green:#2bd478; --gold:#7bbf2e;
+    --disp:'Space Grotesk',system-ui,sans-serif;
+    --body:'Inter',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --max:1120px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--body);background:var(--void);color:var(--text);-webkit-font-smoothing:antialiased;line-height:1.6;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  h1,h2,h3{font-family:var(--disp);font-weight:700;letter-spacing:-.015em;line-height:1.06}
+  ::selection{background:var(--lane);color:#0a0d12}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 clamp(18px,4vw,40px)}
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--lane)}
+  .kicker .dot{width:5px;height:5px;border-radius:50%;background:var(--lane);box-shadow:0 0 8px var(--lane)}
+
+  /* government banner */
+  .gov{display:flex;align-items:center;gap:16px;background:#fff;padding:8px 20px;position:relative;z-index:30}
+  .gov img{height:42px;width:auto;max-width:300px;display:block}
+  .gov .gd{flex:1}
+  .gov .login{display:inline-flex;align-items:center;gap:7px;background:var(--void);color:#fff;font-size:12.5px;font-weight:600;padding:8px 15px;border-radius:8px;font-family:var(--body)}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:25;display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:13px clamp(18px,4vw,40px);background:rgba(10,13,18,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line-2)}
+  .brand{display:flex;align-items:center;gap:11px}
+  .glyph{width:30px;height:30px;border-radius:8px;flex:none;background:linear-gradient(150deg,#1b2230,#0e1219);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+  .glyph svg{width:17px;height:17px}
+  .brand .t{font-family:var(--disp);font-weight:700;font-size:15.5px;letter-spacing:.4px}
+  .brand .s{font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted-2)}
+  .navlinks{display:flex;align-items:center;gap:8px}
+  .navlinks a{font-size:13px;color:var(--muted);padding:8px 13px;border-radius:8px;transition:color .2s,background .2s}
+  .navlinks a:hover,.navlinks a.active{color:var(--text);background:rgba(255,255,255,.05)}
+  .navlinks .signin{color:#0a0d12;background:linear-gradient(180deg,#b6f05a,var(--lane));font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;padding:9px 15px}
+  .navlinks .signin:hover{filter:brightness(1.05)}
+  @media (max-width:720px){.navlinks a:not(.signin){display:none}}
+
+  /* hero */
+  .hero{position:relative;min-height:84vh;display:flex;align-items:center;overflow:hidden}
+  #scene{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:0}
+  body.no-webgl .hero{background:radial-gradient(1100px 700px at 18% -10%,#1a2230,transparent 60%),linear-gradient(160deg,#0a0d12,#10141b 60%,#0b1714)}
+  body.no-webgl #scene{display:none}
+  .hero .vig{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(90deg,rgba(8,10,14,.85) 0%,rgba(8,10,14,.42) 44%,transparent 72%),radial-gradient(120% 90% at 50% 18%,transparent 45%,rgba(5,7,10,.5) 100%)}
+  .hero-inner{position:relative;z-index:2;width:100%;padding:40px 0}
+  .chips{display:flex;flex-wrap:wrap;gap:9px;margin:18px 0 0}
+  .chip{display:inline-flex;align-items:center;background:rgba(255,255,255,.06);border:1px solid var(--line);color:#cfd8e4;font-family:var(--mono);font-size:11px;letter-spacing:.06em;padding:6px 12px;border-radius:20px}
+  .hero h1{font-size:clamp(30px,5vw,56px);max-width:15ch;margin:18px 0 0}
+  .hero h1 .am{color:var(--lane)}
+  .lead{max-width:60ch;color:var(--muted);font-size:clamp(14.5px,1.6vw,17px);margin:18px 0 28px}
+  .cta{display:flex;gap:13px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:9px;border-radius:11px;padding:12px 21px;font-family:var(--disp);font-weight:600;font-size:14px;cursor:pointer;transition:transform .06s,filter .2s,border-color .2s,color .2s}
+  .btn-fill{background:linear-gradient(180deg,#b6f05a,var(--lane));color:#0a0d12;box-shadow:0 10px 26px rgba(158,226,58,.26)}
+  .btn-fill:hover{filter:brightness(1.05)} .btn:active{transform:translateY(1px)}
+  .btn-line{background:transparent;color:var(--text);border:1px solid var(--line)}
+  .btn-line:hover{border-color:var(--scan);color:var(--scan)}
+
+  section{padding:clamp(54px,8vw,92px) 0;position:relative}
+  .sechead{max-width:62ch}
+  .sechead h2{font-size:clamp(24px,3.4vw,38px);margin:13px 0 0}
+  .sechead p{color:var(--muted);font-size:15.5px;margin-top:14px}
+  .divider{height:1px;background:var(--line-2)}
+
+  /* modules grid */
+  .mods{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px}
+  @media (max-width:840px){.mods{grid-template-columns:1fr 1fr}}
+  @media (max-width:540px){.mods{grid-template-columns:1fr}}
+  .mod{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:22px;transition:border-color .25s,transform .25s}
+  .mod:hover{border-color:rgba(158,226,58,.4);transform:translateY(-3px)}
+  .mod .ic{width:40px;height:40px;border-radius:10px;background:rgba(43,212,120,.1);border:1px solid rgba(43,212,120,.22);display:flex;align-items:center;justify-content:center;margin-bottom:13px}
+  .mod .ic svg{width:20px;height:20px}
+  .mod h3{font-size:16px;font-family:var(--disp);font-weight:600;margin-bottom:6px}
+  .mod p{color:var(--muted);font-size:13.5px}
+
+  /* government orders */
+  .go-search{position:relative;max-width:440px;margin:30px 0 22px}
+  .go-search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted-2)}
+  .go-search input{width:100%;padding:11px 14px 11px 38px;border:1px solid var(--line);border-radius:11px;font-size:14px;font-family:var(--body);background:var(--card);color:var(--text)}
+  .go-search input:focus{outline:none;border-color:var(--scan);box-shadow:0 0 0 3px rgba(43,212,120,.13)}
+  .go-list{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}
+  @media (max-width:840px){.go-list{grid-template-columns:1fr 1fr}}
+  @media (max-width:540px){.go-list{grid-template-columns:1fr}}
+  .go{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line-2);border-radius:12px;padding:14px 15px;transition:border-color .25s,background .25s}
+  .go:hover{border-color:rgba(158,226,58,.4);background:#161b24}
+  .go .gic{width:34px;height:34px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;background:rgba(158,226,58,.1);border:1px solid rgba(158,226,58,.2)}
+  .go .gic svg{width:17px;height:17px}
+  .go .nm{font-size:13.5px;font-weight:600;line-height:1.3}
+  .go .ct{font-family:var(--mono);font-size:10px;color:var(--muted-2);letter-spacing:.04em;margin-top:3px}
+  .go-empty{color:var(--muted-2);font-size:14px;margin-top:6px;font-family:var(--mono);letter-spacing:.04em}
+
+  /* faq */
+  .faq{margin-top:30px;border:1px solid var(--line-2);border-radius:14px;overflow:hidden;background:var(--card);max-width:780px}
+  .faq details{border-bottom:1px solid var(--line-2)}
+  .faq details:last-child{border-bottom:0}
+  .faq summary{padding:16px 20px;font-weight:600;color:var(--text);cursor:pointer;font-size:14.5px;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px;font-family:var(--disp)}
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary::after{content:"+";color:var(--lane);font-size:20px;font-weight:700;line-height:1}
+  .faq details[open] summary{color:var(--scan)}
+  .faq details[open] summary::after{content:"\2013"}
+  .faq .fa{padding:0 20px 18px;color:var(--muted);font-size:13.5px;line-height:1.65}
+
+  /* about / contact */
+  .ac{display:grid;grid-template-columns:1fr 1fr;gap:44px;margin-top:6px}
+  @media (max-width:840px){.ac{grid-template-columns:1fr;gap:26px}}
+  .ac h3{font-family:var(--disp);font-size:19px;margin-bottom:11px}
+  .ac p{color:var(--muted);font-size:14.5px;white-space:pre-line}
+
+  footer.site{border-top:1px solid var(--line-2);padding:34px 0 44px;background:#080a0e}
+  footer.site .small{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--muted-2);line-height:1.8;text-align:center}
+
+  .reveal{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
+
+  /* replay intro button */
+  .replay{position:absolute;right:clamp(18px,4vw,40px);bottom:24px;z-index:3;display:inline-flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+    background:rgba(10,13,18,.5);border:1px solid var(--line);border-radius:999px;padding:8px 14px;cursor:pointer;
+    backdrop-filter:blur(8px);transition:color .2s,border-color .2s}
+  .replay:hover{color:var(--scan);border-color:rgba(43,212,120,.45)}
+
+  /* survey gallery */
+  .gallery{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:40px}
+  @media (max-width:900px){.gallery{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:520px){.gallery{grid-template-columns:1fr}}
+  .gallery .shot{position:relative;border-radius:14px;overflow:hidden;cursor:pointer;aspect-ratio:4/3;
+    border:1px solid var(--line);background:#0d1117;transition:transform .25s,border-color .25s}
+  .gallery .shot:first-child{grid-column:span 2;grid-row:span 2;aspect-ratio:auto}
+  @media (max-width:520px){.gallery .shot:first-child{grid-column:span 1;grid-row:auto}}
+  .gallery .shot:hover{transform:translateY(-3px);border-color:rgba(158,226,58,.5)}
+  .gallery .shot img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(1.02)}
+  .gallery .shot .cap{position:absolute;left:0;right:0;bottom:0;padding:22px 14px 12px;
+    background:linear-gradient(180deg,transparent,rgba(7,10,15,.92));
+    font-family:var(--disp);font-weight:600;font-size:13.5px;color:#fff}
+  .gallery .shot .tag{position:absolute;top:11px;left:11px;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:#0a0d12;background:var(--lane);border-radius:5px;padding:3px 8px;font-weight:600}
+
+  /* lightbox */
+  .lb{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;padding:30px;
+    background:rgba(5,7,11,.92);backdrop-filter:blur(6px)}
+  .lb.open{display:flex}
+  .lb img{max-width:92vw;max-height:82vh;border-radius:12px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+  .lb .lcap{position:absolute;bottom:24px;left:0;right:0;text-align:center;font-family:var(--disp);font-weight:600;color:#fff;font-size:15px}
+  .lb .x{position:absolute;top:20px;right:24px;width:42px;height:42px;border-radius:50%;border:1px solid var(--line);
+    background:rgba(20,25,33,.7);color:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .lb .nav{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;border:1px solid var(--line);
+    background:rgba(20,25,33,.7);color:#fff;font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .lb .nav.prev{left:24px}.lb .nav.next{right:24px}
+  .lb .nav:hover,.lb .x:hover{border-color:var(--lane);color:var(--lane)}
+</style>
+</head>
+<body>
+
+  <!-- official government banner -->
+  <div class="gov">
+    <img src="/img/kerala-emblem.png" alt="Public Works Department · Government of Kerala"
+         onerror="this.style.display='none'">
+    <span class="gd"></span>
+    <a class="login" href="/login.html">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+      Login
+    </a>
+  </div>
+
+  <nav>
+    <div class="brand">
+      <span class="glyph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#9ee23a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21 9 3M19 21 15 3M12 6v2M12 11v2M12 16v2"/></svg></span>
+      <div><div class="t">KLRAMS Console</div><div class="s">KHRI · RMMS Cell</div></div>
+    </div>
+    <div class="navlinks">
+      <a href="#home" class="active">Home</a>
+      <a href="#modules">What it does</a>
+      <a href="#orders">GOs</a>
+      <a href="#about">About</a>
+      <a href="#contact">Contact</a>
+      <a class="signin" href="/login.html">Staff sign in</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <header class="hero" id="home">
+    <canvas id="scene"></canvas>
+    <div class="vig"></div>
+    <div class="wrap hero-inner">
+      <span class="kicker reveal"><span class="dot"></span> Public Works Department · Government of Kerala</span>
+      <div class="chips reveal">
+        <span class="chip">KHRI — Kerala Highway Research Institute</span>
+        <span class="chip">RMMS Cell</span>
+        <span class="chip">Kerala PWD</span>
+      </div>
+      <h1 class="reveal">KLRAMS <span class="am">Console</span></h1>
+      <p class="lead reveal">The operational console for Kerala's road network — every metre surveyed, measured and on the map. Road inventory, pavement condition, traffic and geotechnical data brought together in one GIS platform for data-driven maintenance planning. Operated by the RMMS Cell, KHRI.</p>
+      <div class="cta reveal">
+        <a class="btn btn-fill" href="#modules">What it does
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a class="btn btn-line" href="/login.html">Staff sign in</a>
+      </div>
+    </div>
+    <button class="replay" onclick="if(window.NSVHero)NSVHero.replay()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.3 2.6L3 8"/><path d="M3 3v5h5"/></svg>
+      Replay
+    </button>
+  </header>
+
+  <!-- MODULES -->
+  <section id="modules">
+    <div class="wrap">
+      <div class="sechead">
+        <span class="kicker reveal"><span class="dot"></span> What it does</span>
+        <h2 class="reveal">Core modules of the platform.</h2>
+        <p class="reveal">Field data collection across Kerala's road network — surveyed, sampled and tested by the RMMS Cell.</p>
+      </div>
+      <div class="mods">
+        <div class="mod reveal">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#2bd478" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></div>
+          <h3>Road Asset Inventory</h3>
+          <p>Network-level inventory of roads — classification, ownership and measured length.</p>
+        </div>
+        <div class="mod reveal">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#2bd478" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8M21 7v6M21 7h-6"/></svg></div>
+          <h3>Pavement Condition &amp; PCI</h3>
+          <p>Condition surveys and Pavement Condition Index (IRC:82) for maintenance prioritisation.</p>
+        </div>
+        <div class="mod reveal">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#2bd478" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M6 17V9l3-4h6l3 4v8M9 17v3M15 17v3"/></svg></div>
+          <h3>Traffic Surveys</h3>
+          <p>Traffic volume, ADT, peak-hour and direction-wise counts at survey stations.</p>
+        </div>
+        <div class="mod reveal">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#2bd478" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9m0 0 4 4m-4-4-4 4M5 21h14"/></svg></div>
+          <h3>FWD / Geotechnical</h3>
+          <p>Falling Weight Deflectometer deflection (D0) and pavement structural condition.</p>
+        </div>
+        <div class="mod reveal">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#2bd478" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3zM9 3v15M15 6v15"/></svg></div>
+          <h3>GIS Network Viewer</h3>
+          <p>Interactive map of the road network with survey video and condition layers.</p>
+        </div>
+        <div class="mod reveal">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#2bd478" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5zM15 3v4h4"/></svg></div>
+          <h3>Government Orders</h3>
+          <p>Repository of Government Orders and circulars relevant to the road network.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap"><div class="divider"></div></div>
+
+  <!-- SURVEY ACTIVITIES -->
+  <section id="survey">
+    <div class="wrap">
+      <div class="sechead">
+        <span class="kicker reveal"><span class="dot"></span> Survey Activities</span>
+        <h2 class="reveal">Field data collection across Kerala's roads.</h2>
+        <p class="reveal">Surveyed, sampled and tested on-site by the RMMS Cell. Click any photo to enlarge.</p>
+      </div>
+      <div class="gallery reveal" id="gallery"></div>
+    </div>
+  </section>
+
+  <div class="wrap"><div class="divider"></div></div>
+
+  <!-- GOVERNMENT ORDERS -->
+  <section id="orders">
+    <div class="wrap">
+      <div class="sechead">
+        <span class="kicker reveal"><span class="dot"></span> Public records</span>
+        <h2 class="reveal">Government Orders</h2>
+        <p class="reveal">Browse by folder or search by name. Click any order to open it.</p>
+      </div>
+      <div class="go-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="goq" type="text" placeholder="Search government orders…">
+      </div>
+      <div class="go-list" id="goList"></div>
+      <div class="go-empty" id="goEmpty" style="display:none">Loading…</div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section style="background:#0c1117">
+    <div class="wrap">
+      <div class="sechead">
+        <span class="kicker reveal"><span class="dot"></span> Help</span>
+        <h2 class="reveal">Frequently asked questions</h2>
+      </div>
+      <div class="faq reveal" id="faq"></div>
+    </div>
+  </section>
+
+  <!-- ABOUT / CONTACT -->
+  <section id="about">
+    <div class="wrap">
+      <span class="kicker reveal"><span class="dot"></span> About &amp; contact</span>
+      <div class="ac" id="contact">
+        <div class="reveal">
+          <h3>About</h3>
+          <p id="aboutText">Kerala Highway Research Institute · RMMS Cell. KLRAMS is a GIS-based platform of the Public Works Department, Government of Kerala, for surveying, assessing and managing the condition of the State's road network.</p>
+        </div>
+        <div class="reveal">
+          <h3>Contact</h3>
+          <p id="contactText">Get in touch with the RMMS Cell, Kerala Highway Research Institute (KHRI), Public Works Department, Government of Kerala.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site">
+    <div class="wrap small">Government of Kerala · Public Works Department · Kerala Highway Research Institute (KHRI) · RMMS Cell<br>© <span id="yr"></span> KLRAMS — Kerala Road Asset Management System</div>
+  </footer>
+
+  <!-- lightbox -->
+  <div class="lb" id="lb">
+    <button class="x" id="lbX" aria-label="Close">&times;</button>
+    <button class="nav prev" id="lbPrev" aria-label="Previous">&lsaquo;</button>
+    <img id="lbImg" src="" alt="">
+    <button class="nav next" id="lbNext" aria-label="Next">&rsaquo;</button>
+    <div class="lcap" id="lbCap"></div>
+  </div>
+
+<script src="/js/three.min.js"></script>
+<script src="/js/nsv-hero.js"></script>
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+
+  // scroll reveal
+  var io = new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} }); }, {threshold:.12});
+  document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+
+  // FAQ (your real content)
+  var FAQ = [
+    {q:"What is KLRAMS?",a:"KLRAMS (Kerala Road Asset Management System) is a GIS-based platform of the Public Works Department, Government of Kerala, for surveying, assessing and managing the condition of the State's road network. It is operated by the RMMS Cell at the Kerala Highway Research Institute (KHRI)."},
+    {q:"What does the system manage?",a:"Road inventory and classification, pavement condition (PCI), traffic surveys, Falling Weight Deflectometer (FWD) geotechnical data, and a repository of Government Orders — all on an interactive map."},
+    {q:"What is the Pavement Condition Index (PCI)?",a:"PCI is a measure of pavement condition computed as per IRC:82, used to prioritise maintenance across the network."},
+    {q:"What is FWD?",a:"The Falling Weight Deflectometer measures pavement deflection (D0); these readings indicate the structural condition of the road."},
+    {q:"Where can I find Government Orders?",a:"Open the GOs section on this portal to browse and search Government Orders and circulars by folder and name."}
+  ];
+  var faqBox = document.getElementById('faq');
+  function esc(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  FAQ.forEach(function(f){
+    var d=document.createElement('details');
+    d.innerHTML='<summary>'+esc(f.q)+'</summary><div class="fa">'+esc(f.a)+'</div>';
+    faqBox.appendChild(d);
+  });
+
+  // ---- Government Orders (public GET) ----
+  var GO_ALL = [];
+  function renderGO(list){
+    var box=document.getElementById('goList'), empty=document.getElementById('goEmpty');
+    box.innerHTML='';
+    if(!list.length){ empty.style.display='block'; empty.textContent='No government orders found.'; return; }
+    empty.style.display='none';
+    list.slice(0,12).forEach(function(f){
+      var name=f.name||f.title||f.folder||'Government Order';
+      var count=(f.count!=null?f.count:(f.docs!=null?f.docs:''));
+      var a=document.createElement('a'); a.className='go'; a.href='#orders';
+      a.innerHTML='<span class="gic"><svg viewBox="0 0 24 24" fill="none" stroke="#9ee23a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v4h4"/></svg></span>'+
+        '<span><div class="nm">'+esc(name)+'</div>'+(count!==''?'<div class="ct">'+esc(count)+' document(s)</div>':'')+'</span>';
+      box.appendChild(a);
+    });
+  }
+  fetch('/api/go/folders').then(function(r){return r.ok?r.json():[];}).then(function(list){
+    GO_ALL = Array.isArray(list)?list:[]; renderGO(GO_ALL);
+  }).catch(function(){ document.getElementById('goEmpty').style.display='block'; document.getElementById('goEmpty').textContent='Government Orders are unavailable right now.'; });
+  document.getElementById('goq').addEventListener('input', function(e){
+    var q=e.target.value.toLowerCase().trim();
+    renderGO(!q?GO_ALL:GO_ALL.filter(function(f){return String(f.name||f.title||f.folder||'').toLowerCase().indexOf(q)>=0;}));
+  });
+
+  // ---- About / Contact (public GET) ----
+  fetch('/api/site/content').then(function(r){return r.ok?r.json():null;}).then(function(c){
+    if(!c) return;
+    if(c.about)   document.getElementById('aboutText').textContent   = c.about;
+    if(c.contact) document.getElementById('contactText').textContent = c.contact;
+  }).catch(function(){});
+
+  // ---- Survey Activities gallery + lightbox ----
+  var SHOTS = [
+    {src:'/img/survey/nsv.jpg',             tag:'NSV',       cap:'Network Survey Vehicle'},
+    {src:'/img/survey/skid-resistance.jpg', tag:'Skid',      cap:'Skid Resistance Testing (BM-III)'},
+    {src:'/img/survey/fwd.jpg',             tag:'FWD',       cap:'Falling Weight Deflectometer'},
+    {src:'/img/survey/bituminous-core.jpg', tag:'Core',      cap:'Bituminous Core Extraction'},
+    {src:'/img/survey/subgrade.jpg',        tag:'Sub-grade', cap:'Sub-Grade Soil Sampling'}
+  ];
+  var gWrap = document.getElementById('gallery');
+  SHOTS.forEach(function(s, i){
+    var d = document.createElement('div'); d.className = 'shot'; d.setAttribute('data-i', i);
+    d.innerHTML = '<span class="tag">'+s.tag+'</span><img loading="lazy" src="'+s.src+'" alt="'+esc(s.cap)+'"><div class="cap">'+esc(s.cap)+'</div>';
+    d.addEventListener('click', function(){ openLb(i); });
+    gWrap.appendChild(d);
+  });
+  var lb=document.getElementById('lb'), lbImg=document.getElementById('lbImg'), lbCap=document.getElementById('lbCap'), lbI=0;
+  function openLb(i){ lbI=(i+SHOTS.length)%SHOTS.length; lbImg.src=SHOTS[lbI].src; lbCap.textContent=SHOTS[lbI].cap; lb.classList.add('open'); }
+  function closeLb(){ lb.classList.remove('open'); }
+  document.getElementById('lbX').addEventListener('click', closeLb);
+  document.getElementById('lbPrev').addEventListener('click', function(){ openLb(lbI-1); });
+  document.getElementById('lbNext').addEventListener('click', function(){ openLb(lbI+1); });
+  lb.addEventListener('click', function(e){ if(e.target===lb) closeLb(); });
+  document.addEventListener('keydown', function(e){ if(!lb.classList.contains('open'))return; if(e.key==='Escape')closeLb(); if(e.key==='ArrowLeft')openLb(lbI-1); if(e.key==='ArrowRight')openLb(lbI+1); });
+
+  // 3D hero (two-phase cinematic intro)
+  if (window.NSVHero) NSVHero.init('scene', { mode:'hero', intro:true });
+</script>
+</body>
+</html>

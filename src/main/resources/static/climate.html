@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KLRAMS — Climate Data Console</title>
+<style>
+  :root{
+    --emerald:#1B5E3F; --emerald2:#00C070; --lime:#7ED957;
+    --ink:#0e1b14; --muted:#5b6b62; --line:#dde6e0; --bg:#f4f7f5;
+    --card:#ffffff; --warn:#b54708; --danger:#c0362c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 "Segoe UI",Calibri,system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+  header{background:var(--emerald);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px}
+  header h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.2px}
+  header .sub{font-size:12px;opacity:.85}
+  header a{margin-left:auto;color:#dff5e8;text-decoration:none;font-size:13px;border:1px solid #ffffff55;padding:6px 12px;border-radius:6px}
+  header a:hover{background:#ffffff1a}
+  main{max-width:1060px;margin:18px auto;padding:0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:18px;overflow:hidden}
+  .card>h2{margin:0;padding:13px 16px;font-size:14px;background:#eef4f0;border-bottom:1px solid var(--line);color:var(--emerald);font-weight:600}
+  .card>.body{padding:14px 16px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{border:1px solid var(--line);padding:6px 8px;text-align:left}
+  th{background:#f6faf8;font-weight:600;color:var(--muted)}
+  td input{width:100%;border:1px solid var(--line);border-radius:5px;padding:5px 6px;font:inherit;background:#fff}
+  td input:focus{outline:2px solid var(--emerald2)}
+  td.num input{text-align:right}
+  td.x{width:34px;text-align:center}
+  .btn{border:0;border-radius:7px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer;background:var(--emerald);color:#fff}
+  .btn:hover{background:#164d34}
+  .btn.alt{background:#fff;color:var(--emerald);border:1px solid var(--emerald)}
+  .btn.alt:hover{background:#eef4f0}
+  .btn.go{background:var(--emerald2)}
+  .btn.go:hover{background:#02a85f}
+  .btn.sm{padding:4px 9px;font-size:12px}
+  .btn.del{background:#fff;color:var(--danger);border:1px solid #e7c4c0;padding:3px 8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px}
+  .fld{display:flex;flex-direction:column;gap:3px}
+  .fld label{font-size:12px;color:var(--muted)}
+  .fld input{border:1px solid var(--line);border-radius:6px;padding:7px 9px;font:inherit;width:130px}
+  .fld.wide input{width:340px}
+  .grp{margin-bottom:18px}
+  .grp h3{margin:0 0 7px;font-size:13px;color:var(--ink)}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  .status{margin-top:12px;font-size:13px;min-height:18px}
+  .status.ok{color:var(--emerald)}
+  .status.err{color:var(--danger)}
+  .pill{display:inline-block;background:#eef4f0;border:1px solid var(--line);border-radius:20px;padding:3px 11px;margin:3px 6px 3px 0;font-size:12px}
+  .pill b{color:var(--emerald)}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .err-banner{background:#fdecea;border:1px solid #f3c0bb;color:#8a261d;padding:10px 14px;border-radius:8px;margin-bottom:16px;display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Climate Data Console</h1>
+  <span class="sub">KLRAMS · Kerala PWD RMMS</span>
+  <a href="/map.html">← GIS Viewer</a>
+</header>
+
+<main>
+  <div id="banner" class="err-banner"></div>
+
+  <!-- LAYERS -->
+  <div class="card">
+    <h2>Climate Layers</h2>
+    <div class="body">
+      <p class="hint">Source table / field / SRID are set when the raster &amp; vector layers are loaded into PostGIS (build 77). Edit and Save to keep them in sync.</p>
+      <table id="layerTbl"><thead><tr>
+        <th>Index</th><th>Layer Name</th><th>Type</th><th>Source Table</th><th>Value Field</th><th>SRID</th><th>Source Info</th>
+      </tr></thead><tbody></tbody></table>
+      <div class="toolbar"><button class="btn" onclick="saveLayers()">Save Layers</button></div>
+    </div>
+  </div>
+
+  <!-- CLASSIFICATION -->
+  <div class="card">
+    <h2>Classification &amp; Index Values</h2>
+    <div class="body">
+      <p class="hint">Each band maps a raw value to an index (10–100). Use <b>Source Class</b> for categorical layers (rainfall / flood) or <b>Min/Max</b> for ranges (slope). Leave Max blank for an open-ended top band.</p>
+
+      <div class="grp"><h3>Rainfall Risk Index (RFI)</h3>
+        <table class="classTbl" data-key="class_rfi"><thead><tr>
+          <th>Label</th><th>Source Class</th><th>Range Min</th><th>Range Max</th><th>Index Value</th><th class="x"></th>
+        </tr></thead><tbody></tbody></table>
+        <div class="toolbar">
+          <button class="btn sm alt" onclick="addClassRow('class_rfi')">+ Row</button>
+          <button class="btn sm" onclick="saveClass('class_rfi')">Save RFI</button>
+        </div>
+      </div>
+
+      <div class="grp"><h3>Slope Risk Index (SLI)</h3>
+        <table class="classTbl" data-key="class_sli"><thead><tr>
+          <th>Label</th><th>Source Class</th><th>Range Min</th><th>Range Max</th><th>Index Value</th><th class="x"></th>
+        </tr></thead><tbody></tbody></table>
+        <div class="toolbar">
+          <button class="btn sm alt" onclick="addClassRow('class_sli')">+ Row</button>
+          <button class="btn sm" onclick="saveClass('class_sli')">Save SLI</button>
+        </div>
+      </div>
+
+      <div class="grp"><h3>Flood Susceptibility Index (FSI)</h3>
+        <table class="classTbl" data-key="class_fsi"><thead><tr>
+          <th>Label</th><th>Source Class</th><th>Range Min</th><th>Range Max</th><th>Index Value</th><th class="x"></th>
+        </tr></thead><tbody></tbody></table>
+        <div class="toolbar">
+          <button class="btn sm alt" onclick="addClassRow('class_fsi')">+ Row</button>
+          <button class="btn sm" onclick="saveClass('class_fsi')">Save FSI</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CVI -->
+  <div class="card">
+    <h2>Combined Climate Vulnerability Index (CVI)</h2>
+    <div class="body">
+      <div class="row">
+        <div class="fld"><label>Weight · FSI</label><input id="wFsi" type="number" step="0.01"></div>
+        <div class="fld"><label>Weight · RFI</label><input id="wRfi" type="number" step="0.01"></div>
+        <div class="fld"><label>Weight · SLI</label><input id="wSli" type="number" step="0.01"></div>
+        <div class="fld wide"><label>Formula (display)</label><input id="formula" type="text"></div>
+      </div>
+      <p class="hint">CVI = (FSI × w<sub>FSI</sub>) + (RFI × w<sub>RFI</sub>) + (SLI × w<sub>SLI</sub>). Weights drive the calculation; the formula text is for reference.</p>
+      <div class="toolbar"><button class="btn" onclick="saveCvi()">Save Weights</button></div>
+
+      <div class="grp" style="margin-top:18px"><h3>Final CVI Classification</h3>
+        <table id="cviBandTbl"><thead><tr>
+          <th>Label</th><th>Range Min</th><th>Range Max</th><th class="x"></th>
+        </tr></thead><tbody></tbody></table>
+        <div class="toolbar">
+          <button class="btn sm alt" onclick="addBandRow()">+ Row</button>
+          <button class="btn sm" onclick="saveBands()">Save Bands</button>
+        </div>
+        <p class="hint">Half-open bands: a value falls in [Min, Max). Leave Max blank on the top band (Severe).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROCESSING -->
+  <div class="card">
+    <h2>Index Generation</h2>
+    <div class="body">
+      <div class="toolbar">
+        <button class="btn alt" onclick="run('seed-grid','Grid seeded')">1 · Seed Grid from Condition Data</button>
+        <button class="btn go" onclick="run('recalc','Indexes recalculated')">2 · Run / Recalculate Indexes</button>
+        <button class="btn alt" onclick="loadSummary()">Refresh Summary</button>
+      </div>
+      <p class="hint"><b>Seed Grid</b> creates one climate row per chainage segment. <b>Recalculate</b> re-derives RFI/SLI/FSI → CVI → category from stored raw values (cheap; no raster). Raw values are filled by the PostGIS extraction in build 77.</p>
+      <div id="summary" style="margin-top:12px"></div>
+      <div id="status" class="status"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const API='/api/climate';
+const $=s=>document.querySelector(s);
+function setStatus(msg,ok){const e=$('#status');e.textContent=msg;e.className='status '+(ok?'ok':'err');}
+function banner(msg){const b=$('#banner');if(!msg){b.style.display='none';return;}b.textContent=msg;b.style.display='block';}
+
+async function api(path,opts){
+  const r=await fetch(API+path,Object.assign({credentials:'same-origin',headers:{'Content-Type':'application/json'}},opts||{}));
+  if(!r.ok){let t=await r.text().catch(()=>r.statusText);throw new Error('HTTP '+r.status+' — '+t.slice(0,160));}
+  const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();
+}
+
+// ---------- load ----------
+let CFG={};
+async function load(){
+  try{
+    banner('');
+    CFG=await api('/config');
+    renderLayers(CFG.layers||[]);
+    ['class_rfi','class_sli','class_fsi'].forEach(k=>renderClass(k,CFG[k]||[]));
+    renderCvi(CFG.cvi||{weights:{},formula:''});
+    renderBands(CFG.cvi_bands||[]);
+    loadSummary();
+    setStatus('Config loaded.',true);
+  }catch(e){
+    banner('Could not load /api/climate/config — '+e.message+'  ·  Is the backend running with the climate module (build 76)? Try a clean restart.');
+  }
+}
+
+// ---------- layers ----------
+function renderLayers(rows){
+  const tb=$('#layerTbl tbody');tb.innerHTML='';
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><b>${esc(r.indexCode||'')}</b></td>
+      <td><input value="${esc(r.layerName||'')}" data-f="layerName"></td>
+      <td>${esc(r.dataType||'')}</td>
+      <td><input value="${esc(r.sourceTable||'')}" data-f="sourceTable"></td>
+      <td><input value="${esc(r.valueField||'')}" data-f="valueField"></td>
+      <td class="num"><input type="number" value="${r.srid??''}" data-f="srid"></td>
+      <td><input value="${esc(r.sourceInfo||'')}" data-f="sourceInfo"></td>`;
+    tr.__idx=r.indexCode;tr.__type=r.dataType;tb.appendChild(tr);
+  });
+}
+async function saveLayers(){
+  const rows=[...$('#layerTbl tbody').querySelectorAll('tr')].map(tr=>{
+    const o={indexCode:tr.__idx,dataType:tr.__type};
+    tr.querySelectorAll('input').forEach(i=>{
+      let v=i.value.trim();
+      if(i.dataset.f==='srid')v=v===''?null:Number(v);
+      if((i.dataset.f==='valueField')&&v==='')v=null;
+      o[i.dataset.f]=v;
+    });
+    o.lastUpdated=new Date().toISOString();
+    return o;
+  });
+  await put('layers',rows,'Layers saved');
+}
+
+// ---------- classification ----------
+function renderClass(key,rows){
+  const tb=document.querySelector(`.classTbl[data-key="${key}"] tbody`);tb.innerHTML='';
+  rows.forEach(r=>tb.appendChild(classRow(r)));
+}
+function classRow(r){
+  r=r||{};const tr=document.createElement('tr');
+  tr.innerHTML=`<td><input value="${esc(r.label||'')}"></td>
+    <td><input value="${esc(r.sourceClass||'')}"></td>
+    <td class="num"><input type="number" step="any" value="${r.rangeMin??''}"></td>
+    <td class="num"><input type="number" step="any" value="${r.rangeMax??''}"></td>
+    <td class="num"><input type="number" step="any" value="${r.indexValue??''}"></td>
+    <td class="x"><button class="btn del" onclick="this.closest('tr').remove()">×</button></td>`;
+  return tr;
+}
+function addClassRow(key){document.querySelector(`.classTbl[data-key="${key}"] tbody`).appendChild(classRow({}));}
+async function saveClass(key){
+  const rows=[...document.querySelectorAll(`.classTbl[data-key="${key}"] tbody tr`)].map((tr,i)=>{
+    const c=tr.querySelectorAll('input');
+    return {seq:i+1,label:c[0].value.trim(),
+      sourceClass:c[1].value.trim()||null,
+      rangeMin:numOrNull(c[2].value),rangeMax:numOrNull(c[3].value),
+      indexValue:numOrNull(c[4].value)};
+  });
+  await put(key,rows,key.toUpperCase()+' saved');
+}
+
+// ---------- cvi ----------
+function renderCvi(c){
+  const w=c.weights||{};
+  $('#wFsi').value=w.fsi??'';$('#wRfi').value=w.rfi??'';$('#wSli').value=w.sli??'';
+  $('#formula').value=c.formula||'';
+}
+async function saveCvi(){
+  const o={weights:{fsi:numOrNull($('#wFsi').value),rfi:numOrNull($('#wRfi').value),sli:numOrNull($('#wSli').value)},
+           formula:$('#formula').value.trim()};
+  await put('cvi',o,'CVI weights saved');
+}
+function renderBands(rows){
+  const tb=$('#cviBandTbl tbody');tb.innerHTML='';rows.forEach(r=>tb.appendChild(bandRow(r)));
+}
+function bandRow(r){
+  r=r||{};const tr=document.createElement('tr');
+  tr.innerHTML=`<td><input value="${esc(r.label||'')}"></td>
+    <td class="num"><input type="number" step="any" value="${r.rangeMin??''}"></td>
+    <td class="num"><input type="number" step="any" value="${r.rangeMax??''}"></td>
+    <td class="x"><button class="btn del" onclick="this.closest('tr').remove()">×</button></td>`;
+  return tr;
+}
+function addBandRow(){$('#cviBandTbl tbody').appendChild(bandRow({}));}
+async function saveBands(){
+  const rows=[...$('#cviBandTbl tbody').querySelectorAll('tr')].map((tr,i)=>{
+    const c=tr.querySelectorAll('input');
+    return {seq:i+1,label:c[0].value.trim(),rangeMin:numOrNull(c[1].value),rangeMax:numOrNull(c[2].value)};
+  });
+  await put('cvi_bands',rows,'CVI bands saved');
+}
+
+// ---------- processing ----------
+async function run(path,okMsg){
+  try{setStatus('Working…',true);const r=await api('/'+path,{method:'POST'});
+    setStatus(okMsg+' — '+JSON.stringify(r),true);loadSummary();
+  }catch(e){setStatus(e.message,false);}
+}
+async function loadSummary(){
+  try{const s=await api('/summary');
+    $('#summary').innerHTML=Object.keys(s).length
+      ? Object.entries(s).map(([k,v])=>`<span class="pill">${esc(k)}: <b>${v}</b></span>`).join('')
+      : '<span class="hint">No segments yet — seed the grid first.</span>';
+  }catch(e){$('#summary').innerHTML='';}
+}
+
+// ---------- helpers ----------
+async function put(key,obj,okMsg){
+  try{await api('/config/'+key,{method:'PUT',body:JSON.stringify(obj)});setStatus(okMsg,true);}
+  catch(e){setStatus(e.message,false);}
+}
+function numOrNull(v){v=(''+v).trim();return v===''?null:Number(v);}
+function esc(s){return (''+s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+load();
+</script>
+</body>
+</html>
