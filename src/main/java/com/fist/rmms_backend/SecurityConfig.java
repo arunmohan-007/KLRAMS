@@ -68,7 +68,7 @@ public class SecurityConfig {
             .formLogin(f -> f
                 .loginPage("/login.html")
                 .loginProcessingUrl("/login")
-                .defaultSuccessUrl("/map.html", true)
+                .defaultSuccessUrl("/home.html", true)
                 .failureUrl("/login.html?error")
                 .permitAll())
             .logout(l -> l

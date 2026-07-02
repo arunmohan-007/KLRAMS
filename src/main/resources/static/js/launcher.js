@@ -90,6 +90,7 @@
     gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1 1 0 0 0 .2 1.1l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1 1 0 0 0-1.7.7V18a2 2 0 1 1-4 0v-.1a1 1 0 0 0-1.7-.7l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1 1 0 0 0-.7-1.7H6a2 2 0 1 1 0-4h.1a1 1 0 0 0 .7-1.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1 1 0 0 0 1.7-.7V6a2 2 0 1 1 4 0v.1a1 1 0 0 0 1.7.7l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1 1 0 0 0 .2 1.1z"/></svg>'
   };
   const CARDS = [
+    {href:'/home.html', label:'Home',         desc:'KLRAMS staff home screen',     cls:'ic-teal',   ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg>'},
     {href:'/map.html',  label:'GIS Viewer',   desc:'Interactive road network map', cls:'ic-green',  ic:ICON.map},
     {href:'/',          label:'Data Console', desc:'GIS & survey data imports',    cls:'ic-blue',   ic:ICON.db},
     {href:'/go.html',   label:'GO Portal',    desc:'Government Orders',            cls:'ic-gold',   ic:ICON.go},

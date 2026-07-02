@@ -101,7 +101,10 @@ public class TrafficController {
         Map<String, Object> counts = new LinkedHashMap<>();
         for (Map<String, Object> row : jdbc.queryForList("SELECT name, data::text AS d FROM traffic_counts")) {
             try {
-                counts.put((String) row.get("name"), om.readTree((String) row.get("d")));
+                // Plain Maps/Lists, NOT JsonNode: Spring Boot 4 serialises responses with
+                // Jackson 3, which renders a Jackson-2 JsonNode as its bean properties
+                // ({"array":false,"nodeType":"OBJECT",...}) instead of the JSON content.
+                counts.put((String) row.get("name"), om.readValue((String) row.get("d"), Object.class));
             } catch (Exception ignore) { }
         }
         Map<String, Object> out = new LinkedHashMap<>();

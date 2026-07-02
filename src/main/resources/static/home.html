@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLRAMS Console · Home — Kerala PWD</title>
+<meta name="description" content="KLRAMS — Kerala Road Asset Management System. Staff home." />
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0b1220; --panel:#101b2e; --panel-2:#0e1726; --edge:#20304c; --edge-soft:#1a2740;
+    --text:#eaf0fa; --muted:#93a3bb; --muted-2:#5f6e86;
+    --green:#19b277; --blue:#3b86e6; --gold:#d3aa3e; --violet:#8a68e6; --teal:#17b3b3; --amber:#ffa630;
+    --disp:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{font-family:var(--body);background:var(--void);color:var(--text);-webkit-font-smoothing:antialiased;overflow-x:hidden;position:relative}
+
+  /* ---- layered ambient background ---- */
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(90% 60% at 82% -10%, rgba(59,134,230,.14) 0%, transparent 60%),
+      radial-gradient(70% 50% at 8% 108%, rgba(25,178,119,.12) 0%, transparent 60%),
+      radial-gradient(50% 38% at 50% 46%, rgba(138,104,230,.05) 0%, transparent 70%),
+      var(--void)}
+  .bg-grid{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+    background-size:44px 44px;
+    -webkit-mask-image:radial-gradient(80% 70% at 50% 30%,#000 30%,transparent 100%);
+            mask-image:radial-gradient(80% 70% at 50% 30%,#000 30%,transparent 100%)}
+  /* sweeping highway lines */
+  .bg-road{position:fixed;left:-4%;right:-4%;bottom:-40px;height:42vh;z-index:0;pointer-events:none;opacity:.5}
+  .bg-road path.lane{fill:none;stroke:rgba(255,166,48,.28);stroke-width:2.2;stroke-dasharray:16 26;animation:laneflow 4.5s linear infinite}
+  .bg-road path.edgeL{fill:none;stroke:rgba(255,255,255,.06);stroke-width:5}
+  @keyframes laneflow{to{stroke-dashoffset:-42}}
+  @media (prefers-reduced-motion:reduce){.bg-road path.lane{animation:none}}
+
+  .shell{position:relative;z-index:2;min-height:100%;display:flex;flex-direction:column;padding:24px clamp(20px,4.5vw,58px) 26px;max-width:1460px;margin:0 auto}
+
+  /* ---- top bar ---- */
+  .top{display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .brand{display:flex;align-items:center;gap:13px;min-width:0}
+  .glyph{width:44px;height:44px;border-radius:12px;flex:none;background:linear-gradient(135deg,#19b277,#0d7a51);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 4px 16px rgba(13,122,81,.45)}
+  .glyph svg{width:23px;height:23px}
+  .bk .t{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.6px}
+  .bk .t span{color:#e6c878}
+  .bk .s{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted-2);margin-top:2px}
+  .top-r{display:flex;align-items:center;gap:11px;flex-shrink:0}
+  .pwd-badge{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#9ee8c6;border:1px solid rgba(25,178,119,.4);background:rgba(25,178,119,.08);border-radius:999px;padding:8px 15px}
+  .pwd-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 9px var(--green);animation:pulse 1.9s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .signout{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);border:1px solid var(--edge);border-radius:999px;padding:8px 16px;text-decoration:none;transition:.2s;background:rgba(255,255,255,.02)}
+  .signout:hover{color:var(--amber);border-color:rgba(255,166,48,.5);background:rgba(255,166,48,.07)}
+
+  /* ---- hero ---- */
+  .hero{margin:clamp(28px,6vh,64px) 0 clamp(24px,4vh,42px);display:flex;align-items:flex-end;justify-content:space-between;gap:26px;flex-wrap:wrap}
+  .hero-l{min-width:0}
+  .greet{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:14px}
+  .greet::before{content:"";width:26px;height:1.5px;background:linear-gradient(90deg,var(--amber),transparent)}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(28px,4vw,44px);letter-spacing:-.015em;line-height:1.08}
+  h1 em{font-style:normal;background:linear-gradient(92deg,#7ee6b0,#5aa5f0 55%,#b79aff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero-sub{color:var(--muted);font-size:14px;line-height:1.6;margin-top:12px;max-width:640px}
+  .clockcard{text-align:right;flex-shrink:0}
+  .clock{font-family:var(--mono);font-weight:600;font-size:clamp(26px,3vw,36px);letter-spacing:.02em;color:#fff;font-variant-numeric:tabular-nums}
+  .clock small{font-size:.5em;color:var(--muted);letter-spacing:.1em}
+  .dateln{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2);margin-top:6px}
+
+  /* ---- module grid ---- */
+  .sec{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--muted-2);display:flex;align-items:center;gap:14px;margin:0 0 16px}
+  .sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--edge),transparent)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-bottom:clamp(26px,4vh,40px)}
+  .mod{--ac:var(--blue);position:relative;display:flex;flex-direction:column;gap:13px;background:linear-gradient(165deg,var(--panel) 0%,var(--panel-2) 100%);border:1px solid var(--edge-soft);border-radius:18px;padding:22px 21px 19px;text-decoration:none;color:var(--text);overflow:hidden;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+  .mod::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--ac),transparent 80%);opacity:.85}
+  .mod::after{content:"";position:absolute;width:190px;height:190px;right:-70px;top:-70px;border-radius:50%;background:radial-gradient(closest-side,var(--ac),transparent 72%);opacity:.1;transition:opacity .18s ease}
+  .mod:hover{transform:translateY(-4px);border-color:color-mix(in srgb,var(--ac) 55%,var(--edge-soft));box-shadow:0 22px 44px -18px color-mix(in srgb,var(--ac) 45%,transparent)}
+  .mod:hover::after{opacity:.2}
+  .mod-ic{width:48px;height:48px;border-radius:13px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,color-mix(in srgb,var(--ac) 92%,#fff 4%),color-mix(in srgb,var(--ac) 60%,#000 25%));box-shadow:0 6px 18px -6px var(--ac),inset 0 0 0 1px rgba(255,255,255,.14)}
+  .mod-ic svg{width:24px;height:24px}
+  .mod-t{font-family:var(--disp);font-weight:700;font-size:18.5px;letter-spacing:.1px}
+  .mod-d{color:var(--muted);font-size:12.5px;line-height:1.55;flex:1}
+  .mod-go{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:color-mix(in srgb,var(--ac) 80%,#fff 25%)}
+  .mod-go svg{width:13px;height:13px;transition:transform .18s ease}
+  .mod:hover .mod-go svg{transform:translateX(4px)}
+
+  /* ---- viewer tool chips ---- */
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:clamp(26px,5vh,46px)}
+  .chip{display:inline-flex;align-items:center;gap:9px;text-decoration:none;color:var(--muted);font-size:12.5px;font-weight:600;border:1px solid var(--edge-soft);background:rgba(255,255,255,.02);border-radius:999px;padding:9px 16px;transition:.18s}
+  .chip i{width:7px;height:7px;border-radius:50%;background:var(--ac,#3b86e6);flex:none;box-shadow:0 0 8px var(--ac,#3b86e6)}
+  .chip:hover{color:#fff;border-color:var(--ac,#3b86e6);background:rgba(255,255,255,.045);transform:translateY(-1px)}
+
+  /* ---- footer ---- */
+  .foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border-top:1px solid var(--edge-soft);padding-top:16px}
+  .foot span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2)}
+
+  @media (max-width:1240px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:640px){.grid{grid-template-columns:1fr}.clockcard{display:none}.hero{margin-top:20px}}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="bg-grid"></div>
+  <svg class="bg-road" viewBox="0 0 1440 320" preserveAspectRatio="none" aria-hidden="true">
+    <path class="edgeL" d="M-20,300 C 340,180 760,268 1000,196 S 1380,120 1470,150"/>
+    <path class="lane"  d="M-20,300 C 340,180 760,268 1000,196 S 1380,120 1470,150"/>
+    <path class="edgeL" d="M-20,240 C 300,300 820,150 1120,240 S 1400,260 1470,230" opacity=".55"/>
+    <path class="lane"  d="M-20,240 C 300,300 820,150 1120,240 S 1400,260 1470,230" opacity=".55"/>
+  </svg>
+
+  <div class="shell">
+    <div class="top">
+      <div class="brand">
+        <span class="glyph"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span>
+        <span class="bk"><span class="t">KL<span>RAMS</span> Console</span><br><span class="s">Kerala Road Asset Management System</span></span>
+      </div>
+      <div class="top-r">
+        <span class="pwd-badge"><span class="dot"></span>Kerala PWD</span>
+        <a class="signout" href="/logout">Sign out</a>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div class="hero-l">
+        <span class="greet" id="greet">Welcome back</span>
+        <h1>Manage Kerala's roads,<br>from <em>survey to decision</em>.</h1>
+        <p class="hero-sub">Your control centre for the state road network — explore the GIS viewer, import survey &amp; condition data, publish Government Orders, and keep the public site current.</p>
+      </div>
+      <div class="clockcard">
+        <div class="clock" id="clock">--:--<small> --</small></div>
+        <div class="dateln" id="dateln">&nbsp;</div>
+      </div>
+    </div>
+
+    <div class="sec">Platform modules</div>
+    <div class="grid">
+      <a class="mod" href="/map.html" style="--ac:var(--green)">
+        <span class="mod-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="10" r="3"/><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/></svg></span>
+        <span class="mod-t">GIS Viewer</span>
+        <span class="mod-d">Interactive road network map — condition layers, PCI, FWD, assets, NSV survey video and dashboards.</span>
+        <span class="mod-go">Open viewer <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <a class="mod" href="/" style="--ac:var(--blue)">
+        <span class="mod-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></span>
+        <span class="mod-t">Data Console</span>
+        <span class="mod-d">Import the road network, survey videos, condition &amp; test data, assets and traffic counts.</span>
+        <span class="mod-go">Open console <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <a class="mod" href="/go.html" style="--ac:var(--gold)">
+        <span class="mod-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 13h5M10 17h5"/></svg></span>
+        <span class="mod-t">GO Portal</span>
+        <span class="mod-d">Publish and organise Government Orders — folders, documents and public downloads.</span>
+        <span class="mod-go">Open portal <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <a class="mod" href="/admin.html" style="--ac:var(--violet)">
+        <span class="mod-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1 1 0 0 0 .2 1.1l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1 1 0 0 0-1.7.7V18a2 2 0 1 1-4 0v-.1a1 1 0 0 0-1.7-.7l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1 1 0 0 0-.7-1.7H6a2 2 0 1 1 0-4h.1a1 1 0 0 0 .7-1.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1 1 0 0 0 1.7-.7V6a2 2 0 1 1 4 0v.1a1 1 0 0 0 1.7.7l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1 1 0 0 0 .2 1.1z"/></svg></span>
+        <span class="mod-t">Site Control</span>
+        <span class="mod-d">Manage the public website — About &amp; Contact content, imagery and site settings.</span>
+        <span class="mod-go">Open settings <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+    </div>
+
+    <div class="sec">Inside the GIS viewer</div>
+    <div class="chips">
+      <a class="chip" href="/map.html" style="--ac:var(--blue)"><i></i>Network Dashboard</a>
+      <a class="chip" href="/map.html" style="--ac:var(--teal)"><i></i>Asset Register</a>
+      <a class="chip" href="/map.html" style="--ac:var(--green)"><i></i>Pavement Condition Index</a>
+      <a class="chip" href="/map.html" style="--ac:var(--gold)"><i></i>Road Condition Data</a>
+      <a class="chip" href="/map.html" style="--ac:var(--violet)"><i></i>Report Hub</a>
+      <a class="chip" href="/map.html" style="--ac:var(--teal)"><i></i>Climate &amp; Flood</a>
+      <a class="chip" href="/map.html" style="--ac:var(--amber)"><i></i>NSV Survey Video</a>
+    </div>
+
+    <div class="foot">
+      <span>&copy; Kerala PWD &middot; KHRI</span>
+      <span>KLRAMS &middot; build 160</span>
+    </div>
+  </div>
+
+<script>
+  (function(){
+    function pad(n){return (n<10?'0':'')+n;}
+    function tick(){
+      var d=new Date(),h=d.getHours(),ap=h>=12?'PM':'AM',h12=h%12||12;
+      document.getElementById('clock').innerHTML=pad(h12)+':'+pad(d.getMinutes())+'<small> '+ap+'</small>';
+      document.getElementById('dateln').textContent=d.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      var g=h<12?'Good morning':(h<17?'Good afternoon':'Good evening');
+      document.getElementById('greet').textContent=g+' · signed in';
+    }
+    tick();setInterval(tick,15000);
+  })();
+</script>
+</body>
+</html>

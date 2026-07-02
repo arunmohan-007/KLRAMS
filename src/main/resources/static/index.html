@@ -318,17 +318,65 @@ async function upBoundary(type){
 }
 /* ===== Traffic data (summarised in-browser for the viewer) ===== */
 const TRF_KEY='klrams_traffic_v1';
-const TRF_NONVEH=new Set(['STATION_NAME','TIME','DATE','DURATION_IN_Minutes','SECTION_LABEL_CODE','LATITUDE','LONGITUDE','ROAD_CHAINAGE','DIRECTION','XSP']);
+const TRF_NONVEH=new Set(['STATION_NAME','TIME','DATE','DURATION_IN_MINUTES','SECTION_LABEL_CODE','SECTION_LABEL','LATITUDE','LONGITUDE','ROAD_CHAINAGE','CHAINAGE','DIRECTION','XSP','XSP_CODE','SL','SL_NO','S_NO','SNO','TOTAL','GRAND_TOTAL','REMARKS']);
 function trfPad(n){return (n<10?'0':'')+n;}
-function trfDate(s){const m=String(s).split('/');return (m.length===3)?new Date(+m[2],(+m[1])-1,+m[0]):null;}
+/* normalise a header for matching: trim, uppercase, spaces/dots -> underscore */
+function trfNorm(h){return String(h==null?'':h).trim().toUpperCase().replace(/[\s.]+/g,'_');}
+/* numeric cell: tolerate thousands separators and stray spaces */
+function trfNum(v){const n=+String(v==null?'':v).replace(/[, ]/g,'');return isNaN(n)?0:n;}
+/* date cell: dd/mm/yyyy, dd-mm-yyyy or yyyy-mm-dd */
+function trfDate(s){s=String(s||'').trim();let m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);m=s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);return null;}
 function trfFmtD(d){return trfPad(d.getDate())+'/'+trfPad(d.getMonth()+1)+'/'+d.getFullYear();}
 function trfParseCSV(text){text=String(text).replace(/^\ufeff/,'');const rows=[];let i=0,field='',row=[],inq=false;while(i<text.length){const c=text[i];if(inq){if(c==='"'){if(text[i+1]==='"'){field+='"';i+=2;continue;}inq=false;i++;continue;}field+=c;i++;continue;}if(c==='"'){inq=true;i++;continue;}if(c===','){row.push(field);field='';i++;continue;}if(c==='\r'){i++;continue;}if(c==='\n'){row.push(field);rows.push(row);row=[];field='';i++;continue;}field+=c;i++;}if(field.length||row.length){row.push(field);rows.push(row);}const header=(rows.shift()||[]).map(h=>String(h).trim());const data=rows.filter(r=>r.length>1||(r.length===1&&r[0]!==''));return {header:header,rows:data};}
-function trfAggregate(rows,header){const idx={};header.forEach((h,i)=>idx[h]=i);const veh=header.filter(h=>!TRF_NONVEH.has(h));const out={};rows.forEach(r=>{const st=r[idx['STATION_NAME']];if(!st)return;let o=out[st];if(!o)o=out[st]={total:0,byDir:{},byClass:{},dates:{},rows:0,byHour:new Array(24).fill(0)};o.rows++;const dir=(r[idx['DIRECTION']]||'-');const date=r[idx['DATE']]||'';if(date)o.dates[date]=1;const hh=parseInt(String(r[idx['TIME']]||'').slice(0,2),10);let rt=0;veh.forEach(vc=>{const v=+r[idx[vc]]||0;if(v){o.byClass[vc]=(o.byClass[vc]||0)+v;rt+=v;}});o.total+=rt;o.byDir[dir]=(o.byDir[dir]||0)+rt;if(!isNaN(hh)&&hh>=0&&hh<24)o.byHour[hh]+=rt;});Object.keys(out).forEach(k=>{const o=out[k];const ds=Object.keys(o.dates).map(trfDate).filter(Boolean).sort((a,b)=>a-b);o.days=ds.length||1;o.dateMin=ds.length?trfFmtD(ds[0]):'';o.dateMax=ds.length?trfFmtD(ds[ds.length-1]):'';delete o.dates;});return out;}
+function trfAggregate(rows,header){
+  /* build 161 — header matching is normalised (case/space/dot-insensitive), numbers
+     tolerate thousands separators, dates accept dd/mm/yyyy | dd-mm-yyyy | yyyy-mm-dd. */
+  const idx={};header.forEach((h,i)=>{const k=trfNorm(h);if(!(k in idx))idx[k]=i;});
+  const veh=[];header.forEach((h,i)=>{const k=trfNorm(h);if(!TRF_NONVEH.has(k)&&idx[k]===i&&k!=='')veh.push({label:String(h).trim(),i:i});});
+  const out={};
+  rows.forEach(r=>{
+    const st=String(r[idx['STATION_NAME']]||'').trim();if(!st)return;
+    let o=out[st];if(!o)o=out[st]={total:0,byDir:{},byClass:{},dates:{},rows:0,byHour:new Array(24).fill(0)};
+    o.rows++;
+    const dir=String(r[idx['DIRECTION']]||'-').trim()||'-';
+    const date=String(r[idx['DATE']]||'').trim();if(date)o.dates[date]=1;
+    const tm=String(r[idx['TIME']]||'').trim();const hm=tm.match(/^(\d{1,2})(?::(\d{2}))?/);const hh=hm?parseInt(hm[1],10):NaN;
+    const mins=hm?(parseInt(hm[1],10)*60+(hm[2]?parseInt(hm[2],10):0)):NaN;
+    let rt=0;
+    veh.forEach(vc=>{const v=trfNum(r[vc.i]);if(v){o.byClass[vc.label]=(o.byClass[vc.label]||0)+v;rt+=v;}});
+    o.total+=rt;o.byDir[dir]=(o.byDir[dir]||0)+rt;
+    if(!isNaN(hh)&&hh>=0&&hh<24)o.byHour[hh]+=rt;
+    /* per-interval series (date -> direction -> start-minute -> volume) for true
+       rolling 60-min peak-hour detection */
+    if(!isNaN(mins)&&mins>=0&&mins<1440){const ts=o._ts||(o._ts={});const dd=ts[date||'-']||(ts[date||'-']={});const dv=dd[dir]||(dd[dir]={});dv[mins]=(dv[mins]||0)+rt;}
+  });
+  Object.keys(out).forEach(k=>{
+    const o=out[k];const ds=Object.keys(o.dates).map(trfDate).filter(Boolean).sort((a,b)=>a-b);
+    o.days=ds.length||1;o.dateMin=ds.length?trfFmtD(ds[0]):'';o.dateMax=ds.length?trfFmtD(ds[ds.length-1]):'';delete o.dates;
+    /* Peak hour = maximum volume in ANY continuous 60-minute window actually
+       recorded during the survey (sliding across the count intervals), computed
+       per direction and for both directions combined. */
+    const fmtT=m=>trfPad(Math.floor((m%1440)/60))+':'+trfPad(m%60);
+    const best={both:null,dir:{}};
+    const scan=(series,date,put)=>{const ms=Object.keys(series).map(Number).sort((a,b)=>a-b);ms.forEach(m0=>{let v=0;ms.forEach(m=>{if(m>=m0&&m<m0+60)v+=series[m];});if(v>0&&(!put.o[put.k]||v>put.o[put.k].v))put.o[put.k]={v:v,t:fmtT(m0)+'–'+fmtT(m0+60),d:date};});};
+    Object.keys(o._ts||{}).forEach(date=>{
+      const dd=o._ts[date];const comb={};
+      Object.keys(dd).forEach(dir=>{
+        scan(dd[dir],date,{o:best.dir,k:dir});
+        Object.keys(dd[dir]).forEach(m=>{comb[m]=(comb[m]||0)+dd[dir][m];});
+      });
+      scan(comb,date,{o:best,k:'both'});
+    });
+    if(best.both||Object.keys(best.dir).length)o.peak=best;
+    delete o._ts;
+  });
+  return out;
+}
 function trfGetStore(){try{return JSON.parse(localStorage.getItem(TRF_KEY))||{};}catch(e){return {};}}
 function trfPutStore(o){o.v=1;o.savedAt=new Date().toISOString();try{localStorage.setItem(TRF_KEY,JSON.stringify(o));return true;}catch(e){return false;}}
 async function trfPost(kind,payload){try{const r=await fetch('/api/traffic/'+kind,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});return r.ok;}catch(e){return false;}}
 function trfReadFile(id){return new Promise((res,rej)=>{const f=document.getElementById(id).files[0];if(!f){rej(new Error('Choose a CSV first.'));return;}const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('File read error.'));r.readAsText(f);});}
-async function upTraffic(kind){const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx={};pr.header.forEach((h,i)=>idx[h]=i);const store=trfGetStore();if(kind==='stations'){if(idx['Station Name']===undefined){show(out,false,'CSV needs a Station Name column.');return;}store.stations=pr.rows.map(r=>({name:r[idx['Station Name']]||'',road:(idx['Description']!==undefined?r[idx['Description']]:'')||'',section:(idx['Section Label']!==undefined?String(r[idx['Section Label']]||'').trim():''),ch:(idx['Chainage']!==undefined&&String(r[idx['Chainage']]).trim()!==''&&!isNaN(+r[idx['Chainage']]))?+r[idx['Chainage']]:null,lat:(idx['Latitude']!==undefined&&!isNaN(+r[idx['Latitude']]))?+r[idx['Latitude']]:null,lng:(idx['Longitude']!==undefined&&!isNaN(+r[idx['Longitude']]))?+r[idx['Longitude']]:null,xsp:(idx['Xsp Code']!==undefined?r[idx['Xsp Code']]:'')||''})).filter(r=>r.name);const srv=await trfPost('stations',store.stations);trfPutStore(store);show(out,true,'\u2713 '+store.stations.length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}else{if(pr.header.indexOf('STATION_NAME')<0){show(out,false,'CSV needs a STATION_NAME column.');return;}store.counts=trfAggregate(pr.rows,pr.header);const srv=await trfPost('counts',store.counts);trfPutStore(store);show(out,true,'\u2713 Counts for '+Object.keys(store.counts).length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}trfState();}catch(e){show(out,false,e.message||String(e));}}
+async function upTraffic(kind){const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx={};pr.header.forEach((h,i)=>idx[h]=i);const store=trfGetStore();if(kind==='stations'){if(idx['Station Name']===undefined){show(out,false,'CSV needs a Station Name column.');return;}store.stations=pr.rows.map(r=>({name:r[idx['Station Name']]||'',road:(idx['Description']!==undefined?r[idx['Description']]:'')||'',section:(idx['Section Label']!==undefined?String(r[idx['Section Label']]||'').trim():''),ch:(idx['Chainage']!==undefined&&String(r[idx['Chainage']]).trim()!==''&&!isNaN(+r[idx['Chainage']]))?+r[idx['Chainage']]:null,lat:(idx['Latitude']!==undefined&&!isNaN(+r[idx['Latitude']]))?+r[idx['Latitude']]:null,lng:(idx['Longitude']!==undefined&&!isNaN(+r[idx['Longitude']]))?+r[idx['Longitude']]:null,xsp:(idx['Xsp Code']!==undefined?r[idx['Xsp Code']]:'')||''})).filter(r=>r.name);const srv=await trfPost('stations',store.stations);trfPutStore(store);show(out,true,'\u2713 '+store.stations.length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}else{if(!pr.header.some(h=>trfNorm(h)==='STATION_NAME')){show(out,false,'CSV needs a STATION_NAME column.');return;}store.counts=trfAggregate(pr.rows,pr.header);const srv=await trfPost('counts',store.counts);trfPutStore(store);show(out,true,'\u2713 Counts for '+Object.keys(store.counts).length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}trfState();}catch(e){show(out,false,e.message||String(e));}}
 function trfClear(){localStorage.removeItem(TRF_KEY);fetch('/api/traffic/clear',{method:'POST'}).catch(()=>{});trfState();const a=document.getElementById('oTrfStn'),b=document.getElementById('oTrfCnt');a.className='out';b.className='out';show(a,true,'Cleared.');}
 function trfState(){const s=trfGetStore();const ns=(s.stations||[]).length;const nc=Object.keys(s.counts||{}).length;document.getElementById('trfState').innerHTML=(ns||nc)?('<b>'+ns+'</b> stations \u00b7 counts for <b>'+nc+'</b>'+(s.savedAt?(' \u00b7 saved '+new Date(s.savedAt).toLocaleString()):'')+'. Open the viewer to see them.'):'No traffic data stored.';}
 trfState();
