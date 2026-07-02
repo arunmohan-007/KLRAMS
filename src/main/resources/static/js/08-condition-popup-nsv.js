@@ -330,5 +330,8 @@ function setChainage(frac){
   if(carLabel)carLabel.textContent='CH '+ch+' m';
   if(di)di.textContent=t;
 }
-function setDir(d){dir=d;document.getElementById('fwd').classList.toggle('on',d==='fwd');document.getElementById('rev').classList.toggle('on',d==='rev');if(typeof updateRouteLabel==='function')updateRouteLabel();}
+function setDir(d){dir=d;document.getElementById('fwd').classList.toggle('on',d==='fwd');document.getElementById('rev').classList.toggle('on',d==='rev');if(typeof updateRouteLabel==='function')updateRouteLabel();
+  /* Build 162 — direction flips the surveyed/gap travel order, so rebuild the
+     gap-aware plan and re-sync the video to the same physical chainage. */
+  if(typeof cur!=='undefined'&&cur){if(typeof _stopGapAnim==='function')_stopGapAnim();if(typeof buildTravelPlan==='function')buildTravelPlan();if(typeof seek==='function')seek(typeof lastChainage!=='undefined'?lastChainage:0);if(typeof buildVidTrack==='function')buildVidTrack();if(typeof updateVidHud==='function')updateVidHud();}}
 let playSpeed=1;

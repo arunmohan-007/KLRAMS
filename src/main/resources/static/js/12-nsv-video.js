@@ -48,15 +48,122 @@ function onPick(roadId,lngLat,lane){
     const src=/^https?:\/\//i.test(entry.file)?entry.file:('/videos/'+encodeURIComponent(entry.file));
     applyDirAvailability(entry.direction);video.style.display='';vidempty.style.display='none';video.src=src;video.load();
     document.getElementById('dock').classList.add('open','loaded');
+    renderCoverageSummary();
+    /* condition segments may still be loading — refresh coverage once they arrive */
+    if(typeof ensureSegData==='function'){const _r=roadId;ensureSegData().then(function(){if(cur&&cur.road===_r){renderCoverageSummary();buildTravelPlan();if(video.duration&&!isNaN(video.duration))seek(lastChainage);}});}
   }
   setChainage(frac);placeCar(frac);seek(chainage);if(typeof buildVidTrack==='function'){buildVidTrack();updateVidHud();}
 }
-function seek(ch){if(!cur||!video.duration||isNaN(video.duration))return;const fch=cur.len>0?ch/cur.len:0;const tf=dir==='fwd'?fch:(1-fch);seeking=true;video.currentTime=Math.max(0,Math.min(tf,1))*video.duration;setTimeout(()=>seeking=false,50);}
-video.addEventListener('loadedmetadata',()=>{video.playbackRate=playSpeed;seek(lastChainage);});
-video.addEventListener('play',()=>{follow=true;if(curCarLL)followTo(curCarLL,700);});
+/* ============================================================
+   Build 162 — gap-aware NSV playback engine.
+   The survey video holds ONLY surveyed footage (gap stretches were
+   not recorded), so video-time maps to SURVEYED distance, not total
+   chainage. buildTravelPlan() cuts the road into ordered video/gap
+   segments. During a video segment the footage drives the chainage;
+   when it reaches the end of a surveyed stretch we PAUSE the video,
+   animate the chainage + vehicle across the gap at the same visual
+   speed, then RESUME into the next stretch. Roads with full coverage
+   (no gaps) fall back to the original linear mapping untouched. */
+let _gapRAF=null,_segIdx=0;
+function _local2ch(cl){return dir==='rev'?(cur.len-cl):cl;}   /* local (ascending, travel order) -> actual chainage */
+function _ch2local(ch){return dir==='rev'?(cur.len-ch):ch;}   /* actual chainage -> local */
+function buildTravelPlan(){
+  if(!cur||!(cur.len>0)||!video.duration||isNaN(video.duration))return;
+  const D=video.duration,len=cur.len;
+  let rs=(typeof roadCoverageRanges==='function'?roadCoverageRanges(cur.road):[])
+    .map(r=>[Math.max(0,Math.min(len,r[0])),Math.max(0,Math.min(len,r[1]))]).filter(r=>r[1]-r[0]>1e-6);
+  cur._planDir=dir;
+  if(!rs.length){cur.hasGaps=false;cur._plan=null;cur._m=len/D;return;}          /* no condition data -> linear */
+  if(dir==='rev')rs=rs.map(r=>[len-r[1],len-r[0]]);
+  rs.sort((a,b)=>a[0]-b[0]);
+  let S=0;rs.forEach(r=>S+=r[1]-r[0]);
+  cur._m=S/D;                                                                     /* surveyed metres per second of footage */
+  cur.hasGaps=(len-S)>Math.max(1,len*0.005);
+  if(!cur.hasGaps){cur._plan=null;return;}
+  const segs=[];let acc=0,cursor=0;
+  for(let i=0;i<rs.length;i++){
+    const a=rs[i][0],b=rs[i][1];
+    if(a>cursor+1e-6)segs.push({type:'gap',clStart:cursor,clEnd:a,tFreeze:acc/S*D});
+    segs.push({type:'video',clStart:a,clEnd:b,tStart:acc/S*D,tEnd:(acc+(b-a))/S*D});
+    acc+=(b-a);cursor=b;
+  }
+  if(cursor<len-1e-6)segs.push({type:'gap',clStart:cursor,clEnd:len,tFreeze:D});
+  cur._plan=segs;
+}
+function _applyLocal(cl){
+  const frac=cur.len>0?(_local2ch(cl)/cur.len):0;
+  setChainage(frac);placeCar(frac);updateVidHud();
+  if(follow&&curCarLL&&typeof followTo==='function')followTo(curCarLL,260);
+}
+function _stopGapAnim(){if(_gapRAF){cancelAnimationFrame(_gapRAF);_gapRAF=null;}}
+function _startGapAnim(gapSeg,resumeAfter){
+  _stopGapAnim();
+  try{video.pause();}catch(e){}                                                  /* footage stays frozen while the gap animates */
+  const m=cur._m||1,rate=video.playbackRate||1,gapLen=gapSeg.clEnd-gapSeg.clStart;
+  let durMs=(gapLen/m)*1000/rate;if(!(durMs>0)||!isFinite(durMs))durMs=Math.min(5000,Math.max(500,gapLen));
+  const t0=performance.now();
+  (function frame(now){
+    const p=Math.min(1,(now-t0)/durMs);
+    _applyLocal(gapSeg.clStart+p*(gapSeg.clEnd-gapSeg.clStart));
+    if(p<1){_gapRAF=requestAnimationFrame(frame);return;}
+    _gapRAF=null;
+    if(_segIdx+1<cur._plan.length){
+      _segIdx+=1;const ns=cur._plan[_segIdx];
+      if(ns&&ns.type==='video'){seeking=true;try{video.currentTime=ns.tStart;}catch(e){}setTimeout(()=>seeking=false,60);if(resumeAfter){try{video.play();}catch(e){}}}
+    }
+  })(performance.now());
+}
+function seekPlan(ch){
+  const segs=cur._plan;if(!segs)return;
+  const cl=_ch2local(ch);let idx=segs.length-1;
+  for(let i=0;i<segs.length;i++){if(cl>=segs[i].clStart-1e-6&&cl<=segs[i].clEnd+1e-6){idx=i;break;}}
+  _stopGapAnim();_segIdx=idx;const s=segs[idx];
+  if(s.type==='video'){
+    const fr=(s.clEnd>s.clStart)?(cl-s.clStart)/(s.clEnd-s.clStart):0;
+    seeking=true;video.currentTime=Math.max(0,Math.min(1,(s.tStart+fr*(s.tEnd-s.tStart))/video.duration))*video.duration;setTimeout(()=>seeking=false,50);
+  }else{
+    seeking=true;try{video.currentTime=s.tFreeze;}catch(e){}setTimeout(()=>seeking=false,50);try{video.pause();}catch(e){}
+  }
+  _applyLocal(cl);
+}
+function planTick(){
+  if(!cur||!cur._plan||seeking||_gapRAF)return;
+  const segs=cur._plan,t=video.currentTime;let s=segs[_segIdx];
+  if(!(s&&s.type==='video'&&t>=s.tStart-0.06&&t<=s.tEnd+0.06)){                   /* scrub / jump -> re-derive segment */
+    for(let i=0;i<segs.length;i++){if(segs[i].type==='video'&&t>=segs[i].tStart-1e-6&&t<=segs[i].tEnd+1e-6){_segIdx=i;break;}}
+    s=segs[_segIdx];
+  }
+  if(!s||s.type!=='video')return;
+  if(t>=s.tEnd-1e-3){
+    const next=segs[_segIdx+1];
+    if(next&&next.type==='gap'){
+      const wasPlaying=!video.paused;seeking=true;try{video.currentTime=s.tEnd;}catch(e){}setTimeout(()=>seeking=false,50);try{video.pause();}catch(e){}
+      _segIdx+=1;_startGapAnim(next,wasPlaying);return;
+    }
+    _applyLocal(s.clEnd);return;
+  }
+  const fr=(s.tEnd>s.tStart)?(t-s.tStart)/(s.tEnd-s.tStart):0;
+  _applyLocal(s.clStart+fr*(s.clEnd-s.clStart));
+}
+function seek(ch){
+  if(!cur||!video.duration||isNaN(video.duration))return;
+  if(cur._planDir!==dir)buildTravelPlan();
+  if(cur.hasGaps){seekPlan(ch);return;}
+  const fch=cur.len>0?ch/cur.len:0;const tf=dir==='fwd'?fch:(1-fch);
+  seeking=true;video.currentTime=Math.max(0,Math.min(tf,1))*video.duration;setTimeout(()=>seeking=false,50);
+}
+video.addEventListener('loadedmetadata',()=>{video.playbackRate=playSpeed;buildTravelPlan();seek(lastChainage);});
+video.addEventListener('play',()=>{follow=true;if(curCarLL)followTo(curCarLL,700);
+  if(cur&&cur.hasGaps&&!_gapRAF){const s=cur._plan&&cur._plan[_segIdx];if(s&&s.type==='gap')_startGapAnim(s,true);}});
 video.addEventListener('pause',()=>{follow=false;});
-video.addEventListener('timeupdate',()=>{if(!cur||!video.duration||seeking)return;const tf=video.currentTime/video.duration;const fch=dir==='fwd'?tf:(1-tf);setChainage(fch);placeCar(fch);updateVidHud();if(follow&&curCarLL)followTo(curCarLL,260);});
-function closeDock(){document.getElementById('dock').classList.remove('open','loaded');if(marker)marker.remove();cur=null;if(video){try{video.pause();}catch(e){}}/* Build 87 — closing the dock also switches "Video on click" OFF, so it won't pop back up on the next map click. Setting .checked here does not fire 'change', so no recursion. */['videoMode','videoMode2'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});syncVClick();}
+video.addEventListener('timeupdate',()=>{
+  if(!cur||!video.duration||seeking)return;
+  if(cur._planDir!==dir)buildTravelPlan();
+  if(cur.hasGaps){planTick();return;}
+  const tf=video.currentTime/video.duration;const fch=dir==='fwd'?tf:(1-tf);
+  setChainage(fch);placeCar(fch);updateVidHud();if(follow&&curCarLL)followTo(curCarLL,260);
+});
+function closeDock(){document.getElementById('dock').classList.remove('open','loaded');if(marker)marker.remove();if(typeof _stopGapAnim==='function')_stopGapAnim();_segIdx=0;cur=null;if(video){try{video.pause();}catch(e){}}/* Build 87 — closing the dock also switches "Video on click" OFF, so it won't pop back up on the next map click. Setting .checked here does not fire 'change', so no recursion. */['videoMode','videoMode2'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});syncVClick();}
 /* Build 88 — reflect "Video on click" state on <body class="vclick-on">.
    CSS force-hides #dock whenever this class is absent, so the dock can NEVER
    stay visible while Video-on-click is off, regardless of how it was opened. */
@@ -78,6 +185,55 @@ function syncVClick(){const on=!!(((document.getElementById('videoMode')||{}).ch
    value, visible even when the video is fullscreened (we fullscreen
    the .vid container, not the bare <video>, so HTML overlays survive).
    ============================================================ */
+/* Build 161 — NSV survey-gap detection. A "gap" is any chainage range on the
+   current road not covered by any condition segment (from_ch..to_ch): the
+   video keeps playing there (it's a straight time/length proportion, see
+   seek()), but there is no condition data for it, i.e. no real NSV coverage. */
+function roadCoverageRanges(road){
+  const arr=(typeof segsByRoad!=='undefined'&&segsByRoad[road])?segsByRoad[road]:[];
+  const ranges=[];
+  arr.forEach(f=>{const p=f.properties||{};const a=+p.from_ch,b=+p.to_ch;if(isNaN(a)||isNaN(b))return;ranges.push([Math.min(a,b),Math.max(a,b)]);});
+  ranges.sort((x,y)=>x[0]-y[0]);
+  const merged=[];
+  ranges.forEach(r=>{if(merged.length&&r[0]<=merged[merged.length-1][1]+1e-6)merged[merged.length-1][1]=Math.max(merged[merged.length-1][1],r[1]);else merged.push(r.slice());});
+  return merged;
+}
+function roadGapRanges(road,totalLen){
+  const cov=roadCoverageRanges(road);const gaps=[];let cursor=0;
+  cov.forEach(r=>{if(r[0]>cursor+1e-6)gaps.push([cursor,r[0]]);cursor=Math.max(cursor,r[1]);});
+  if(cursor<totalLen-1e-6)gaps.push([cursor,totalLen]);
+  return gaps;
+}
+/* Ordered surveyed/gap pieces across the whole road (chainage 0..len), for the
+   coverage bar in the "Now playing" dock. */
+function coveragePieces(road,len){
+  const gaps=roadGapRanges(road,len).slice().sort((a,b)=>a[0]-b[0]);
+  const pieces=[];let cursor=0;
+  gaps.forEach(g=>{if(g[0]>cursor+1e-6)pieces.push({a:cursor,b:g[0],gap:false});pieces.push({a:g[0],b:g[1],gap:true});cursor=g[1];});
+  if(cursor<len-1e-6)pieces.push({a:cursor,b:len,gap:false});
+  if(!pieces.length&&len>0)pieces.push({a:0,b:len,gap:false});
+  return pieces;
+}
+function renderCoverageSummary(){
+  const box=document.getElementById('dCoverage');if(!box||!cur||!(cur.len>0))return;
+  const bar=document.getElementById('dCovBar'),pctEl=document.getElementById('dCovPct'),gapsEl=document.getElementById('dCovGaps');
+  const gaps=roadGapRanges(cur.road,cur.len);
+  const gapLen=gaps.reduce((s,g)=>s+(g[1]-g[0]),0);
+  const surveyed=Math.max(0,cur.len-gapLen);
+  const pct=Math.round((surveyed/cur.len)*100);
+  const nf=n=>Math.round(n).toLocaleString();
+  box.style.display='';
+  if(pctEl){pctEl.textContent=pct+'% surveyed';pctEl.classList.toggle('warn',gaps.length>0);}
+  if(bar){bar.innerHTML=coveragePieces(cur.road,cur.len).map(p=>{
+    const w=((p.b-p.a)/cur.len*100).toFixed(3);
+    const t=p.gap?('No survey · '+nf(p.a)+'–'+nf(p.b)+' m'):('Surveyed · '+nf(p.a)+'–'+nf(p.b)+' m');
+    return '<i class="'+(p.gap?'cb-gap':'cb-ok')+'" style="flex:'+w+' 0 0" title="'+t+'"></i>';
+  }).join('');}
+  if(gapsEl){
+    if(!gaps.length)gapsEl.innerHTML='<span class="cov-ok">✓ Full NSV coverage — no gaps.</span>';
+    else gapsEl.innerHTML='Gaps ('+gaps.length+'): '+gaps.map(g=>'<b>'+nf(g[0])+'–'+nf(g[1])+' m</b>').join(', ');
+  }
+}
 function buildVidTrack(){
   const svg=document.getElementById('hudTrack');if(!svg||!cur||!cur.line)return;
   const g=cur.line.geometry;const coords=(g&&g.coordinates)||[];
@@ -109,8 +265,21 @@ function buildVidTrack(){
       '<text x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" text-anchor="middle" font-family="Inter,sans-serif" font-size="12.5" font-weight="800" fill="'+color+'">'+xe(clip(txt||tag))+'</text>'+
       '<text x="'+x.toFixed(1)+'" y="'+(above?(y-13):(y+13)).toFixed(1)+'" text-anchor="middle" font-family="Inter,sans-serif" font-size="8.5" font-weight="800" letter-spacing="1" fill="#8aa0bd">'+tag+'</text>';
   }
+  let gapSvg='';
+  if(cur.len>0){
+    roadGapRanges(cur.road,cur.len).forEach(g=>{
+      const steps=10,gp=[];
+      for(let i=0;i<=steps;i++){
+        const ch=g[0]+(g[1]-g[0])*(i/steps);
+        const distKm=Math.max(0,Math.min(cur.geoLenKm,(ch/cur.len)*cur.geoLenKm));
+        try{const pt=turf.along(cur.line,distKm,{units:'kilometers'});const xy=cur._trk(pt.geometry.coordinates[0],pt.geometry.coordinates[1]);gp.push(xy[0].toFixed(1)+','+xy[1].toFixed(1));}catch(e){}
+      }
+      if(gp.length>1)gapSvg+='<polyline points="'+gp.join(' ')+'" fill="none" stroke="#e24b4a" stroke-width="5" stroke-linecap="round" stroke-dasharray="2,6" opacity="0.95"><title>No NSV survey: '+Math.round(g[0])+'–'+Math.round(g[1])+' m</title></polyline>';
+    });
+  }
   svg.innerHTML=
     '<polyline points="'+pts+'" fill="none" stroke="#9fb4c8" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"></polyline>'+
+    gapSvg+
     lbl(oPt,oLoc,'#7ee6b0','START')+
     lbl(dPt,dLoc,'#ffd27a','END')+
     '<g id="hudCar"><rect id="hudCarBody" x="-4.5" y="-8" width="9" height="16" rx="2.6" fill="#16a06b" stroke="#ffffff" stroke-width="1.3"></rect><rect x="-3.4" y="-6" width="6.8" height="3.4" rx="1" fill="#dff3ea"></rect><rect x="-3" y="3" width="6" height="2.6" rx="0.8" fill="#0b1322" opacity="0.45"></rect></g>';
@@ -216,6 +385,7 @@ function updateVidHud(){
   var dc=document.getElementById('dCh');var chTxt=dc?dc.textContent:'0';var chNum=parseFloat(String(chTxt).replace(/,/g,''))||0;
   var hc=document.getElementById('hudCh');if(hc)hc.textContent='CH '+Math.round(chNum).toLocaleString()+' m';
   var c=(typeof condAt==='function'&&cur.road)?condAt(cur.road,chNum):null;
+  var gapBanner=document.getElementById('hudGapBanner');if(gapBanner)gapBanner.classList.toggle('show',!c);
   var iv=c?((c.avg_iri!=null)?+c.avg_iri:(c.iri!=null?+c.iri:NaN)):NaN;
   var col=(!isNaN(iv)&&typeof rating==='function')?rating('iri',iv):'#3a465c';
   var hi=document.getElementById('hudIri');if(hi){hi.textContent='AVG IRI '+(isNaN(iv)?'\u2013':iv.toFixed(2));hi.style.background=col;}

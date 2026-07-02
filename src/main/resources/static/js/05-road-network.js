@@ -44,10 +44,10 @@ function netColorByExpr(attr){
 function renderNetLegend(attr){
   const el=document.getElementById('netLegend'); el.innerHTML='';
   const m=ATTRS[attr];
-  if(!m){el.innerHTML='<div class="lg"><span class="bar" style="background:#8a4d1f"></span> SH</div><div class="lg"><span class="bar" style="background:#3b6fa0"></span> MDR</div>';return;}
-  if(m.numeric){el.innerHTML=`<div class="lg"><span class="bar" style="background:linear-gradient(90deg,#9ec97f,#e4a13a,#c0392b)"></span> ${m.min} → ${m.max}</div>`;return;}
-  m.values.slice(0,12).forEach((v,i)=>{el.innerHTML+=`<div class="lg"><span class="bar" style="background:${CAT_PALETTE[i%CAT_PALETTE.length]}"></span> ${dec(attr,v)}</div>`;});
-  if(m.values.length>12)el.innerHTML+='<div class="lg"><span class="bar" style="background:#9aa7b5"></span> other</div>';
+  if(!m){el.innerHTML='<div class="lg"><span class="bar" style="background:#8a4d1f"></span><span class="lgt">SH</span></div><div class="lg"><span class="bar" style="background:#3b6fa0"></span><span class="lgt">MDR</span></div>';return;}
+  if(m.numeric){el.innerHTML=`<div class="lg"><span class="bar" style="background:linear-gradient(90deg,#9ec97f,#e4a13a,#c0392b)"></span><span class="lgt">${m.min} → ${m.max}</span></div>`;return;}
+  m.values.slice(0,12).forEach((v,i)=>{const lbl=dec(attr,v);el.innerHTML+=`<div class="lg"><span class="bar" style="background:${CAT_PALETTE[i%CAT_PALETTE.length]}"></span><span class="lgt" title="${lbl}">${lbl}</span></div>`;});
+  if(m.values.length>12)el.innerHTML+='<div class="lg"><span class="bar" style="background:#9aa7b5"></span><span class="lgt">other</span></div>';
 }
 function setNetMode(m){netMode=m;document.getElementById('nAll').classList.toggle('on',m==='all');document.getElementById('nAny').classList.toggle('on',m==='any');applyNetFilter();}
 function addNetFilter(){netFilters.push({attr:Object.keys(ATTRS).sort()[0]||'',op:'=',val:''});renderNetFilters();}

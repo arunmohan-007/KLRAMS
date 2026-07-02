@@ -397,7 +397,7 @@
       <button id="riClose" onclick="hideInspector()" aria-label="Close" title="Close">&times;</button>
       <div id="riBody"></div>
     </aside>
-    <div id="mapLegend"><div class="ml-h">Road class</div><div class="ml-body"></div></div>
+    <div id="mapLegend"><div class="ml-h"><span class="ml-h-label">Road class</span><button type="button" class="ml-min" title="Minimize">&minus;</button></div><div class="ml-body"></div></div>
     <style id="riCss">
       #roadInspector{position:absolute;top:14px;right:14px;bottom:14px;width:324px;z-index:6;background:linear-gradient(168deg,rgba(18,32,50,.98),rgba(10,18,30,.985));border:1px solid rgba(140,170,210,.2);border-radius:18px;box-shadow:0 26px 64px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.07);overflow:hidden;display:none;flex-direction:column;-webkit-backdrop-filter:blur(20px) saturate(125%);backdrop-filter:blur(20px) saturate(125%)}
       #roadInspector.open{display:flex}
@@ -497,10 +497,27 @@
       .klcard .kc-exportbtn:hover{background:rgba(52,211,153,.12);color:#eafff6}
       /* framed map + on-map legend */
       #map{border-radius:16px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(123,225,180,.16),0 14px 40px rgba(0,0,0,.18)}
-      #mapLegend{position:absolute;left:16px;bottom:46px;z-index:5;background:linear-gradient(180deg,rgba(11,26,21,.94),rgba(9,20,16,.94));border:1px solid rgba(123,225,180,.22);border-radius:13px;padding:12px 14px;min-width:158px;box-shadow:0 12px 34px rgba(0,0,0,.4);backdrop-filter:blur(10px);display:none}
+      #mapLegend{position:absolute;left:16px;bottom:104px;z-index:5;background:linear-gradient(180deg,rgba(10,24,19,.98),rgba(7,17,14,.98));border:1px solid rgba(123,225,180,.32);border-radius:13px;padding:12px 14px;min-width:190px;max-width:270px;max-height:calc(100% - 190px);overflow-y:auto;box-shadow:0 12px 34px rgba(0,0,0,.55);backdrop-filter:blur(10px);display:none}
       #mapLegend.show{display:block}
-      #mapLegend .ml-h{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:#9af0c9;font-weight:800;margin-bottom:9px;display:flex;align-items:center;gap:7px}
-      #mapLegend .ml-h::before{content:"";width:7px;height:7px;border-radius:50%;background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.2)}
+      #mapLegend .ml-h{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#9af0c9;font-weight:800;margin-bottom:10px;padding-bottom:9px;border-bottom:1px solid rgba(123,225,180,.22);display:flex;align-items:center;gap:7px;cursor:grab;touch-action:none;user-select:none}
+      #mapLegend .ml-h:active{cursor:grabbing}
+      #mapLegend.dragging{transition:none!important}
+      #mapLegend .ml-h::before{content:"";width:7px;height:7px;border-radius:50%;background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.25);flex:0 0 auto}
+      #mapLegend .ml-h-label{flex:1}
+      #mapLegend .ml-min{flex:0 0 auto;width:18px;height:18px;border:1px solid rgba(123,225,180,.35);border-radius:5px;background:rgba(123,225,180,.08);color:#9af0c9;font-size:13px;line-height:1;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+      #mapLegend .ml-min:hover{background:rgba(123,225,180,.2)}
+      #mapLegend.min{padding-bottom:12px;max-height:none}
+      #mapLegend.min .ml-h{margin-bottom:0;padding-bottom:0;border-bottom:0}
+      #mapLegend.min .ml-body{display:none}
+      /* on-map legend rows (mirrored from #netLegend, which is styled under .legend
+         in app.css — those rules don't reach here, so restate them for readability) */
+      #mapLegend .ml-body{display:flex;flex-direction:column;gap:2px}
+      #mapLegend .lg{display:flex;align-items:center;gap:10px;font-size:13px;line-height:1.3;margin:0;padding:4px 3px;border-radius:6px;color:#f4fff9;font-weight:600}
+      #mapLegend .lg:hover{background:rgba(123,225,180,.1)}
+      #mapLegend .lg .lgt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #mapLegend .bar{width:26px;height:14px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(255,255,255,.55);box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+      #mapLegend::-webkit-scrollbar{width:8px}
+      #mapLegend::-webkit-scrollbar-thumb{background:rgba(123,225,180,.35);border-radius:6px}
     </style>
     <script id="maplegend-js">
       (function(){
@@ -509,18 +526,76 @@
           var body=dst.querySelector('.ml-body');
           var hasContent=src&&src.textContent&&src.textContent.trim().length>0;
           var sel=document.getElementById('netColorBy');
-          var th=dst.querySelector('.ml-h');
+          var th=dst.querySelector('.ml-h-label');
           if(th)th.textContent=(sel&&sel.options&&sel.options[sel.selectedIndex])?sel.options[sel.selectedIndex].text:'Road class';
           if(body)body.innerHTML=hasContent?src.innerHTML:'';
           var ro=document.getElementById('showRoads');
           var roadsOn=ro&&ro.checked;
           dst.classList.toggle('show',!!(hasContent&&roadsOn));
         }
+        function enableDrag(){
+          var el=document.getElementById('mapLegend'),handle=el&&el.querySelector('.ml-h'),container=document.getElementById('main');
+          if(!el||!handle||!container)return;
+          var dragging=false,offX=0,offY=0;
+          function clamp(left,top){
+            var maxL=container.clientWidth-el.offsetWidth,maxT=container.clientHeight-el.offsetHeight;
+            return {left:Math.max(0,Math.min(left,Math.max(0,maxL))),top:Math.max(0,Math.min(top,Math.max(0,maxT)))};
+          }
+          try{
+            var pos=JSON.parse(localStorage.getItem('klMapLegendPos')||'null');
+            if(pos&&isFinite(pos.left)&&isFinite(pos.top)){el.style.left=pos.left+'px';el.style.top=pos.top+'px';el.style.bottom='auto';}
+          }catch(e){}
+          handle.addEventListener('pointerdown',function(e){
+            if(e.target.closest('.ml-min'))return;
+            var cRect=container.getBoundingClientRect(),eRect=el.getBoundingClientRect();
+            offX=e.clientX-eRect.left;offY=e.clientY-eRect.top;
+            dragging=true;
+            el.style.left=(eRect.left-cRect.left)+'px';el.style.top=(eRect.top-cRect.top)+'px';el.style.bottom='auto';
+            el.classList.add('dragging');
+            try{handle.setPointerCapture(e.pointerId);}catch(err){}
+            e.preventDefault();
+          });
+          handle.addEventListener('pointermove',function(e){
+            if(!dragging)return;
+            var cRect=container.getBoundingClientRect();
+            var c=clamp(e.clientX-cRect.left-offX,e.clientY-cRect.top-offY);
+            el.style.left=c.left+'px';el.style.top=c.top+'px';
+          });
+          function endDrag(e){
+            if(!dragging)return;
+            dragging=false;
+            el.classList.remove('dragging');
+            try{handle.releasePointerCapture(e.pointerId);}catch(err){}
+            try{localStorage.setItem('klMapLegendPos',JSON.stringify({left:parseFloat(el.style.left),top:parseFloat(el.style.top)}));}catch(err){}
+          }
+          handle.addEventListener('pointerup',endDrag);
+          handle.addEventListener('pointercancel',endDrag);
+        }
+        function enableMinimize(){
+          var el=document.getElementById('mapLegend'),btn=el&&el.querySelector('.ml-min');
+          if(!el||!btn)return;
+          function apply(min){
+            el.classList.toggle('min',min);
+            btn.innerHTML=min?'&plus;':'&minus;';
+            btn.title=min?'Expand':'Minimize';
+          }
+          var min=false;
+          try{min=localStorage.getItem('klMapLegendMin')==='1';}catch(e){}
+          apply(min);
+          btn.addEventListener('click',function(e){
+            e.stopPropagation();
+            min=!min;
+            apply(min);
+            try{localStorage.setItem('klMapLegendMin',min?'1':'0');}catch(err){}
+          });
+        }
         function start(){
           var src=document.getElementById('netLegend');
           if(src&&window.MutationObserver){try{new MutationObserver(mirror).observe(src,{childList:true,subtree:true,characterData:true});}catch(e){}}
           ['netColorBy','showRoads'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',function(){setTimeout(mirror,60);});});
           document.querySelectorAll('#iconrail .railbtn').forEach(function(b){b.addEventListener('click',function(){setTimeout(mirror,80);});});
+          enableDrag();
+          enableMinimize();
           setTimeout(mirror,800);setTimeout(mirror,2200);
         }
         if(document.readyState!=='loading')start();else document.addEventListener('DOMContentLoaded',start);
@@ -528,6 +603,9 @@
     </script>
 <style id="vidhud-css">
 #dock .vid{position:relative;}
+#dock .vh-gapbanner{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:9;display:none;align-items:center;gap:8px;background:rgba(184,38,29,.94);color:#fff;font:700 13px/1.3 Inter,system-ui,sans-serif;padding:8px 16px;border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.4);pointer-events:none;letter-spacing:.2px;white-space:nowrap}
+#dock .vh-gapbanner.show{display:flex}
+#dock .vh-gapbanner .gap-ic{font-size:15px;line-height:1}
 .vidhud{display:none;position:fixed;inset:0;z-index:8;pointer-events:none;font-family:Inter,system-ui,sans-serif;color:#eaf2ff}
 .vidhud *{box-sizing:border-box}
 .vid:fullscreen .vidhud,.vid:-webkit-full-screen .vidhud{display:block}
@@ -589,13 +667,14 @@
 </style>
     <div id="dock">
       <span class="close" onclick="closeDock()">&times;</span>
-      <div class="vid"><video id="video" controls></video><div class="vidempty" id="vidempty" style="display:none"></div><div class="vidhud" id="vidhud"><div class="vh-left"><div class="vh-id"><div class="vh-route" id="hudRoute">&mdash;</div><div class="vh-meta"><span class="vh-cls" id="hudClass">&mdash;</span><span class="vh-sec" id="hudSec">&mdash;</span></div><div class="vh-chrow"><span class="vh-chip" id="hudCh">CH &ndash; m</span><span class="vh-chip dir" id="hudDir">Forward</span></div><div class="vh-attrs" id="hudAttrs"></div></div><div class="vh-iri" id="hudIri">AVG IRI &ndash;</div><div class="vh-pci" id="hudPci"></div></div><div class="vh-right"><svg class="vidhud-trk" id="hudTrack" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg><div class="vh-cond" id="hudCond"></div><div class="vh-chain" id="hudChain"></div></div><div class="vh-roadname" id="hudRoad">&mdash;</div></div></div>
+      <div class="vid"><video id="video" controls></video><div class="vidempty" id="vidempty" style="display:none"></div><div class="vh-gapbanner" id="hudGapBanner"><span class="gap-ic">&#9888;</span> No NSV survey data for this chainage</div><div class="vidhud" id="vidhud"><div class="vh-left"><div class="vh-id"><div class="vh-route" id="hudRoute">&mdash;</div><div class="vh-meta"><span class="vh-cls" id="hudClass">&mdash;</span><span class="vh-sec" id="hudSec">&mdash;</span></div><div class="vh-chrow"><span class="vh-chip" id="hudCh">CH &ndash; m</span><span class="vh-chip dir" id="hudDir">Forward</span></div><div class="vh-attrs" id="hudAttrs"></div></div><div class="vh-iri" id="hudIri">AVG IRI &ndash;</div><div class="vh-pci" id="hudPci"></div></div><div class="vh-right"><svg class="vidhud-trk" id="hudTrack" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg><div class="vh-cond" id="hudCond"></div><div class="vh-chain" id="hudChain"></div></div><div class="vh-roadname" id="hudRoad">&mdash;</div></div></div>
       <div class="instr">
         <div class="road-eyebrow">Now playing</div>
         <div class="road-name" id="dRoadName">—</div>
-        <div class="road-id" id="dRoadId">—</div>
+        <div class="road-secrow"><span class="road-seclbl">Section</span><span class="road-sec" id="dRoadId">—</span></div>
         <div class="road-route" id="dRoute">—</div>
-        <div class="meter"><span class="val" id="dCh">0</span><span class="unit">m</span><span class="cap">Chainage</span><span class="val" id="dIri" style="font-size:30px;margin-left:24px">–</span><span class="cap">IRI m/km</span></div>
+        <div class="meter"><span class="val" id="dCh">0</span><span class="unit">m</span><span class="cap">Chainage</span><span class="val" id="dIri" style="font-size:26px;margin-left:20px">–</span><span class="cap">IRI m/km</span></div>
+        <div class="covrow" id="dCoverage" style="display:none"><div class="cov-head">NSV survey coverage<span class="cov-pct" id="dCovPct">—</span></div><div class="cov-bar" id="dCovBar"></div><div class="cov-gaps" id="dCovGaps"></div></div>
         <div class="dirrow"><span class="lbl">Direction</span><span class="seg-dark"><button id="fwd" class="on" onclick="setDir('fwd')">Front</button><button id="rev" onclick="setDir('rev')">Back</button></span><span class="lbl" style="margin-left:auto">Length</span><span class="road-id" id="dLen" style="font-size:13px;color:#cdd9ea">—</span></div>
         <div class="dirrow"><span class="lbl">Speed</span><span class="seg-dark" id="speedSeg"><button data-spd="0.25" onclick="setSpeed(0.25,this)">0.25&times;</button><button data-spd="0.5" onclick="setSpeed(0.5,this)">0.5&times;</button><button data-spd="1" class="on" onclick="setSpeed(1,this)">1&times;</button><button data-spd="1.5" onclick="setSpeed(1.5,this)">1.5&times;</button><button data-spd="2" onclick="setSpeed(2,this)">2&times;</button></span></div>
         <div class="dirrow"><button class="trackfs-btn" onclick="toggleVidFs()">&#10530; Fullscreen with live track &amp; IRI</button></div>
