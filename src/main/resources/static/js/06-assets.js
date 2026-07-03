@@ -5,6 +5,7 @@
    share one global scope, so load order is preserved exactly.
    ============================================================ */
 // ---- asset layers (bridges, culverts, furniture) ----
+const ASSET_DATA={}; /* Build 163 — loaded geojson per asset type, for the filter summary card */
 const ASSETS=[
   {type:'bridge',  layer:'as-bridge',  kind:'line',  color:'#8a5cb8', width:6, toggle:'showBridge',  label:'Bridge'},
   {type:'furniture_line', layer:'as-furnl', kind:'line', color:'#0fa3a3', width:4, toggle:'showFurnL', label:'Furniture (line)'},
@@ -83,7 +84,13 @@ function loadAsset(a){
     return fetch('/api/assets/'+a.type+'/geojson').then(r=>r.json()).then(gj=>{
       if(!gj||!gj.features||!gj.features.length)return;
       const asLine=(a.type==='fwd')||((a.kind==='point')&&isStretchData(gj));
-      const go=()=>{if(asLine)linRefFeatures(gj);if(a.type==='fwd'){const sc=fwdScale(gj);gj.features.forEach(f=>{const v=fwdD0(f.properties);if(v!=null&&v!=='')f.properties.__d0=Math.round(+v*sc);f.properties.__dscale=sc;});}addAssetLayer(a,gj,asLine);};
+      const go=()=>{if(asLine)linRefFeatures(gj);if(a.type==='fwd'){const sc=fwdScale(gj);gj.features.forEach(f=>{const v=fwdD0(f.properties);if(v!=null&&v!=='')f.properties.__d0=Math.round(+v*sc);f.properties.__dscale=sc;});}
+        /* Build 163 — resolve each feature's section label into __sec so the
+           network-scope filter can match assets regardless of CSV column names */
+        gj.features.forEach(f=>{const v=pickProp(f.properties,ROAD_KEYS);if(v!=null&&v!=='')f.properties.__sec=String(v);});
+        ASSET_DATA[a.type]=gj;
+        addAssetLayer(a,gj,asLine);
+        if(typeof updateNetScopeCard==='function')updateNetScopeCard();};
       if(asLine)return ensureRoads().then(go);
       go();
     }).catch(()=>{});

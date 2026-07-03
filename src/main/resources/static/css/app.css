@@ -78,9 +78,30 @@
   .rpt-table tr:last-child td{border-bottom:0}
   .rpt-table td.num,.rpt-table th.num{text-align:right;font-variant-numeric:tabular-nums}
   .rpt-table td.mono{font-family:var(--mono);font-size:12px}
-  .frow{display:grid;grid-template-columns:1fr 50px 62px 24px;gap:6px;align-items:center;margin-top:8px}
-  .frow select,.frow input{width:100%;padding:6px;font-size:12px}.frow input{font-family:var(--mono);text-align:center}
+  .frow{display:grid;grid-template-columns:1fr 42px 1.3fr 18px;gap:5px;align-items:center;margin-top:8px}
+  .frow select,.frow input{width:100%;padding:6px 5px;font-size:11.5px;min-width:0}.frow input{font-family:var(--mono);text-align:center}
   .frow .x{cursor:pointer;color:var(--muted);text-align:center;font-size:16px}.frow .x:hover{color:var(--poor)}
+  /* Build 167 — value cell as a click-to-open picker button (never free-typed
+     for known-value attributes, so there is nothing to misspell) */
+  .frow .valbtn{width:100%;min-width:0;display:flex;align-items:center;gap:4px;border:1px solid var(--hair);border-radius:8px;background:#fff;padding:6px 6px 6px 8px;font-family:var(--sans);font-size:11.5px;color:var(--muted);cursor:pointer;text-align:left}
+  .frow .valbtn:hover{border-color:var(--accent)}
+  .frow .valbtn.has{color:var(--ink);font-weight:600}
+  .frow .valbtn .vb-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .frow .valbtn .vb-arr{flex:0 0 auto;font-style:normal;font-size:9px;color:var(--muted)}
+  .nvp{position:fixed;z-index:99998;background:#fff;border:1px solid var(--hair);border-radius:11px;box-shadow:0 18px 48px rgba(14,32,56,.28);display:flex;flex-direction:column;overflow:hidden}
+  .nvp-top{flex:0 0 auto;display:flex;gap:6px;align-items:center;padding:8px;border-bottom:1px solid var(--hair);background:#fafbfd}
+  .nvp-q{flex:1;min-width:0;padding:7px 9px;font-size:12.5px;font-family:var(--sans);border:1px solid var(--hair);border-radius:7px}
+  .nvp-q:focus{outline:none;border-color:var(--accent)}
+  .nvp-top button{flex:0 0 auto;border:1px solid var(--hair);background:#fff;color:var(--ink);font-family:var(--sans);font-weight:700;font-size:11px;cursor:pointer;padding:6px 9px;border-radius:7px}
+  .nvp-top button:hover{background:var(--slate)}
+  .nvp-list{overflow-y:auto;padding:5px;min-height:0}
+  .nvp-it{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 13px;font-size:13.5px;color:var(--text);border-radius:8px;cursor:pointer}
+  .nvp-it:hover{background:var(--slate)}
+  .nvp-it span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nvp-it input{accent-color:var(--accent);width:16px;height:16px;flex:0 0 auto;cursor:pointer}
+  .nvp-empty{padding:16px;text-align:center;font-size:12.5px;color:var(--muted)}
+  .nvp-cnt{flex:0 0 auto;padding:7px 13px;font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--hair);background:#fafbfd}
+
   .btn{font-family:var(--sans);background:var(--ink);color:#fff;border:0;border-radius:8px;padding:8px 13px;font-size:12.5px;font-weight:500;cursor:pointer}
   .btn:hover{background:var(--ink-2)}.btn.ghost{background:var(--slate);color:var(--ink)}.btn.ghost:hover{background:#e3e8f0}
   .row2{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
