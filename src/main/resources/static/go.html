@@ -80,6 +80,9 @@
   .go-open{font-size:12px;color:var(--accent-d);font-weight:600;flex-shrink:0}
   .go-del{flex-shrink:0;border:0;background:none;color:#c0c8d4;font-size:18px;cursor:pointer;padding:2px 6px;line-height:1}
   .go-del:hover{color:#da4b43}
+  /* view-only users cannot delete GOs / folders (role-gate.js sets the body class) */
+  body.role-user .go-del{display:none}
+  body.role-user .ftag button{display:none}
 
   .empty{text-align:center;color:var(--muted);padding:46px 20px;background:#fff;border:1px dashed var(--line);border-radius:13px}
   .empty svg{color:#c2cdda;margin-bottom:10px}
@@ -125,7 +128,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" data-requires="admin">
       <h2>Upload a Government Order</h2>
       <p class="sub">Choose a folder, give the GO a name, and pick the file (PDF recommended).</p>
       <div class="row2">
@@ -140,7 +143,7 @@
       <div class="out" id="upOut"></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-requires="admin">
       <h2>Folders</h2>
       <p class="sub">Create folders like <b>RMMS Cell</b> or <b>CRN</b>. To make a sub-folder, pick a parent.</p>
       <div class="row2">
@@ -296,5 +299,6 @@ document.getElementById('goSearch').addEventListener('input',renderHome);
 loadAll();
 </script>
   <script src="/js/launcher.js"></script>
+  <script src="/js/role-gate.js" defer></script>
 </body>
 </html>

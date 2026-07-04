@@ -1,56 +1,50 @@
 package com.fist.rmms_backend;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * KLRAMS / KHRI security.
+ * KLRAMS / KHRI security — role-based access control.
+ *
+ *  Accounts are stored in the {@code app_users} table and loaded by
+ *  {@link AppUserDetailsService}; the first SUPER_ADMIN is seeded from
+ *  {@code app.admin.username} / {@code app.admin.password} by {@link UserService}.
+ *
+ *  Roles (a role hierarchy makes each level inherit the ones below it):
+ *    SUPER_ADMIN — full power: all data, Site Control, User Management
+ *    ADMIN       — view everything + import/edit/delete data; NOT Site Control, NOT User Management
+ *    USER        — view-only: every read, no writes anywhere
  *
  *  Public (no login):
- *    - welcome.html  (public KHRI portal: Home / GOs / About / Contact)
- *    - login.html, /login, favicon, /img/** (logos, survey photos)
- *    - /js/**, /css/** (front-end assets the public pages need: 3D scene, styles)
- *    - GET /api/go/folders, /api/go/docs, /api/go/file/**   (read GOs)
- *    - GET /api/site/content                                (About / Contact text)
+ *    - welcome.html, login.html, /login, favicon, /img/**, /js/**, /css/**
+ *    - GET /api/go/folders, /api/go/docs, /api/go/file/**, /api/site/content
  *
- *  Authenticated (staff): everything else — the GIS viewer (/map.html), the
- *  internal portal (/home.html), the Data Console (/), and all uploads / edits
- *  (POST & DELETE on /api/go/** and /api/site/**).
- *
- *  One admin account for the pilot; credentials come from application.properties
- *  (app.admin.username / app.admin.password). CSRF is disabled for the pilot so
- *  the existing upload fetch() calls work unchanged; enable it before public hosting.
+ *  Everything else needs a login; writes are gated by role (see the matchers
+ *  below). CSRF is disabled for the pilot so the existing upload fetch() calls
+ *  work unchanged; enable it before public hosting.
  */
 @Configuration
 public class SecurityConfig {
-
-    @Value("${app.admin.username:admin}")
-    private String adminUser;
-
-    @Value("${app.admin.password:Klrams@2026}")
-    private String adminPass;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder();
     }
 
+    /** SUPER_ADMIN inherits ADMIN inherits USER, so hasRole("ADMIN") also passes super admins. */
     @Bean
-    public UserDetailsService users(PasswordEncoder encoder) {
-        return new InMemoryUserDetailsManager(
-            User.withUsername(adminUser)
-                .password(encoder.encode(adminPass))
-                .roles("ADMIN")
-                .build());
+    public RoleHierarchy roleHierarchy() {
+        return RoleHierarchyImpl.withDefaultRolePrefix()
+                .role("SUPER_ADMIN").implies("ADMIN")
+                .role("ADMIN").implies("USER")
+                .build();
     }
 
     @Bean
@@ -63,7 +57,25 @@ public class SecurityConfig {
                                  "/img/**", "/js/**", "/css/**").permitAll()
                 // public read-only APIs (Government Orders + About/Contact)
                 .requestMatchers(HttpMethod.GET, "/api/go/folders", "/api/go/docs", "/api/go/file/**", "/api/site/content").permitAll()
-                // everything else (viewer, console, portal, all uploads/edits) needs login
+
+                // --- SUPER_ADMIN only: Site Control + User Management ---
+                .requestMatchers("/admin.html").hasRole("SUPER_ADMIN")          // Site Control page
+                .requestMatchers("/users.html").hasRole("SUPER_ADMIN")          // User Management page
+                .requestMatchers("/api/users/**").hasRole("SUPER_ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/site/**").hasRole("SUPER_ADMIN")  // site settings writes
+
+                // --- self-service: change own password ---
+                .requestMatchers("/api/account/**").authenticated()
+
+                // --- view-only (USER) is blocked from every write ---
+                // climate seed/recalc are triggerable via GET, so pin them explicitly
+                .requestMatchers("/api/climate/seed-grid", "/api/climate/recalc").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST,   "/api/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT,    "/api/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PATCH,  "/api/**").hasRole("ADMIN")
+
+                // everything else (all reads, the viewer, portals) needs any login
                 .anyRequest().authenticated())
             .formLogin(f -> f
                 .loginPage("/login.html")

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLRAMS Console · User Management — Kerala PWD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0b1220; --panel:#101b2e; --panel-2:#0e1726; --edge:#20304c; --edge-soft:#1a2740;
+    --text:#eaf0fa; --muted:#93a3bb; --muted-2:#5f6e86;
+    --green:#19b277; --blue:#3b86e6; --gold:#d3aa3e; --violet:#8a68e6; --red:#e65b5b; --amber:#ffa630;
+    --disp:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{min-height:100%}
+  body{font-family:var(--body);background:var(--void);color:var(--text);-webkit-font-smoothing:antialiased}
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:radial-gradient(90% 60% at 82% -10%, rgba(138,104,230,.14) 0, transparent 60%),
+      radial-gradient(70% 50% at 8% 108%, rgba(59,134,230,.12) 0, transparent 60%), var(--void)}
+  .shell{position:relative;z-index:2;max-width:1180px;margin:0 auto;padding:24px clamp(18px,4vw,48px) 44px}
+
+  .top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:13px}
+  .glyph{width:44px;height:44px;border-radius:12px;flex:none;background:linear-gradient(135deg,#8a68e6,#5b3fb0);display:flex;align-items:center;justify-content:center;color:#fff}
+  .glyph svg{width:23px;height:23px}
+  .bk .t{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.5px}
+  .bk .s{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted-2);margin-top:2px}
+  .top-r{display:flex;align-items:center;gap:11px}
+  .rolechip{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#c7b6f5;border:1px solid rgba(138,104,230,.4);background:rgba(138,104,230,.09);border-radius:999px;padding:8px 14px}
+  .link{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);border:1px solid var(--edge);border-radius:999px;padding:8px 16px;text-decoration:none;transition:.2s}
+  .link:hover{color:var(--amber);border-color:rgba(255,166,48,.5)}
+
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(24px,3.4vw,34px);letter-spacing:-.01em;margin:26px 0 6px}
+  .sub{color:var(--muted);font-size:13.5px;max-width:640px}
+
+  .card{background:linear-gradient(165deg,var(--panel) 0,var(--panel-2) 100%);border:1px solid var(--edge-soft);border-radius:16px;padding:20px 20px 18px;margin-top:22px}
+  .card h2{font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:.3px;margin-bottom:14px;display:flex;align-items:center;gap:9px}
+  .card h2 .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+
+  /* add-user form */
+  .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;align-items:end}
+  label{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+  input,select{width:100%;padding:10px 12px;border:1px solid var(--edge);border-radius:9px;font-size:13.5px;font-family:var(--body);color:var(--text);background:rgba(6,11,20,.55);transition:.18s}
+  input:focus,select:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 3px rgba(138,104,230,.15)}
+  select option{background:#101b2e}
+  .btn{cursor:pointer;border:0;border-radius:9px;padding:11px 18px;font-family:var(--disp);font-weight:600;font-size:13.5px;color:#0c1320;background:linear-gradient(180deg,#a488f0,#8a68e6);transition:filter .18s,transform .06s}
+  .btn:hover{filter:brightness(1.06)} .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--edge)}
+  .btn.ghost:hover{color:var(--text);border-color:var(--violet)}
+  .btn.sm{padding:6px 11px;font-size:11.5px;border-radius:7px}
+  .btn.danger{background:linear-gradient(180deg,#ef7676,#e65b5b)}
+
+  .msg{margin-top:12px;font-size:12.5px;padding:9px 12px;border-radius:9px;display:none}
+  .msg.err{display:block;color:#ffb4ac;background:rgba(230,91,91,.1);border:1px solid rgba(230,91,91,.32)}
+  .msg.ok{display:block;color:#a4ecc7;background:rgba(25,178,119,.1);border:1px solid rgba(25,178,119,.32)}
+
+  /* table */
+  .tbl-wrap{overflow-x:auto;margin-top:6px}
+  table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
+  th{text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2);font-weight:600;padding:8px 12px;border-bottom:1px solid var(--edge)}
+  td{padding:11px 12px;border-bottom:1px solid var(--edge-soft);vertical-align:middle}
+  tr:hover td{background:rgba(255,255,255,.015)}
+  .uname{font-weight:600}
+  .pill{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid}
+  .pill.super{color:#c7b6f5;border-color:rgba(138,104,230,.45);background:rgba(138,104,230,.1)}
+  .pill.admin{color:#8fc0f7;border-color:rgba(59,134,230,.45);background:rgba(59,134,230,.1)}
+  .pill.user{color:#9ee8c6;border-color:rgba(25,178,119,.45);background:rgba(25,178,119,.1)}
+  .pill.on{color:#9ee8c6;border-color:rgba(25,178,119,.4)}
+  .pill.off{color:#c3ccda;border-color:var(--edge)}
+  .actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+  .empty{color:var(--muted-2);font-size:13px;text-align:center;padding:26px}
+
+  /* modal */
+  .modal-bg{position:fixed;inset:0;z-index:50;background:rgba(4,8,14,.66);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-bg.show{display:flex}
+  .modal{width:100%;max-width:400px;background:linear-gradient(165deg,var(--panel),var(--panel-2));border:1px solid var(--edge);border-radius:14px;padding:22px}
+  .modal h3{font-family:var(--disp);font-size:16px;margin-bottom:5px}
+  .modal p{color:var(--muted);font-size:12.5px;margin-bottom:16px}
+  .modal .row{display:flex;gap:9px;justify-content:flex-end;margin-top:18px}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="shell">
+    <div class="top">
+      <div class="brand">
+        <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 8h5M19.5 5.5v5"/></svg></span>
+        <span class="bk"><div class="t">User Management</div><div class="s">KLRAMS Console · Kerala PWD</div></span>
+      </div>
+      <div class="top-r">
+        <span class="rolechip" id="rolechip">—</span>
+        <a class="link" href="/home.html">&lsaquo; Home</a>
+        <a class="link" href="/logout">Sign out</a>
+      </div>
+    </div>
+
+    <h1>Accounts &amp; roles</h1>
+    <p class="sub">Create staff accounts and assign a role. <b>Super Admin</b> has full power. <b>Admin</b> can view and import data but not site settings. <b>User</b> can view everything but cannot edit. New users must change their password on first sign-in.</p>
+
+    <div class="card">
+      <h2><span class="dot"></span>Add a user</h2>
+      <form id="addForm" class="form-grid" autocomplete="off">
+        <div><label for="f-username">User ID</label><input id="f-username" name="username" required placeholder="e.g. rmms.ravi"></div>
+        <div><label for="f-fullname">Full name</label><input id="f-fullname" name="fullName" placeholder="e.g. Ravi Kumar"></div>
+        <div><label for="f-role">Role</label>
+          <select id="f-role" name="role">
+            <option value="USER">User — view only</option>
+            <option value="ADMIN">Admin — view + import</option>
+            <option value="SUPER_ADMIN">Super Admin — full</option>
+          </select>
+        </div>
+        <div><label for="f-password">Initial password</label><input id="f-password" name="password" type="text" required placeholder="min 6 characters"></div>
+        <div><button class="btn" type="submit">Add user</button></div>
+      </form>
+      <div class="msg" id="addMsg"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>All users</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>User ID</th><th>Full name</th><th>Role</th><th>Status</th><th>Updated</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody id="rows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="msg" id="listMsg"></div>
+    </div>
+  </div>
+
+  <!-- reset password modal -->
+  <div class="modal-bg" id="pwModal">
+    <div class="modal">
+      <h3>Reset password</h3>
+      <p id="pwWho">Set a new password. The user will be asked to change it at next sign-in.</p>
+      <label for="pwNew">New password</label>
+      <input id="pwNew" type="text" placeholder="min 6 characters">
+      <div class="row">
+        <button class="btn ghost" type="button" id="pwCancel">Cancel</button>
+        <button class="btn" type="button" id="pwSave">Save password</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/role-gate.js" defer></script>
+  <script>
+  (function(){
+    var rows = document.getElementById('rows');
+    var addForm = document.getElementById('addForm');
+    var addMsg = document.getElementById('addMsg');
+    var listMsg = document.getElementById('listMsg');
+    var pwModal = document.getElementById('pwModal');
+    var pwNew = document.getElementById('pwNew');
+    var pwWho = document.getElementById('pwWho');
+    var pwTarget = null;
+
+    window.RoleGate = window.RoleGate || {};
+    window.RoleGate.onReady = function(me){
+      var r = (me && me.role) || 'USER';
+      document.getElementById('rolechip').textContent =
+        r === 'SUPER_ADMIN' ? 'Super Admin' : r === 'ADMIN' ? 'Admin' : 'User';
+    };
+
+    function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+    function fmtDate(s){ if(!s) return '—'; try{ return new Date(s).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); }catch(e){ return '—'; } }
+    function roleLabel(r){ return r==='SUPER_ADMIN'?'Super Admin':r==='ADMIN'?'Admin':'User'; }
+    function roleCls(r){ return r==='SUPER_ADMIN'?'super':r==='ADMIN'?'admin':'user'; }
+    function flash(el, ok, text){ el.className = 'msg ' + (ok?'ok':'err'); el.textContent = text; setTimeout(function(){ if(el.textContent===text) el.className='msg'; }, ok?3500:6000); }
+
+    function load(){
+      fetch('/api/users', {credentials:'same-origin'})
+        .then(function(r){ if(!r.ok) throw new Error('You are not allowed to view users ('+r.status+').'); return r.json(); })
+        .then(render)
+        .catch(function(e){ rows.innerHTML = '<tr><td colspan="6" class="empty">'+esc(e.message)+'</td></tr>'; });
+    }
+
+    function render(list){
+      if(!list.length){ rows.innerHTML = '<tr><td colspan="6" class="empty">No users yet.</td></tr>'; return; }
+      rows.innerHTML = list.map(function(u){
+        var enabled = u.enabled;
+        var roleSel = ['USER','ADMIN','SUPER_ADMIN'].map(function(v){
+          return '<option value="'+v+'"'+(u.role===v?' selected':'')+'>'+roleLabel(v)+'</option>'; }).join('');
+        return '<tr data-id="'+u.id+'">'+
+          '<td class="uname">'+esc(u.username)+'</td>'+
+          '<td>'+esc(u.full_name||'—')+'</td>'+
+          '<td><select class="roleSel" style="max-width:150px">'+roleSel+'</select></td>'+
+          '<td><span class="pill '+(enabled?'on':'off')+'">'+(enabled?'Active':'Disabled')+'</span></td>'+
+          '<td>'+fmtDate(u.updated_at)+'</td>'+
+          '<td><div class="actions">'+
+            '<button class="btn sm ghost act-toggle">'+(enabled?'Disable':'Enable')+'</button>'+
+            '<button class="btn sm ghost act-pw">Reset password</button>'+
+            '<button class="btn sm danger act-del">Delete</button>'+
+          '</div></td>'+
+        '</tr>';
+      }).join('');
+    }
+
+    function idOf(el){ return el.closest('tr').getAttribute('data-id'); }
+
+    // add user
+    addForm.addEventListener('submit', function(e){
+      e.preventDefault();
+      var body = { username:addForm.username.value.trim(), fullName:addForm.fullName.value.trim(),
+                   role:addForm.role.value, password:addForm.password.value };
+      fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(body)})
+        .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+        .then(function(res){
+          if(res.ok && res.d.ok){ flash(addMsg, true, 'User "'+body.username+'" created.'); addForm.reset(); load(); }
+          else flash(addMsg, false, res.d.error || 'Could not create user.');
+        })
+        .catch(function(){ flash(addMsg, false, 'Network error.'); });
+    });
+
+    // row actions (event delegation)
+    rows.addEventListener('click', function(e){
+      var t = e.target;
+      if(t.classList.contains('act-toggle')){
+        var tr = t.closest('tr');
+        var enabled = tr.querySelector('.pill').classList.contains('on');
+        put(idOf(t), {enabled: !enabled});
+      } else if(t.classList.contains('act-del')){
+        var name = t.closest('tr').querySelector('.uname').textContent;
+        if(confirm('Delete user "'+name+'"? This cannot be undone.')) del(idOf(t));
+      } else if(t.classList.contains('act-pw')){
+        pwTarget = idOf(t);
+        pwWho.textContent = 'New password for "'+t.closest('tr').querySelector('.uname').textContent+'". They will change it at next sign-in.';
+        pwNew.value=''; pwModal.classList.add('show'); pwNew.focus();
+      }
+    });
+    rows.addEventListener('change', function(e){
+      if(e.target.classList.contains('roleSel')) put(idOf(e.target), {role: e.target.value});
+    });
+
+    function put(id, body){
+      fetch('/api/users/'+id, {method:'PUT', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(body)})
+        .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+        .then(function(res){ if(res.ok && res.d.ok){ flash(listMsg,true,'Saved.'); } else flash(listMsg,false,res.d.error||'Update failed.'); load(); })
+        .catch(function(){ flash(listMsg,false,'Network error.'); load(); });
+    }
+    function del(id){
+      fetch('/api/users/'+id, {method:'DELETE', credentials:'same-origin'})
+        .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+        .then(function(res){ if(res.ok && res.d.ok){ flash(listMsg,true,'User deleted.'); } else flash(listMsg,false,res.d.error||'Delete failed.'); load(); })
+        .catch(function(){ flash(listMsg,false,'Network error.'); });
+    }
+
+    document.getElementById('pwCancel').addEventListener('click', function(){ pwModal.classList.remove('show'); });
+    pwModal.addEventListener('click', function(e){ if(e.target===pwModal) pwModal.classList.remove('show'); });
+    document.getElementById('pwSave').addEventListener('click', function(){
+      if(!pwTarget) return;
+      fetch('/api/users/'+pwTarget+'/password', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({password:pwNew.value})})
+        .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+        .then(function(res){ pwModal.classList.remove('show'); if(res.ok && res.d.ok) flash(listMsg,true,'Password reset.'); else flash(listMsg,false,res.d.error||'Reset failed.'); })
+        .catch(function(){ pwModal.classList.remove('show'); flash(listMsg,false,'Network error.'); });
+    });
+
+    load();
+  })();
+  </script>
+</body>
+</html>

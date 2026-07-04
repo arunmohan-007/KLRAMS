@@ -52,6 +52,12 @@
   .out{font-weight:500}
   .card textarea{width:100%;padding:10px 12px;border:1px solid var(--hair);border-radius:9px;font-size:13px;font-family:var(--sans);background:#fff;margin-bottom:6px;resize:vertical;line-height:1.5}
   .card input[type=text],.card input:not([type]),.card select{width:100%;max-width:430px;padding:9px 11px;border:1px solid var(--hair);border-radius:9px;font-size:13.5px;font-family:var(--sans);margin-bottom:6px;background:#fff}
+  /* view-only users cannot import — role-gate.js hides .wrap and reveals this */
+  .viewonly-note{display:none;max-width:640px;margin:60px auto;padding:26px 28px;background:var(--surface);border:1px solid var(--hair);border-radius:14px;box-shadow:var(--shadow);text-align:center}
+  body.role-user .viewonly-note{display:block}
+  .viewonly-note h2{font-size:18px;margin:0 0 8px;color:var(--ink)}
+  .viewonly-note p{color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 16px}
+  .viewonly-note a{display:inline-flex;align-items:center;gap:6px;color:var(--accent-d);font-weight:600;text-decoration:none;font-size:14px}
 </style>
 </head>
 <body>
@@ -62,7 +68,13 @@
     <a href="/logout" style="margin-left:14px">Sign out</a>
   </div>
 
-  <div class="wrap">
+  <div class="viewonly-note">
+    <h2>View-only access</h2>
+    <p>Your account can view data across KLRAMS but cannot import or edit it. Data import is available to Admin and Super Admin accounts.</p>
+    <a href="/map.html">Open the GIS viewer &rarr;</a>
+  </div>
+
+  <div class="wrap" data-requires="admin">
     <div class="stats">
       <div class="stat"><div class="n" id="sCond">—</div><div class="l">Condition rows</div></div>
       <div class="stat"><div class="n" id="sSeg">—</div><div class="l">Built segments</div></div>
@@ -421,5 +433,6 @@ async function saveSite(key){
 loadSite();
 </script>
   <script src="/js/launcher.js"></script>
+  <script src="/js/role-gate.js" defer></script>
 </body>
 </html>

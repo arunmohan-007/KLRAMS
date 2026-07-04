@@ -115,7 +115,7 @@
         <span class="bk"><span class="t">KL<span>RAMS</span> Console</span><br><span class="s">Kerala Road Asset Management System</span></span>
       </div>
       <div class="top-r">
-        <span class="pwd-badge"><span class="dot"></span>Kerala PWD</span>
+        <span class="pwd-badge"><span class="dot"></span><span id="roleBadge">Kerala PWD</span></span>
         <a class="signout" href="/logout">Sign out</a>
       </div>
     </div>
@@ -140,7 +140,7 @@
         <span class="mod-d">Interactive road network map — condition layers, PCI, FWD, assets, NSV survey video and dashboards.</span>
         <span class="mod-go">Open viewer <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
       </a>
-      <a class="mod" href="/" style="--ac:var(--blue)">
+      <a class="mod" href="/" style="--ac:var(--blue)" data-requires="admin">
         <span class="mod-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></span>
         <span class="mod-t">Data Console</span>
         <span class="mod-d">Import the road network, survey videos, condition &amp; test data, assets and traffic counts.</span>
@@ -152,11 +152,17 @@
         <span class="mod-d">Publish and organise Government Orders — folders, documents and public downloads.</span>
         <span class="mod-go">Open portal <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
       </a>
-      <a class="mod" href="/admin.html" style="--ac:var(--violet)">
+      <a class="mod" href="/admin.html" style="--ac:var(--violet)" data-requires="super">
         <span class="mod-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1 1 0 0 0 .2 1.1l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1 1 0 0 0-1.7.7V18a2 2 0 1 1-4 0v-.1a1 1 0 0 0-1.7-.7l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1 1 0 0 0-.7-1.7H6a2 2 0 1 1 0-4h.1a1 1 0 0 0 .7-1.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1 1 0 0 0 1.7-.7V6a2 2 0 1 1 4 0v.1a1 1 0 0 0 1.7.7l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1 1 0 0 0 .2 1.1z"/></svg></span>
         <span class="mod-t">Site Control</span>
         <span class="mod-d">Manage the public website — About &amp; Contact content, imagery and site settings.</span>
         <span class="mod-go">Open settings <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <a class="mod" href="/users.html" style="--ac:var(--amber)" data-requires="super">
+        <span class="mod-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 8h5M19.5 5.5v5"/></svg></span>
+        <span class="mod-t">User Management</span>
+        <span class="mod-d">Create staff accounts and assign roles — Super Admin, Admin (import) and view-only Users.</span>
+        <span class="mod-go">Manage users <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
       </a>
     </div>
 
@@ -189,6 +195,16 @@
     }
     tick();setInterval(tick,15000);
   })();
+
+  // role badge + card gating (role-gate.js does the hiding + force-change redirect)
+  window.RoleGate = window.RoleGate || {};
+  window.RoleGate.onReady = function(me){
+    var r = (me && me.role) || 'USER';
+    var label = r === 'SUPER_ADMIN' ? 'Super Admin' : r === 'ADMIN' ? 'Admin' : 'View only';
+    var el = document.getElementById('roleBadge');
+    if(el) el.textContent = label;
+  };
 </script>
+<script src="/js/role-gate.js" defer></script>
 </body>
 </html>
