@@ -26,9 +26,11 @@ public class RoadUploadController {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper om = new ObjectMapper();
+    private final RoadController roadController;   // to clear its in-memory GeoJSON cache after upload
 
-    public RoadUploadController(JdbcTemplate jdbc) {
+    public RoadUploadController(JdbcTemplate jdbc, RoadController roadController) {
         this.jdbc = jdbc;
+        this.roadController = roadController;
     }
 
     @PostMapping("/upload")
@@ -128,6 +130,9 @@ public class RoadUploadController {
             if (mode.equalsIgnoreCase("replace")) r.put("removed_old", replaced);
             Long total = jdbc.queryForObject("SELECT count(*) FROM roads", Long.class);
             r.put("total_roads", total);
+            // Roads changed -> drop RoadController's cached GeoJSON so the very next
+            // map load serves the new network (no restart / manual refresh needed).
+            roadController.refresh();
             return r;
         } catch (Exception e) {
             // surface the real cause to the Data Console instead of a blank 500

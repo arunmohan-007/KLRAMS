@@ -68,6 +68,231 @@
   .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;text-transform:capitalize}
   .badge.ok{background:#e7f6ef;color:var(--accent-d)}
   .badge.err{background:#fcebea;color:#a3302a}
+  /* --- Data Import Hub palette (orange accent, per the design model) --- */
+  :root{--hub-accent:#dd6b20;--hub-bg:#fdf2e9;--hub-bd:#f6cfa6}
+  /* --- three-tab navigation --- */
+  .wrap{max-width:1140px}
+  .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:5px;margin:0 0 22px;box-shadow:var(--shadow);width:fit-content}
+  .tab{font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--muted);background:transparent;border:0;border-radius:8px;padding:8px 22px;cursor:pointer;transition:background .15s,color .15s}
+  .tab:hover{color:var(--ink)}
+  .tab.active{background:var(--ink);color:#fff}
+  .tabpane[hidden]{display:none}
+  .pane-head{display:flex;align-items:center;justify-content:space-between;margin:0 0 16px;gap:14px}
+  .pane-head h1{font-size:20px;margin:0;color:var(--ink)}
+  .pane-head .sub{margin:0;color:var(--muted);font-size:13px}
+  /* --- import hub (4-column selector) --- */
+  .hub{display:grid;grid-template-columns:repeat(3,minmax(168px,1fr)) minmax(300px,1.7fr);gap:14px;align-items:start}
+  @media(max-width:900px){.hub{grid-template-columns:1fr}}
+  .hub-col{background:var(--surface);border:1px solid var(--hair);border-radius:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+  .hub-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--hair);font-weight:600;font-size:14px;color:var(--ink)}
+  .hub-head svg{color:var(--muted);flex:none}
+  .hub-search{margin:10px 12px 2px;padding:7px 11px;border:1px solid var(--hair);border-radius:9px;font-size:13px;font-family:var(--sans);background:#fbfcfe}
+  .hub-search:focus{outline:none;border-color:var(--hub-accent);box-shadow:0 0 0 3px rgba(221,107,32,.14)}
+  .hub-list{padding:6px;overflow:auto;max-height:448px}
+  .hub-row{display:flex;align-items:center;gap:10px;padding:11px 12px;margin:2px 4px;border-radius:10px;border:1px solid transparent;cursor:pointer;font-size:13.5px;color:var(--text);transition:background .12s}
+  .hub-row:hover{background:#f7f9fc}
+  .hub-row.active{background:var(--hub-bg);border-color:var(--hub-bd);color:var(--hub-accent);font-weight:600}
+  .hub-ic{width:20px;height:20px;flex:none;color:var(--muted);display:flex;align-items:center;justify-content:center}
+  .hub-ic svg{width:20px;height:20px}
+  .hub-row.active .hub-ic{color:var(--hub-accent)}
+  .hub-label{flex:1;line-height:1.3}
+  .hub-chev{color:#c7d0dc;font-size:17px;font-weight:700;line-height:1}
+  .hub-row.active .hub-chev{color:var(--hub-accent)}
+  .hub-params{padding:20px 22px 24px;overflow:auto;max-height:560px}
+  .hub-empty{color:var(--muted);font-size:13.5px;text-align:center;padding:48px 12px}
+  /* import-parameters panel controls */
+  .ip-title{font-size:15.5px;font-weight:700;color:var(--ink);margin:0 0 5px}
+  .ip-sub{color:var(--muted);font-size:12.5px;line-height:1.55;margin:0 0 16px}
+  .ip-field{margin:0 0 14px}
+  .ip-label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:0 0 6px}
+  .ip-modes{display:flex;flex-direction:column;gap:8px}
+  .ip-modes label{font-size:13.5px;display:flex;align-items:center;gap:7px}
+  .hub-params .out{max-width:none}
+</style>
+<style id="console-refresh">
+  /* ============================================================
+     KLRAMS Data Console — refreshed UI (override layer)
+     Brand: deep navy + signature green, with restrained accents.
+     ============================================================ */
+  :root{
+    --ink:#0e2038;--ink-2:#1b3252;--ink-3:#26415f;
+    --slate:#eef1f5;--surface:#fff;--hair:#e2e7ee;--hair-2:#d6deea;
+    --muted:#64718a;--text:#1f2a3d;
+    --accent:#16a06b;--accent-d:#0d7a51;--accent-l:#1ec98a;
+    --good:#2ba66a;--poor:#da4b43;
+    --hub-accent:#dd6b20;--hub-bg:#fdf2e9;--hub-bd:#f6cfa6;
+    --blue:#3b86e6;--violet:#8a68e6;--amber:#d9a02a;--rose:#e0568f;--cyan:#15b8c4;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    --sans:"Inter",system-ui,"Segoe UI",sans-serif;
+    --r-lg:18px;--r-md:14px;--r-sm:10px;
+    --sh-sm:0 1px 2px rgba(14,32,56,.06),0 1px 3px rgba(14,32,56,.05);
+    --sh:0 1px 2px rgba(14,32,56,.06),0 8px 24px rgba(14,32,56,.09);
+    --sh-lg:0 2px 6px rgba(14,32,56,.08),0 18px 44px rgba(14,32,56,.13);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;font-family:var(--sans);color:var(--text);
+    background:
+      radial-gradient(1100px 460px at 100% -8%, rgba(22,160,107,.07), transparent 60%),
+      radial-gradient(820px 420px at -8% 0%, rgba(59,134,230,.06), transparent 55%),
+      var(--slate);
+    background-attachment:fixed;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:rgba(22,160,107,.22)}
+  input[type=radio],input[type=checkbox]{accent-color:var(--accent)}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    height:60px;position:sticky;top:0;z-index:60;
+    background:linear-gradient(180deg,#122a4a,#0e2038);
+    color:#fff;display:flex;align-items:center;gap:12px;padding:0 20px;
+    box-shadow:0 6px 22px rgba(14,32,56,.16);
+  }
+  .topbar::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;
+    background:linear-gradient(90deg,#16a06b,#1ec98a 30%,#3b86e6 70%,#8a68e6)}
+  .kl-open.kl-big{margin-right:2px}
+  .brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+  .brand .t{font-size:15px;font-weight:700;letter-spacing:.3px}
+  .brand .t::after{content:"";display:inline-block;width:1px;height:15px;background:rgba(255,255,255,.18);margin-left:10px;vertical-align:middle}
+  .brand .s{font-size:12px;color:#9fb0c9;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar .spacer{flex:1}
+  .topbar .vlink{display:inline-flex;align-items:center;gap:6px;color:#cdd9ea;text-decoration:none;font-size:13px;font-weight:500;padding:8px 12px;border-radius:9px;border:1px solid transparent;transition:.15s}
+  .topbar .vlink:hover{color:#fff;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.12)}
+  .topbar .vlink svg{width:15px;height:15px}
+  .topbar .signout{display:inline-flex;align-items:center;gap:7px;margin-left:4px;color:#fff;text-decoration:none;font-size:13px;font-weight:600;padding:8px 14px;border-radius:9px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);transition:.15s}
+  .topbar .signout:hover{background:rgba(218,75,67,.18);border-color:rgba(218,75,67,.55)}
+  .topbar .signout svg{width:15px;height:15px}
+
+  /* ---------- layout ---------- */
+  .wrap{max-width:1140px;margin:26px auto;padding:0 20px}
+
+  /* ---------- console hero ---------- */
+  .console-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:22px;flex-wrap:wrap;
+    background:linear-gradient(120deg,#0e2038 0%,#173a63 55%,#0c6a4f 130%);
+    color:#fff;border-radius:var(--r-lg);padding:22px 26px;margin-bottom:18px;
+    box-shadow:var(--sh);border:1px solid rgba(255,255,255,.06)}
+  .console-hero::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:
+      radial-gradient(420px 220px at 88% -30%,rgba(30,201,138,.30),transparent 60%),
+      radial-gradient(360px 200px at 4% 140%,rgba(59,134,230,.26),transparent 60%)}
+  .console-hero>*{position:relative;z-index:1}
+  .hero-emblem{width:54px;height:54px;border-radius:15px;flex:none;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#19b277,#0d7a51);
+    box-shadow:0 8px 22px rgba(13,122,81,.45),inset 0 1px 0 rgba(255,255,255,.28)}
+  .hero-emblem svg{width:28px;height:28px;color:#fff}
+  .hero-txt{min-width:240px;flex:1}
+  .hero-eyebrow{font-size:11px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:#9fe9c8;margin-bottom:5px}
+  .hero-title{font-size:25px;font-weight:700;margin:0;line-height:1.1;letter-spacing:-.3px}
+  .hero-sub{font-size:13.5px;color:#c3d2e7;margin:7px 0 0;line-height:1.5;max-width:560px}
+  .hero-meta{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}
+  .hero-meta-item{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:13px;padding:10px 16px;text-align:center;min-width:110px;backdrop-filter:blur(4px)}
+  .hero-meta-item .hm-n{display:block;font-family:var(--mono);font-size:21px;font-weight:600;color:#fff;line-height:1.1;font-variant-numeric:tabular-nums}
+  .hero-meta-item .hm-l{display:block;font-size:10.5px;color:#a9bcd6;text-transform:uppercase;letter-spacing:.6px;margin-top:5px}
+
+  /* ---------- segmented tab control ---------- */
+  .tabs{display:inline-flex;gap:4px;background:var(--surface);border:1px solid var(--hair);border-radius:13px;padding:5px;margin:0 0 20px;box-shadow:var(--sh-sm)}
+  .tab{display:inline-flex;align-items:center;gap:8px;font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--muted);background:transparent;border:0;border-radius:9px;padding:9px 18px;cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
+  .tab svg{width:16px;height:16px}
+  .tab:hover{color:var(--ink)}
+  .tab.active{background:linear-gradient(180deg,#163a5f,#0e2038);color:#fff;box-shadow:0 2px 8px rgba(14,32,56,.20)}
+
+  /* ---------- pane heads ---------- */
+  .tabpane:not([hidden]){display:block;animation:fadeUp .28s ease}
+  .pane-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 16px}
+  .pane-head h1{font-size:20px;margin:0;color:var(--ink);font-weight:700;letter-spacing:-.2px;display:flex;align-items:center;gap:11px}
+  .pane-head h1::before{content:"";width:4px;height:18px;border-radius:3px;background:linear-gradient(180deg,var(--accent),var(--accent-l))}
+  .pane-head .sub{margin:0;color:var(--muted);font-size:13px}
+
+  /* ---------- count: stat tiles ---------- */
+  #statGrid{grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px}
+  .stat{position:relative;overflow:hidden;background:var(--surface);border:1px solid var(--hair);border-radius:var(--r-md);padding:15px 16px 14px;box-shadow:var(--sh-sm);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+  .stat::before{content:"";position:absolute;left:0;top:0;height:3px;width:100%;background:linear-gradient(90deg,var(--tone,var(--accent)),transparent);opacity:.95}
+  .stat:hover{transform:translateY(-3px);box-shadow:var(--sh);border-color:var(--hair-2)}
+  .stat-ic{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:11px;background:var(--tone-bg,#e7f6ef);color:var(--tone,var(--accent))}
+  .stat-ic svg{width:19px;height:19px}
+  .stat-n{font-family:var(--mono);font-size:25px;font-weight:600;color:var(--ink);line-height:1.05;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+  .stat-l{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.35}
+  .tone-green{--tone:#16a06b;--tone-bg:#e7f6ef}
+  .tone-blue{--tone:#3b86e6;--tone-bg:#e8f1fd}
+  .tone-violet{--tone:#8a68e6;--tone-bg:#efeafb}
+  .tone-amber{--tone:#d9a02a;--tone-bg:#fbf2dc}
+  .tone-rose{--tone:#e0568f;--tone-bg:#fbeaf2}
+  .tone-cyan{--tone:#15b8c4;--tone-bg:#e0f7f9}
+  .tone-slate{--tone:#5b6b86;--tone-bg:#eef1f6}
+
+  /* ---------- import hub ---------- */
+  .hub{gap:14px;counter-reset:hubstep}
+  .hub-col{counter-increment:hubstep;border-radius:var(--r-md);box-shadow:var(--sh-sm);overflow:hidden;transition:box-shadow .18s ease}
+  .hub-col:hover{box-shadow:var(--sh)}
+  .hub-head{padding:13px 15px;font-size:13.5px;color:var(--ink);font-weight:700;background:linear-gradient(180deg,#fbfcfe,#f4f8fc);border-bottom:1px solid var(--hair)}
+  .hub-head::before{content:counter(hubstep);display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;margin-right:9px;vertical-align:middle}
+  .hub-head svg{color:var(--muted)}
+  .hub-search{margin:10px 12px 2px;border-radius:9px;border-color:var(--hair)}
+  .hub-search:focus{border-color:var(--hub-accent)}
+  .hub-list{max-height:440px}
+  .hub-row{padding:10px 12px;margin:2px 4px;border-radius:10px}
+  .hub-row:hover{background:#f2f6fb}
+  .hub-row.active{background:var(--hub-bg);border-color:var(--hub-bd);box-shadow:inset 3px 0 0 var(--hub-accent)}
+  .hub-ic{width:30px;height:30px;border-radius:8px;background:#eef2f8;color:var(--muted);margin-right:2px}
+  .hub-ic svg{width:17px;height:17px}
+  .hub-row.active .hub-ic{background:rgba(221,107,32,.16);color:var(--hub-accent)}
+  .hub-label{font-weight:500}
+  .hub-row.active .hub-label{font-weight:600}
+  .hub-chev{color:#c7d0dc}
+  .hub-col:last-child{background:linear-gradient(180deg,#fff,#fbfdff)}
+  .hub-params{padding:20px 22px 22px}
+  .ip-title{font-size:16px;display:flex;align-items:center;gap:9px}
+  .ip-title::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--hub-accent)}
+  .hub-empty{color:var(--muted)}
+
+  /* ---------- buttons / inputs ---------- */
+  .btn{background:linear-gradient(180deg,#1b3a60,#0e2038);box-shadow:0 1px 2px rgba(14,32,56,.16)}
+  .btn:hover{background:linear-gradient(180deg,#234a76,#15294a)}
+  .btn.ghost{background:var(--surface);border:1px solid var(--hair);color:var(--ink);box-shadow:var(--sh-sm)}
+  .btn.ghost:hover{background:#f3f6fb;border-color:var(--hair-2)}
+  input[type=file],.hub-params input,.hub-params select,.hub-params textarea{border-color:var(--hair)}
+  input[type=file]:hover,.hub-params input:hover{border-color:var(--hair-2)}
+  input[type=file]::file-selector-button{background:#eef2f8;border-color:var(--hair)}
+
+  /* ---------- status messages ---------- */
+  .out{border:1px solid transparent;font-weight:500}
+  .out.ok{background:#e7f6ef;color:var(--accent-d);border-color:#bfe6d4}
+  .out.err{background:#fcebea;color:#a3302a;border-color:#f3c6c2}
+
+  /* ---------- upload log table ---------- */
+  .logwrap{border-radius:var(--r-md);box-shadow:var(--sh-sm);border-color:var(--hair)}
+  .logtbl th{background:#f3f6fc}
+  .logtbl tbody tr:nth-child(even){background:#fafcff}
+  .logtbl tbody tr:hover{background:#eef4fb}
+  .badge{padding:3px 10px;border-radius:20px;font-weight:700}
+  .badge.ok{background:#e7f6ef;color:var(--accent-d)}
+  .badge.err{background:#fcebea;color:#a3302a}
+  .badge::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:middle}
+
+  /* ---------- view-only note + misc ---------- */
+  .viewonly-note{border-radius:var(--r-lg)}
+  .hint{color:var(--muted)}
+  code{font-family:var(--mono);background:#eef2f7;color:#26415f}
+  a.viewer{color:var(--accent-d)}
+
+  /* ---------- motion + scrollbars ---------- */
+  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .stat,.hub-col{animation:fadeUp .3s ease backwards}
+  ::-webkit-scrollbar{width:11px;height:11px}
+  ::-webkit-scrollbar-thumb{background:#cfd8e3;border-radius:8px;border:3px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-thumb:hover{background:#b6c2d2;background-clip:content-box}
+  ::-webkit-scrollbar-track{background:transparent}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+  @media(max-width:640px){
+    .console-hero{padding:18px}
+    .hero-meta{margin-left:0;width:100%}
+    .hero-meta-item{flex:1}
+    .brand .s{display:none}
+    .topbar .vlink span,.topbar .signout span{display:none}
+  }
 </style>
 </head>
 <body>
@@ -75,7 +300,8 @@
     <button class="kl-open kl-big" onclick="openLauncher()" title="Explore KLRAMS modules"><svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg></button>
     <div class="brand"><span class="t">KLRAMS</span><span class="s">Data Console — Kerala Road Asset Management System</span></div>
     <span class="spacer"></span>
-    <a href="/logout" style="margin-left:14px">Sign out</a>
+    <a class="vlink" href="/map.html" title="Open the GIS viewer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg><span>GIS viewer</span></a>
+    <a class="signout" href="/logout" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg><span>Sign out</span></a>
   </div>
 
   <div class="viewonly-note">
@@ -85,143 +311,81 @@
   </div>
 
   <div class="wrap" data-requires="admin">
-    <div class="stats" id="statGrid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
-      <div class="stat"><div class="n">—</div><div class="l">Loading imported data…</div></div>
+    <header class="console-hero">
+      <div class="hero-emblem" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21 9 3M19 21 15 3"/><path d="M12 5v2M12 11v2M12 17v2"/></svg></div>
+      <div class="hero-txt">
+        <div class="hero-eyebrow">KLRAMS · Kerala PWD · KHRI</div>
+        <h1 class="hero-title">Data Console</h1>
+        <p class="hero-sub">Import, build and audit road asset data — condition, network, structures, geotechnical, traffic and survey video — for the Kerala road network.</p>
+      </div>
+      <div class="hero-meta">
+        <div class="hero-meta-item"><span class="hm-n" id="heroTotal">—</span><span class="hm-l">datasets with data</span></div>
+      </div>
+    </header>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="count" onclick="switchTab('count')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Counts</button>
+      <button class="tab" data-tab="import" onclick="switchTab('import')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Import</button>
+      <button class="tab" data-tab="log" onclick="switchTab('log')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/></svg>Log</button>
     </div>
 
-    <div class="card">
-      <h2>Condition data</h2>
-      <p class="sub">Import the survey CSV, then build the linearly-referenced segments.</p>
-      <div class="step">1 · Upload condition CSV</div>
-      <input type="file" id="cfile" accept=".csv">
-      <button class="btn" onclick="up('condition')">Upload CSV</button>
-      <button class="btn ghost" onclick="refresh()">Refresh counts</button>
-      <div class="out" id="oCond"></div>
-      <div class="step">2 · Build segments</div>
-      <button class="btn" onclick="build()">Build segments</button>
-      <div class="out" id="oBuild"></div>
-    </div>
+    <!-- ===== COUNT ===== -->
+    <section id="tab-count" class="tabpane">
+      <div class="pane-head">
+        <h1>Data counts</h1>
+        <button class="btn ghost" onclick="loadSummary()">Refresh</button>
+      </div>
+      <div class="stats" id="statGrid">
+        <div class="stat tone-slate"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/></svg></div><div class="stat-n">—</div><div class="stat-l">Loading imported data…</div></div>
+      </div>
+    </section>
 
-    <div class="card">
-      <h2>Survey videos</h2>
-      <p class="sub">Upload a zip of videos (kept on the server) and a catalogue that links each road to its video and direction by section label.</p>
-      <div class="step">1 · Video zip</div>
-      <input type="file" id="zfile" accept=".zip">
-      <button class="btn" onclick="up('zip')">Upload video zip</button>
-      <div class="out" id="oZip"></div>
-      <div class="step">2 · Catalogue CSV</div>
-      <input type="file" id="vfile" accept=".csv">
-      <button class="btn" onclick="up('catalog')">Upload catalogue</button>
-      <div class="out" id="oCat"></div>
-      <p class="hint">Columns: <code>section_label</code>, <code>video_file</code>, <code>direction</code> (front or back).
-      <code>video_file</code> is the file name inside the zip, or a full <code>https://</code> link.</p>
-      <a class="viewer" href="/map.html">Open the viewer to play videos &rarr;</a>
-    </div>
+    <!-- ===== IMPORT (Data Import Hub) ===== -->
+    <section id="tab-import" class="tabpane" hidden>
+      <div class="pane-head">
+        <h1>Data Import Hub</h1>
+        <p class="sub">Pick a category, then a data type, then import.</p>
+      </div>
+      <div class="hub">
+        <div class="hub-col">
+          <div class="hub-head"><span>Data Category</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </div>
+          <input class="hub-search" id="catSearch" placeholder="Search categories…" oninput="renderCats()">
+          <div class="hub-list" id="catList"></div>
+        </div>
+        <div class="hub-col">
+          <div class="hub-head"><span>Data Type</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </div>
+          <input class="hub-search" id="typeSearch" placeholder="Search types…" oninput="renderTypes()">
+          <div class="hub-list" id="typeList"></div>
+        </div>
+        <div class="hub-col">
+          <div class="hub-head"><span>Data Format</span></div>
+          <div class="hub-list" id="fmtList"></div>
+        </div>
+        <div class="hub-col">
+          <div class="hub-head"><span>Import Parameters</span></div>
+          <div class="hub-params" id="paramBody"><div class="hub-empty">Select a data type to begin.</div></div>
+        </div>
+      </div>
+    </section>
 
-    <div class="card">
-      <h2>Road network (shapefile)</h2>
-      <p class="sub">Upload the road network shapefile zip. Choose whether to add/update roads or replace the whole network.</p>
-      <div class="step">Mode</div>
-      <label style="font-size:13.5px;margin-right:16px"><input type="radio" name="rmode" value="merge" checked> Add / update by Section_La</label>
-      <label style="font-size:13.5px"><input type="radio" name="rmode" value="replace"> Replace entire network</label>
-      <div class="step">Shapefile zip (.shp/.shx/.dbf/.prj together) or GeoJSON</div>
-      <input type="file" id="roadfile" accept=".zip,.geojson,.json">
-      <button class="btn" onclick="upRoads()">Upload road network</button>
-      <div class="out" id="oRoad"></div>
-      <p class="hint">The file must carry a <code>Section_La</code> for every road. Validation runs first — if it fails, nothing is changed. After upload, click <b>Build segments</b> to re-cut condition data against the updated network.</p>
-    </div>
-
-    <div class="card">
-      <h2>Full Road Network (by Road Name)</h2>
-      <p class="sub">Upload the full road-network shapefile zip — the second road layer in the viewer (no Section Label). Stored permanently in the database, so it survives refresh and restart. Roads are matched by <code>Road_id</code> (then road number, then name).</p>
-      <div class="step">Mode</div>
-      <label style="font-size:13.5px;margin-right:16px"><input type="radio" name="fnmode" value="merge" checked> Add / update by Road_id</label>
-      <label style="font-size:13.5px"><input type="radio" name="fnmode" value="replace"> Replace entire network</label>
-      <div class="step">Shapefile zip (.shp/.shx/.dbf/.prj together) or GeoJSON</div>
-      <input type="file" id="fnfile" accept=".zip,.geojson,.json">
-      <button class="btn" onclick="upFullNetwork()">Upload full road network</button>
-      <div class="out" id="oFN"></div>
-      <p class="hint">Re-importing a road with the same <code>Road_id</code> updates it; new ones are added. Toggle <b>Full Road Network</b> on in the viewer to see it.</p>
-    </div>
-
-    <div class="card">
-      <h2>Structures &amp; road furniture</h2>
-      <p class="sub">Upload assets as CSV — they are linearly referenced onto the network. Bridges and furniture lines need <code>Section_Label, Start_Chainage, End_Chainage</code>; culverts and furniture points need <code>Section_Label, Chainage</code>. Every other column is kept and shown in the popup.</p>
-      <div class="step">Asset type</div>
-      <select id="assetType" style="font-family:var(--sans);border:1px solid var(--hair);border-radius:8px;padding:8px 10px;font-size:13.5px">
-        <option value="bridge">Bridges (line)</option>
-        <option value="culvert">Culverts (point)</option>
-        <option value="furniture_line">Road furniture — line</option>
-        <option value="furniture_point">Road furniture — point</option>
-      </select>
-      <div class="step">CSV file</div>
-      <input type="file" id="assetfile" accept=".csv">
-      <button class="btn" onclick="upAsset()">Upload asset CSV</button>
-      <div class="out" id="oAsset"></div>
-      <p class="hint">Re-uploading a type replaces that type's records. Rows with missing chainage or an unknown Section_Label are skipped and reported.</p>
-    </div>
-
-    <div class="card">
-      <h2>Pavement &amp; geotechnical data</h2>
-      <p class="sub">Upload test data as CSV — placed on the network by chainage (FWD uses its own latitude/longitude when present). Needs <code>Section_Label</code> (or <code>Label</code>) and <code>Chainage</code> (FWD: <code>From</code>). Every other column appears in the popup.</p>
-      <div class="step">Data type</div>
-      <select id="geoType" style="font-family:var(--sans);border:1px solid var(--hair);border-radius:8px;padding:8px 10px;font-size:13.5px">
-        <option value="subgrade">Sub-Grade Soil</option>
-        <option value="bituminous_core">Bituminous Core</option>
-        <option value="pavement_crust">Pavement Crust</option>
-        <option value="fwd">FWD (deflection)</option>
-      </select>
-      <div class="step">CSV file</div>
-      <input type="file" id="geofile" accept=".csv">
-      <button class="btn" onclick="upGeo()">Upload data CSV</button>
-      <div class="out" id="oGeo"></div>
-      <p class="hint">Re-uploading a type replaces that type's records. In the viewer, switch each layer on under Layers (Sub-Grade Soil, Bituminous Core, Pavement Crust, FWD) and click any icon for full details.</p>
-    </div>
-
-    <div class="card">
-      <h2>Traffic data</h2>
-      <p class="sub">Import the traffic survey CSVs. Stations are placed on the road by chainage in the viewer; counts are summarised per station for the popup (ADT, peak hour, direction-wise). Held in this browser for the viewer.</p>
-      <div class="step">1 · Traffic stations CSV</div>
-      <input type="file" id="trfStn" accept=".csv">
-      <button class="btn" onclick="upTraffic('stations')">Upload stations</button>
-      <div class="out" id="oTrfStn"></div>
-      <div class="step">2 · Traffic count CSV</div>
-      <input type="file" id="trfCnt" accept=".csv">
-      <button class="btn" onclick="upTraffic('counts')">Upload counts</button>
-      <div class="out" id="oTrfCnt"></div>
-      <div class="step">Stored</div>
-      <div class="hint" id="trfState" style="margin-top:2px">No traffic data stored.</div>
-      <button class="btn ghost" onclick="trfClear()" style="margin-top:10px">Clear traffic data</button>
-      <p class="hint">Stations CSV needs <code>Station Name, Section Label, Latitude, Longitude, Chainage</code>. Count CSV needs <code>STATION_NAME, DATE, TIME, DIRECTION</code> and the vehicle-class count columns (15-minute intervals). In the viewer, switch on <b>Traffic stations</b> under Layers and click a station.</p>
-    </div>
-
-    <div class="card">
-      <h2>Boundaries</h2>
-      <p class="sub">Upload district and constituency boundaries as a shapefile zip (or GeoJSON). They are parsed here and stored on the server.</p>
-      <div class="step">District boundary</div>
-      <input type="file" id="dist" accept=".zip,.geojson,.json">
-      <button class="btn" onclick="upBoundary('district')">Upload district boundary</button>
-      <div class="out" id="oDist"></div>
-      <div class="step">Constituency boundary</div>
-      <input type="file" id="cons" accept=".zip,.geojson,.json">
-      <button class="btn" onclick="upBoundary('constituency')">Upload constituency boundary</button>
-      <div class="out" id="oCons"></div>
-      <p class="hint">A shapefile zip must contain the <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> (and <code>.prj</code>) together. The boundaries then appear as toggleable layers in the viewer.</p>
-    </div>
-
-    <div class="card">
-      <h2>Upload log</h2>
-      <p class="sub">Date &amp; time, file name and status of every import done from this console. Newest first.</p>
-      <button class="btn ghost" onclick="loadLog()" style="margin-bottom:12px">Refresh log</button>
+    <!-- ===== LOG ===== -->
+    <section id="tab-log" class="tabpane" hidden>
+      <div class="pane-head">
+        <h1>Upload log</h1>
+        <button class="btn ghost" onclick="loadLog()">Refresh</button>
+      </div>
+      <p class="sub" style="margin:-6px 0 16px">Date &amp; time, file name and status of every import done from this console. Newest first.</p>
       <div class="logwrap">
         <table class="logtbl">
           <thead><tr><th>Date &amp; time</th><th>Dataset</th><th>File</th><th>Status</th><th>Detail</th></tr></thead>
           <tbody id="logBody"><tr><td colspan="5" style="text-align:center;color:#8a93a3;padding:16px">Loading…</td></tr></tbody>
         </table>
       </div>
-    </div>
-
-
+    </section>
   </div>
 
 <script>
@@ -251,20 +415,33 @@ async function build(){
   }catch(e){show(el,false,'Failed: '+e.message);logUpload('Segments build','—',false,e.message);}
 }
 /* every imported dataset shown as a tile, filled from /api/console/summary */
+const STAT_ICONS={
+  road:'<path d="M5 21 9 3M19 21 15 3M12 5v2M12 11v2M12 17v2"/>',
+  pulse:'<path d="M3 12h4l2 6 4-14 2 8h6"/>',
+  layers:'<path d="M12 3 3 8l9 5 9-5-9-5ZM3 13l9 5 9-5"/>',
+  film:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16"/>',
+  fwd:'<path d="M12 3v9M12 12l-3.5-3.5M12 12l3.5-3.5M5 16h14M5 20h14"/>',
+  traffic:'<rect x="8" y="3" width="8" height="18" rx="3"/><circle cx="12" cy="7.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="16.5" r="1.3"/>',
+  net:'<circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6.6 8 11 15.5M17.4 8 13 15.5"/>',
+  bridge:'<path d="M3 8c3 3.5 15 3.5 18 0M4 8v10M20 8v10M9 11.5V18M15 11.5V18"/>',
+  doc:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/>'
+};
+function statIcon(n){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+(STAT_ICONS[n]||STAT_ICONS.doc)+'</svg>';}
 const STAT_TILES=[
-  {k:'roads', l:'Road network', sub:d=>d.roads_km?(Number(d.roads_km).toLocaleString()+' km'):''},
-  {k:'condition', l:'Condition rows'},
-  {k:'segments', l:'Built segments'},
-  {k:'video', l:'Survey videos'},
-  {k:'fwd', l:'FWD (deflection)'},
-  {k:'bituminous_core', l:'Bituminous core'},
-  {k:'subgrade', l:'Sub-grade soil'},
-  {k:'pavement_crust', l:'Pavement crust'},
-  {k:'traffic_stations', l:'Traffic stations'},
-  {k:'traffic_counts', l:'Traffic counts'},
-  {k:'full_network', l:'Full road network'},
-  {k:'bridge', l:'Bridges'},
-  {k:'culvert', l:'Culverts'}
+  {k:'roads', l:'Road network', ic:'road', tone:'blue', sub:d=>d.roads_km?(Number(d.roads_km).toLocaleString()+' km'):''},
+  {k:'condition', l:'Condition rows', ic:'pulse', tone:'green'},
+  {k:'segments', l:'Built segments', ic:'layers', tone:'cyan'},
+  {k:'video', l:'Survey videos', ic:'film', tone:'violet'},
+  {k:'fwd', l:'FWD (deflection)', ic:'fwd', tone:'amber'},
+  {k:'fwd_segments', l:'FWD segments', ic:'layers', tone:'amber'},
+  {k:'bituminous_core', l:'Bituminous core', ic:'layers', tone:'rose'},
+  {k:'subgrade', l:'Sub-grade soil', ic:'layers', tone:'slate'},
+  {k:'pavement_crust', l:'Pavement crust', ic:'layers', tone:'blue'},
+  {k:'traffic_stations', l:'Traffic stations', ic:'traffic', tone:'blue'},
+  {k:'traffic_counts', l:'Traffic counts', ic:'traffic', tone:'cyan'},
+  {k:'full_network', l:'Full road network', ic:'net', tone:'violet'},
+  {k:'bridge', l:'Bridges', ic:'bridge', tone:'rose'},
+  {k:'culvert', l:'Culverts', ic:'bridge', tone:'amber'}
 ];
 function escLog(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 async function loadSummary(){
@@ -275,10 +452,12 @@ async function loadSummary(){
     if(!d||typeof d!=='object'||Array.isArray(d)) throw new Error('unexpected response');
     document.getElementById('statGrid').innerHTML=STAT_TILES.map(function(t){
       const v=d[t.k]; const sub=t.sub?t.sub(d):'';
-      return '<div class="stat"><div class="n">'+Number(v||0).toLocaleString()+'</div><div class="l">'+escLog(t.l)+(sub?' · '+escLog(sub):'')+'</div></div>';
+      return '<div class="stat tone-'+(t.tone||'green')+'"><div class="stat-ic">'+statIcon(t.ic)+'</div><div class="stat-n">'+Number(v||0).toLocaleString()+'</div><div class="stat-l">'+escLog(t.l)+(sub?' · '+escLog(sub):'')+'</div></div>';
     }).join('');
+    var _withData=STAT_TILES.filter(function(t){return Number(d[t.k]||0)>0;}).length;
+    var _hm=document.getElementById('heroTotal'); if(_hm) _hm.textContent=_withData+' / '+STAT_TILES.length;
   }catch(e){
-    document.getElementById('statGrid').innerHTML='<div class="stat" style="grid-column:1/-1;border-color:#f3c6c2;background:#fdf3f2"><div class="l" style="color:#a3302a;text-transform:none;letter-spacing:0;font-size:13px">Couldn’t load import counts ('+escLog(e.message)+'). If you just deployed these changes, rebuild and <b>restart the server</b> so <code>/api/console/summary</code> is available.</div></div>';
+    document.getElementById('statGrid').innerHTML='<div class="stat tone-rose" style="grid-column:1/-1"><div class="stat-l" style="color:#a3302a;text-transform:none;letter-spacing:0;font-size:13px">Couldn’t load import counts ('+escLog(e.message)+'). If you just deployed these changes, rebuild and <b>restart the server</b> so <code>/api/console/summary</code> is available.</div></div>';
   }
 }
 async function loadLog(){
@@ -471,9 +650,9 @@ function trfGetStore(){try{return JSON.parse(localStorage.getItem(TRF_KEY))||{};
 function trfPutStore(o){o.v=1;o.savedAt=new Date().toISOString();try{localStorage.setItem(TRF_KEY,JSON.stringify(o));return true;}catch(e){return false;}}
 async function trfPost(kind,payload){try{const r=await fetch('/api/traffic/'+kind,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});return r.ok;}catch(e){return false;}}
 function trfReadFile(id){return new Promise((res,rej)=>{const f=document.getElementById(id).files[0];if(!f){rej(new Error('Choose a CSV first.'));return;}const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('File read error.'));r.readAsText(f);});}
-async function upTraffic(kind){const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');const _tf=((document.getElementById(kind==='stations'?'trfStn':'trfCnt').files[0])||{}).name||'—';const _tds=(kind==='stations'?'Traffic stations':'Traffic counts');try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx={};pr.header.forEach((h,i)=>idx[h]=i);const store=trfGetStore();if(kind==='stations'){if(idx['Station Name']===undefined){show(out,false,'CSV needs a Station Name column.');return;}store.stations=pr.rows.map(r=>({name:r[idx['Station Name']]||'',road:(idx['Description']!==undefined?r[idx['Description']]:'')||'',section:(idx['Section Label']!==undefined?String(r[idx['Section Label']]||'').trim():''),ch:(idx['Chainage']!==undefined&&String(r[idx['Chainage']]).trim()!==''&&!isNaN(+r[idx['Chainage']]))?+r[idx['Chainage']]:null,lat:(idx['Latitude']!==undefined&&!isNaN(+r[idx['Latitude']]))?+r[idx['Latitude']]:null,lng:(idx['Longitude']!==undefined&&!isNaN(+r[idx['Longitude']]))?+r[idx['Longitude']]:null,xsp:(idx['Xsp Code']!==undefined?r[idx['Xsp Code']]:'')||''})).filter(r=>r.name);const srv=await trfPost('stations',store.stations);trfPutStore(store);show(out,true,'\u2713 '+store.stations.length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}else{if(!pr.header.some(h=>trfNorm(h)==='STATION_NAME')){show(out,false,'CSV needs a STATION_NAME column.');return;}store.counts=trfAggregate(pr.rows,pr.header);const srv=await trfPost('counts',store.counts);trfPutStore(store);show(out,true,'\u2713 Counts for '+Object.keys(store.counts).length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}logUpload(_tds,_tf,true,(kind==='stations'?((store.stations||[]).length+' stations'):('counts for '+Object.keys(store.counts||{}).length+' stations')));trfState();refresh();}catch(e){show(out,false,e.message||String(e));logUpload(_tds,_tf,false,e.message||String(e));}}
-function trfClear(){localStorage.removeItem(TRF_KEY);fetch('/api/traffic/clear',{method:'POST'}).catch(()=>{});trfState();const a=document.getElementById('oTrfStn'),b=document.getElementById('oTrfCnt');a.className='out';b.className='out';show(a,true,'Cleared.');}
-function trfState(){const s=trfGetStore();const ns=(s.stations||[]).length;const nc=Object.keys(s.counts||{}).length;document.getElementById('trfState').innerHTML=(ns||nc)?('<b>'+ns+'</b> stations \u00b7 counts for <b>'+nc+'</b>'+(s.savedAt?(' \u00b7 saved '+new Date(s.savedAt).toLocaleString()):'')+'. Open the viewer to see them.'):'No traffic data stored.';}
+async function upTraffic(kind){const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');const _tf=((document.getElementById(kind==='stations'?'trfStn':'trfCnt').files[0])||{}).name||'—';const _tds=(kind==='stations'?'Traffic stations':'Traffic counts');try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx={};pr.header.forEach((h,i)=>idx[h]=i);const store=trfGetStore();if(kind==='stations'){if(idx['Station Name']===undefined){show(out,false,'CSV needs a Station Name column.');return;}const _inc=pr.rows.map(r=>({name:r[idx['Station Name']]||'',road:(idx['Description']!==undefined?r[idx['Description']]:'')||'',section:(idx['Section Label']!==undefined?String(r[idx['Section Label']]||'').trim():''),ch:(idx['Chainage']!==undefined&&String(r[idx['Chainage']]).trim()!==''&&!isNaN(+r[idx['Chainage']]))?+r[idx['Chainage']]:null,lat:(idx['Latitude']!==undefined&&!isNaN(+r[idx['Latitude']]))?+r[idx['Latitude']]:null,lng:(idx['Longitude']!==undefined&&!isNaN(+r[idx['Longitude']]))?+r[idx['Longitude']]:null,xsp:(idx['Xsp Code']!==undefined?r[idx['Xsp Code']]:'')||''})).filter(r=>r.name);const _by={};(store.stations||[]).forEach(x=>_by[x.name]=x);_inc.forEach(x=>_by[x.name]=x);store.stations=Object.values(_by);const srv=await trfPost('stations',store.stations);trfPutStore(store);show(out,true,'\u2713 '+store.stations.length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}else{if(!pr.header.some(h=>trfNorm(h)==='STATION_NAME')){show(out,false,'CSV needs a STATION_NAME column.');return;}store.counts=Object.assign(store.counts||{},trfAggregate(pr.rows,pr.header));const srv=await trfPost('counts',store.counts);trfPutStore(store);show(out,true,'\u2713 Counts for '+Object.keys(store.counts).length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}logUpload(_tds,_tf,true,(kind==='stations'?((store.stations||[]).length+' stations'):('counts for '+Object.keys(store.counts||{}).length+' stations')));trfState();refresh();}catch(e){show(out,false,e.message||String(e));logUpload(_tds,_tf,false,e.message||String(e));}}
+function trfClear(){localStorage.removeItem(TRF_KEY);fetch('/api/traffic/clear',{method:'POST'}).catch(()=>{});trfState();const a=document.getElementById('oTrfStn'),b=document.getElementById('oTrfCnt');if(b)b.className='out';if(a){a.className='out';show(a,true,'Cleared.');}}
+function trfState(){const el=document.getElementById('trfState');if(!el)return;const s=trfGetStore();const ns=(s.stations||[]).length;const nc=Object.keys(s.counts||{}).length;el.innerHTML=(ns||nc)?('<b>'+ns+'</b> stations \u00b7 counts for <b>'+nc+'</b>'+(s.savedAt?(' \u00b7 saved '+new Date(s.savedAt).toLocaleString()):'')+'. Open the viewer to see them.'):'No traffic data stored.';}
 trfState();
 async function goLoadFolders(){
   try{const fs=await (await fetch('/api/go/folders')).json();
@@ -514,6 +693,227 @@ async function saveSite(key){
   }catch(e){show(el,false,'Request failed: '+e.message);}
 }
 loadSite();
+
+/* build the FWD deflection segments (mirrors build() for condition) */
+async function buildFwd(){
+  const el=document.getElementById('oFwdBuild');show(el,true,'Building FWD segments…');
+  try{const r=await fetch('/api/fwd-segments/build',{method:'POST'});const j=await r.json();
+    if(j.status==='ok'){show(el,true,'✓ Built '+j.segments+' FWD segments.');logUpload('FWD segments build','—',true,'Built '+j.segments+' FWD segments');refresh();}
+    else{show(el,false,'Error: '+j.message);logUpload('FWD segments build','—',false,j.message);}
+  }catch(e){show(el,false,'Failed: '+e.message);logUpload('FWD segments build','—',false,e.message);}
+}
+
+/* remove the stored boundary for a type (district / constituency) */
+async function removeBoundary(type){
+  const out=document.getElementById(type==='district'?'oDist':'oCons');
+  const ds=(type==='district'?'District boundary':'Constituency boundary');
+  if(!confirm('Remove the current '+ds.toLowerCase()+'? This deletes the stored boundary from the server.')) return;
+  show(out,true,'Removing…');
+  try{const r=await fetch('/api/boundary/'+type,{method:'DELETE'});const j=await r.json();
+    if(j.status==='ok'){show(out,true,'✓ Removed the '+ds.toLowerCase()+'. Reload the viewer to see it gone.');logUpload(ds,'—',true,'Removed current data');refresh();}
+    else{show(out,false,'Error: '+(j.message||'failed'));logUpload(ds,'—',false,j.message||'failed');}
+  }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,'—',false,e.message);}
+}
+
+/* ===================== three-tab navigation ===================== */
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(function(b){b.classList.toggle('active',b.dataset.tab===name);});
+  document.querySelectorAll('.tabpane').forEach(function(p){p.hidden=(p.id!=='tab-'+name);});
+}
+
+/* ===================== Data Import Hub ===================== */
+const HUB_ICONS={
+  pulse:'<path d="M3 12h4l2 6 4-14 2 8h6"/>',
+  film:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/>',
+  road:'<path d="M6 3 4 21M18 3l2 18M12 4v3M12 11v3M12 18v2"/>',
+  net:'<circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M6.6 8 11 15.5M17.4 8 13 15.5M8 6h8"/>',
+  bridge:'<path d="M3 8c3 3.5 15 3.5 18 0M4 8v10M20 8v10M9 11.5V18M15 11.5V18"/>',
+  layers:'<path d="M12 3 3 8l9 5 9-5-9-5ZM3 13l9 5 9-5"/>',
+  traffic:'<rect x="8" y="3" width="8" height="18" rx="3"/><circle cx="12" cy="7.5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="16.5" r="1.4"/>',
+  map:'<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/>',
+  fwd:'<path d="M12 3v9M12 12l-3.5-3.5M12 12l3.5-3.5M5 16h14M5 20h14"/>',
+  doc:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5ZM14 3v5h5"/>'
+};
+function hubIcon(n){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+(HUB_ICONS[n]||HUB_ICONS.doc)+'</svg>';}
+
+/* ---- import-parameters panel builders (reuse the existing upload functions/IDs) ---- */
+function assetPanel(type,title,sub){
+  return '<div class="ip-title">'+title+'</div>'
+    +'<p class="ip-sub">'+sub+'</p>'
+    +'<select id="assetType" style="display:none"><option value="'+type+'" selected></option></select>'
+    +'<div class="ip-field"><label class="ip-label">CSV file</label><input type="file" id="assetfile" accept=".csv"></div>'
+    +'<button class="btn" onclick="upAsset()">Upload asset CSV</button>'
+    +'<div class="out" id="oAsset"></div>'
+    +'<p class="hint">Additive by section: re-uploading a section replaces just that section’s records; other sections are kept. Rows with missing chainage or an unknown Section_Label are skipped and reported.</p>';
+}
+function geoPanel(type,title,sub){
+  return '<div class="ip-title">'+title+'</div>'
+    +'<p class="ip-sub">'+sub+'</p>'
+    +'<select id="geoType" style="display:none"><option value="'+type+'" selected></option></select>'
+    +'<div class="ip-field"><label class="ip-label">CSV file</label><input type="file" id="geofile" accept=".csv"></div>'
+    +'<button class="btn" onclick="upGeo()">Upload data CSV</button>'
+    +'<div class="out" id="oGeo"></div>'
+    +'<p class="hint">Additive by section: re-uploading a section replaces just that section’s records; other sections are kept. Switch the matching layer on in the viewer and click any icon for full details.</p>';
+}
+const PANELS={
+  'cond-survey':'<div class="ip-title">Condition survey</div>'
+    +'<p class="ip-sub">Import the raw condition survey CSV (IRI, cracking, potholes…). After it loads, switch to <b>Build segments</b> to cut it against the road network.</p>'
+    +'<div class="ip-field"><label class="ip-label">Condition CSV</label><input type="file" id="cfile" accept=".csv"></div>'
+    +'<button class="btn" onclick="up(\'condition\')">Upload CSV</button> <button class="btn ghost" onclick="refresh()">Refresh counts</button>'
+    +'<div class="out" id="oCond"></div>',
+  'cond-build':'<div class="ip-title">Build segments</div>'
+    +'<p class="ip-sub">Cut the imported condition data into linearly-referenced segments along the current road network. Run this after importing condition data or updating roads.</p>'
+    +'<button class="btn" onclick="build()">Build segments</button>'
+    +'<div class="out" id="oBuild"></div>',
+  'vid-zip':'<div class="ip-title">Survey video files</div>'
+    +'<p class="ip-sub">Upload a ZIP of the NSV video files. They are stored on the server and linked to roads by the catalogue.</p>'
+    +'<div class="ip-field"><label class="ip-label">Video ZIP</label><input type="file" id="zfile" accept=".zip"></div>'
+    +'<button class="btn" onclick="up(\'zip\')">Upload video zip</button>'
+    +'<div class="out" id="oZip"></div>',
+  'vid-cat':'<div class="ip-title">Video catalogue</div>'
+    +'<p class="ip-sub">Link each road section to its video file and direction.</p>'
+    +'<div class="ip-field"><label class="ip-label">Catalogue CSV</label><input type="file" id="vfile" accept=".csv"></div>'
+    +'<button class="btn" onclick="up(\'catalog\')">Upload catalogue</button>'
+    +'<div class="out" id="oCat"></div>'
+    +'<p class="hint">Columns: <code>section_label</code>, <code>video_file</code>, <code>direction</code> (front or back). <code>video_file</code> is the file name inside the zip, or a full <code>https://</code> link.</p>'
+    +'<a class="viewer" href="/map.html">Open the viewer to play videos &rarr;</a>',
+  'road-net':'<div class="ip-title">Road network</div>'
+    +'<p class="ip-sub">Upload the road network shapefile zip (or GeoJSON). Choose whether to add/update roads or replace the whole network.</p>'
+    +'<div class="ip-field"><label class="ip-label">Mode</label><div class="ip-modes">'
+    +'<label><input type="radio" name="rmode" value="merge" checked> Add / update by Section_La</label>'
+    +'<label><input type="radio" name="rmode" value="replace"> Replace entire network</label></div></div>'
+    +'<div class="ip-field"><label class="ip-label">Shapefile ZIP (.shp/.shx/.dbf/.prj) or GeoJSON</label><input type="file" id="roadfile" accept=".zip,.geojson,.json"></div>'
+    +'<button class="btn" onclick="upRoads()">Upload road network</button>'
+    +'<div class="out" id="oRoad"></div>'
+    +'<p class="hint">The file must carry a <code>Section_La</code> for every road. Validation runs first — if it fails, nothing is changed. After upload, run <b>Build segments</b> to re-cut condition data.</p>',
+  'full-net':'<div class="ip-title">Full road network (by Road Name)</div>'
+    +'<p class="ip-sub">The second road layer in the viewer (no Section Label). Stored permanently, so it survives refresh and restart. Roads are matched by <code>Road_id</code> (then road number, then name).</p>'
+    +'<div class="ip-field"><label class="ip-label">Mode</label><div class="ip-modes">'
+    +'<label><input type="radio" name="fnmode" value="merge" checked> Add / update by Road_id</label>'
+    +'<label><input type="radio" name="fnmode" value="replace"> Replace entire network</label></div></div>'
+    +'<div class="ip-field"><label class="ip-label">Shapefile ZIP (.shp/.shx/.dbf/.prj) or GeoJSON</label><input type="file" id="fnfile" accept=".zip,.geojson,.json"></div>'
+    +'<button class="btn" onclick="upFullNetwork()">Upload full road network</button>'
+    +'<div class="out" id="oFN"></div>'
+    +'<p class="hint">Re-importing a road with the same <code>Road_id</code> updates it; new ones are added. Toggle <b>Full Road Network</b> on in the viewer to see it.</p>',
+  'as-bridge':assetPanel('bridge','Bridges (line)','Placed as lines. CSV needs <code>Section_Label, Start_Chainage, End_Chainage</code>. Every other column is kept and shown in the popup.'),
+  'as-culvert':assetPanel('culvert','Culverts (point)','Placed as points. CSV needs <code>Section_Label, Chainage</code>. Every other column is kept and shown in the popup.'),
+  'as-fline':assetPanel('furniture_line','Road furniture — line','Placed as lines. CSV needs <code>Section_Label, Start_Chainage, End_Chainage</code>.'),
+  'as-fpoint':assetPanel('furniture_point','Road furniture — point','Placed as points. CSV needs <code>Section_Label, Chainage</code>.'),
+  'geo-subgrade':geoPanel('subgrade','Sub-Grade Soil','Placed on the network by chainage. Needs <code>Section_Label</code> (or <code>Label</code>) and <code>Chainage</code>.'),
+  'geo-bitcore':geoPanel('bituminous_core','Bituminous Core','Placed on the network by chainage. Needs <code>Section_Label</code> (or <code>Label</code>) and <code>Chainage</code>.'),
+  'geo-crust':geoPanel('pavement_crust','Pavement Crust','Placed on the network by chainage. Needs <code>Section_Label</code> (or <code>Label</code>) and <code>Chainage</code>.'),
+  'fwd-survey':'<div class="ip-title">FWD survey (deflection)</div>'
+    +'<p class="ip-sub">Upload the FWD deflection CSV — placed on the network by chainage <b>range</b> (From/To), carrying D0…Dn. After it loads, run <b>Build FWD segments</b> to cut the coloured segments, just like condition data.</p>'
+    +'<select id="geoType" style="display:none"><option value="fwd" selected></option></select>'
+    +'<div class="ip-field"><label class="ip-label">FWD CSV</label><input type="file" id="geofile" accept=".csv"></div>'
+    +'<button class="btn" onclick="upGeo()">Upload data CSV</button>'
+    +'<div class="out" id="oGeo"></div>'
+    +'<p class="hint">Needs <code>Section_Label</code> (or <code>Label</code>), <code>From</code> and <code>To</code> chainage, and the <code>D0</code>…<code>Dn</code> deflection columns. Additive by section: re-uploading a section replaces just that section; other sections are kept.</p>',
+  'fwd-build':'<div class="ip-title">Build FWD segments</div>'
+    +'<p class="ip-sub">Cut the uploaded FWD survey into linearly-referenced coloured segments (by D0) along the road network. Run this after uploading FWD data or updating roads.</p>'
+    +'<button class="btn" onclick="buildFwd()">Build FWD segments</button>'
+    +'<div class="out" id="oFwdBuild"></div>',
+  'traffic':'<div class="ip-title">Traffic survey</div>'
+    +'<p class="ip-sub">Import the station list, then the counts. Stations are placed by chainage; counts are summarised per station (ADT, peak hour, direction-wise).</p>'
+    +'<div class="ip-field"><label class="ip-label">1 · Traffic stations CSV</label><input type="file" id="trfStn" accept=".csv"></div>'
+    +'<button class="btn" onclick="upTraffic(\'stations\')">Upload stations</button>'
+    +'<div class="out" id="oTrfStn"></div>'
+    +'<div class="ip-field" style="margin-top:16px"><label class="ip-label">2 · Traffic count CSV</label><input type="file" id="trfCnt" accept=".csv"></div>'
+    +'<button class="btn" onclick="upTraffic(\'counts\')">Upload counts</button>'
+    +'<div class="out" id="oTrfCnt"></div>'
+    +'<div class="ip-field" style="margin-top:16px"><label class="ip-label">Stored</label><div class="hint" id="trfState" style="margin-top:0">No traffic data stored.</div></div>'
+    +'<p class="hint">Additive by station: uploading more stations/counts adds to the data; re-uploading a station updates it. Stations CSV needs <code>Station Name, Section Label, Latitude, Longitude, Chainage</code>. Count CSV needs <code>STATION_NAME, DATE, TIME, DIRECTION</code> and the vehicle-class columns.</p>',
+  'bnd-district':'<div class="ip-title">District boundary</div>'
+    +'<p class="ip-sub">Upload district boundaries as a shapefile zip (or GeoJSON in WGS84).</p>'
+    +'<div class="ip-field"><label class="ip-label">Shapefile ZIP / GeoJSON</label><input type="file" id="dist" accept=".zip,.geojson,.json"></div>'
+    +'<button class="btn" onclick="upBoundary(\'district\')">Upload district boundary</button> <button class="btn ghost" onclick="removeBoundary(\'district\')">Remove current data</button>'
+    +'<div class="out" id="oDist"></div>'
+    +'<p class="hint">A shapefile zip must contain the <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> (and <code>.prj</code>) together. Appears as a toggleable layer in the viewer. <b>Remove current data</b> deletes the stored district boundary.</p>',
+  'bnd-constituency':'<div class="ip-title">Constituency boundary</div>'
+    +'<p class="ip-sub">Upload constituency boundaries as a shapefile zip (or GeoJSON in WGS84).</p>'
+    +'<div class="ip-field"><label class="ip-label">Shapefile ZIP / GeoJSON</label><input type="file" id="cons" accept=".zip,.geojson,.json"></div>'
+    +'<button class="btn" onclick="upBoundary(\'constituency\')">Upload constituency boundary</button> <button class="btn ghost" onclick="removeBoundary(\'constituency\')">Remove current data</button>'
+    +'<div class="out" id="oCons"></div>'
+    +'<p class="hint">A shapefile zip must contain the <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> (and <code>.prj</code>) together. Appears as a toggleable layer in the viewer. <b>Remove current data</b> deletes the stored constituency boundary.</p>'
+};
+const HUB=[
+  {id:'condition',cat:'Condition Data',icon:'pulse',types:[
+    {id:'cond-survey',label:'Condition survey',fmt:'CSV file'},
+    {id:'cond-build',label:'Build segments',fmt:'Action — no file'}
+  ]},
+  {id:'network',cat:'Road Network',icon:'road',types:[
+    {id:'road-net',label:'Road network',fmt:'Shapefile & ZIP / GeoJSON'}
+  ]},
+  {id:'fullnet',cat:'Full Road Network',icon:'net',types:[
+    {id:'full-net',label:'Full road network',fmt:'Shapefile & ZIP / GeoJSON'}
+  ]},
+  {id:'assets',cat:'Structures & Furniture',icon:'bridge',types:[
+    {id:'as-bridge',label:'Bridges (line)',fmt:'CSV file'},
+    {id:'as-culvert',label:'Culverts (point)',fmt:'CSV file'},
+    {id:'as-fline',label:'Road furniture — line',fmt:'CSV file'},
+    {id:'as-fpoint',label:'Road furniture — point',fmt:'CSV file'}
+  ]},
+  {id:'geo',cat:'Pavement & Geotechnical',icon:'layers',types:[
+    {id:'geo-subgrade',label:'Sub-Grade Soil',fmt:'CSV file'},
+    {id:'geo-bitcore',label:'Bituminous Core',fmt:'CSV file'},
+    {id:'geo-crust',label:'Pavement Crust',fmt:'CSV file'}
+  ]},
+  {id:'fwd',cat:'FWD',icon:'fwd',types:[
+    {id:'fwd-survey',label:'FWD survey',fmt:'CSV file'},
+    {id:'fwd-build',label:'Build FWD segments',fmt:'Action — no file'}
+  ]},
+  {id:'traffic',cat:'Traffic',icon:'traffic',types:[
+    {id:'traffic',label:'Traffic survey',fmt:'CSV files'}
+  ]},
+  {id:'boundary',cat:'Boundaries',icon:'map',types:[
+    {id:'bnd-district',label:'District boundary',fmt:'Shapefile & ZIP / GeoJSON'},
+    {id:'bnd-constituency',label:'Constituency boundary',fmt:'Shapefile & ZIP / GeoJSON'}
+  ]},
+  {id:'video',cat:'Survey Videos',icon:'film',types:[
+    {id:'vid-zip',label:'Video files',fmt:'ZIP file'},
+    {id:'vid-cat',label:'Video catalogue',fmt:'CSV file'}
+  ]}
+];
+let curCat=HUB[0].id, curType=null;
+function hubRow(active,ic,label,onclick,chev){
+  return '<div class="hub-row'+(active?' active':'')+'" onclick="'+onclick+'">'
+    +'<span class="hub-ic">'+ic+'</span><span class="hub-label">'+escLog(label)+'</span>'
+    +(chev!==false?'<span class="hub-chev">›</span>':'')+'</div>';
+}
+function findType(id){for(const c of HUB){const t=c.types.find(x=>x.id===id);if(t)return t;}return null;}
+function renderCats(){
+  const q=(document.getElementById('catSearch').value||'').toLowerCase();
+  document.getElementById('catList').innerHTML=HUB
+    .filter(c=>c.cat.toLowerCase().includes(q))
+    .map(c=>hubRow(c.id===curCat,hubIcon(c.icon),c.cat,"selectCat('"+c.id+"')")).join('')
+    ||'<div class="hub-empty">No matches.</div>';
+}
+function renderTypes(){
+  const c=HUB.find(x=>x.id===curCat);if(!c)return;
+  const q=(document.getElementById('typeSearch').value||'').toLowerCase();
+  document.getElementById('typeList').innerHTML=c.types
+    .filter(t=>t.label.toLowerCase().includes(q))
+    .map(t=>hubRow(t.id===curType,hubIcon('doc'),t.label,"selectType('"+t.id+"')")).join('')
+    ||'<div class="hub-empty">No matches.</div>';
+}
+function selectCat(id){
+  curCat=id;curType=null;
+  document.getElementById('typeSearch').value='';
+  renderCats();renderTypes();
+  const c=HUB.find(x=>x.id===id);
+  if(c&&c.types[0])selectType(c.types[0].id);
+}
+function selectType(id){
+  curType=id;renderTypes();
+  const t=findType(id);
+  document.getElementById('fmtList').innerHTML=hubRow(true,hubIcon('doc'),t?t.fmt:'',"",false);
+  document.getElementById('paramBody').innerHTML=PANELS[id]||'<div class="hub-empty">No importer.</div>';
+  if(id==='traffic')trfState();
+}
+/* build the hub and land on the Count tab */
+renderCats();
+selectCat(HUB[0].id);
+switchTab('count');
 </script>
   <script src="/js/launcher.js"></script>
   <script src="/js/role-gate.js" defer></script>

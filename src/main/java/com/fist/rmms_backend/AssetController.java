@@ -81,14 +81,18 @@ public class AssetController {
             Integer iStart = first(idx, "start_chainage","start_chiange","start","chainage","chiange","from_chainage","from");
             Integer iLat = first(idx, "point_latitude","latitude","lat");
             Integer iLon = first(idx, "point_longitude","longitude","lon","lng");
-            Integer iEnd = first(idx, "end_chainage","end_chiange","end","to_chainage");
+            Integer iEnd = first(idx, "end_chainage","end_chiange","end","to_chainage",
+                    "to_ch","toch","tochainage","chainage_to","chainageto","end_ch","endch","to");
             if (iSec == null || iStart == null)
                 { r.put("status","error"); r.put("message","CSV must have Section_Label and "+(isLine?"Start_Chainage/End_Chainage":"Chainage")); return r; }
             if (isLine && iEnd == null)
                 { r.put("status","error"); r.put("message","Line assets need End_Chainage too"); return r; }
 
-            // replace this asset type's rows
-            jdbc.update("DELETE FROM road_assets WHERE asset_type = ?", type);
+            // Additive by section: replace only the section labels present in THIS
+            // file (of this asset type), so uploading another section adds to the
+            // data instead of wiping the whole type. Re-uploading a section refreshes
+            // just that section. Cleared once per (type, section) as we stream.
+            Set<String> replacedSections = new HashSet<>();
 
             int loaded=0, skipped=0;
             String line;
@@ -97,8 +101,17 @@ public class AssetController {
                 String[] c = parse(line);
                 String sec = val(c, iSec);
                 Double s = num(val(c, iStart));
-                Double e = isLine ? num(val(c, iEnd)) : null;
+                // Lines always carry an end chainage. FWD is a point layer but its
+                // survey rows are chainage RANGES (From..To) — keep the end so the
+                // FWD segments can be cut later (see FwdSegmentService). Other point
+                // types stay single-chainage (end = null).
+                Double e = isLine ? num(val(c, iEnd))
+                        : (type.equals("fwd") && iEnd != null ? num(val(c, iEnd)) : null);
                 if (sec == null || s == null || (isLine && (e == null || e <= s))) { skipped++; continue; }
+                // first row for this section in this upload -> clear its old rows of this type
+                if (replacedSections.add(sec)) {
+                    jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ?", type, sec);
+                }
                 // keep every column as attrs
                 Map<String,String> attrs = new LinkedHashMap<>();
                 for (int i=0;i<cols.length && i<c.length;i++) {

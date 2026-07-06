@@ -9,17 +9,21 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * FWD segments — build (or rebuild) the linearly-referenced FWD deflection
+ * segments and serve them, mirroring {@link SegmentController} for condition.
+ */
 @RestController
-@RequestMapping("/api/segments")
-public class SegmentController {
+@RequestMapping("/api/fwd-segments")
+public class FwdSegmentController {
 
-    private final SegmentService service;
+    private final FwdSegmentService service;
 
-    public SegmentController(SegmentService service) {
+    public FwdSegmentController(FwdSegmentService service) {
         this.service = service;
     }
 
-    /** Build (or rebuild) the linearly-referenced coloured segments. */
+    /** Build (or rebuild) the FWD segments from the uploaded FWD survey. */
     @PostMapping("/build")
     public Map<String, Object> build() {
         Map<String, Object> result = new HashMap<>();
@@ -34,12 +38,9 @@ public class SegmentController {
         return result;
     }
 
-    /** Serve the segments as GeoJSON for the map. */
+    /** Serve the FWD segments as GeoJSON for the map. */
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> geojson() {
-        // no-cache: the browser must revalidate every load, so freshly built
-        // segments show up on a normal reload (no hard-refresh / restart needed).
-        // The body is still served from the in-memory cache, so this is cheap.
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noCache())
                 .contentType(MediaType.APPLICATION_JSON)

@@ -43,6 +43,22 @@ public class BoundaryController {
         return r;
     }
 
+    /** Remove the stored boundary for a type (district / constituency). */
+    @DeleteMapping("/{type}")
+    public Map<String, Object> remove(@PathVariable String type) {
+        Map<String, Object> r = new HashMap<>();
+        try {
+            ensure();
+            int n = jdbc.update("DELETE FROM boundary WHERE type = ?", type);
+            r.put("status", "ok");
+            r.put("removed", n);
+        } catch (Exception e) {
+            r.put("status", "error");
+            r.put("message", String.valueOf(e.getMessage()));
+        }
+        return r;
+    }
+
     @GetMapping(value = "/{type}", produces = MediaType.APPLICATION_JSON_VALUE)
     public String get(@PathVariable String type) {
         try {

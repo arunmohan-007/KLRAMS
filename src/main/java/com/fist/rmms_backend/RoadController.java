@@ -40,8 +40,11 @@ public class RoadController {
                 body = cachedGeojson;
             }
         }
+        // no-cache: browser revalidates each load, so newly uploaded roads show on
+        // a normal reload once the in-memory cache is refreshed (see /geojson/refresh,
+        // which the console now calls automatically after an upload).
         return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
+                .cacheControl(CacheControl.noCache())
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body);
     }

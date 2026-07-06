@@ -19,8 +19,8 @@
   const CSS = `
   .kl-open{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.20);color:#dbe6f4;font-size:13px;font-weight:600;padding:7px 13px;border-radius:9px;cursor:pointer;font-family:inherit;line-height:1}
   .kl-open:hover{background:rgba(255,255,255,.20);color:#fff}
-  .kl-big{padding:0;width:42px;height:42px;min-width:42px;justify-content:center;background:linear-gradient(135deg,#19b277,#0d7a51);border:0;border-radius:11px;color:#fff;box-shadow:0 2px 9px rgba(13,122,81,.45);margin-right:6px}
-  .kl-big:hover{filter:brightness(1.08);background:linear-gradient(135deg,#19b277,#0d7a51)}
+  .kl-big{padding:0;width:42px;height:42px;min-width:42px;justify-content:center;background:linear-gradient(135deg,#2dd4bf,#14b8a6);border:0;border-radius:11px;color:#06231a;box-shadow:0 2px 9px rgba(20,184,166,.4);margin-right:6px}
+  .kl-big:hover{filter:brightness(1.06);background:linear-gradient(135deg,#2dd4bf,#14b8a6)}
   .kl-big svg{width:21px;height:21px}
 
   .kl-ov{position:fixed;inset:0;z-index:99999;background:rgba(6,11,21,.66);backdrop-filter:blur(5px);display:none;animation:klf .16s ease}
@@ -29,25 +29,25 @@
   @keyframes klrise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 
   .kl-panel{position:relative;margin:auto;width:min(1040px,94vw);height:min(660px,92vh);background:#0e1726;border:1px solid #22304a;border-radius:20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 34px 100px rgba(0,0,0,.62);animation:klrise .2s ease}
-  .kl-panel:before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#19b277,#3b86e6,#8a68e6,#d3aa3e);z-index:2}
+  .kl-panel:before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#2dd4bf,transparent);z-index:2}
 
   .kl-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;background:linear-gradient(120deg,#0c1322 0%,#12243f 55%,#163a5f 100%);border-bottom:1px solid #1d2944}
   .kl-brandwrap{display:flex;align-items:center;gap:13px;min-width:0}
-  .kl-logo{width:42px;height:42px;flex-shrink:0;border-radius:13px;background:linear-gradient(135deg,#19b277,#0d7a51);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 4px 14px rgba(13,122,81,.5)}
+  .kl-logo{width:42px;height:42px;flex-shrink:0;border-radius:13px;background:linear-gradient(135deg,#2dd4bf,#14b8a6);display:flex;align-items:center;justify-content:center;color:#06231a;box-shadow:0 4px 14px rgba(20,184,166,.45)}
   .kl-logo svg{width:23px;height:23px}
   .kl-brandtxt{display:flex;flex-direction:column;line-height:1.15;min-width:0}
   .kl-brandtxt b{font-size:22px;font-weight:800;color:#fff;letter-spacing:1px}
-  .kl-brandtxt b span{color:#e6c878}
+  .kl-brandtxt b span{color:#2dd4bf}
   .kl-brandtxt i{font-style:normal;font-size:11.5px;color:#90a6c6;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
   .kl-actions{display:flex;align-items:center;gap:11px;flex-shrink:0}
   .kl-night{display:inline-flex;align-items:center;gap:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#cdd9ea;font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 12px;border-radius:11px;cursor:pointer;line-height:1}
   .kl-night:hover{background:rgba(255,255,255,.12);color:#fff}
-  .kl-night svg{width:15px;height:15px;color:#e6c878}
+  .kl-night svg{width:15px;height:15px;color:#2dd4bf}
   .kl-sw{width:34px;height:18px;border-radius:10px;background:#2a3a57;position:relative;transition:background .2s;flex-shrink:0}
   .kl-sw i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#cbd6e6;transition:left .2s,background .2s}
-  .kl-night.on{color:#fff;border-color:#3b86e6}
-  .kl-night.on .kl-sw{background:linear-gradient(90deg,#3b86e6,#8a68e6)}
+  .kl-night.on{color:#fff;border-color:#2dd4bf}
+  .kl-night.on .kl-sw{background:linear-gradient(90deg,#2dd4bf,#14b8a6)}
   .kl-night.on .kl-sw i{left:18px;background:#fff}
   .kl-close{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#9fb2cd;font-size:22px;width:36px;height:36px;border-radius:10px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
   .kl-close:hover{color:#fff;background:rgba(255,255,255,.14)}
@@ -55,7 +55,7 @@
   .kl-body{flex:1;overflow:auto;padding:24px 26px 28px;background:radial-gradient(125% 78% at 50% -8%,#13203a 0%,#0e1726 58%)}
   .kl-search{position:relative;max-width:560px;margin:0 auto 26px}
   .kl-search input{width:100%;background:#0a1322;border:1px solid #243352;border-radius:12px;color:#e6edf6;font-size:14.5px;padding:12px 14px 12px 44px;font-family:inherit;box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
-  .kl-search input:focus{outline:none;border-color:#2f7fe0;box-shadow:inset 0 1px 2px rgba(0,0,0,.35),0 0 0 3px rgba(47,127,224,.16)}
+  .kl-search input:focus{outline:none;border-color:#2dd4bf;box-shadow:inset 0 1px 2px rgba(0,0,0,.35),0 0 0 3px rgba(45,212,191,.16)}
   .kl-search svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:#6b7d99}
 
   .kl-sec{font-size:10.5px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:#73869f;margin:6px 2px 14px;display:flex;align-items:center;gap:12px}
@@ -72,7 +72,7 @@
   .kl-lbl{font-size:14px;font-weight:700;line-height:1.25;letter-spacing:.2px}
   .kl-dsc{font-size:11.5px;color:#90a3bf;line-height:1.45}
 
-  .ic-green{background:linear-gradient(135deg,#19b277,#0d7a51)}
+  .ic-green{background:linear-gradient(135deg,#2dd4bf,#14b8a6)}
   .ic-blue{background:linear-gradient(135deg,#3b86e6,#1d5bb0)}
   .ic-gold{background:linear-gradient(135deg,#d3aa3e,#9a7416)}
   .ic-violet{background:linear-gradient(135deg,#8a68e6,#5a3fb0)}
@@ -80,7 +80,7 @@
 
   @media(max-width:600px){.kl-brandtxt i{display:none}.kl-night span{display:none}.kl-topbar{padding:14px 16px}.kl-body{padding:18px 16px 22px}}
   `;
-  const AC = {'ic-green':'#19b277','ic-blue':'#3b86e6','ic-gold':'#d3aa3e','ic-violet':'#8a68e6','ic-teal':'#17b3b3'};
+  const AC = {'ic-green':'#2dd4bf','ic-blue':'#3b86e6','ic-gold':'#d3aa3e','ic-violet':'#8a68e6','ic-teal':'#17b3b3'};
   const ICON = {
     grid:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>',
     moon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',

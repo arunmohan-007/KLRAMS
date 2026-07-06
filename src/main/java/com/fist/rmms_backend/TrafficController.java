@@ -41,11 +41,11 @@ public class TrafficController {
                 "name TEXT PRIMARY KEY, data JSONB, updated_at TIMESTAMP DEFAULT now())");
     }
 
-    /** Replace all stations. Body: JSON array of {name,road,section,ch,lat,lng,xsp}. */
+    /** Add/update stations by name (additive). Body: JSON array of {name,road,section,ch,lat,lng,xsp}.
+     *  Existing stations not in this payload are kept; use POST /clear to wipe all. */
     @PostMapping("/stations")
     public Map<String, Object> saveStations(@RequestBody String body) throws Exception {
         JsonNode arr = om.readTree(body);
-        jdbc.update("DELETE FROM traffic_stations");
         int n = 0;
         if (arr != null && arr.isArray()) {
             for (JsonNode s : arr) {
@@ -63,11 +63,11 @@ public class TrafficController {
         return Map.of("saved", n);
     }
 
-    /** Replace all counts. Body: JSON object { "<station name>": {total,byDir,byClass,byHour,days,dateMin,dateMax}, ... }. */
+    /** Add/update counts by station name (additive). Body: JSON object { "<station name>": {...}, ... }.
+     *  Existing stations not in this payload are kept; use POST /clear to wipe all. */
     @PostMapping("/counts")
     public Map<String, Object> saveCounts(@RequestBody String body) throws Exception {
         JsonNode obj = om.readTree(body);
-        jdbc.update("DELETE FROM traffic_counts");
         int n = 0;
         if (obj != null && obj.isObject()) {
             Iterator<String> it = obj.fieldNames();

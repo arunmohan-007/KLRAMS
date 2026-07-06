@@ -10,8 +10,10 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Reads the RMMS road-condition CSV and stores every row in the "condition" table.
@@ -54,12 +56,16 @@ public class ConditionService {
             )
             """);
         jdbc.execute("CREATE INDEX IF NOT EXISTS condition_geom_idx ON condition USING GIST (geom)");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS condition_section_idx ON condition (section_label)");
     }
 
     @Transactional
     public int loadCsv(InputStream in) throws Exception {
         ensureSchema();
-        jdbc.update("TRUNCATE TABLE condition RESTART IDENTITY");
+        // Additive by section: replace only the section labels present in THIS file,
+        // so uploading another section adds to the data and re-uploading a section
+        // refreshes just that one. (Previously this TRUNCATEd the whole table on
+        // every upload, which wiped all previously-loaded sections.)
 
         BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
         String headerLine = br.readLine();
@@ -77,12 +83,20 @@ public class ConditionService {
             "end_lat, end_lng, geom) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, " +
             "ST_SetSRID(ST_MakeLine(ST_MakePoint(?,?), ST_MakePoint(?,?)), 4326))";
 
+        // Track which section labels we've already cleared during this upload so each
+        // incoming section is wiped once (removing its prior rows) before we append.
+        Set<String> replaced = new HashSet<>();
         List<Object[]> batch = new ArrayList<>();
         String line;
         int count = 0;
         while ((line = br.readLine()) != null) {
             if (line.trim().isEmpty()) continue;
             String[] c = parseCsvLine(line);
+
+            String section = get(c, idx, "Section_Label");
+            if (section != null && replaced.add(section)) {
+                jdbc.update("DELETE FROM condition WHERE section_label = ?", section);
+            }
 
             Double slng = num(get(c, idx, "Start_Longitude"));
             Double slat = num(get(c, idx, "Start_Latitude"));
@@ -91,7 +105,7 @@ public class ConditionService {
 
             batch.add(new Object[]{
                 get(c, idx, "Survey_Type"),
-                get(c, idx, "Section_Label"),
+                section,
                 get(c, idx, "XSP"),
                 num(get(c, idx, "IRI")),
                 num(get(c, idx, "CRACK")),

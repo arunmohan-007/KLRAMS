@@ -51,6 +51,7 @@ public class ConsoleController {
         m.put("full_network", cnt("SELECT count(*) FROM full_road_network"));
         m.put("condition", cnt("SELECT count(*) FROM condition"));
         m.put("segments", cnt("SELECT count(*) FROM condition_segments"));
+        m.put("fwd_segments", cnt("SELECT count(*) FROM fwd_segments"));
         m.put("video", cnt("SELECT count(*) FROM road_video"));
         for (String t : new String[]{"fwd", "bituminous_core", "subgrade", "pavement_crust",
                 "bridge", "culvert", "furniture_line", "furniture_point"}) {

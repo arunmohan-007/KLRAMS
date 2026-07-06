@@ -15,8 +15,8 @@
 (function (global) {
   'use strict';
 
-  const LANE   = 0x9ee23a;
-  const SCAN   = 0x2bd478;
+  const LANE   = 0x2dd4bf;
+  const SCAN   = 0x14b8a6;
   const VOID    = 0x06120d;
   const ASPHALT = 0x122017;
 
@@ -36,7 +36,7 @@
       '#nsv-fallback .dash{position:absolute;left:50%;top:0;width:2.2%;height:100%;transform:translateX(-50%);',
       'background:repeating-linear-gradient(180deg,#f4f7fb 0 5%,transparent 5% 11%);',
       'animation:nsvscroll .6s linear infinite;opacity:.9}',
-      '#nsv-fallback .edge{position:absolute;top:0;height:100%;width:1.2%;background:rgba(158,226,58,.6);box-shadow:0 0 14px rgba(158,226,58,.5)}',
+      '#nsv-fallback .edge{position:absolute;top:0;height:100%;width:1.2%;background:rgba(45,212,191,.6);box-shadow:0 0 14px rgba(45,212,191,.5)}',
       '#nsv-fallback .edge.l{left:7%}#nsv-fallback .edge.r{right:7%}',
       '@keyframes nsvscroll{to{background-position:0 22px}}'
     ].join('');

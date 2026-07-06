@@ -76,7 +76,7 @@ public class FullNetworkController {
             }
         }
         return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
+                .cacheControl(CacheControl.noCache())
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body);
     }
