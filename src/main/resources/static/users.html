@@ -180,8 +180,12 @@
       if(!list.length){ rows.innerHTML = '<tr><td colspan="6" class="empty">No users yet.</td></tr>'; return; }
       rows.innerHTML = list.map(function(u){
         var enabled = u.enabled;
+        var isSuper = u.role === 'SUPER_ADMIN';
         var roleSel = ['USER','ADMIN','SUPER_ADMIN'].map(function(v){
           return '<option value="'+v+'"'+(u.role===v?' selected':'')+'>'+roleLabel(v)+'</option>'; }).join('');
+        // Super Admins cannot be disabled/enabled — omit the toggle for those rows.
+        var toggleBtn = isSuper ? '' :
+          '<button class="btn sm ghost act-toggle">'+(enabled?'Disable':'Enable')+'</button>';
         return '<tr data-id="'+u.id+'">'+
           '<td class="uname">'+esc(u.username)+'</td>'+
           '<td>'+esc(u.full_name||'—')+'</td>'+
@@ -189,7 +193,7 @@
           '<td><span class="pill '+(enabled?'on':'off')+'">'+(enabled?'Active':'Disabled')+'</span></td>'+
           '<td>'+fmtDate(u.updated_at)+'</td>'+
           '<td><div class="actions">'+
-            '<button class="btn sm ghost act-toggle">'+(enabled?'Disable':'Enable')+'</button>'+
+            toggleBtn+
             '<button class="btn sm ghost act-pw">Reset password</button>'+
             '<button class="btn sm danger act-del">Delete</button>'+
           '</div></td>'+

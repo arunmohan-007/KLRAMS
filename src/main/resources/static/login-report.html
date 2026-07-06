@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLRAMS Console · Login Activity — Kerala PWD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0b1220; --panel:#101b2e; --panel-2:#0e1726; --edge:#20304c; --edge-soft:#1a2740;
+    --text:#eaf0fa; --muted:#93a3bb; --muted-2:#5f6e86;
+    --green:#19b277; --blue:#3b86e6; --gold:#d3aa3e; --violet:#8a68e6; --red:#e65b5b; --amber:#ffa630;
+    --disp:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{min-height:100%}
+  body{font-family:var(--body);background:var(--void);color:var(--text);-webkit-font-smoothing:antialiased}
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:radial-gradient(90% 60% at 82% -10%, rgba(59,134,230,.14) 0, transparent 60%),
+      radial-gradient(70% 50% at 8% 108%, rgba(25,178,119,.12) 0, transparent 60%), var(--void)}
+  .shell{position:relative;z-index:2;max-width:1280px;margin:0 auto;padding:24px clamp(18px,4vw,48px) 44px}
+
+  .top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:13px}
+  .glyph{width:44px;height:44px;border-radius:12px;flex:none;background:linear-gradient(135deg,#3b86e6,#2a5fb0);display:flex;align-items:center;justify-content:center;color:#fff}
+  .glyph svg{width:23px;height:23px}
+  .bk .t{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.5px}
+  .bk .s{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted-2);margin-top:2px}
+  .top-r{display:flex;align-items:center;gap:11px}
+  .rolechip{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8fc0f7;border:1px solid rgba(59,134,230,.4);background:rgba(59,134,230,.09);border-radius:999px;padding:8px 14px}
+  .link{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);border:1px solid var(--edge);border-radius:999px;padding:8px 16px;text-decoration:none;transition:.2s}
+  .link:hover{color:var(--amber);border-color:rgba(255,166,48,.5)}
+
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(24px,3.4vw,34px);letter-spacing:-.01em;margin:26px 0 6px}
+  .sub{color:var(--muted);font-size:13.5px;max-width:720px}
+
+  .card{background:linear-gradient(165deg,var(--panel) 0,var(--panel-2) 100%);border:1px solid var(--edge-soft);border-radius:16px;padding:20px 20px 18px;margin-top:22px}
+  .card h2{font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:.3px;margin-bottom:14px;display:flex;align-items:center;gap:9px}
+  .card h2 .dot{width:7px;height:7px;border-radius:50%;background:var(--blue)}
+
+  /* toolbar */
+  .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .search{flex:1;min-width:200px;position:relative}
+  input,select{width:100%;padding:10px 12px;border:1px solid var(--edge);border-radius:9px;font-size:13.5px;font-family:var(--body);color:var(--text);background:rgba(6,11,20,.55);transition:.18s}
+  input:focus,select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,134,230,.15)}
+  select{width:auto;min-width:150px}
+  select option{background:#101b2e}
+  .daterange{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .daterange input[type=date]{width:auto;color-scheme:dark;font-family:var(--mono);font-size:12.5px}
+  .daterange span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2)}
+  .btn{cursor:pointer;border:0;border-radius:9px;padding:11px 18px;font-family:var(--disp);font-weight:600;font-size:13.5px;color:#0c1320;background:linear-gradient(180deg,#5ea1f0,#3b86e6);transition:filter .18s,transform .06s}
+  .btn:hover{filter:brightness(1.06)} .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--edge)}
+  .btn.ghost:hover{color:var(--text);border-color:var(--blue)}
+
+  .stats{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:4px}
+  .stat{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .stat b{color:var(--text);font-size:14px;font-family:var(--disp)}
+
+  .msg{margin-top:12px;font-size:12.5px;padding:9px 12px;border-radius:9px;display:none}
+  .msg.err{display:block;color:#ffb4ac;background:rgba(230,91,91,.1);border:1px solid rgba(230,91,91,.32)}
+
+  /* table */
+  .tbl-wrap{overflow-x:auto;margin-top:6px}
+  table{width:100%;border-collapse:collapse;font-size:13px;min-width:900px}
+  th{text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2);font-weight:600;padding:8px 12px;border-bottom:1px solid var(--edge);white-space:nowrap}
+  td{padding:11px 12px;border-bottom:1px solid var(--edge-soft);vertical-align:middle}
+  tr:hover td{background:rgba(255,255,255,.015)}
+  .uname{font-weight:600}
+  .ip{font-family:var(--mono);font-size:12px;color:#cfe0f5}
+  .ua{color:var(--muted);font-size:12px;max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pill{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid}
+  .pill.super{color:#c7b6f5;border-color:rgba(138,104,230,.45);background:rgba(138,104,230,.1)}
+  .pill.admin{color:#8fc0f7;border-color:rgba(59,134,230,.45);background:rgba(59,134,230,.1)}
+  .pill.user{color:#9ee8c6;border-color:rgba(25,178,119,.45);background:rgba(25,178,119,.1)}
+  .pill.active{color:#9ee8c6;border-color:rgba(25,178,119,.5);background:rgba(25,178,119,.12)}
+  .empty{color:var(--muted-2);font-size:13px;text-align:center;padding:26px}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="shell">
+    <div class="top">
+      <div class="brand">
+        <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg></span>
+        <span class="bk"><div class="t">Login Activity</div><div class="s">KLRAMS Console · Kerala PWD</div></span>
+      </div>
+      <div class="top-r">
+        <span class="rolechip" id="rolechip">—</span>
+        <a class="link" href="/home.html">&lsaquo; Home</a>
+        <a class="link" href="/logout">Sign out</a>
+      </div>
+    </div>
+
+    <h1>Login activity report</h1>
+    <p class="sub">Every successful sign-in to KLRAMS — the user, their role, when they logged in, the source IP address, the browser, and how long the session lasted. Sessions that have not yet signed out show as <b>Active</b>. Visible to Super Admins only.</p>
+
+    <div class="card">
+      <h2><span class="dot"></span>Access log</h2>
+
+      <div class="toolbar">
+        <div class="search"><input id="q" type="text" placeholder="Filter by user, IP, role…" autocomplete="off"></div>
+        <div class="daterange">
+          <span>From</span><input id="from" type="date">
+          <span>To</span><input id="to" type="date">
+          <button class="btn ghost" id="clearDates" type="button">Clear</button>
+        </div>
+        <select id="limit">
+          <option value="200">Last 200</option>
+          <option value="500" selected>Last 500</option>
+          <option value="1000">Last 1000</option>
+          <option value="2000">Last 2000</option>
+        </select>
+        <button class="btn ghost" id="refresh" type="button">Refresh</button>
+        <button class="btn" id="export" type="button">Export CSV</button>
+      </div>
+
+      <div class="stats">
+        <span class="stat"><b id="stTotal">—</b> events</span>
+        <span class="stat"><b id="stUsers">—</b> distinct users</span>
+        <span class="stat"><b id="stActive">—</b> active sessions</span>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>User</th><th>Full name</th><th>Role</th>
+            <th>Login time</th><th>Logout time</th><th>Session length</th>
+            <th>IP address</th><th>Browser</th>
+          </tr></thead>
+          <tbody id="rows"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="msg" id="listMsg"></div>
+    </div>
+  </div>
+
+  <script src="/js/role-gate.js" defer></script>
+  <script>
+  (function(){
+    var rows = document.getElementById('rows');
+    var listMsg = document.getElementById('listMsg');
+    var q = document.getElementById('q');
+    var limitSel = document.getElementById('limit');
+    var fromInp = document.getElementById('from');
+    var toInp = document.getElementById('to');
+    var data = [];
+
+    window.RoleGate = window.RoleGate || {};
+    window.RoleGate.onReady = function(me){
+      var r = (me && me.role) || 'USER';
+      document.getElementById('rolechip').textContent =
+        r === 'SUPER_ADMIN' ? 'Super Admin' : r === 'ADMIN' ? 'Admin' : 'User';
+    };
+
+    function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+    function fmtTime(s){ if(!s) return null; try{
+      return new Date(s).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    }catch(e){ return String(s); } }
+
+    // "session extend" — human-readable elapsed time between login and logout.
+    function fmtDuration(sec){
+      if(sec == null) return null;
+      sec = Number(sec); if(!isFinite(sec) || sec < 0) return null;
+      var d = Math.floor(sec/86400), h = Math.floor((sec%86400)/3600),
+          m = Math.floor((sec%3600)/60), s = Math.floor(sec%60);
+      if(d) return d+'d '+h+'h '+m+'m';
+      if(h) return h+'h '+m+'m';
+      if(m) return m+'m '+s+'s';
+      return s+'s';
+    }
+
+    // Trim a user-agent to a readable browser + OS hint.
+    function shortUA(ua){
+      if(!ua) return '—';
+      var browser = /Edg\//.test(ua)?'Edge': /OPR\//.test(ua)?'Opera':
+                    /Chrome\//.test(ua)?'Chrome': /Firefox\//.test(ua)?'Firefox':
+                    /Safari\//.test(ua)?'Safari':'Browser';
+      var os = /Windows NT 10/.test(ua)?'Windows': /Windows/.test(ua)?'Windows':
+               /Android/.test(ua)?'Android': /iPhone|iPad|iOS/.test(ua)?'iOS':
+               /Mac OS X/.test(ua)?'macOS': /Linux/.test(ua)?'Linux':'';
+      return os ? browser+' · '+os : browser;
+    }
+
+    function roleLabel(r){ return r==='SUPER_ADMIN'?'Super Admin':r==='ADMIN'?'Admin':r==='USER'?'User':'—'; }
+    function roleCls(r){ return r==='SUPER_ADMIN'?'super':r==='ADMIN'?'admin':'user'; }
+
+    function load(){
+      rows.innerHTML = '<tr><td colspan="8" class="empty">Loading…</td></tr>';
+      var qs = 'limit=' + encodeURIComponent(limitSel.value);
+      if(fromInp.value) qs += '&from=' + encodeURIComponent(fromInp.value);
+      if(toInp.value)   qs += '&to='   + encodeURIComponent(toInp.value);
+      fetch('/api/reports/logins?' + qs, {credentials:'same-origin'})
+        .then(function(r){ if(!r.ok) throw new Error('You are not allowed to view this report ('+r.status+').'); return r.json(); })
+        .then(function(list){ data = list || []; render(); })
+        .catch(function(e){ rows.innerHTML = '<tr><td colspan="8" class="empty">'+esc(e.message)+'</td></tr>'; });
+    }
+
+    function filtered(){
+      var term = q.value.trim().toLowerCase();
+      if(!term) return data;
+      return data.filter(function(e){
+        return [e.username, e.full_name, e.role, e.ip, e.user_agent]
+          .some(function(v){ return v && String(v).toLowerCase().indexOf(term) >= 0; });
+      });
+    }
+
+    function render(){
+      var list = filtered();
+
+      // stats over the full (unfiltered) dataset
+      var users = {}, active = 0;
+      data.forEach(function(e){ if(e.username) users[e.username]=1; if(!e.logout_at) active++; });
+      document.getElementById('stTotal').textContent = data.length;
+      document.getElementById('stUsers').textContent = Object.keys(users).length;
+      document.getElementById('stActive').textContent = active;
+
+      if(!list.length){ rows.innerHTML = '<tr><td colspan="8" class="empty">No login activity'+(q.value?' matches your filter':' recorded yet')+'.</td></tr>'; return; }
+
+      rows.innerHTML = list.map(function(e){
+        var dur = fmtDuration(e.session_seconds);
+        var loggedOut = fmtTime(e.logout_at);
+        return '<tr>'+
+          '<td class="uname">'+esc(e.username)+'</td>'+
+          '<td>'+esc(e.full_name||'—')+'</td>'+
+          '<td><span class="pill '+roleCls(e.role)+'">'+esc(roleLabel(e.role))+'</span></td>'+
+          '<td>'+esc(fmtTime(e.login_at)||'—')+'</td>'+
+          '<td>'+(loggedOut ? esc(loggedOut) : '<span class="pill active">Active</span>')+'</td>'+
+          '<td>'+(dur ? esc(dur) : '<span class="stat">in progress</span>')+'</td>'+
+          '<td class="ip">'+esc(e.ip||'—')+'</td>'+
+          '<td class="ua" title="'+esc(e.user_agent||'')+'">'+esc(shortUA(e.user_agent))+'</td>'+
+        '</tr>';
+      }).join('');
+    }
+
+    function exportCsv(){
+      var list = filtered();
+      var head = ['Username','Full name','Role','Login time','Logout time','Session seconds','IP','User agent'];
+      var lines = [head.join(',')];
+      list.forEach(function(e){
+        var cells = [e.username, e.full_name, e.role, e.login_at, e.logout_at, e.session_seconds, e.ip, e.user_agent];
+        lines.push(cells.map(function(c){
+          var v = c==null ? '' : String(c);
+          return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+        }).join(','));
+      });
+      var blob = new Blob([lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'klrams-login-activity-' + new Date().toISOString().slice(0,10) + '.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+    }
+
+    q.addEventListener('input', render);
+    limitSel.addEventListener('change', load);
+    fromInp.addEventListener('change', load);
+    toInp.addEventListener('change', load);
+    document.getElementById('clearDates').addEventListener('click', function(){
+      if(!fromInp.value && !toInp.value) return;
+      fromInp.value = ''; toInp.value = ''; load();
+    });
+    document.getElementById('refresh').addEventListener('click', load);
+    document.getElementById('export').addEventListener('click', exportCsv);
+
+    load();
+  })();
+  </script>
+</body>
+</html>

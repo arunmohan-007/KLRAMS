@@ -58,6 +58,16 @@
   .viewonly-note h2{font-size:18px;margin:0 0 8px;color:var(--ink)}
   .viewonly-note p{color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 16px}
   .viewonly-note a{display:inline-flex;align-items:center;gap:6px;color:var(--accent-d);font-weight:600;text-decoration:none;font-size:14px}
+  /* --- upload log --- */
+  .logwrap{max-height:380px;overflow:auto;border:1px solid var(--hair);border-radius:10px}
+  .logtbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .logtbl th,.logtbl td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--hair);white-space:nowrap}
+  .logtbl th{position:sticky;top:0;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);background:#f7f9fc;z-index:1}
+  .logtbl tbody tr:hover{background:#f7f9fc}
+  .logtbl td.dt{white-space:normal;color:var(--muted);font-size:11.5px;max-width:360px}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;text-transform:capitalize}
+  .badge.ok{background:#e7f6ef;color:var(--accent-d)}
+  .badge.err{background:#fcebea;color:#a3302a}
 </style>
 </head>
 <body>
@@ -75,10 +85,8 @@
   </div>
 
   <div class="wrap" data-requires="admin">
-    <div class="stats">
-      <div class="stat"><div class="n" id="sCond">—</div><div class="l">Condition rows</div></div>
-      <div class="stat"><div class="n" id="sSeg">—</div><div class="l">Built segments</div></div>
-      <div class="stat"><div class="n" id="sVid">—</div><div class="l">Video links</div></div>
+    <div class="stats" id="statGrid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+      <div class="stat"><div class="n">—</div><div class="l">Loading imported data…</div></div>
     </div>
 
     <div class="card">
@@ -201,6 +209,18 @@
       <p class="hint">A shapefile zip must contain the <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> (and <code>.prj</code>) together. The boundaries then appear as toggleable layers in the viewer.</p>
     </div>
 
+    <div class="card">
+      <h2>Upload log</h2>
+      <p class="sub">Date &amp; time, file name and status of every import done from this console. Newest first.</p>
+      <button class="btn ghost" onclick="loadLog()" style="margin-bottom:12px">Refresh log</button>
+      <div class="logwrap">
+        <table class="logtbl">
+          <thead><tr><th>Date &amp; time</th><th>Dataset</th><th>File</th><th>Status</th><th>Detail</th></tr></thead>
+          <tbody id="logBody"><tr><td colspan="5" style="text-align:center;color:#8a93a3;padding:16px">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
 
   </div>
 
@@ -211,54 +231,116 @@ const EP={
   zip:{url:'/api/video/upload-zip',inp:'zfile',out:'oZip',busy:'Uploading videos…',ok:j=>'✓ Stored '+j.stored+' video files.'},
   catalog:{url:'/api/video/upload-catalog',inp:'vfile',out:'oCat',busy:'Loading catalogue…',ok:j=>'✓ Linked '+j.entries+' roads to videos.'}
 };
+const UP_LABEL={condition:'Condition data',zip:'Survey video zip',catalog:'Video catalogue'};
 async function up(kind){
   const c=EP[kind], el=document.getElementById(c.out), f=document.getElementById(c.inp).files[0];
   if(!f){show(el,false,'Choose a file first.');return;}
   show(el,true,c.busy);
   const fd=new FormData();fd.append('file',f);
+  const ds=UP_LABEL[kind]||kind;
   try{const r=await fetch(c.url,{method:'POST',body:fd});const j=await r.json();
-    if(j.status==='ok'){show(el,true,c.ok(j));refresh();}else show(el,false,'Error: '+j.message);
-  }catch(e){show(el,false,'Request failed: '+e.message);}
+    if(j.status==='ok'){const msg=c.ok(j);show(el,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    else{show(el,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
+  }catch(e){show(el,false,'Request failed: '+e.message);logUpload(ds,f.name,false,e.message);}
 }
 async function build(){
   const el=document.getElementById('oBuild');show(el,true,'Building segments…');
   try{const r=await fetch('/api/segments/build',{method:'POST'});const j=await r.json();
-    if(j.status==='ok'){show(el,true,'✓ Built '+j.segments+' segments.');refresh();}else show(el,false,'Error: '+j.message);
-  }catch(e){show(el,false,'Failed: '+e.message);}
+    if(j.status==='ok'){show(el,true,'✓ Built '+j.segments+' segments.');logUpload('Segments build','—',true,'Built '+j.segments+' segments');refresh();}
+    else{show(el,false,'Error: '+j.message);logUpload('Segments build','—',false,j.message);}
+  }catch(e){show(el,false,'Failed: '+e.message);logUpload('Segments build','—',false,e.message);}
 }
-async function refresh(){
-  try{const a=await (await fetch('/api/condition/count')).json();document.getElementById('sCond').textContent=(a.count||0).toLocaleString();}catch(e){}
-  try{const b=await (await fetch('/api/segments/count')).json();document.getElementById('sSeg').textContent=(b.count||0).toLocaleString();}catch(e){}
-  try{const c=await (await fetch('/api/video/catalog')).json();document.getElementById('sVid').textContent=(Array.isArray(c)?c.length:0).toLocaleString();}catch(e){}
+/* every imported dataset shown as a tile, filled from /api/console/summary */
+const STAT_TILES=[
+  {k:'roads', l:'Road network', sub:d=>d.roads_km?(Number(d.roads_km).toLocaleString()+' km'):''},
+  {k:'condition', l:'Condition rows'},
+  {k:'segments', l:'Built segments'},
+  {k:'video', l:'Survey videos'},
+  {k:'fwd', l:'FWD (deflection)'},
+  {k:'bituminous_core', l:'Bituminous core'},
+  {k:'subgrade', l:'Sub-grade soil'},
+  {k:'pavement_crust', l:'Pavement crust'},
+  {k:'traffic_stations', l:'Traffic stations'},
+  {k:'traffic_counts', l:'Traffic counts'},
+  {k:'full_network', l:'Full road network'},
+  {k:'bridge', l:'Bridges'},
+  {k:'culvert', l:'Culverts'}
+];
+function escLog(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+async function loadSummary(){
+  try{
+    const res=await fetch('/api/console/summary',{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status+(res.status===404?' — server not updated/restarted':''));
+    const d=await res.json();
+    if(!d||typeof d!=='object'||Array.isArray(d)) throw new Error('unexpected response');
+    document.getElementById('statGrid').innerHTML=STAT_TILES.map(function(t){
+      const v=d[t.k]; const sub=t.sub?t.sub(d):'';
+      return '<div class="stat"><div class="n">'+Number(v||0).toLocaleString()+'</div><div class="l">'+escLog(t.l)+(sub?' · '+escLog(sub):'')+'</div></div>';
+    }).join('');
+  }catch(e){
+    document.getElementById('statGrid').innerHTML='<div class="stat" style="grid-column:1/-1;border-color:#f3c6c2;background:#fdf3f2"><div class="l" style="color:#a3302a;text-transform:none;letter-spacing:0;font-size:13px">Couldn’t load import counts ('+escLog(e.message)+'). If you just deployed these changes, rebuild and <b>restart the server</b> so <code>/api/console/summary</code> is available.</div></div>';
+  }
 }
+async function loadLog(){
+  const tb=document.getElementById('logBody');
+  try{
+    const res=await fetch('/api/upload-log?limit=200',{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status+(res.status===404?' — server not updated/restarted':''));
+    const rows=await res.json();
+    if(!Array.isArray(rows)) throw new Error('unexpected response');
+    const body=rows.map(function(r){
+      const st=String(r.status||'').toLowerCase();
+      const ok=(st==='ok'||st==='success');
+      return '<tr><td>'+escLog(r.ts)+'</td><td>'+escLog(r.dataset)+'</td><td>'+escLog(r.filename)+'</td>'
+        +'<td><span class="badge '+(ok?'ok':'err')+'">'+escLog(r.status||'—')+'</span></td>'
+        +'<td class="dt">'+escLog(r.detail)+(r.username?' <span style="color:#9aa7b8">· '+escLog(r.username)+'</span>':'')+'</td></tr>';
+    }).join('');
+    tb.innerHTML=body||'<tr><td colspan="5" style="text-align:center;color:#8a93a3;padding:16px">No uploads recorded yet.</td></tr>';
+  }catch(e){
+    tb.innerHTML='<tr><td colspan="5" style="text-align:center;color:#a3302a;padding:16px">Couldn’t load the log ('+escLog(e.message)+'). Rebuild &amp; restart the server so <code>/api/upload-log</code> is available.</td></tr>';
+  }
+}
+/* record one import in the server-side upload log, then refresh the log view */
+function logUpload(dataset,filename,ok,detail){
+  try{
+    fetch('/api/upload-log',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({dataset:dataset,filename:filename||'—',status:ok?'ok':'error',detail:detail||''})})
+      .then(function(){loadLog();}).catch(function(){});
+  }catch(e){}
+}
+/* refresh() is called from the UI + after each import; keep the name, refresh everything */
+async function refresh(){ loadSummary(); loadLog(); }
 refresh();
 async function upGeo(){
   const out=document.getElementById('oGeo');
   const f=document.getElementById('geofile').files[0];
   if(!f){show(out,false,'Choose a CSV first.');return;}
   const type=document.getElementById('geoType').value;
+  const GEO_LABEL={subgrade:'Sub-grade soil',bituminous_core:'Bituminous core',pavement_crust:'Pavement crust',fwd:'FWD (deflection)'};
+  const ds=GEO_LABEL[type]||type;
   show(out,true,'Uploading & referencing…');
   const fd=new FormData();fd.append('file',f);
   try{
     const r=await fetch('/api/assets/'+type+'/upload',{method:'POST',body:fd});
     const j=await r.json();
-    if(j.status==='ok') show(out,true,'✓ Placed '+j.loaded+' record(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':''));
-    else show(out,false,'Error: '+j.message);
-  }catch(e){show(out,false,'Failed: '+e.message);}
+    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' record(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    else{show(out,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
+  }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,f.name,false,e.message);}
 }
 async function upAsset(){
   const out=document.getElementById('oAsset');
   const f=document.getElementById('assetfile').files[0];
   if(!f){show(out,false,'Choose a CSV first.');return;}
   const type=document.getElementById('assetType').value;
+  const ds=type.replace('_',' ').replace(/\b\w/,function(m){return m.toUpperCase();});
   show(out,true,'Uploading & referencing…');
   const fd=new FormData();fd.append('file',f);
   try{
     const r=await fetch('/api/assets/'+type+'/upload',{method:'POST',body:fd});
     const j=await r.json();
-    if(j.status==='ok') show(out,true,'✓ Placed '+j.loaded+' '+type.replace('_',' ')+'(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':''));
-    else show(out,false,'Error: '+j.message);
-  }catch(e){show(out,false,'Failed: '+e.message);}
+    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' '+type.replace('_',' ')+'(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    else{show(out,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
+  }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,f.name,false,e.message);}
 }
 async function upRoads(){
   const out=document.getElementById('oRoad');
@@ -287,9 +369,9 @@ async function upRoads(){
       show(out,false,'Session expired or not signed in (HTTP '+r.status+'). Sign out, sign back in, then upload again.'); return;
     }
     let j; try{ j=JSON.parse(raw); }catch(pe){ show(out,false,'Server returned non-JSON (HTTP '+r.status+'): '+raw.slice(0,400)); return; }
-    if(r.ok && j.status==='ok') show(out,true,'✓ '+(mode==='replace'?('Replaced network: '+j.inserted+' roads loaded.'):('Updated '+j.updated+', added '+j.inserted+' roads.'))+' Total now '+j.total_roads+'. Now click Build segments.');
-    else show(out,false,'Error (HTTP '+r.status+'): '+(j.message||j.error||'upload failed'));
-  }catch(e){ show(out,false,'Failed: '+(e&&e.message?e.message:String(e))); }
+    if(r.ok && j.status==='ok'){const msg='✓ '+(mode==='replace'?('Replaced network: '+j.inserted+' roads loaded.'):('Updated '+j.updated+', added '+j.inserted+' roads.'))+' Total now '+j.total_roads+'. Now click Build segments.';show(out,true,msg);logUpload('Road network',f.name,true,msg);refresh();}
+    else{const em='HTTP '+r.status+': '+(j.message||j.error||'upload failed');show(out,false,'Error ('+em+')');logUpload('Road network',f.name,false,em);}
+  }catch(e){ show(out,false,'Failed: '+(e&&e.message?e.message:String(e)));logUpload('Road network',f.name,false,(e&&e.message?e.message:String(e))); }
 }
 async function upFullNetwork(){
   const out=document.getElementById('oFN');
@@ -304,9 +386,9 @@ async function upFullNetwork(){
     else { gj=JSON.parse(await f.text()); }
     const r=await fetch('/api/full-network/upload?mode='+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
     const j=await r.json();
-    if(j.status==='ok') show(out,true,'✓ '+(mode==='replace'?('Replaced network: '+j.inserted+' roads loaded.'):('Updated '+j.updated+', added '+j.inserted+' roads.'))+' Total now '+j.total+'.');
-    else show(out,false,'Error: '+(j.message||'upload failed'));
-  }catch(e){ show(out,false,'Failed: '+e.message); }
+    if(j.status==='ok'){const msg='✓ '+(mode==='replace'?('Replaced network: '+j.inserted+' roads loaded.'):('Updated '+j.updated+', added '+j.inserted+' roads.'))+' Total now '+j.total+'.';show(out,true,msg);logUpload('Full road network',f.name,true,msg);refresh();}
+    else{show(out,false,'Error: '+(j.message||'upload failed'));logUpload('Full road network',f.name,false,j.message||'upload failed');}
+  }catch(e){ show(out,false,'Failed: '+e.message);logUpload('Full road network',f.name,false,e.message); }
 }
 async function upBoundary(type){
   const inp=document.getElementById(type==='district'?'dist':'cons');
@@ -324,9 +406,10 @@ async function upBoundary(type){
     if(bad){show(out,false,'This file is not in latitude/longitude (WGS84) — it looks projected (e.g. UTM). Re-export it from QGIS as EPSG:4326 and upload again.');return;}
     const r=await fetch('/api/boundary/'+type,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
     const j=await r.json();
-    if(j.status==='ok') show(out,true,'✓ Saved '+cnt+' boundary feature(s). Toggle it on in the viewer.');
-    else show(out,false,'Error: '+j.message);
-  }catch(e){ show(out,false,'Failed: '+e.message); }
+    const ds=(type==='district'?'District boundary':'Constituency boundary');
+    if(j.status==='ok'){const msg='✓ Saved '+cnt+' boundary feature(s). Toggle it on in the viewer.';show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    else{show(out,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
+  }catch(e){ show(out,false,'Failed: '+e.message);logUpload((type==='district'?'District boundary':'Constituency boundary'),f.name,false,e.message); }
 }
 /* ===== Traffic data (summarised in-browser for the viewer) ===== */
 const TRF_KEY='klrams_traffic_v1';
@@ -388,7 +471,7 @@ function trfGetStore(){try{return JSON.parse(localStorage.getItem(TRF_KEY))||{};
 function trfPutStore(o){o.v=1;o.savedAt=new Date().toISOString();try{localStorage.setItem(TRF_KEY,JSON.stringify(o));return true;}catch(e){return false;}}
 async function trfPost(kind,payload){try{const r=await fetch('/api/traffic/'+kind,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});return r.ok;}catch(e){return false;}}
 function trfReadFile(id){return new Promise((res,rej)=>{const f=document.getElementById(id).files[0];if(!f){rej(new Error('Choose a CSV first.'));return;}const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('File read error.'));r.readAsText(f);});}
-async function upTraffic(kind){const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx={};pr.header.forEach((h,i)=>idx[h]=i);const store=trfGetStore();if(kind==='stations'){if(idx['Station Name']===undefined){show(out,false,'CSV needs a Station Name column.');return;}store.stations=pr.rows.map(r=>({name:r[idx['Station Name']]||'',road:(idx['Description']!==undefined?r[idx['Description']]:'')||'',section:(idx['Section Label']!==undefined?String(r[idx['Section Label']]||'').trim():''),ch:(idx['Chainage']!==undefined&&String(r[idx['Chainage']]).trim()!==''&&!isNaN(+r[idx['Chainage']]))?+r[idx['Chainage']]:null,lat:(idx['Latitude']!==undefined&&!isNaN(+r[idx['Latitude']]))?+r[idx['Latitude']]:null,lng:(idx['Longitude']!==undefined&&!isNaN(+r[idx['Longitude']]))?+r[idx['Longitude']]:null,xsp:(idx['Xsp Code']!==undefined?r[idx['Xsp Code']]:'')||''})).filter(r=>r.name);const srv=await trfPost('stations',store.stations);trfPutStore(store);show(out,true,'\u2713 '+store.stations.length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}else{if(!pr.header.some(h=>trfNorm(h)==='STATION_NAME')){show(out,false,'CSV needs a STATION_NAME column.');return;}store.counts=trfAggregate(pr.rows,pr.header);const srv=await trfPost('counts',store.counts);trfPutStore(store);show(out,true,'\u2713 Counts for '+Object.keys(store.counts).length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}trfState();}catch(e){show(out,false,e.message||String(e));}}
+async function upTraffic(kind){const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');const _tf=((document.getElementById(kind==='stations'?'trfStn':'trfCnt').files[0])||{}).name||'—';const _tds=(kind==='stations'?'Traffic stations':'Traffic counts');try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx={};pr.header.forEach((h,i)=>idx[h]=i);const store=trfGetStore();if(kind==='stations'){if(idx['Station Name']===undefined){show(out,false,'CSV needs a Station Name column.');return;}store.stations=pr.rows.map(r=>({name:r[idx['Station Name']]||'',road:(idx['Description']!==undefined?r[idx['Description']]:'')||'',section:(idx['Section Label']!==undefined?String(r[idx['Section Label']]||'').trim():''),ch:(idx['Chainage']!==undefined&&String(r[idx['Chainage']]).trim()!==''&&!isNaN(+r[idx['Chainage']]))?+r[idx['Chainage']]:null,lat:(idx['Latitude']!==undefined&&!isNaN(+r[idx['Latitude']]))?+r[idx['Latitude']]:null,lng:(idx['Longitude']!==undefined&&!isNaN(+r[idx['Longitude']]))?+r[idx['Longitude']]:null,xsp:(idx['Xsp Code']!==undefined?r[idx['Xsp Code']]:'')||''})).filter(r=>r.name);const srv=await trfPost('stations',store.stations);trfPutStore(store);show(out,true,'\u2713 '+store.stations.length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}else{if(!pr.header.some(h=>trfNorm(h)==='STATION_NAME')){show(out,false,'CSV needs a STATION_NAME column.');return;}store.counts=trfAggregate(pr.rows,pr.header);const srv=await trfPost('counts',store.counts);trfPutStore(store);show(out,true,'\u2713 Counts for '+Object.keys(store.counts).length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}logUpload(_tds,_tf,true,(kind==='stations'?((store.stations||[]).length+' stations'):('counts for '+Object.keys(store.counts||{}).length+' stations')));trfState();refresh();}catch(e){show(out,false,e.message||String(e));logUpload(_tds,_tf,false,e.message||String(e));}}
 function trfClear(){localStorage.removeItem(TRF_KEY);fetch('/api/traffic/clear',{method:'POST'}).catch(()=>{});trfState();const a=document.getElementById('oTrfStn'),b=document.getElementById('oTrfCnt');a.className='out';b.className='out';show(a,true,'Cleared.');}
 function trfState(){const s=trfGetStore();const ns=(s.stations||[]).length;const nc=Object.keys(s.counts||{}).length;document.getElementById('trfState').innerHTML=(ns||nc)?('<b>'+ns+'</b> stations \u00b7 counts for <b>'+nc+'</b>'+(s.savedAt?(' \u00b7 saved '+new Date(s.savedAt).toLocaleString()):'')+'. Open the viewer to see them.'):'No traffic data stored.';}
 trfState();

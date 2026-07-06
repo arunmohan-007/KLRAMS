@@ -137,6 +137,10 @@ public class UserService {
         String newRole = role == null ? (String) cur.get("role") : normalizeRole(role);
         boolean newEnabled = enabled == null ? (Boolean) cur.get("enabled") : enabled;
 
+        // Super admins are never disabled — to remove access, downgrade the role first.
+        if("SUPER_ADMIN".equals(newRole) && !newEnabled)
+            throw new IllegalArgumentException("Super admins cannot be disabled");
+
         boolean wasSuper = "SUPER_ADMIN".equals(cur.get("role")) && Boolean.TRUE.equals(cur.get("enabled"));
         boolean staysSuper = "SUPER_ADMIN".equals(newRole) && newEnabled;
         if(wasSuper && !staysSuper && countActiveSuperAdmins() <= 1)

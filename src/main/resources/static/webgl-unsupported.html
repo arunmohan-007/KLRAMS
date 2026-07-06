@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLRAMS · Enable graphics to view the map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0b1220; --panel:#101b2e; --panel-2:#0e1726; --edge:#20304c; --edge-soft:#1a2740;
+    --text:#eaf0fa; --muted:#93a3bb; --muted-2:#5f6e86; --amber:#ffa630; --green:#19b277; --blue:#3b86e6;
+    --disp:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{min-height:100%}
+  body{font-family:var(--body);background:var(--void);color:var(--text);-webkit-font-smoothing:antialiased;display:flex;align-items:center;justify-content:center;padding:24px}
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:radial-gradient(90% 60% at 82% -10%, rgba(255,166,48,.12) 0, transparent 60%),
+      radial-gradient(70% 50% at 8% 108%, rgba(59,134,230,.12) 0, transparent 60%), var(--void)}
+  .card{position:relative;z-index:2;width:100%;max-width:620px;background:linear-gradient(165deg,var(--panel),var(--panel-2));border:1px solid var(--edge-soft);border-radius:18px;padding:34px clamp(22px,4vw,40px) 30px}
+  .ic{width:52px;height:52px;border-radius:13px;background:linear-gradient(135deg,#ffb454,#e07b00);display:flex;align-items:center;justify-content:center;color:#1a1200;margin-bottom:18px}
+  .ic svg{width:28px;height:28px}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(22px,3.2vw,29px);letter-spacing:-.01em;line-height:1.12}
+  .lead{color:var(--muted);font-size:14.5px;line-height:1.6;margin:12px 0 22px}
+  .lead b{color:var(--text)}
+  .steps{list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:12px;margin:0 0 24px}
+  .steps li{counter-increment:s;position:relative;padding:13px 15px 13px 50px;background:rgba(255,255,255,.02);border:1px solid var(--edge-soft);border-radius:12px;font-size:13.5px;line-height:1.55;color:#d6dEEB}
+  .steps li::before{content:counter(s);position:absolute;left:13px;top:13px;width:24px;height:24px;border-radius:7px;background:rgba(255,166,48,.14);border:1px solid rgba(255,166,48,.4);color:var(--amber);font-family:var(--mono);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .steps code{font-family:var(--mono);font-size:12.5px;color:#ffd79a;background:rgba(255,166,48,.1);border:1px solid rgba(255,166,48,.22);padding:2px 7px;border-radius:6px;white-space:nowrap}
+  .steps b{color:#fff}
+  .note{font-size:12.5px;color:var(--muted-2);line-height:1.6;margin-bottom:24px;border-left:2px solid var(--edge);padding-left:12px}
+  .row{display:flex;gap:11px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-decoration:none;font-family:var(--disp);font-weight:600;font-size:14px;padding:12px 20px;border-radius:11px;border:0;transition:filter .18s,transform .06s}
+  .btn.primary{color:#08130d;background:linear-gradient(180deg,#37cf93,#19b277)}
+  .btn.ghost{color:var(--muted);background:transparent;border:1px solid var(--edge)}
+  .btn.primary:hover{filter:brightness(1.06)} .btn.ghost:hover{color:var(--text);border-color:var(--blue)}
+  .btn:active{transform:translateY(1px)}
+  .foot{margin-top:22px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2)}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="card">
+    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+    <h1>The map needs graphics acceleration turned on</h1>
+    <p class="lead">The full KLRAMS GIS viewer draws the road network using <b>WebGL</b>, which is currently <b>disabled</b> in this browser on this computer. You can still use the <b>Lite map</b> right now (it works without WebGL) — or enable WebGL below to unlock the full viewer.</p>
+
+    <ol class="steps">
+      <li>Open a new tab, type <code>chrome://settings/system</code> and press Enter. Turn <b>"Use graphics acceleration when available"</b> <b>ON</b>, then click <b>Relaunch</b>.</li>
+      <li>If it's still off, open <code>chrome://flags/#ignore-gpu-blocklist</code>, set it to <b>Enabled</b>, and click <b>Relaunch</b>.</li>
+      <li>Make sure the computer's <b>graphics driver</b> is up to date (ask IT if unsure).</li>
+      <li>Reopen KLRAMS and click <b>Try the map again</b> below.</li>
+    </ol>
+
+    <p class="note">Managing many PWD computers? IT can enable this for everyone at once with a Chrome/Edge group policy: set <b>HardwareAccelerationModeEnabled = 1</b> (Enabled). Then no per-machine change is needed.</p>
+
+    <div class="row">
+      <a class="btn primary" href="/map-lite.html">Open the Lite map</a>
+      <a class="btn ghost" href="/map.html">Try the full map again</a>
+      <a class="btn ghost" href="/home.html">Back to Home</a>
+    </div>
+
+    <div class="foot">KLRAMS · Kerala PWD · KHRI / RMMS Cell</div>
+  </div>
+</body>
+</html>

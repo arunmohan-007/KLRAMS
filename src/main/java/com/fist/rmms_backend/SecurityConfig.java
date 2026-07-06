@@ -48,7 +48,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, LoginAuditService audit) throws Exception {
         http
             .csrf(c -> c.disable())
             .authorizeHttpRequests(a -> a
@@ -58,10 +58,12 @@ public class SecurityConfig {
                 // public read-only APIs (Government Orders + About/Contact)
                 .requestMatchers(HttpMethod.GET, "/api/go/folders", "/api/go/docs", "/api/go/file/**", "/api/site/content").permitAll()
 
-                // --- SUPER_ADMIN only: Site Control + User Management ---
+                // --- SUPER_ADMIN only: Site Control + User Management + reports ---
                 .requestMatchers("/admin.html").hasRole("SUPER_ADMIN")          // Site Control page
                 .requestMatchers("/users.html").hasRole("SUPER_ADMIN")          // User Management page
+                .requestMatchers("/login-report.html").hasRole("SUPER_ADMIN")   // Login activity report page
                 .requestMatchers("/api/users/**").hasRole("SUPER_ADMIN")
+                .requestMatchers("/api/reports/**").hasRole("SUPER_ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/site/**").hasRole("SUPER_ADMIN")  // site settings writes
 
                 // --- self-service: change own password ---
@@ -80,11 +82,21 @@ public class SecurityConfig {
             .formLogin(f -> f
                 .loginPage("/login.html")
                 .loginProcessingUrl("/login")
-                .defaultSuccessUrl("/home.html", true)
+                // Record the sign-in (IP, user-agent, session) then land on the portal,
+                // preserving the previous "always redirect to /home.html" behaviour.
+                .successHandler((req, res, auth) -> {
+                    audit.recordLogin(auth.getName(), req,
+                            req.getSession(false) != null ? req.getSession().getId() : null);
+                    res.sendRedirect(req.getContextPath() + "/home.html");
+                })
                 .failureUrl("/login.html?error")
                 .permitAll())
             .logout(l -> l
                 .logoutUrl("/logout")
+                // Stamp the session's logout time before the session is invalidated.
+                .addLogoutHandler((req, res, auth) -> {
+                    if(req.getSession(false) != null) audit.recordLogout(req.getSession(false).getId());
+                })
                 .logoutSuccessUrl("/welcome.html")
                 .permitAll());
         return http.build();

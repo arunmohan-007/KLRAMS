@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLRAMS · Map (Lite) — no graphics acceleration needed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{--ink:#0e2038;--ink-2:#16294a;--accent:#16a06b;--accent-d:#0d7a51;--hair:#e2e7ee;--muted:#64718a;--text:#1f2a3d;--surface:#fff;--bg:#eef1f5;
+    --good:#2ba66a;--fair:#FFC400;--poor:#da4b43;--net:#8a99ad;--none:#b9c2cc;
+    --sans:"Inter",system-ui,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",monospace;--shadow:0 1px 2px rgba(14,32,56,.06),0 8px 24px rgba(14,32,56,.10)}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--sans);color:var(--text);background:var(--bg);display:flex;flex-direction:column;height:100vh}
+  /* top bar */
+  .topbar{height:52px;flex:0 0 auto;background:var(--ink);color:#fff;display:flex;align-items:center;gap:12px;padding:0 16px;z-index:1200}
+  .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#1ec98a);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .mark svg{width:16px;height:16px}
+  .brand .t{font-size:15px;font-weight:600}
+  .brand .s{font-size:11px;color:#9fb0c9;margin-left:8px}
+  .pill{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#ffd79a;border:1px solid rgba(255,166,48,.4);background:rgba(255,166,48,.12);border-radius:999px;padding:5px 11px}
+  .spacer{flex:1}
+  .topbar a{color:#cdd9ea;text-decoration:none;font-size:13px;font-weight:500;padding:6px 10px;border-radius:7px}
+  .topbar a:hover{color:#fff;background:rgba(255,255,255,.08)}
+  /* lite banner */
+  .banner{flex:0 0 auto;background:#fff6e6;border-bottom:1px solid #f0d9a8;color:#7a5b17;font-size:12.5px;padding:8px 16px;display:flex;align-items:center;gap:10px}
+  .banner b{color:#5a4210}
+  .banner a{color:var(--accent-d);font-weight:600;text-decoration:none}
+  .banner a:hover{text-decoration:underline}
+  .banner .close{margin-left:auto;cursor:pointer;color:#b79a5a;font-size:16px;line-height:1;border:0;background:none}
+  /* main */
+  .main{flex:1;display:flex;min-height:0}
+  #map{flex:1;min-width:0;background:#dfe6ee}
+  /* side panel */
+  .panel{width:290px;flex:0 0 auto;background:var(--surface);border-left:1px solid var(--hair);overflow-y:auto;padding:14px}
+  .panel h3{font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);margin:2px 0 10px}
+  .grp{border:1px solid var(--hair);border-radius:11px;padding:10px 12px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .sw{display:flex;align-items:center;justify-content:space-between;font-size:13.5px;font-weight:500;padding:6px 0}
+  .sw + .sw{border-top:1px solid #f0f3f7}
+  .sw input{appearance:none;width:40px;height:22px;border-radius:20px;background:#cfd7e2;position:relative;cursor:pointer;transition:.18s;flex:0 0 auto;margin:0}
+  .sw input:checked{background:var(--accent)}
+  .sw input::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.18s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .sw input:checked::after{transform:translateX(18px)}
+  .sw .cnt{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-left:auto;margin-right:10px}
+  label.lbl{display:block;font-size:11px;font-weight:600;color:#46556e;margin:10px 0 5px}
+  select,input[type=search]{width:100%;font-family:var(--sans);font-size:13px;color:var(--text);background:#fff;border:1px solid var(--hair);border-radius:8px;padding:8px 10px}
+  select:focus,input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(22,160,107,.14)}
+  .legend{display:flex;flex-direction:column;gap:7px;margin-top:4px}
+  .legend .li{display:flex;align-items:center;gap:9px;font-size:12.5px}
+  .legend .swatch{width:16px;height:16px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(0,0,0,.1)}
+  .hint{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:4px}
+  .status{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px}
+  /* popups */
+  .lp{font-family:var(--sans);font-size:12.5px;max-height:260px;overflow:auto}
+  .lp h4{margin:0 0 6px;font-size:13.5px;color:var(--ink)}
+  .lp table{border-collapse:collapse;width:100%}
+  .lp td{padding:2px 6px 2px 0;vertical-align:top}
+  .lp td.k{color:var(--muted);white-space:nowrap;padding-right:10px}
+  .lp td.v{color:var(--text);font-weight:500}
+  .lp .band{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;font-weight:600;color:#fff}
+  @media (max-width:720px){.panel{width:230px}}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/></svg></span>
+    <div class="brand"><span class="t">KLRAMS</span><span class="s">Map — Lite</span></div>
+    <span class="pill">Lite mode</span>
+    <span class="spacer"></span>
+    <a href="/home.html">Home</a>
+    <a href="/map.html">Full viewer</a>
+    <a href="/logout">Sign out</a>
+  </div>
+
+  <div class="banner" id="banner">
+    <span>You're viewing the <b>lite map</b> — it runs without graphics acceleration (WebGL), so it works on every computer.
+    For the full-featured 3D-quality viewer, <a href="/webgl-unsupported.html">enable graphics acceleration</a>.</span>
+    <button class="close" title="Dismiss" onclick="document.getElementById('banner').style.display='none'">&times;</button>
+  </div>
+
+  <div class="main">
+    <div id="map"></div>
+    <aside class="panel">
+      <h3>Layers</h3>
+      <div class="grp">
+        <label class="sw">Road network <span class="cnt" id="cRoads">—</span><input type="checkbox" id="tRoads" checked></label>
+        <label class="sw">Road condition <span class="cnt" id="cSegs">—</span><input type="checkbox" id="tSegs" checked></label>
+      </div>
+
+      <h3>Structures &amp; furniture</h3>
+      <div class="grp">
+        <label class="sw">Bridges <span class="cnt" id="cBrid">—</span><input type="checkbox" id="tBrid"></label>
+        <label class="sw">Culverts <span class="cnt" id="cCulv">—</span><input type="checkbox" id="tCulv"></label>
+        <label class="sw">Furniture — line <span class="cnt" id="cFurnL">—</span><input type="checkbox" id="tFurnL"></label>
+        <label class="sw">Furniture — point <span class="cnt" id="cFurnP">—</span><input type="checkbox" id="tFurnP"></label>
+      </div>
+
+      <h3>PCI (IRC:82)</h3>
+      <div class="grp">
+        <label class="sw">Composite PCI <span class="cnt" id="cPciA">—</span><input type="checkbox" id="tPciA"></label>
+        <label class="sw">Worst-Lane PCI <span class="cnt" id="cPciW">—</span><input type="checkbox" id="tPciW"></label>
+        <div class="legend" id="pciLegend"></div>
+      </div>
+
+      <h3>Sub-grade · core · crust · FWD</h3>
+      <div class="grp">
+        <label class="sw">Sub-Grade Soil <span class="cnt" id="cSoil">—</span><input type="checkbox" id="tSoil"></label>
+        <label class="sw">Bituminous Core <span class="cnt" id="cCore">—</span><input type="checkbox" id="tCore"></label>
+        <label class="sw">Pavement Crust <span class="cnt" id="cCrust">—</span><input type="checkbox" id="tCrust"></label>
+        <label class="sw">FWD (D0) <span class="cnt" id="cFwd">—</span><input type="checkbox" id="tFwd"></label>
+        <div class="legend" id="fwdLegend"></div>
+      </div>
+
+      <h3>Road condition</h3>
+      <div class="grp">
+        <label class="lbl" for="metric">Colour by</label>
+        <select id="metric"></select>
+        <div class="legend" id="legend"></div>
+        <div class="hint">Click a coloured road segment or any feature for full details.</div>
+      </div>
+
+      <h3>Find a road</h3>
+      <div class="grp">
+        <input type="search" id="search" placeholder="Type a road name or number…">
+        <div class="status" id="searchStatus"></div>
+      </div>
+
+      <div class="status" id="status">Loading…</div>
+    </aside>
+  </div>
+
+<script>
+/* ---- shared config (mirrors js/01-config.js) ---- */
+var GOOD='#2ba66a',FAIR='#FFC400',POOR='#da4b43',NET='#8a99ad',NONE='#b9c2cc';
+var PARAMS=[{key:'iri',label:'IRI',unit:' m/km',fair:2.55,poor:3.30},{key:'crack',label:'Crack',unit:' %',fair:5,poor:15},{key:'pothole',label:'Pothole',unit:'',fair:1,poor:3},{key:'rutting',label:'Rutting',unit:' mm',fair:5,poor:10},{key:'texture',label:'Texture',unit:'',fair:1,poor:3},{key:'patch_work',label:'Patch work',unit:' %',fair:5,poor:10},{key:'ravelling',label:'Ravelling',unit:' %',fair:5,poor:10}];
+var PMAP={};PARAMS.forEach(function(p){PMAP[p.key]=p;});
+var LK={
+  Road_Class:{SH:'State Highway',MDR:'Major District Road',ODR:'Other District Road',NH:'National Highway'},
+  Road_Type:{SLR:'Single Lane',ILR:'Intermediate',TLR:'Two Lane',WTL:'Wide Two Lane',FLR:'Four Lane'},
+  Single_Du:{Single:'Single carriageway',Dual:'Dual carriageway'},
+  Cons_Type:{FLX:'Flexible',RGD:'Rigid',CMP:'Composite',WBM:'WBM',GRV:'Gravel',ERT:'Earthen',PVB:'Paver Block'},
+  Surface_Ty:{BT:'Bituminous',CC:'Cement Concrete',PVB:'Paver Block',WBM:'WBM',GRV:'Gravel',ERT:'Earthen'},
+  Current_Ow:{KMRL:'Kochi Metro Rail Ltd',KRFB:'Kerala Road Fund Board','KRFB-PMU':'KRFB — PMU',KSTP:'Kerala State Transport Project',RICK:'Road Infrastructure Company Kerala'}
+};
+var ROAD_FIELDS=[['Road_Name','Road name'],['Road_Num','Road number'],['Road_Class','Class','Road_Class'],['Road_Type','Lane type','Road_Type'],['Single_Du','Carriageway','Single_Du'],['Rd_Str_Loc','Start location'],['Rd_End_Loc','End location'],['Measrd_Len','Measured length',null,' m'],['Cons_Type','Construction','Cons_Type'],['Surface_Ty','Surface','Surface_Ty'],['Current_Ow','Current owner','Current_Ow'],['District','District']];
+function dec(group,val){var t=LK[group];var k=String(val==null?'':val).trim();return t&&t[k]?t[k]:val;}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+/* ---- map (Canvas renderer — no WebGL) ---- */
+var map=L.map('map',{preferCanvas:true,zoomControl:true}).setView([8.52,76.95],9);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+
+var roadLayer=L.layerGroup(),segLayer=L.layerGroup(),bridLayer=L.layerGroup(),culvLayer=L.layerGroup();
+var SEG_GJ=null,ROAD_GJ=null,didFit=false;
+var setStatus=function(m){document.getElementById('status').textContent=m;};
+
+/* ---- condition colouring (mirrors colorExpr in 03-condition-style-filter.js) ---- */
+function condColor(props,key){
+  var p=PMAP[key];if(!p)return NONE;
+  var raw=props?props[key]:null;
+  if(raw==null||raw===''||isNaN(+raw))return NONE;
+  var v=+raw;
+  if(v<p.fair)return GOOD;
+  if(v<p.poor)return FAIR;
+  return POOR;
+}
+function bandLabel(props,key){
+  var p=PMAP[key];var raw=props?props[key]:null;
+  if(raw==null||raw===''||isNaN(+raw))return {t:'No data',c:NONE};
+  var v=+raw;return v<p.fair?{t:'Good',c:GOOD}:(v<p.poor?{t:'Fair',c:FAIR}:{t:'Poor',c:POOR});
+}
+
+/* ---- popups ---- */
+function roadPopup(props){
+  var rows='';
+  ROAD_FIELDS.forEach(function(f){
+    var v=props[f[0]];if(v==null||String(v).trim()==='')return;
+    if(f[2])v=dec(f[2],v);
+    rows+='<tr><td class="k">'+esc(f[1])+'</td><td class="v">'+esc(v)+(f[3]||'')+'</td></tr>';
+  });
+  var title=props.Road_Name||props.road||'Road';
+  return '<div class="lp"><h4>'+esc(title)+'</h4><table>'+rows+'</table></div>';
+}
+function segPopup(props){
+  var key=document.getElementById('metric').value;
+  var b=bandLabel(props,key);
+  var rows='';
+  PARAMS.forEach(function(p){
+    var v=props[p.key];if(v==null||v==='')return;
+    rows+='<tr><td class="k">'+esc(p.label)+'</td><td class="v">'+esc(v)+esc(p.unit||'')+'</td></tr>';
+  });
+  var road=props.road||props.Road_Name||'';
+  var ch='';
+  if(props.from_ch!=null&&props.to_ch!=null)ch=props.from_ch+' – '+props.to_ch+' m';
+  else if(props.chainage!=null)ch=props.chainage+' m';
+  return '<div class="lp"><h4>'+esc(road||'Condition segment')+'</h4>'+
+    (ch?'<div class="k" style="margin-bottom:6px">Chainage '+esc(ch)+'</div>':'')+
+    '<div style="margin-bottom:8px"><span class="band" style="background:'+b.c+'">'+b.t+' · '+esc(PMAP[key].label)+'</span></div>'+
+    '<table>'+rows+'</table></div>';
+}
+function assetPopup(props,title){
+  var rows='';
+  Object.keys(props||{}).forEach(function(k){
+    if(/^(id|geom|the_geom|layer)$/i.test(k))return;
+    var v=props[k];if(v==null||String(v).trim()==='')return;
+    rows+='<tr><td class="k">'+esc(k)+'</td><td class="v">'+esc(v)+'</td></tr>';
+  });
+  return '<div class="lp"><h4>'+esc(title)+'</h4><table>'+rows+'</table></div>';
+}
+
+/* ---- fetch helper ---- */
+function getJSON(url){
+  return fetch(url,{credentials:'same-origin',headers:{'Accept':'application/json'}}).then(function(r){
+    if(!r.ok)throw new Error(url+' → '+r.status);
+    return r.json();
+  });
+}
+
+/* ---- render layers ---- */
+function renderRoads(){
+  roadLayer.clearLayers();
+  if(!ROAD_GJ)return;
+  L.geoJSON(ROAD_GJ,{style:{color:NET,weight:2,opacity:.9},
+    onEachFeature:function(f,l){l.bindPopup(function(){return roadPopup(f.properties||{});},{maxWidth:320});}
+  }).addTo(roadLayer);
+  document.getElementById('cRoads').textContent=((ROAD_GJ.features||[]).length).toLocaleString();
+}
+function renderSegs(){
+  segLayer.clearLayers();
+  if(!SEG_GJ)return;
+  var key=document.getElementById('metric').value;
+  L.geoJSON(SEG_GJ,{style:function(f){return {color:condColor(f.properties||{},key),weight:5,opacity:.95};},
+    onEachFeature:function(f,l){l.bindPopup(function(){return segPopup(f.properties||{});},{maxWidth:320});}
+  }).addTo(segLayer);
+  document.getElementById('cSegs').textContent=((SEG_GJ.features||[]).length).toLocaleString();
+}
+function renderAssets(gj,group,title,color,cntId){
+  group.clearLayers();
+  L.geoJSON(gj,{
+    pointToLayer:function(f,latlng){return L.circleMarker(latlng,{radius:5,color:'#fff',weight:1,fillColor:color,fillOpacity:.95});},
+    style:{color:color,weight:4,opacity:.9},
+    onEachFeature:function(f,l){l.bindPopup(function(){return assetPopup(f.properties||{},title);},{maxWidth:320});}
+  }).addTo(group);
+  document.getElementById(cntId).textContent=((gj&&gj.features?gj.features.length:0)).toLocaleString();
+}
+
+/* ---- loaders ---- */
+function loadRoads(){
+  return getJSON('/api/roads/geojson').then(function(gj){
+    ROAD_GJ=gj;renderRoads();
+    if(!didFit){try{var b=L.geoJSON(gj).getBounds();if(b.isValid()){map.fitBounds(b,{padding:[20,20]});didFit=true;}}catch(e){}}
+  }).catch(function(e){document.getElementById('cRoads').textContent='—';console.warn(e);});
+}
+function loadSegs(){
+  return getJSON('/api/segments/geojson').then(function(gj){SEG_GJ=gj;renderSegs();
+    /* segments drive PCI too — invalidate the cache and refresh any PCI layer already on */
+    if(typeof pciComputed!=='undefined'){pciComputed=false;
+      if(document.getElementById('tPciA').checked)renderPci('avg',pciAvgLayer,'cPciA');
+      if(document.getElementById('tPciW').checked)renderPci('worst',pciWorstLayer,'cPciW');
+    }
+  })
+    .catch(function(e){document.getElementById('cSegs').textContent='0';console.warn(e);});
+}
+var bridLoaded=false,culvLoaded=false;
+function loadBridges(){if(bridLoaded)return Promise.resolve();bridLoaded=true;return getJSON('/api/assets/bridge/geojson').then(function(gj){renderAssets(gj,bridLayer,'Bridge',POOR,'cBrid');}).catch(function(){document.getElementById('cBrid').textContent='0';});}
+function loadCulverts(){if(culvLoaded)return Promise.resolve();culvLoaded=true;return getJSON('/api/assets/culvert/geojson').then(function(gj){renderAssets(gj,culvLayer,'Culvert','#2f6fd6','cCulv');}).catch(function(){document.getElementById('cCulv').textContent='0';});}
+
+/* ---- legend + metric ---- */
+function buildMetric(){
+  var sel=document.getElementById('metric');
+  PARAMS.forEach(function(p){var o=document.createElement('option');o.value=p.key;o.textContent=p.label;sel.appendChild(o);});
+  sel.value='iri';
+  sel.addEventListener('change',function(){renderSegs();buildLegend();});
+}
+function buildLegend(){
+  var p=PMAP[document.getElementById('metric').value];
+  document.getElementById('legend').innerHTML=[
+    ['Good ( < '+p.fair+' )',GOOD],['Fair ( '+p.fair+' – '+p.poor+' )',FAIR],['Poor ( ≥ '+p.poor+' )',POOR],['No data',NONE]
+  ].map(function(r){return '<div class="li"><span class="swatch" style="background:'+r[1]+'"></span>'+esc(r[0])+'</div>';}).join('');
+}
+
+/* ---- layer toggles ---- */
+function bindToggle(id,group,onFirst){
+  var cb=document.getElementById(id);
+  function apply(){if(cb.checked){if(onFirst)onFirst();map.addLayer(group);}else map.removeLayer(group);}
+  cb.addEventListener('change',apply);
+  return apply;
+}
+map.addLayer(roadLayer);map.addLayer(segLayer);
+bindToggle('tRoads',roadLayer);
+bindToggle('tSegs',segLayer);
+bindToggle('tBrid',bridLayer,loadBridges);
+bindToggle('tCulv',culvLayer,loadCulverts);
+
+/* ---- extra asset layers (furniture, sub-grade, core, crust) ----
+   Same generic /api/assets/{type}/geojson endpoint the full viewer uses; each
+   loads once (guarded flag) and re-uses renderAssets() for point/line drawing. */
+var EXTRA_ASSETS=[
+  {type:'furniture_line',  id:'tFurnL', cnt:'cFurnL', color:'#0fa3a3', title:'Furniture (line)'},
+  {type:'furniture_point', id:'tFurnP', cnt:'cFurnP', color:'#3b6fa0', title:'Furniture (point)'},
+  {type:'subgrade',        id:'tSoil',  cnt:'cSoil',  color:'#8a4d1f', title:'Sub-Grade Soil'},
+  {type:'bituminous_core', id:'tCore',  cnt:'cCore',  color:'#2b2b2b', title:'Bituminous Core'},
+  {type:'pavement_crust',  id:'tCrust', cnt:'cCrust', color:'#b8860b', title:'Pavement Crust'}
+];
+EXTRA_ASSETS.forEach(function(a){
+  a.group=L.layerGroup();
+  var loaded=false;
+  bindToggle(a.id,a.group,function(){
+    if(loaded)return; loaded=true;
+    getJSON('/api/assets/'+a.type+'/geojson')
+      .then(function(gj){renderAssets(gj,a.group,a.title,a.color,a.cnt);})
+      .catch(function(){document.getElementById(a.cnt).textContent='0';});
+  });
+});
+
+/* ---- FWD (D0 deflection), coloured by D0 band (mirrors 06-assets.js) ---- */
+var FWD_STOPS=[[100,'#1a9850'],[200,'#91cf60'],[350,'#fee08b'],[500,'#fdae61'],[700,'#f46d43']];
+var FWD_LEGEND=[['#1a9850','< 100'],['#91cf60','100 – 200'],['#fee08b','200 – 350'],['#fdae61','350 – 500'],['#f46d43','500 – 700'],['#b2182b','> 700']];
+function fwdD0(p){if(!p)return null;for(var k in p){var kk=String(k).toLowerCase().replace(/[^a-z0-9]/g,'');if(kk==='d0'||kk==='do'){var v=p[k];if(v!=null&&v!=='')return v;}}return null;}
+function fwdColor(p,scale){var raw=fwdD0(p);if(raw==null||raw===''||isNaN(+raw))return NONE;var v=Math.abs(+raw)*scale;for(var i=0;i<FWD_STOPS.length;i++){if(v<FWD_STOPS[i][0])return FWD_STOPS[i][1];}return '#b2182b';}
+var fwdLayer=L.layerGroup(),fwdLoaded=false;
+bindToggle('tFwd',fwdLayer,function(){
+  if(fwdLoaded)return; fwdLoaded=true;
+  getJSON('/api/assets/fwd/geojson').then(function(gj){
+    var mx=0;((gj&&gj.features)||[]).forEach(function(f){var v=parseFloat(fwdD0(f.properties));if(!isNaN(v))mx=Math.max(mx,Math.abs(v));});
+    var scale=(mx>0&&mx<10)?1000:1;   /* metres→microns fallback, as in the full viewer */
+    fwdLayer.clearLayers();
+    L.geoJSON(gj,{
+      pointToLayer:function(f,latlng){return L.circleMarker(latlng,{radius:5,color:'#fff',weight:1,fillColor:fwdColor(f.properties||{},scale),fillOpacity:.95});},
+      onEachFeature:function(f,l){l.bindPopup(function(){return assetPopup(f.properties||{},'FWD (D0)');},{maxWidth:320});}
+    }).addTo(fwdLayer);
+    document.getElementById('cFwd').textContent=((gj&&gj.features?gj.features.length:0)).toLocaleString();
+  }).catch(function(){document.getElementById('cFwd').textContent='0';});
+});
+document.getElementById('fwdLegend').innerHTML='<div class="hint" style="margin:2px 0 4px">D0 deflection (microns)</div>'+
+  FWD_LEGEND.map(function(r){return '<div class="li"><span class="swatch" style="background:'+r[0]+'"></span>'+esc(r[1])+'</div>';}).join('');
+
+/* ---- PCI engine (IRC:82) — ported from js/14-pci-engine.js. Composite = area-
+   weighted distress average across lanes; Worst-Lane = min of per-lane PCIs.
+   Computed in the browser from the segments GeoJSON already loaded (SEG_GJ). */
+var PCI_PARAMS=[{key:'crack',label:'Cracking'},{key:'ravelling',label:'Ravelling'},{key:'pothole',label:'Pothole'},{key:'patch_work',label:'Patch work'},{key:'rutting',label:'Rut depth'},{key:'iri',label:'IRI'}];
+var PCI_W={crack:0.16,ravelling:0.12,pothole:0.08,patch_work:0.10,rutting:0.14,iri:0.40};
+var PCI_BANDS=[{min:90,label:'Excellent',color:'#157f3c'},{min:80,label:'Good',color:'#7cb518'},{min:60,label:'Satisfactory',color:'#f2c200'},{min:40,label:'Fair',color:'#f08c00'},{min:20,label:'Poor',color:'#e8590c'},{min:0,label:'Fail',color:'#c92a2a'}];
+function pciBand(v){for(var i=0;i<PCI_BANDS.length;i++){if(v>=PCI_BANDS[i].min)return PCI_BANDS[i];}return PCI_BANDS[PCI_BANDS.length-1];}
+function indIndex(key,v){var t=PMAP[key];if(!t||v==null||isNaN(v))return null;v=Math.max(0,+v);var f=+t.fair,po=+t.poor;if(!(po>f&&f>0))return null;if(v<=f)return 100-(v/f)*20;if(v<=po)return 80-((v-f)/(po-f))*40;var cap=2*po;if(v<=cap)return 40-((v-po)/po)*40;return 0;}
+var PCI_LANE_KEYS=['CC','CL1','CL2','CR1','CR2'];
+function pciLaneDists(props){var out={};var lv=props.lane_vals;if(typeof lv==='string'){try{lv=JSON.parse(lv);}catch(e){lv=null;}}if(lv&&typeof lv==='object'&&Object.keys(lv).length){Object.keys(lv).forEach(function(L){var o=lv[L]||{},d={};PCI_PARAMS.forEach(function(pp){var v=o[pp.key];if(v!=null&&v!=='')d[pp.key]=+v;});out[L]=d;});return out;}PCI_LANE_KEYS.forEach(function(L){var any=false,d={};PCI_PARAMS.forEach(function(pp){var v=props[L+'_'+pp.key];if(v!=null&&v!==''){d[pp.key]=+v;any=true;}});if(any)out[L]=d;});return out;}
+function pciFromDist(dist){var sw=0,acc=0;PCI_PARAMS.forEach(function(pp){var w=+PCI_W[pp.key]||0;if(w<=0)return;var raw=dist?dist[pp.key]:null;if(raw==null||raw==='')return;var I=indIndex(pp.key,+raw);if(I==null)return;acc+=w*I;sw+=w;});return sw>0?acc/sw:null;}
+function pciAggDist(props,basis){var d={};PCI_PARAMS.forEach(function(pp){var k=pp.key;var v=(basis==='worst')?props[k]:((props['avg_'+k]!=null&&props['avg_'+k]!=='')?props['avg_'+k]:props[k]);if(v!=null&&v!=='')d[k]=+v;});return d;}
+function pciLanePcis(props){var Ld=pciLaneDists(props),r=[];Object.keys(Ld).forEach(function(k){var v=pciFromDist(Ld[k]);if(v!=null)r.push({lane:k,pci:v});});return r;}
+function segPCI(props,basis){var lanes=pciLanePcis(props);if(lanes.length){if(basis==='worst')return Math.min.apply(null,lanes.map(function(x){return x.pci;}));var Ld=pciLaneDists(props),keys=Object.keys(Ld),d={};PCI_PARAMS.forEach(function(pp){var s=0,n=0;keys.forEach(function(k){var v=Ld[k][pp.key];if(v!=null&&v!==''){s+=+v;n++;}});if(n)d[pp.key]=s/n;});var v=pciFromDist(d);return (v!=null)?v:(lanes.reduce(function(s,x){return s+x.pci;},0)/lanes.length);}return pciFromDist(pciAggDist(props,basis));}
+var pciComputed=false;
+function ensurePci(){
+  if(pciComputed||!SEG_GJ)return;
+  (SEG_GJ.features||[]).forEach(function(f){
+    var va=segPCI(f.properties,'avg');  f.properties.pci_avg  =(va==null)?-1:Math.round(va*10)/10;
+    var vw=segPCI(f.properties,'worst');f.properties.pci_worst=(vw==null)?-1:Math.round(vw*10)/10;
+  });
+  pciComputed=true;
+}
+function pciPopupLite(props,basis){
+  var prop=(basis==='worst')?'pci_worst':'pci_avg';var v=+props[prop];var b=(v>=0)?pciBand(v):null;
+  var av=+props.pci_avg,wv=+props.pci_worst,road=props.road||props.Road_Name||'';
+  var head=b?('<div style="font-size:20px;font-weight:700;color:var(--ink)">'+v.toFixed(1)+' <span style="font-size:11px;color:var(--muted);font-weight:500">/100</span> <span class="band" style="background:'+b.color+'">'+esc(b.label)+'</span></div>'):'<div style="color:var(--muted)">No PCI at this segment</div>';
+  return '<div class="lp"><h4>'+(basis==='worst'?'Worst-Lane PCI':'Composite PCI')+(road?(' · '+esc(road)):'')+'</h4>'+head+
+    '<div class="hint" style="margin-top:6px">Composite <b>'+((av>=0)?av.toFixed(1):'–')+'</b> · Worst-Lane <b>'+((wv>=0)?wv.toFixed(1):'–')+'</b></div></div>';
+}
+var pciAvgLayer=L.layerGroup(),pciWorstLayer=L.layerGroup();
+function renderPci(basis,group,cntId){
+  group.clearLayers();
+  if(!SEG_GJ){document.getElementById(cntId).textContent='—';return;}
+  ensurePci();
+  var prop=(basis==='worst')?'pci_worst':'pci_avg',n=0;
+  L.geoJSON(SEG_GJ,{style:function(f){var v=+f.properties[prop];if(v>=0)n++;return {color:(v>=0)?pciBand(v).color:NONE,weight:5,opacity:.95};},
+    onEachFeature:function(f,l){l.bindPopup(function(){return pciPopupLite(f.properties||{},basis);},{maxWidth:320});}
+  }).addTo(group);
+  document.getElementById(cntId).textContent=n.toLocaleString();
+}
+bindToggle('tPciA',pciAvgLayer,function(){renderPci('avg',pciAvgLayer,'cPciA');});
+bindToggle('tPciW',pciWorstLayer,function(){renderPci('worst',pciWorstLayer,'cPciW');});
+document.getElementById('pciLegend').innerHTML=PCI_BANDS.map(function(b){return '<div class="li"><span class="swatch" style="background:'+b.color+'"></span>'+esc(b.label)+' <span style="color:var(--muted);font-size:11px">'+b.min+'+</span></div>';}).join('')+'<div class="li"><span class="swatch" style="background:'+NONE+'"></span>No data</div>';
+
+/* ---- road search (zoom to matching road) ---- */
+document.getElementById('search').addEventListener('input',function(e){
+  var q=e.target.value.trim().toLowerCase();var st=document.getElementById('searchStatus');
+  if(!q||!ROAD_GJ){st.textContent='';return;}
+  var hit=(ROAD_GJ.features||[]).filter(function(f){var p=f.properties||{};return String(p.Road_Name||'').toLowerCase().indexOf(q)>=0||String(p.Road_Num||'').toLowerCase().indexOf(q)>=0;});
+  if(!hit.length){st.textContent='No match';return;}
+  st.textContent=hit.length+' match'+(hit.length>1?'es':'');
+  try{var b=L.geoJSON({type:'FeatureCollection',features:hit.slice(0,50)}).getBounds();if(b.isValid())map.fitBounds(b,{padding:[30,30]});}catch(_){}
+});
+
+/* ---- go ---- */
+buildMetric();buildLegend();
+Promise.all([loadRoads(),loadSegs()]).then(function(){setStatus('Ready.');})
+  .catch(function(){setStatus('Some data could not be loaded — check your connection / sign-in.');});
+</script>
+<script src="/js/role-gate.js" defer></script>
+</body>
+</html>
