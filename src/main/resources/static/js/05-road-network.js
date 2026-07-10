@@ -7,6 +7,12 @@
 // ---- road network: attribute metadata, colour-by, filter-by ----
 const SKIP_ATTRS=new Set(['road','name','len','id']);
 const CAT_PALETTE=['#e0a33a','#3b6fa0','#2ba66a','#da4b43','#8a5cb8','#0fa3a3','#c2628e','#7a8b2f','#b06a2c','#5470c6','#9a6324','#46728e'];
+/* Road_Num is an identifier, not a magnitude — a smooth gradient makes
+   neighbouring numbers (45 vs 46) look almost identical. Hash each number
+   into this wider, high-contrast palette instead, so adjacent road numbers
+   land on unrelated colours. Order is deliberately non-monotonic (not just
+   a hue ramp) to avoid any residual "nearby number -> nearby colour" drift. */
+const ROAD_NUM_PALETTE=['#e0a33a','#3b6fa0','#da4b43','#2ba66a','#8a5cb8','#c2628e','#0fa3a3','#7a8b2f','#5470c6','#b06a2c','#46728e','#9a6324','#d97ec9','#3fae8f','#c9563c','#6f6fce'];
 let ATTRS={}, netMode='all', netFilters=[];
 let _netFitT=null;
 function buildAttrMeta(gj){
@@ -33,6 +39,19 @@ function netColorByExpr(attr){
   const m=ATTRS[attr];
   if(!m)return netColor();
   if(m.numeric){
+    if(/road.?num/i.test(attr)){
+      const n=ROAD_NUM_PALETTE.length;
+      /* Knuth multiplicative hash, then double-mod to guard against a
+         negative result (MapLibre's % follows JS semantics). */
+      const idx=['%',['%',['*',['to-number',['coalesce',['get',attr],0]],2654435761],n],n];
+      /* 'at' on a plain literal array yields an untyped value — MapLibre's
+         style validator rejects that for a color-typed paint property and
+         setPaintProperty then throws, silently leaving the OLD paint in
+         place (the legend still updates fine since it's plain HTML, not a
+         GL expression — that mismatch is exactly what made the legend text
+         change while the map colours stayed the same). to-color fixes it. */
+      return ['to-color',['at',idx,['literal',ROAD_NUM_PALETTE]]];
+    }
     const lo=m.min,hi=m.max===m.min?m.min+1:m.max;
     return ['interpolate',['linear'],['to-number',['coalesce',['get',attr],lo]],lo,'#9ec97f',(lo+hi)/2,'#e4a13a',hi,'#c0392b'];
   }
@@ -45,6 +64,11 @@ function renderNetLegend(attr){
   const el=document.getElementById('netLegend'); el.innerHTML='';
   const m=ATTRS[attr];
   if(!m){el.innerHTML='<div class="lg"><span class="bar" style="background:#8a4d1f"></span><span class="lgt">SH</span></div><div class="lg"><span class="bar" style="background:#3b6fa0"></span><span class="lgt">MDR</span></div>';return;}
+  if(m.numeric&&/road.?num/i.test(attr)){
+    el.innerHTML=ROAD_NUM_PALETTE.map(c=>`<span class="bar" style="background:${c};display:inline-block;width:14px;height:10px;margin-right:2px;border-radius:2px"></span>`).join('')
+      +`<div class="lg"><span class="lgt">Each road number gets its own distinct colour (hashed, not a gradient)</span></div>`;
+    return;
+  }
   if(m.numeric){el.innerHTML=`<div class="lg"><span class="bar" style="background:linear-gradient(90deg,#9ec97f,#e4a13a,#c0392b)"></span><span class="lgt">${m.min} → ${m.max}</span></div>`;return;}
   m.values.slice(0,12).forEach((v,i)=>{const lbl=dec(attr,v);el.innerHTML+=`<div class="lg"><span class="bar" style="background:${CAT_PALETTE[i%CAT_PALETTE.length]}"></span><span class="lgt" title="${lbl}">${lbl}</span></div>`;});
   if(m.values.length>12)el.innerHTML+='<div class="lg"><span class="bar" style="background:#9aa7b5"></span><span class="lgt">other</span></div>';
@@ -241,32 +265,87 @@ function renderNetScopeCard(list,rows){
   /* stat tiles — only datasets that are actually loaded */
   const L=list||[];
   /* Network length = sum of the roads' MEASURED length attribute (Measrd_Len
-     or similar); falls back to len when no measured-length column exists. */
+     or similar); falls back to len when no measured-length column exists.
+     Dual-carriageway sections are stored as two rows (Section_La with a
+     trailing A/B, Single_Du='Dual') that both carry the full length of the
+     same physical stretch — summing them raw double-counts it. Group by the
+     base label (A/B stripped for dual rows) and average each dual pair,
+     matching the `corr` CTE in DashboardController.java. */
   const num=v=>{const n=parseFloat(String(v==null?'':v).replace(/,/g,''));return isNaN(n)?0:n;};
-  let lenM=0;
-  L.forEach(f=>{const p=f.properties||{};const mk=Object.keys(p).find(k=>/meas/i.test(k)&&/len/i.test(k));lenM+=num(mk!=null?p[mk]:p.len)||num(p.len);});
-  const tiles=[['#19b277',L.length,'Road section'+(L.length===1?'':'s')],['#3b86e6',(lenM/1000).toFixed(1)+' km','Length']];
-  /* Chainage extent is shown ONLY when the filter is a single condition on
-     Road Name or Road Number with a single value. Any additional condition
-     (or a multi-value comma list) hides it. */
+  const corrGroups=new Map();
+  L.forEach(f=>{
+    const p=f.properties||{};
+    const mk=Object.keys(p).find(k=>/meas/i.test(k)&&/len/i.test(k));
+    const len=num(mk!=null?p[mk]:p.len)||num(p.len);
+    const isDual=/^dual/i.test(String(p.Single_Du||''));
+    const label=String(p.Section_La||'');
+    const baseLabel=(isDual&&/[AB]$/.test(label))?label.slice(0,-1):(label||('__f'+corrGroups.size));
+    const key=(isDual?'D:':'S:')+baseLabel;
+    if(!corrGroups.has(key))corrGroups.set(key,[]);
+    corrGroups.get(key).push(len);
+  });
+  let lenM=0,lenRawM=0;
+  corrGroups.forEach(lens=>{lenM+=lens.reduce((a,b)=>a+b,0)/lens.length;lenRawM+=lens.reduce((a,b)=>a+b,0);});
+  const tiles=[['#19b277',L.length,'Road section'+(L.length===1?'':'s')],['#3b86e6',(lenM/1000).toFixed(1)+' km','Length'],
+    /* Raw sum of every section label's Measrd_Len, carriageway A/B counted
+       separately (no dual-pair averaging) — the "pakka"/as-recorded total. */
+    ['#3b86e6',(lenRawM/1000).toFixed(1)+' km','Road Length (Carriageway considered)']];
+  /* Chainage extent + start/end location are shown ONLY when the filter is a
+     single condition on Road Name or Road Number with a single value. Any
+     additional condition (or a multi-value comma list) hides them. */
   if(rows.length===1&&/road.?(name|num)/i.test(rows[0].attr)&&nfVals(rows[0]).length===1){
+    const strKeys=['Rd_Str_cha','Start_Chaina','start_chainage','Road_Start_Chainage','Rd_Str_Cha','Start_Chainage','Str_Chainage'];
     const endKeys=['Rd_End_cha','End_Chaina','end_chainage','Road_End_Chainage','Rd_End_Cha','End_Chainage'];
-    let maxEnd=0;
-    L.forEach(f=>{const p=f.properties||{};for(let i=0;i<endKeys.length;i++){if(p[endKeys[i]]!=null&&p[endKeys[i]]!==''){maxEnd=Math.max(maxEnd,num(p[endKeys[i]]));break;}}});
-    tiles.push(['#e6c878','0 m','Road start chainage']);
+    const strLocKeys=['Rd_Str_Loc','Start_Loc','Start_Location','Strt_Loc','start_location','Str_Loc','StartLoc'];
+    const endLocKeys=['Rd_End_Loc','End_Loc','End_Location','end_location','End_Locn','EndLoc'];
+    /* first-present value for a set of alias keys */
+    const pick=(p,keys)=>{for(let i=0;i<keys.length;i++){const v=p[keys[i]];if(v!=null&&String(v).trim()!=='')return v;}return null;};
+    /* Find the chainage extent across the matched sections. Track WHICH
+       feature holds the min start-chainage (road origin) and the max
+       end-chainage (road terminus) so we can read their locations.
+       Start chainage defaults to 0 when not stored on the section. */
+    let minStart=Infinity,maxEnd=0,minStartF=null,maxEndF=null;
+    L.forEach(f=>{
+      const p=f.properties||{};
+      const sv=pick(p,strKeys); const s=sv!=null?num(sv):0;
+      const ev=pick(p,endKeys); const e=ev!=null?num(ev):0;
+      if(s<minStart){minStart=s;minStartF=f;}
+      if(e>maxEnd){maxEnd=e;maxEndF=f;}
+    });
+    if(!isFinite(minStart))minStart=0;
+    /* chainage tiles */
+    tiles.push(['#e6c878',Math.round(minStart).toLocaleString()+' m','Road start chainage']);
     if(maxEnd>0)tiles.push(['#e6c878',Math.round(maxEnd).toLocaleString()+' m','Road end chainage']);
+    /* location tiles — start location comes from the section at the
+       minimum chainage (the road origin); end location from the section
+       with the maximum end chainage (the road terminus). Shown only when
+       the location column actually carries a value for that section. */
+    const startLoc=minStartF?pick(minStartF.properties||{},strLocKeys):null;
+    const endLoc=maxEndF?pick(maxEndF.properties||{},endLocKeys):null;
+    const locLbl=v=>String(v==null?'':v).trim();
+    if(locLbl(startLoc))tiles.push(['#3ad29a',xe(locLbl(startLoc)),'Start location',true]);
+    if(locLbl(endLoc))tiles.push(['#3ad29a',xe(locLbl(endLoc)),'End location',true]);
   }
-  /* Condition data available = km of in-scope condition segments (to_ch - from_ch) */
+  /* Condition data available = lane-km of in-scope condition segments.
+     condition_segments GROUPs BY (section_label, from_ch, to_ch) — every
+     lane surveyed at that chainage (xsp: CC/CL1/CL2/CR1/CR2) is collapsed
+     into ONE row, with lane_count carrying how many lanes were merged.
+     So (to_ch - from_ch) alone is road/corridor km, not lane km — each
+     segment's length must be multiplied by its lane_count to recover the
+     true lane-wise total (a CR1+CR2 stretch counts twice, etc). Unlike the
+     corridor "Length" tile, this is NOT averaged across a dual carriageway's
+     A/B pair — each carriageway is surveyed separately and both legitimately
+     contribute their own lane-km here. */
   if(typeof DATA!=='undefined'&&DATA&&DATA.features){
     let condM=0;
-    DATA.features.forEach(f=>{const p=(f&&f.properties)||{};if(!window.NET_SCOPE.has(String(p.road!=null?p.road:'')))return;condM+=Math.max(0,num(p.to_ch)-num(p.from_ch));});
-    tiles.push(['#2ba66a',(condM/1000).toFixed(1)+' km','Condition data available']);
+    DATA.features.forEach(f=>{const p=(f&&f.properties)||{};if(!window.NET_SCOPE.has(String(p.road!=null?p.road:'')))return;const lanes=Math.max(1,num(p.lane_count)||1);condM+=Math.max(0,num(p.to_ch)-num(p.from_ch))*lanes;});
+    tiles.push(['#2ba66a',(condM/1000).toFixed(1),'Condition data available (lane km)']);
   }
   const AD=(typeof ASSET_DATA!=='undefined')?ASSET_DATA:{};
   [['bridge','#8a5cb8','Bridges'],['culvert','#e07b2a','Culverts'],['fwd','#7b1fa2','FWD points'],['subgrade','#8a4d1f','Soil tests'],['bituminous_core','#5c6470','Bituminous core test']]
     .forEach(t=>{const gj=AD[t[0]];if(gj&&gj.features)tiles.push([t[1],_nscCountIn(gj.features,'__sec'),t[2]]);});
   if(typeof TRAFFIC_STN!=='undefined'&&TRAFFIC_STN.features&&TRAFFIC_STN.features.length)tiles.push(['#1565c0',_nscCountIn(TRAFFIC_STN.features,'section'),'Traffic stations']);
-  document.getElementById('nscStats').innerHTML=tiles.map(t=>'<span class="nsc-stat" style="--sc:'+t[0]+'"><span class="n">'+t[1]+'</span><span class="l">'+t[2]+'</span></span>').join('');
+  document.getElementById('nscStats').innerHTML=tiles.map(t=>'<span class="nsc-stat'+(t[3]?' txt':'')+'" style="--sc:'+t[0]+'"><span class="n">'+t[1]+'</span><span class="l">'+t[2]+'</span></span>').join('');
   /* owners of the matched roads — prefer the "Current owner" attribute
      (Current_Ow / Current_Owner…) over any other owner-ish column */
   const attrKeys=Object.keys(ATTRS);

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "static-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8091", "--directory", "src/main/resources/static"],
+      "port": 8091
+    },
+    {
+      "name": "rmms",
+      "runtimeExecutable": "java",
+      "runtimeArgs": ["-jar", "target/rmms-backend-0.0.1-SNAPSHOT.jar"],
+      "port": 8090
+    }
+  ]
+}

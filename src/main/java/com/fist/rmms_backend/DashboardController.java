@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Road-network dashboard figures.
@@ -49,7 +50,10 @@ public class DashboardController {
         "    MAX(\"District\")   AS district, " +
         "    MAX(\"Road_Class\") AS road_class, " +
         "    MAX(\"PWD_Sec\")    AS pwd_sec, " +
-        "    MAX(\"Current_Ow\") AS current_ow " +
+        /* Owner names are entered inconsistently (e.g. "KRFB — PMU" vs "KRFB PMU"):
+           collapse any run of dashes/em-dashes to a single space and squeeze
+           repeated whitespace so both variants group together downstream. */
+        "    MAX(regexp_replace(regexp_replace(trim(\"Current_Ow\"), '[-–—]+', ' ', 'g'), '\\s+', ' ', 'g')) AS current_ow " +
         "  FROM base GROUP BY base_label) ";
 
     @GetMapping("/summary")
@@ -94,6 +98,69 @@ public class DashboardController {
         out.put("by_class",   groupWhere("road_class", "district", name));
         out.put("by_pwd_sec", groupWhere("pwd_sec",    "district", name));
         out.put("by_owner",   groupWhere("current_ow", "district", name));
+        return out;
+    }
+
+    /* Dedicated corrected-length view for the "longest roads" feature.
+       Unlike CORR, a corridor is keyed by (district, road_class, road_num,
+       road_name, base_label) so every stretch keeps its OWN district — a State
+       Highway that runs through several districts is NOT collapsed onto a single
+       one. Dual A/B carriageways still share base_label and are averaged once. */
+    private static final String LONG_CORR =
+        "WITH base AS (" +
+        "  SELECT \"District\" AS district, \"Road_Class\" AS road_class, " +
+        "         \"Road_Num\" AS road_num, \"Road_Name\" AS road_name, " +
+        "         \"Measrd_Len\"::double precision AS len, " +
+        "         lower(\"Single_Du\")='dual' AS is_dual, " +
+        "         CASE WHEN lower(\"Single_Du\")='dual' AND \"Section_La\" ~ '[AB]$' " +
+        "              THEN left(\"Section_La\", length(\"Section_La\")-1) " +
+        "              ELSE \"Section_La\" END AS base_label " +
+        "  FROM roads), " +
+        "corr AS (" +
+        "  SELECT district, road_class, road_num, road_name, " +
+        "    CASE WHEN bool_or(is_dual) THEN AVG(len) ELSE MAX(len) END AS corr_len " +
+        "  FROM base GROUP BY district, road_class, road_num, road_name, base_label) ";
+
+    /* Longest roads (top 10 by corrected length), overall or within one district.
+       SH: the same SH number can run under several Road_Names, so lengths are
+       summed per Road_Num and every name under that number is listed.
+       MDR: summed per Road_Name. */
+    @GetMapping("/longest")
+    public Map<String, Object> longest(@RequestParam(required = false) String district) {
+        // district may be a single name or a comma-separated list (multi-district scope)
+        List<String> districts = (district == null || district.isBlank())
+            ? Collections.emptyList()
+            : Arrays.stream(district.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty()).distinct()
+                .collect(Collectors.toList());
+        boolean filtered = !districts.isEmpty();
+        String distCond = filtered
+            ? " AND trim(district) IN (" + districts.stream().map(d -> "?").collect(Collectors.joining(",")) + ")"
+            : "";
+        Object[] args = districts.toArray();
+
+        List<Map<String, Object>> sh = jdbc.queryForList(LONG_CORR +
+            "SELECT road_num AS num, " +
+            "       COALESCE(string_agg(DISTINCT NULLIF(road_name,''), ' · '), '(unnamed)') AS names, " +
+            "       string_agg(DISTINCT NULLIF(district,''), ', ') AS districts, " +
+            "       COUNT(*) AS sections, " +
+            "       ROUND(SUM(corr_len)::numeric/1000,2) AS km " +
+            "FROM corr WHERE upper(trim(road_class))='SH'" + distCond +
+            " GROUP BY road_num ORDER BY km DESC NULLS LAST LIMIT 10", args);
+
+        List<Map<String, Object>> mdr = jdbc.queryForList(LONG_CORR +
+            "SELECT COALESCE(NULLIF(road_name,''),'(unnamed)') AS names, " +
+            "       string_agg(DISTINCT NULLIF(district,''), ', ') AS districts, " +
+            "       COUNT(*) AS sections, " +
+            "       ROUND(SUM(corr_len)::numeric/1000,2) AS km " +
+            "FROM corr WHERE upper(trim(road_class))='MDR'" + distCond +
+            " GROUP BY 1 ORDER BY km DESC NULLS LAST LIMIT 10", args);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("district", filtered ? String.join(", ", districts) : null);
+        out.put("districts", districts);
+        out.put("sh", sh);
+        out.put("mdr", mdr);
         return out;
     }
 

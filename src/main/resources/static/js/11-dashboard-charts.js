@@ -55,6 +55,114 @@ function rankedBars(rows,opts){
   }).join('')+`</div>`;
 }
 
+/* ---- Longest roads (Top 10) ----
+   SH: one SH number can run under several Road_Names, so the backend sums
+   corrected length per Road_Num and lists every name under it.
+   MDR: summed per Road_Name. Overall or filtered to one district. */
+let lrDistricts=[];let lrCache={};
+function longestSection(){
+  const n=lrDistricts.length;
+  const label=n?(n===1?lrDistricts[0]:n+' districts selected'):'All Districts — overall';
+  return `<div class="dcard lr-card">
+    <div class="lr-head">
+      <div>
+        <div class="dcard-head" style="justify-content:flex-start;gap:10px"><h3>Longest roads</h3><span class="totchip">Top 10</span></div>
+        <div class="sub">State Highways ranked by road number (all names under a number are listed) · MDRs by road name — corrected length</div>
+      </div>
+      <button type="button" class="valbtn lr-distbtn"${n?' has':''} onclick="lrToggleDistPop(this)" title="Scope: all districts (overall) or pick one/more">
+        <span class="vb-txt">${escH(label)}</span><i class="vb-arr">▾</i>
+      </button>
+    </div>
+    <div id="lrBody"><div class="dash-loading">Loading longest roads…</div></div>
+  </div>`;
+}
+/* District picker: same checklist-popup pattern as the Road-network filter
+   value picker (05-road-network.js nfOpenValPop) — search box, All/Clear,
+   scrollable checkboxes, live count — reused here for a consistent, roomier
+   UI than a native <select multiple> listbox. */
+let _lrPopOpen=false,_lrQuery='';
+function lrCloseDistPop(){const p=document.getElementById('lrDistPop');if(p)p.remove();_lrPopOpen=false;_lrQuery='';}
+function lrRefreshDistBtn(){
+  const btn=document.querySelector('.lr-distbtn');if(!btn)return;
+  const n=lrDistricts.length;
+  btn.querySelector('.vb-txt').textContent=n?(n===1?lrDistricts[0]:n+' districts selected'):'All Districts — overall';
+  btn.classList.toggle('has',n>0);
+}
+function lrDistPopList(){
+  const p=document.getElementById('lrDistPop');if(!p)return;
+  const dists=(dashData.by_district||[]).map(r=>r.label).slice().sort((a,b)=>a.localeCompare(b));
+  const q=_lrQuery.trim().toLowerCase();
+  const items=dists.filter(v=>!q||v.toLowerCase().indexOf(q)>=0);
+  p.querySelector('#lrpCnt').textContent=lrDistricts.length+' selected · '+dists.length+' district'+(dists.length===1?'':'s');
+  p.querySelector('#lrpList').innerHTML=items.length
+    ?items.map(v=>'<label class="nvp-it"><span>'+escH(v)+'</span><input type="checkbox" value="'+escH(v)+'"'+(lrDistricts.indexOf(v)>=0?' checked':'')+'></label>').join('')
+    :'<div class="nvp-empty">No districts match “'+escH(_lrQuery)+'”.</div>';
+  p.querySelectorAll('#lrpList input').forEach(cb=>{cb.onchange=()=>{
+    if(cb.checked){if(lrDistricts.indexOf(cb.value)<0)lrDistricts.push(cb.value);}else{lrDistricts=lrDistricts.filter(v=>v!==cb.value);}
+    lrEnsure();lrRefreshDistBtn();lrDistPopList();
+  };});
+}
+function lrOpenDistPop(anchor){
+  lrCloseDistPop();_lrPopOpen=true;_lrQuery='';
+  const p=document.createElement('div');p.className='nvp';p.id='lrDistPop';
+  p.innerHTML='<div class="nvp-top"><input type="text" class="nvp-q" placeholder="Search districts…" autocomplete="off">'
+    +'<button type="button" class="nvp-all">All</button><button type="button" class="nvp-clear">Clear</button></div>'
+    +'<div class="nvp-list" id="lrpList"></div><div class="nvp-cnt" id="lrpCnt"></div>';
+  document.body.appendChild(p);
+  const r=anchor.getBoundingClientRect(),W=Math.max(240,Math.min(360,window.innerWidth-24));
+  p.style.width=W+'px';
+  p.style.left=Math.max(8,Math.min(r.right-W,window.innerWidth-W-8))+'px';
+  p.style.top=(r.bottom+5)+'px';
+  p.style.maxHeight=Math.max(160,Math.min(320,window.innerHeight-r.bottom-16))+'px';
+  p.querySelector('.nvp-clear').onclick=()=>{lrDistricts=[];lrEnsure();lrRefreshDistBtn();lrDistPopList();};
+  p.querySelector('.nvp-all').onclick=()=>{lrDistricts=(dashData.by_district||[]).map(r=>r.label).slice();lrEnsure();lrRefreshDistBtn();lrDistPopList();};
+  const q=p.querySelector('.nvp-q');
+  q.oninput=e=>{_lrQuery=e.target.value;lrDistPopList();};
+  lrDistPopList();
+  setTimeout(()=>{try{q.focus();}catch(e){}},0);
+}
+function lrToggleDistPop(anchor){if(_lrPopOpen){lrCloseDistPop();}else{lrOpenDistPop(anchor);}}
+document.addEventListener('mousedown',function(e){
+  if(_lrPopOpen&&!e.target.closest('#lrDistPop')&&!e.target.closest('.lr-distbtn'))lrCloseDistPop();
+},true);
+document.addEventListener('scroll',function(e){
+  const p=document.getElementById('lrDistPop');
+  if(p&&!(e.target&&p.contains&&e.target.nodeType===1&&p.contains(e.target)))lrCloseDistPop();
+},true);
+window.addEventListener('resize',lrCloseDistPop);
+function lrEnsure(){
+  const key=lrDistricts.length?lrDistricts.slice().sort().join(','):'*';
+  if(lrCache[key]&&lrCache[key]!=='loading'){lrPaint(lrCache[key]);return;}
+  const body=document.getElementById('lrBody');
+  if(body)body.innerHTML='<div class="dash-loading">Loading longest roads…</div>';
+  if(lrCache[key]==='loading')return;
+  lrCache[key]='loading';
+  fetch('/api/dashboard/longest'+(lrDistricts.length?'?district='+encodeURIComponent(lrDistricts.join(',')):''))
+    .then(r=>r.json())
+    .then(d=>{lrCache[key]=d;if((lrDistricts.length?lrDistricts.slice().sort().join(','):'*')===key)lrPaint(d);})
+    .catch(()=>{delete lrCache[key];const b=document.getElementById('lrBody');if(b)b.innerHTML='<div class="dash-loading">Could not load longest roads.</div>';});
+}
+function lrRows(rows,cls){
+  if(!rows||!rows.length)return `<div class="lr-empty">No ${cls==='sh'?'State Highway':'MDR'} data${lrDistricts.length?' in '+escH(lrDistricts.join(', ')):''}.</div>`;
+  const max=Math.max(...rows.map(r=>+r.km||0),0.0001);
+  const col=cls==='sh'?CLASS_COL.SH:CLASS_COL.MDR;
+  return '<div class="lr-rows">'+rows.map((r,i)=>{
+    const km=+r.km||0,w=Math.max(3,km/max*100);
+    const pill=(cls==='sh'&&r.num!=null&&r.num!=='')?`<span class="lr-num">SH ${escH(r.num)}</span>`:'';
+    const dists=(!lrDistricts.length&&r.districts)?`<div class="lr-dists" title="${escH(r.districts)}">${escH(r.districts)}</div>`:'';
+    return `<div class="lr-row"><div class="lr-rank r${i+1}">${i+1}</div><div class="lr-main">
+      <div class="lr-top">${pill}<span class="lr-nm" title="${escH(r.names)}">${escH(r.names)}</span><span class="lr-km">${fmtKm(km)}<span class="u">km</span></span></div>
+      <div class="lr-track"><i style="width:${w.toFixed(1)}%;background:linear-gradient(90deg,${col},${col}b3)"></i></div>${dists}</div></div>`;
+  }).join('')+'</div>';
+}
+function lrPaint(d){
+  const body=document.getElementById('lrBody');if(!body)return;
+  body.innerHTML=`<div class="lr-grid">
+    <div><div class="lr-col-head"><span class="lr-chip sh">SH</span>Longest State Highways</div>${lrRows(d.sh,'sh')}</div>
+    <div><div class="lr-col-head"><span class="lr-chip mdr">MDR</span>Longest Major District Roads</div>${lrRows(d.mdr,'mdr')}</div>
+  </div>`;
+}
+
 let selDistrict=null;
 function renderDashboard(){
   const d=dashData;
@@ -76,8 +184,10 @@ function renderDashboard(){
   const distList=`<div class="dcard"><div class="dcard-head"><h3>Districts</h3><span class="totchip">${(d.by_district||[]).length} listed</span></div><div class="sub">Select a district to see its PWD sections &amp; owners</div>${rankedBars(d.by_district,{click:'selectDistrict',selName:selDistrict})}</div>`;
   const detail=`<div id="distDetail">${districtDetailHtml()}</div>`;
   const exp=`<div class="exp-row">${distList}${detail}</div>`;
+  const lr=longestSection();
   const note=`<div class="dash-note"><b>About these figures.</b> Lengths use the measured length of each road segment. A road is split into many segments wherever owner, PWD section, carriageway or lane type changes, so the dashboard reports <b>length only</b>, never road counts. <b>Dual carriageways</b> (Section labels …A / …B, Single_Du = Dual) are counted <b>once</b> using the <b>average</b> of the two measured lengths. Shapefile digital length is ${d.dig_km} km; corrected network length is ${d.total_km} km.</div>`;
-  document.getElementById('dashBody').innerHTML=kpi+comp+exp+note;
+  document.getElementById('dashBody').innerHTML=kpi+comp+lr+exp+note;
+  lrEnsure();
 }
 let distCache={};
 function districtDetailHtml(){

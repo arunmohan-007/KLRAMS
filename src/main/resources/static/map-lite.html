@@ -119,7 +119,7 @@
         <label class="lbl" for="metric">Colour by</label>
         <select id="metric"></select>
         <div class="legend" id="legend"></div>
-        <div class="hint">Click a coloured road segment or any feature for full details.</div>
+        <div class="hint">Each surveyed lane (CC/CL1/CL2/CR1/CR2) is drawn as its own offset line, like the full map. Click any line for full details.</div>
       </div>
 
       <h3>Find a road</h3>
@@ -158,14 +158,46 @@ var SEG_GJ=null,ROAD_GJ=null,didFit=false;
 var setStatus=function(m){document.getElementById('status').textContent=m;};
 
 /* ---- condition colouring (mirrors colorExpr in 03-condition-style-filter.js) ---- */
-function condColor(props,key){
-  var p=PMAP[key];if(!p)return NONE;
-  var raw=props?props[key]:null;
-  if(raw==null||raw===''||isNaN(+raw))return NONE;
-  var v=+raw;
+function condBand(v,key){
+  var p=PMAP[key];if(!p||v==null||isNaN(v))return null;
   if(v<p.fair)return GOOD;
   if(v<p.poor)return FAIR;
   return POOR;
+}
+function condColor(props,key){
+  var raw=props?props[key]:null;
+  if(raw==null||raw==='')return NONE;
+  return condBand(+raw,key)||NONE;
+}
+/* ---- per-lane rendering (mirrors LANE_SLOTS/addCondLayers in 07-data-loaders.js) ----
+   condition_segments collapses every lane surveyed at a chainage into ONE row
+   (see SegmentService.java), keeping the per-lane readings in `lane_vals`
+   (JSON: {xsp: {iri, crack, ...}, ...}). The full MapLibre viewer draws one
+   offset line per lane (line-offset in pixels); Leaflet has no such paint
+   property, so each lane's line is offset here by shifting its vertices a
+   few metres perpendicular to the road at that point — same lane order/
+   spacing as the full map (CC centre, CL1/CL2 left, CR1/CR2 right). */
+var LANE_SLOTS=[{x:'CC',off:0},{x:'CL1',off:-1},{x:'CL2',off:-2},{x:'CR1',off:1},{x:'CR2',off:2}];
+var LANE_OFFSET_M=4;
+function segLaneVals(props){
+  var lv=props?props.lane_vals:null;
+  if(typeof lv==='string'){try{lv=JSON.parse(lv);}catch(e){lv=null;}}
+  return (lv&&typeof lv==='object')?lv:null;
+}
+function offsetLatLngs(latlngs,meters){
+  var n=latlngs.length,out=[];
+  if(!meters||n<2){for(var j=0;j<n;j++)out.push([latlngs[j].lat,latlngs[j].lng]);return out;}
+  var mPerDegLat=111320;
+  for(var i=0;i<n;i++){
+    var p0=latlngs[Math.max(0,i-1)],p1=latlngs[Math.min(n-1,i+1)];
+    var lat=latlngs[i].lat,cosLat=Math.cos(lat*Math.PI/180)||1e-6;
+    var dx=(p1.lng-p0.lng)*cosLat,dy=(p1.lat-p0.lat);
+    var len=Math.sqrt(dx*dx+dy*dy)||1;
+    var nx=-dy/len,ny=dx/len;
+    var offDeg=meters/mPerDegLat;
+    out.push([lat+ny*offDeg,latlngs[i].lng+(nx*offDeg)/cosLat]);
+  }
+  return out;
 }
 function bandLabel(props,key){
   var p=PMAP[key];var raw=props?props[key]:null;
@@ -196,7 +228,8 @@ function segPopup(props){
   var ch='';
   if(props.from_ch!=null&&props.to_ch!=null)ch=props.from_ch+' – '+props.to_ch+' m';
   else if(props.chainage!=null)ch=props.chainage+' m';
-  return '<div class="lp"><h4>'+esc(road||'Condition segment')+'</h4>'+
+  var laneTag=props.__lane?(' · Lane '+esc(props.__lane)):'';
+  return '<div class="lp"><h4>'+esc(road||'Condition segment')+laneTag+'</h4>'+
     (ch?'<div class="k" style="margin-bottom:6px">Chainage '+esc(ch)+'</div>':'')+
     '<div style="margin-bottom:8px"><span class="band" style="background:'+b.c+'">'+b.t+' · '+esc(PMAP[key].label)+'</span></div>'+
     '<table>'+rows+'</table></div>';
@@ -232,9 +265,34 @@ function renderSegs(){
   segLayer.clearLayers();
   if(!SEG_GJ)return;
   var key=document.getElementById('metric').value;
-  L.geoJSON(SEG_GJ,{style:function(f){return {color:condColor(f.properties||{},key),weight:5,opacity:.95};},
-    onEachFeature:function(f,l){l.bindPopup(function(){return segPopup(f.properties||{});},{maxWidth:320});}
-  }).addTo(segLayer);
+  (SEG_GJ.features||[]).forEach(function(f){
+    var props=f.properties||{};
+    var geom=f.geometry;if(!geom)return;
+    var lineStrings=(geom.type==='MultiLineString')
+      ?L.GeoJSON.coordsToLatLngs(geom.coordinates,1)
+      :[L.GeoJSON.coordsToLatLngs(geom.coordinates,0)];
+    var laneVals=segLaneVals(props);
+    var lanes=(laneVals&&Object.keys(laneVals).length)?LANE_SLOTS.filter(function(s){return laneVals[s.x];}):null;
+    lineStrings.forEach(function(latlngs){
+      if(lanes){
+        lanes.forEach(function(s){
+          var lv=laneVals[s.x],v=lv[key];
+          var color=(v==null||v==='')?NONE:(condBand(+v,key)||NONE);
+          var coords=offsetLatLngs(latlngs,s.off*LANE_OFFSET_M);
+          var laneProps=Object.assign({},props,lv,{__lane:s.x});
+          L.polyline(coords,{color:color,weight:4,opacity:.95})
+            .bindPopup(function(){return segPopup(laneProps);},{maxWidth:320})
+            .addTo(segLayer);
+        });
+      }else{
+        var color=condColor(props,key);
+        var coords=offsetLatLngs(latlngs,0);
+        L.polyline(coords,{color:color,weight:5,opacity:.95})
+          .bindPopup(function(){return segPopup(props);},{maxWidth:320})
+          .addTo(segLayer);
+      }
+    });
+  });
   document.getElementById('cSegs').textContent=((SEG_GJ.features||[]).length).toLocaleString();
 }
 function renderAssets(gj,group,title,color,cntId){

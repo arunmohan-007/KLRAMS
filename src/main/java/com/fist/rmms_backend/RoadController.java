@@ -29,6 +29,15 @@ public class RoadController {
         this.jdbc = jdbc;
     }
 
+    /** Builds the cache if it isn't already warm. Called on startup so the first real request is fast. */
+    public void warm() {
+        if (cachedGeojson == null) {
+            synchronized (this) {
+                if (cachedGeojson == null) cachedGeojson = buildGeojson();
+            }
+        }
+    }
+
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> geojson() {
         String body = cachedGeojson;

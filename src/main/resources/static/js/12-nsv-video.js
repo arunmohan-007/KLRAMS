@@ -11,6 +11,24 @@
 })();
 function setSpeed(r,btn){playSpeed=r;const v=document.getElementById('video');if(v)v.playbackRate=r;document.querySelectorAll('#speedSeg button').forEach(b=>b.classList.toggle('on',b===btn));}
 const video=document.getElementById('video'),vidempty=document.getElementById('vidempty');
+/* Loading/buffering feedback — on slow networks the survey video takes a while
+   before it plays; show a spinner so the user knows it's loading, not stuck. */
+(function(){
+  if(!video)return;
+  const vl=document.getElementById('vidloading');if(!vl)return;
+  const txt=vl.querySelector('.vl-txt');
+  let hideT=null;
+  function show(m){if(hideT){clearTimeout(hideT);hideT=null;}vl.classList.remove('err');if(txt)txt.textContent=m||'Loading footage…';vl.style.display='';}
+  function hide(){if(hideT)clearTimeout(hideT);hideT=setTimeout(()=>{vl.style.display='none';},60);}
+  video.addEventListener('loadstart',()=>show('Loading footage…'));
+  video.addEventListener('waiting',()=>show('Buffering…'));
+  video.addEventListener('stalled',()=>show('Buffering…'));
+  video.addEventListener('canplay',hide);
+  video.addEventListener('playing',hide);
+  video.addEventListener('loadeddata',hide);
+  video.addEventListener('error',()=>{vl.classList.add('err');if(txt)txt.textContent='Could not load this video. Check your connection and try again.';vl.style.display='';});
+  window.__nsvVidLoad={show:show,hide:hide};
+}());
 function dirFromCatalog(d){const t=String(d==null?'':d).toLowerCase().trim();if(!t)return null;if(t.indexOf('rev')>=0||t.indexOf('back')>=0||t.indexOf('rear')>=0||t==='b'||t==='bwd')return 'rev';if(t.indexOf('front')>=0||t.indexOf('forward')>=0||t.indexOf('fwd')>=0||t==='f'||t==='fw')return 'fwd';return null;}
 function applyDirAvailability(d){const fb=document.getElementById('fwd'),rb=document.getElementById('rev');const a=dirFromCatalog(d);if(!fb||!rb){setDir(a||'fwd');return;}[fb,rb].forEach(b=>{b.disabled=false;b.classList.remove('disabled');b.removeAttribute('title');});if(a==='fwd'){rb.disabled=true;rb.classList.add('disabled');rb.title='This survey was recorded in the Front direction only';setDir('fwd');}else if(a==='rev'){fb.disabled=true;fb.classList.add('disabled');fb.title='This survey was recorded in the Back direction only';setDir('rev');}else{setDir('fwd');}}
 function nsvLoc(props,keys){for(var i=0;i<keys.length;i++){var k=keys[i];if(props&&props[k]!=null&&props[k]!=='')return String(props[k]);}return '';}

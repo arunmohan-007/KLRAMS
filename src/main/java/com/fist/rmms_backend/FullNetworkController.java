@@ -66,6 +66,15 @@ public class FullNetworkController {
         jdbc.execute("CREATE INDEX IF NOT EXISTS full_road_network_geom_idx ON full_road_network USING GIST (geom)");
     }
 
+    /** Builds the cache if it isn't already warm. Called on startup so the first real request is fast. */
+    public void warm() {
+        if (cachedGeojson == null) {
+            synchronized (this) {
+                if (cachedGeojson == null) cachedGeojson = build();
+            }
+        }
+    }
+
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> geojson() {
         String body = cachedGeojson;

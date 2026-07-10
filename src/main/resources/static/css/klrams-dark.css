@@ -207,6 +207,65 @@ html,body{background:var(--k-bg)!important;color:var(--k-text)!important}
 .fpane .lname,.fpane .lname b{color:var(--k-text)!important;font-weight:600}
 .fpane .ldot{box-shadow:0 0 0 2px rgba(255,255,255,.06),0 1px 3px rgba(0,0,0,.4)!important}
 
+/* ============ Layers panel — collapsible section (pro) ============
+   Each .grp-title becomes an interactive header row with an icon chip,
+   a left accent stripe (lit when open) and an animated right chevron.
+   Behaviour + expand/collapse animation live in js/26-layers-collapse.js
+   and css/app.css. */
+#pane-layers .grp-title.grp-toggle{
+  display:flex;align-items:center;gap:11px;
+  padding:11px 13px!important;margin:0 0 9px!important;
+  border:1px solid var(--k-line)!important;border-radius:11px!important;
+  background:linear-gradient(180deg,#1a2333,#151d29)!important;
+  color:#d4dde9!important;
+  font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+  position:relative;overflow:hidden;
+  box-shadow:0 1px 2px rgba(0,0,0,.22)!important;
+  transition:background .18s,border-color .18s,color .18s,box-shadow .18s!important;
+}
+#pane-layers .grp-title.grp-toggle:hover{
+  color:#fff!important;border-color:var(--k-line2)!important;
+  background:linear-gradient(180deg,#1f2a3b,#18212f)!important;
+}
+/* left accent stripe — lit when the section is open */
+#pane-layers .grp-title.grp-toggle::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--k-accent);opacity:0;transition:opacity .18s ease;
+  box-shadow:0 0 10px rgba(45,212,191,.5);
+}
+/* right chevron — replaces the old gradient hairline */
+#pane-layers .grp-title.grp-toggle::after{
+  content:"";flex:0 0 auto;margin-left:auto;
+  width:7px;height:7px;
+  border-right:2px solid currentColor;border-bottom:2px solid currentColor;
+  transform:rotate(-45deg);transition:transform .22s ease;
+  background:none!important;opacity:.7;
+}
+/* open state */
+#pane-layers .grp-title.grp-toggle:not(.is-collapsed){
+  color:#fff!important;
+  border-color:rgba(45,212,191,.45)!important;
+  background:linear-gradient(180deg,rgba(45,212,191,.12),rgba(45,212,191,.03))!important;
+}
+#pane-layers .grp-title.grp-toggle:not(.is-collapsed)::before{opacity:1}
+#pane-layers .grp-title.grp-toggle:not(.is-collapsed)::after{transform:rotate(45deg);opacity:.95}
+/* section icon chip */
+#pane-layers .grp-ic{
+  flex:0 0 auto;width:27px;height:27px;border-radius:8px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:rgba(45,212,191,.10);color:var(--k-accent);
+  border:1px solid rgba(45,212,191,.22);
+  transition:background .18s,color .18s,border-color .18s,transform .18s,box-shadow .18s;
+}
+#pane-layers .grp-ic svg{width:15px;height:15px;display:block}
+#pane-layers .grp-title.grp-toggle:hover .grp-ic{transform:translateY(-1px)}
+#pane-layers .grp-title.grp-toggle:not(.is-collapsed) .grp-ic{
+  background:var(--k-accent);color:#06231a;border-color:var(--k-accent);
+  box-shadow:0 2px 10px rgba(45,212,191,.35);
+}
+/* label text */
+#pane-layers .grp-tx{flex:1 1 auto;line-height:1.35;text-align:left}
+
 /* toggles — solid teal when on, no gradient/glow */
 .switch input{
   appearance:none;width:40px;height:22px;border-radius:22px;
@@ -524,6 +583,32 @@ html,body{background:var(--k-bg)!important;color:var(--k-text)!important}
 .pop .pgrid-t{color:var(--k-faint)!important}
 .pop .pg-k{color:var(--k-muted)!important}
 .pop .pg-v{color:var(--k-text)!important}
+.pop details.trf-allcls{border-top:1px solid var(--k-line)!important}
+.pop details.trf-allcls>summary{color:var(--k-accent)!important}
+.pop details.trf-allcls[open]>summary{color:var(--k-text)!important}
+
+/* ---- pro popups (geotechnical assets + traffic) built on .klpop ---- */
+/* cap tall popups to the viewport and scroll inside, so the whole card stays
+   on-screen and maplibre can anchor it without clipping the header/top rows */
+.klpop.asset-klpop,.klpop.trf-klpop{max-height:min(66vh,380px);overflow-y:auto;overflow-x:hidden}
+.klpop.asset-klpop::-webkit-scrollbar,.klpop.trf-klpop::-webkit-scrollbar{width:9px}
+.klpop.asset-klpop::-webkit-scrollbar-thumb,.klpop.trf-klpop::-webkit-scrollbar-thumb{background:#2a3645;border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+.klpop .kp-block:last-child{border-bottom:0!important}
+.klpop .kp-u{font-size:9.5px;color:#8fb3a8;font-weight:600;margin-left:1px}
+.klpop .kp-sub{font-size:10px;color:#8fb3a8;font-weight:600;margin-left:6px}
+.klpop .kp-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
+.klpop .kp-gcell{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.klpop .kp-gk{font-size:10.5px;color:#8fb3a8}
+.klpop .kp-gv{font-size:11px;color:#eaf6ef;font-weight:600;font-variant-numeric:tabular-nums}
+.klpop .kp-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.klpop .kp-stat{background:rgba(45,212,191,.06);border:1px solid rgba(45,212,191,.18);border-radius:10px;padding:9px 5px;text-align:center}
+.klpop .kp-sv{font-size:15px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;line-height:1.05}
+.klpop .kp-sl{font-size:8px;letter-spacing:.3px;text-transform:uppercase;color:#8fb3a8;margin-top:4px;line-height:1.25}
+.klpop details.trf-allcls{margin-top:8px;border-top:1px solid rgba(255,255,255,.06);padding-top:7px}
+.klpop details.trf-allcls>summary{cursor:pointer;list-style:none;font-size:10.5px;font-weight:700;color:var(--k-accent);user-select:none}
+.klpop details.trf-allcls>summary::-webkit-details-marker{display:none}
+.klpop details.trf-allcls>summary::before{content:"+ ";font-weight:800}
+.klpop details.trf-allcls[open]>summary::before{content:"– "}
 .fwd-legend{background:var(--k-elev)!important;border:1px solid var(--k-line)!important}
 .fwd-legend .fl-t{color:var(--k-accent)!important}
 
@@ -548,7 +633,10 @@ html,body{background:var(--k-bg)!important;color:var(--k-text)!important}
 
 /* ---------- full-screen overlays (dashboard / PCI / register / NSV / hub / climate) ---------- */
 #dashboard,#pciScreen,#condScreen,#regScreen,#nsvScreen,#reportHub,#climate{
-  background:linear-gradient(130% 90% at 100% 0%,#131b28 0%,#101824 42%,#0f1620 100%)!important;
+  /* NB: must be radial-gradient — the "<size> at <position>" form is invalid for
+     linear-gradient, which made the browser drop this rule and fall back to the
+     light base background (white rows / unreadable dark-theme text). */
+  background:radial-gradient(130% 90% at 100% 0%,#131b28 0%,#101824 42%,#0f1620 100%)!important;
 }
 #dashboard::-webkit-scrollbar-thumb,#pciScreen::-webkit-scrollbar-thumb,
 #condScreen::-webkit-scrollbar-thumb,#regScreen::-webkit-scrollbar-thumb,
@@ -616,6 +704,27 @@ html,body{background:var(--k-bg)!important;color:var(--k-text)!important}
 .rbar.click:hover{background:rgba(45,212,191,.06)!important}
 .rbar.sel{background:rgba(45,212,191,.1)!important;box-shadow:inset 0 0 0 1px rgba(45,212,191,.4)!important}
 .rbar.sel .rb-nm{color:var(--k-accent)!important}
+
+/* longest roads (top 10 SH / MDR) */
+.lr-sel{
+  background-color:var(--k-panel)!important;border:1px solid var(--k-line)!important;
+  color:var(--k-text)!important;box-shadow:none!important;
+}
+.lr-sel:hover{border-color:var(--k-line2)!important}
+.lr-sel:focus{border-color:var(--k-accent)!important;box-shadow:0 0 0 3px var(--k-ring)!important}
+.lr-col-head{color:var(--k-muted)!important}
+.lr-col-head::after{background:var(--k-line)!important}
+.lr-rank{background:var(--k-elev)!important;color:var(--k-faint)!important}
+.lr-rank.r1{background:linear-gradient(135deg,#f8dc84,#e0a63b)!important;color:#5c4308!important}
+.lr-rank.r2{background:linear-gradient(135deg,#e6ebf2,#b9c4d2)!important;color:#42526b!important}
+.lr-rank.r3{background:linear-gradient(135deg,#eec49e,#cf8f5a)!important;color:#5f3a17!important}
+.lr-nm{color:var(--k-text)!important}
+.lr-km{color:#fff!important}
+.lr-km .u{color:var(--k-muted)!important}
+.lr-track{background:var(--k-elev)!important}
+.lr-num{color:var(--k-accent)!important;background:rgba(45,212,191,.1)!important;border-color:rgba(45,212,191,.35)!important}
+.lr-dists{color:var(--k-faint)!important}
+.lr-empty{color:var(--k-muted)!important;border:1px dashed var(--k-line2)!important;background:var(--k-panel)!important}
 
 /* district explorer */
 .detail-card{
@@ -696,11 +805,14 @@ html,body{background:var(--k-bg)!important;color:var(--k-text)!important}
 .reg-search,.reg-sel{background:var(--k-elev)!important;color:var(--k-text)!important;border:1px solid var(--k-line)!important}
 .reg-search:focus,.reg-sel:focus{border-color:var(--k-accent)!important;box-shadow:0 0 0 3px var(--k-ring)!important;outline:none!important}
 .reg-count{color:var(--k-muted)!important}
-.reg-tablewrap{border:1px solid var(--k-line)!important}
+.reg-tablewrap{border:1px solid var(--k-line)!important;background:rgba(16,24,36,.55)!important}
 .reg-table th{background:var(--k-elev)!important;color:#fff!important}
 .reg-table th,.reg-table td{border-bottom:1px solid var(--k-line)!important}
+.reg-table td{color:var(--k-text)!important}
+.reg-table td.m{color:var(--k-muted)!important}
 .reg-table tbody tr:nth-child(even){background:rgba(255,255,255,.02)!important}
-.reg-table tbody tr:hover{background:rgba(45,212,191,.06)!important}
+.reg-table tbody tr:hover{background:rgba(45,212,191,.08)!important}
+.reg-table tbody tr:hover td{color:#fff!important}
 
 /* NSV / climate screens */
 .nsv-viewbtn{background:var(--k-accent)!important;box-shadow:none!important}

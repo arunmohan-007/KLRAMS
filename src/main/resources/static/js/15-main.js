@@ -11,6 +11,17 @@ map.on('load',()=>{
      until the toggle is turned on; loadRoads(true) skips the auto-fit. */
   Promise.resolve(typeof loadRoads==='function'?loadRoads(true):null)
     .then(()=>loadCatalog())
-    .then(()=>{setupSearch();setupLocationSearch();});
+    .then(()=>{setupSearch();setupLocationSearch();})
+    .then(()=>{
+      /* Background-preload the condition/PCI segments AFTER roads, catalog and
+         search are ready, so login stays fast but the Road Condition layer is
+         already in memory — turning the toggle on is then instant instead of
+         waiting for a fresh fetch. Fire-and-forget on a short delay so it never
+         competes with the initial map paint; syncLazyVis() (and addCondLayers,
+         which now honours the toggle) keep the layer hidden while showCond is off. */
+      if(typeof loadSegments==='function'&&!map.getSource('segs')){
+        setTimeout(()=>{try{loadSegments();}catch(e){}},1500);
+      }
+    });
 });
 

@@ -28,8 +28,8 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
-  <link rel="stylesheet" href="css/app.css?v=118">
-  <link rel="stylesheet" href="css/klrams-dark.css?v=1">
+  <link rel="stylesheet" href="css/app.css?v=122">
+  <link rel="stylesheet" href="css/klrams-dark.css?v=6">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
     .cond-metric-row{display:flex;align-items:center;gap:8px;margin:0 0 12px 24px;padding:0}
@@ -91,6 +91,7 @@
 
   <section class="fpane active" id="pane-layers">
     <div class="pane-title">Layers</div>
+    <div class="grp-title">Road network</div>
     <div class="grp">
       <div class="switch"><span class="lname"><span class="ldot" style="background:#8a4d1f"></span>Road network</span><input type="checkbox" id="showRoads"></div>
       <div class="switch"><span class="lname"><span class="ldot" style="background:#3a4ad6"></span>Full Road Network <span class="r2-hint">by road name</span></span><input type="checkbox" id="showRoads2"></div>
@@ -480,7 +481,8 @@
       .nsc-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:8px;padding:12px 16px 4px}
       .nsc-stat{display:flex;flex-direction:column;gap:3px;background:rgba(255,255,255,.035);border:1px solid rgba(120,160,215,.14);border-left:3px solid var(--sc,#3b86e6);border-radius:11px;padding:9px 12px 8px;min-width:0;transition:background .15s}
       .nsc-stat:hover{background:rgba(255,255,255,.07)}
-      .nsc-stat .n{font:700 19px "IBM Plex Mono",ui-monospace,monospace;color:#fff;font-variant-numeric:tabular-nums;line-height:1.1}
+      .nsc-stat .n{font:700 19px "IBM Plex Mono",ui-monospace,monospace;color:#fff;font-variant-numeric:tabular-nums;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .nsc-stat.txt .n{font:700 14px Inter,system-ui,sans-serif;font-variant-numeric:normal;white-space:normal;word-break:break-word;overflow:visible;text-overflow:clip}
       .nsc-stat .l{font:600 9.5px Inter,system-ui,sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#8fa3c2;line-height:1.35;white-space:normal}
       .nsc-own{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:9px 16px 14px}
       .nsc-own .ol{font:700 9.5px Inter,system-ui,sans-serif;letter-spacing:.8px;text-transform:uppercase;color:#6d81a0;margin-right:2px;flex:0 0 auto}
@@ -757,7 +759,7 @@
 </style>
     <div id="dock">
       <span class="close" onclick="closeDock()">&times;</span>
-      <div class="vid"><video id="video" controls playsinline webkit-playsinline preload="metadata"></video><div class="vidempty" id="vidempty" style="display:none"></div><div class="vh-gapbanner" id="hudGapBanner"><span class="gap-ic">&#9888;</span> No NSV survey data for this chainage</div><div class="vidhud" id="vidhud"><div class="vh-left"><div class="vh-id"><div class="vh-route" id="hudRoute">&mdash;</div><div class="vh-meta"><span class="vh-cls" id="hudClass">&mdash;</span><span class="vh-sec" id="hudSec">&mdash;</span></div><div class="vh-chrow"><span class="vh-chip" id="hudCh">CH &ndash; m</span><span class="vh-chip dir" id="hudDir">Forward</span></div><div class="vh-attrs" id="hudAttrs"></div></div><div class="vh-iri" id="hudIri">AVG IRI &ndash;</div><div class="vh-pci" id="hudPci"></div></div><div class="vh-right"><svg class="vidhud-trk" id="hudTrack" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg><div class="vh-cond" id="hudCond"></div><div class="vh-chain" id="hudChain"></div></div><div class="vh-roadname" id="hudRoad">&mdash;</div></div></div>
+      <div class="vid"><video id="video" controls playsinline webkit-playsinline preload="metadata"></video><div class="vidloading" id="vidloading" style="display:none"><div class="vl-spin"></div><div class="vl-txt">Loading footage&hellip;</div></div><div class="vidempty" id="vidempty" style="display:none"></div><div class="vh-gapbanner" id="hudGapBanner"><span class="gap-ic">&#9888;</span> No NSV survey data for this chainage</div><div class="vidhud" id="vidhud"><div class="vh-left"><div class="vh-id"><div class="vh-route" id="hudRoute">&mdash;</div><div class="vh-meta"><span class="vh-cls" id="hudClass">&mdash;</span><span class="vh-sec" id="hudSec">&mdash;</span></div><div class="vh-chrow"><span class="vh-chip" id="hudCh">CH &ndash; m</span><span class="vh-chip dir" id="hudDir">Forward</span></div><div class="vh-attrs" id="hudAttrs"></div></div><div class="vh-iri" id="hudIri">AVG IRI &ndash;</div><div class="vh-pci" id="hudPci"></div></div><div class="vh-right"><svg class="vidhud-trk" id="hudTrack" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg><div class="vh-cond" id="hudCond"></div><div class="vh-chain" id="hudChain"></div></div><div class="vh-roadname" id="hudRoad">&mdash;</div></div></div>
       <div class="instr">
         <div class="road-eyebrow">Now playing</div>
         <div class="road-name" id="dRoadName">—</div>
@@ -924,18 +926,18 @@
   <script src="js/02-map-core.js?v=117"></script>
   <script src="js/03-condition-style-filter.js?v=117"></script>
   <script src="js/04-geo-helpers-boundaries.js?v=117"></script>
-  <script src="js/05-road-network.js?v=117"></script>
-  <script src="js/06-assets.js?v=117"></script>
-  <script src="js/07-data-loaders.js?v=161"></script>
+  <script src="js/05-road-network.js?v=118"></script>
+  <script src="js/06-assets.js?v=166"></script>
+  <script src="js/07-data-loaders.js?v=162"></script>
   <script src="js/08-condition-popup-nsv.js?v=160"></script>
   <script src="js/09-dashboard-core.js?v=117"></script>
   <script src="js/10-pci-report.js?v=117"></script>
-  <script src="js/11-dashboard-charts.js?v=117"></script>
-  <script src="js/12-nsv-video.js?v=160"></script>
+  <script src="js/11-dashboard-charts.js?v=119"></script>
+  <script src="js/12-nsv-video.js?v=167"></script>
   <script src="js/13-search.js?v=117"></script>
   <script src="js/14-pci-engine.js?v=117"></script>
   <script src="js/15-main.js?v=117"></script>
-  <script src="js/16-traffic.js?v=117"></script>
+  <script src="js/16-traffic.js?v=166"></script>
   <script src="js/17-measure.js?v=117"></script>
   <script src="js/18-filters.js?v=117"></script>
   <script src="js/19-asset-register.js?v=117"></script>
@@ -945,6 +947,7 @@
   <script src="js/23-climate.js?v=117"></script>
   <script src="js/24-fwd.js?v=160"></script>
   <script src="js/25-nsv-module.js?v=161"></script>
+  <script src="js/26-layers-collapse.js?v=2"></script>
   <script src="js/launcher.js?v=161"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page

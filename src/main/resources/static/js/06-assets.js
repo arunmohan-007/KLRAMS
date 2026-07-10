@@ -21,24 +21,108 @@ const FWD_D0_STOPS=[['#1a9850','< 100'],['#91cf60','100 – 200'],['#fee08b','20
 function fwdScale(gj){let mx=0;((gj&&gj.features)||[]).forEach(f=>{const v=parseFloat(fwdD0(f.properties));if(!isNaN(v))mx=Math.max(mx,Math.abs(v));});return (mx>0&&mx<10)?1000:1;}
 function fwdD0ColorExpr(){return ['case',['has','__d0'],['step',['to-number',['get','__d0']],'#1a9850',100,'#91cf60',200,'#fee08b',350,'#fdae61',500,'#f46d43',700,'#b2182b'],'#9aa0a6'];}
 function renderFwdLegend(){const el=document.getElementById('fwdLegend');if(!el)return;el.innerHTML='<div class="fl-t">D0 deflection (microns)</div>'+FWD_D0_STOPS.map(x=>'<div class="fl-r"><span class="sw" style="background:'+x[0]+'"></span>'+x[1]+'</div>').join('');}
-function assetPopup(lngLat,p,label){
+/* Build 164 — professional, unit-aware popups for the geotechnical datasets.
+   Field keys below are the exact CSV column names; each row is [key, label, unit]. */
+const ASSET_UNITS_SCHEMA={
+  subgrade:{lane:'Xsp',groups:[
+    {t:'Classification',rows:[['Soil Type','Soil type','']]},
+    {t:'Atterberg limits',rows:[['LL','Liquid limit','%'],['PL','Plastic limit','%'],['PI','Plasticity index','%']]},
+    {t:'Strength & compaction',rows:[['CBR','CBR (soaked)','%'],['MDD','Max dry density','g/cc'],['OMC','Optimum moisture','%'],['FDD','Field dry density','g/cc'],['FMC','Field moisture','%'],['Doc','Degree of compaction','%']]},
+    {t:'Gradation',rows:[['Gravel Content','Gravel','%'],['Sand Content','Sand','%']]},
+    {t:'IS sieve · % passing',grid:true,rows:[['Percentage_IS_Sieve_20mm','20 mm','%'],['Percentage_IS_Sieve_10mm','10 mm','%'],['Percentage_IS_Sieve_4.75mm','4.75 mm','%'],['Percentage_IS_Sieve_2.36mm','2.36 mm','%'],['Percentage_IS_Sieve_0.425mm','0.425 mm','%'],['Percentage_IS_Sieve_0.075mm','0.075 mm','%']]}
+  ]},
+  bituminous_core:{lane:'XSP',groups:[
+    {t:'Core',rows:[['Core No','Core no.','']]},
+    {t:'Layer thickness',rows:[['Observed Thickness of Wearing Course mm','Wearing course','mm'],['Observed Thickness of Binder Course mm','Binder course','mm'],['Total Observed bituminous layers thickness mm','Total bituminous','mm']]},
+    {t:'Bulk density',rows:[['Bulk Density of Wearing Course gmcc','Wearing course','g/cc'],['Bulk Density of Binder Course gmcc','Binder course','g/cc']]}
+  ]},
+  pavement_crust:{lane:'XSP',groups:[
+    {t:'Composition',rows:[['Surface Type','Surface',''],['Base Type','Base',''],['Sub Base Type','Sub-base',''],['Sub Grade Soil Type','Sub-grade soil','']]},
+    {t:'Layer thickness',rows:[['Surface Thickness','Surface','mm'],['Base Thickness','Base','mm'],['Sub Base Thickness','Sub-base','mm']]},
+    {t:'Sub-grade',rows:[['Sub Grade CBR','Sub-grade CBR','%']]}
+  ]}
+};
+function _assetUVal(raw,unit){
+  if(raw==null||String(raw).trim()==='')return null;
+  const s=String(raw).trim();
+  if(unit){const num=Number(s.replace(/,/g,''));if(!isNaN(num))return escH(s)+' <span class="kp-u">'+escH(unit)+'</span>';}
+  return escH(s);
+}
+function _assetPrettyKey(k){return String(k).replace(/_/g,' ').replace(/\s+/g,' ').trim();}
+/* derive a friendly label + unit from a raw column name (e.g. "...Thickness mm"
+   → {label:"... Thickness", unit:"mm"}). Only pulls units that are explicitly
+   present in the name, so we never invent an incorrect unit. */
+function _assetKeyMeta(k){
+  let key=String(k).replace(/_/g,' ').replace(/\s+/g,' ').trim();let unit='';
+  if(/\bgm\s?cc\b/i.test(key)){unit='g/cc';key=key.replace(/\bgm\s?cc\b/i,'');}
+  else if(/\bmm\b/i.test(key)){unit='mm';key=key.replace(/\bmm\b/i,'');}
+  else if(/\bcm\b/i.test(key)){unit='cm';key=key.replace(/\bcm\b/i,'');}
+  else if(/\b(sq\s?m|m2)\b/i.test(key)){unit='m²';key=key.replace(/\b(sq\s?m|m2)\b/i,'');}
+  else if(/\bkg\b/i.test(key)){unit='kg';key=key.replace(/\bkg\b/i,'');}
+  return {label:key.replace(/\s+/g,' ').trim(),unit:unit};
+}
+function assetProPopup(lngLat,p,type,label){
+  const sch=ASSET_UNITS_SCHEMA[type];
+  const rdv=pickProp(p,ROAD_KEYS),road=(rdv!=null?rdv:p.road)||'';
+  const lane=p[sch.lane]||'';
+  const handled={};
+  Object.keys(p).forEach(k=>{const c=ckey(k);if(k.charAt(0)==='_'||ROAD_KEYS.indexOf(c)>=0||FROM_KEYS.indexOf(c)>=0||TO_KEYS.indexOf(c)>=0)handled[k]=1;});
+  ['from_ch','to_ch','Chainage','Date',sch.lane,'Section Label','Section Label Code','Section Start Date'].forEach(k=>{handled[k]=1;});
+  const f=(p.from_ch!=null&&p.from_ch!=='')?p.from_ch:null,t2=(p.to_ch!=null&&p.to_ch!=='')?p.to_ch:null;
+  let chTxt='';
+  if(f!=null&&t2!=null)chTxt=escH(f)+' – '+escH(t2)+' m';
+  else if(f!=null)chTxt=escH(f)+' m';
+  else if(p.Chainage!=null&&p.Chainage!=='')chTxt=escH(p.Chainage)+' m';
+  let h='<div class="klpop asset-klpop">';
+  h+='<div class="kp-head"><div class="kp-name">'+escH(label)+'</div><div class="kp-meta">'+(lane?'<span class="kp-chip">'+escH(lane)+'</span>':'')+(road?'<span class="kp-sec">'+escH(road)+'</span>':'')+'</div></div>';
+  let loc='';
+  if(chTxt)loc+='<div class="kp-attr"><span class="kp-k">Chainage</span><span class="kp-v">'+chTxt+'</span></div>';
+  if(p.Date)loc+='<div class="kp-attr"><span class="kp-k">Test date</span><span class="kp-v">'+escH(p.Date)+'</span></div>';
+  if(loc)h+='<div class="kp-block"><div class="kp-eyebrow">Location</div><div class="kp-attrs">'+loc+'</div></div>';
+  sch.groups.forEach(g=>{
+    g.rows.forEach(r=>{handled[r[0]]=1;});
+    if(g.grid){
+      let cells='';g.rows.forEach(r=>{const v=_assetUVal(p[r[0]],r[2]);if(v==null)return;cells+='<div class="kp-gcell"><span class="kp-gk">'+escH(r[1])+'</span><span class="kp-gv">'+v+'</span></div>';});
+      if(cells)h+='<div class="kp-block"><div class="kp-eyebrow">'+escH(g.t)+'</div><div class="kp-grid">'+cells+'</div></div>';
+    }else{
+      let rows='';g.rows.forEach(r=>{const v=_assetUVal(p[r[0]],r[2]);if(v==null)return;rows+='<div class="kp-attr"><span class="kp-k">'+escH(r[1])+'</span><span class="kp-v">'+v+'</span></div>';});
+      if(rows)h+='<div class="kp-block"><div class="kp-eyebrow">'+escH(g.t)+'</div><div class="kp-attrs">'+rows+'</div></div>';
+    }
+  });
+  let extra='';Object.keys(p).forEach(k=>{if(handled[k])return;const v=p[k];if(v==null||v==='')return;extra+='<div class="kp-attr"><span class="kp-k">'+escH(_assetPrettyKey(k))+'</span><span class="kp-v">'+escH(v)+'</span></div>';});
+  if(extra)h+='<div class="kp-block"><div class="kp-eyebrow">Additional</div><div class="kp-attrs">'+extra+'</div></div>';
+  h+='</div>';
+  new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML(h).addTo(map);
+}
+function assetPopup(lngLat,p,label,type){
   p=p||{};
-  const rdv=pickProp(p,ROAD_KEYS),road=(rdv!=null?rdv:p.road);
+  if(type&&ASSET_UNITS_SCHEMA[type])return assetProPopup(lngLat,p,type,label);
+  const rdv=pickProp(p,ROAD_KEYS),road=(rdv!=null?rdv:p.road)||'';
   const fr=pickProp(p,FROM_KEYS),to=pickProp(p,TO_KEYS);
   const sc=+p.__dscale||1;
+  const isFwd=String(label).toUpperCase()==='FWD';
+  const lane=p.XSP||p.Xsp||p.xsp||'';
   const defl=[];
   Object.keys(p).forEach(k=>{if(k.charAt(0)==='_')return;const m=ckey(k).match(/^d(\d+)$/);if(m){const v=p[k];if(v!=null&&v!=='')defl.push([parseInt(m[1],10),v]);}});
   defl.sort((x,y)=>x[0]-y[0]);
-  const skip={};Object.keys(p).forEach(k=>{const c=ckey(k);if(k==='__d0'||k==='__dscale'||/^d\d+$/.test(c)||ROAD_KEYS.indexOf(c)>=0||FROM_KEYS.indexOf(c)>=0||TO_KEYS.indexOf(c)>=0)skip[k]=1;});
-  /* FWD popup: hide survey-admin rows (XSP, survey type/version/dates, company). */
-  if(String(label).toUpperCase()==='FWD'){const _fwdHide={xsp:1,surveytype:1,surveyversion:1,surveyenddate:1,surveystartdate:1,sectionstartdate:1,surveyingcompanyname:1,surveycompanyname:1};Object.keys(p).forEach(k=>{if(_fwdHide[ckey(k)])skip[k]=1;});}
+  const skip={};Object.keys(p).forEach(k=>{const c=ckey(k);if(k==='__d0'||k==='__dscale'||/^d\d+$/.test(c)||ROAD_KEYS.indexOf(c)>=0||FROM_KEYS.indexOf(c)>=0||TO_KEYS.indexOf(c)>=0||c==='xsp'||c==='date')skip[k]=1;});
+  /* FWD popup: hide survey-admin rows (survey type/version/dates, company). */
+  if(isFwd){const _fwdHide={surveytype:1,surveyversion:1,surveyenddate:1,surveystartdate:1,sectionstartdate:1,surveyingcompanyname:1,surveycompanyname:1};Object.keys(p).forEach(k=>{if(_fwdHide[ckey(k)])skip[k]=1;});}
+  let chTxt='';
+  if(fr!=null&&fr!==''&&to!=null&&to!=='')chTxt=escH(fr)+' – '+escH(to)+' m';
+  else if(fr!=null&&fr!=='')chTxt=escH(fr)+' m';
+  let h='<div class="klpop asset-klpop">';
+  h+='<div class="kp-head"><div class="kp-name">'+escH(label)+'</div><div class="kp-meta">'+(lane?'<span class="kp-chip">'+escH(lane)+'</span>':'')+(road?'<span class="kp-sec">'+escH(road)+'</span>':'')+'</div></div>';
+  let loc='';
+  if(chTxt)loc+='<div class="kp-attr"><span class="kp-k">Chainage</span><span class="kp-v">'+chTxt+'</span></div>';
+  if(p.Date)loc+='<div class="kp-attr"><span class="kp-k">Date</span><span class="kp-v">'+escH(p.Date)+'</span></div>';
+  if(loc)h+='<div class="kp-block"><div class="kp-eyebrow">Location</div><div class="kp-attrs">'+loc+'</div></div>';
   let rows='';
-  if(road!=null&&road!=='')rows+='<tr><td class="k">Road</td><td class="v">'+escH(road)+'</td></tr>';
-  if(fr!=null||to!=null)rows+='<tr><td class="k">Chainage</td><td class="v">'+(fr!=null?escH(fr):'?')+(to!=null?(' – '+escH(to)):'')+' m</td></tr>';
-  Object.keys(p).forEach(k=>{if(skip[k])return;const v=p[k];if(v==null||v==='')return;rows+='<tr><td class="k">'+escH(k)+'</td><td class="v">'+escH(v)+'</td></tr>';});
-  let grid='';
-  if(defl.length){grid='<div class="pgrid-t">Deflections'+(sc===1000?' (microns)':'')+'</div><div class="pgrid">'+defl.map(d=>'<div class="pg-item"><span class="pg-k">D'+d[0]+'</span><span class="pg-v">'+escH(sc===1000?Math.round(+d[1]*sc):d[1])+'</span></div>').join('')+'</div>';}
-  new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML('<div class="pop pop-asset"><div class="sec">'+escH(label)+'</div>'+(rows?'<table>'+rows+'</table>':'')+grid+'</div>').addTo(map);
+  Object.keys(p).forEach(k=>{if(skip[k])return;const v=p[k];if(v==null||v==='')return;const meta=_assetKeyMeta(k);rows+='<div class="kp-attr"><span class="kp-k">'+escH(meta.label||k)+'</span><span class="kp-v">'+(_assetUVal(v,meta.unit)||escH(v))+'</span></div>';});
+  if(rows)h+='<div class="kp-block"><div class="kp-eyebrow">'+(isFwd?'Details':'Attributes')+'</div><div class="kp-attrs">'+rows+'</div></div>';
+  if(defl.length)h+='<div class="kp-block"><div class="kp-eyebrow">Deflections'+(sc===1000?' · microns':'')+'</div><div class="kp-grid">'+defl.map(d=>'<div class="kp-gcell"><span class="kp-gk">D'+d[0]+'</span><span class="kp-gv">'+escH(sc===1000?Math.round(+d[1]*sc):d[1])+'</span></div>').join('')+'</div></div>';
+  h+='</div>';
+  new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML(h).addTo(map);
 }
 const ICON_SVGS={
  'ic-soil':'<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13" fill="#8a4d1f" stroke="#fff" stroke-width="2.4"/><path d="M8 18c2-2 4 2 7 0s4 2 7 0" fill="none" stroke="#fff" stroke-width="2"/><circle cx="11" cy="12" r="1.5" fill="#fff"/><circle cx="17" cy="11" r="1.2" fill="#fff"/><circle cx="20" cy="14" r="1.4" fill="#fff"/></svg>',
@@ -60,21 +144,21 @@ function addAssetLayer(a,gj,asLine){
     map.addLayer({id:a.layer,type:'line',source:a.layer,layout:{'line-cap':'round'},paint:{'line-color':col,'line-width':['interpolate',['linear'],['zoom'],10,3.6,16,7.5]}});
     map.addLayer({id:a.layer+'-pt',type:'circle',source:a.layer,filter:['==',['geometry-type'],'Point'],paint:{'circle-color':col,'circle-radius':['interpolate',['linear'],['zoom'],10,3.2,16,6],'circle-stroke-color':'#ffffff','circle-stroke-width':1.2}});
     map.addLayer({id:a.layer+'-icon',type:'symbol',source:a.layer,layout:{'symbol-placement':'line-center','text-field':['case',['has','__d0'],['concat','(',['to-string',['get','__d0']],')'],''],'text-size':['interpolate',['linear'],['zoom'],10,9.5,16,12.5],'text-allow-overlap':true},paint:{'text-color':'#2b1840','text-halo-color':'#ffffff','text-halo-width':1.7}});
-    [a.layer,a.layer+'-pt',a.layer+'-icon'].forEach(id=>{map.on('click',id,e=>{if(e.features.length)assetPopup(e.lngLat,e.features[0].properties,a.label);});map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='');if(t)map.setLayoutProperty(id,'visibility',t.checked?'visible':'none');});
+    [a.layer,a.layer+'-pt',a.layer+'-icon'].forEach(id=>{map.on('click',id,e=>{if(e.features.length)assetPopup(e.lngLat,e.features[0].properties,a.label,a.type);});map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='');if(t)map.setLayoutProperty(id,'visibility',t.checked?'visible':'none');});
     renderFwdLegend();const lg=document.getElementById('fwdLegend');if(lg&&t)lg.style.display=t.checked?'block':'none';
     return;
   }
   if(a.kind==='line'||asLine){
     const lw=a.width||5;
     map.addLayer({id:a.layer,type:'line',source:a.layer,layout:{'line-cap':'round'},paint:{'line-color':a.color,'line-width':['interpolate',['linear'],['zoom'],10,lw*0.6,16,lw*1.6]}});
-    map.on('click',a.layer,e=>{if(e.features.length)assetPopup(e.lngLat,e.features[0].properties,a.label);});
+    map.on('click',a.layer,e=>{if(e.features.length)assetPopup(e.lngLat,e.features[0].properties,a.label,a.type);});
     map.on('mouseenter',a.layer,()=>map.getCanvas().style.cursor='pointer');
     map.on('mouseleave',a.layer,()=>map.getCanvas().style.cursor='');
     if(t)map.setLayoutProperty(a.layer,'visibility',t.checked?'visible':'none');
     loadIcon(icon).then(()=>{if(map.getLayer(a.layer+'-icon'))return;const lo={'symbol-placement':'line-center','icon-image':icon,'icon-size':['interpolate',['linear'],['zoom'],10,0.55,16,1.0],'icon-allow-overlap':true},pt={};if(a.type==='fwd'){lo['text-field']=['case',['has','__d0'],['concat','(',['to-string',['get','__d0']],')'],''];lo['text-size']=['interpolate',['linear'],['zoom'],10,9.5,16,12.5];lo['text-offset']=[0,1.2];lo['text-anchor']='top';lo['text-allow-overlap']=true;pt['text-color']='#7b1fa2';pt['text-halo-color']='#ffffff';pt['text-halo-width']=1.5;}map.addLayer({id:a.layer+'-icon',type:'symbol',source:a.layer,layout:lo,paint:pt});const t2=document.getElementById(a.toggle);if(t2&&!t2.checked)map.setLayoutProperty(a.layer+'-icon','visibility','none');});
   }else{
     loadIcon(icon).then(()=>{map.addLayer({id:a.layer,type:'symbol',source:a.layer,layout:{'icon-image':icon,'icon-size':['interpolate',['linear'],['zoom'],10,0.5,16,1.0],'icon-allow-overlap':true}});
-      map.on('click',a.layer,e=>{if(e.features.length)assetPopup(e.lngLat,e.features[0].properties,a.label);});
+      map.on('click',a.layer,e=>{if(e.features.length)assetPopup(e.lngLat,e.features[0].properties,a.label,a.type);});
       map.on('mouseenter',a.layer,()=>map.getCanvas().style.cursor='pointer');
       map.on('mouseleave',a.layer,()=>map.getCanvas().style.cursor='');
       if(t)map.setLayoutProperty(a.layer,'visibility',t.checked?'visible':'none');});

@@ -7,7 +7,12 @@
 function lineOf(feature){const g=feature.geometry;let c=g.type==='MultiLineString'?g.coordinates.flat():g.coordinates;return turf.lineString(c);}
 const CLS={SH:'#8a4d1f',MDR:'#3b6fa0',NH:'#c0392b',ODR:'#7a93ae'};
 function netColor(){const c=['match',['get','Road_Class']];Object.entries(CLS).forEach(([k,v])=>c.push(k,v));c.push('#7a93ae');return c;}
-function netWidth(){const pw=['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];return ['interpolate',['exponential',1.4],['zoom'],9,['*',pw,0.06],12,['*',pw,0.4],15,['*',pw,1.7],18,['*',pw,6]];}
+/* Build: the zoom-9 multiplier used to be 0.06, which renders a ~1px-wide
+   pavement (Pavement_W '1' = 4.5) at roughly 0.27px — invisible against the
+   basemap when zoomed out to view the whole state. Raised to 0.25 so the
+   coloured road-class line stays visible (~1.1px+) at a statewide zoom,
+   while the higher-zoom stops (12/15/18, already wide) are untouched. */
+function netWidth(){const pw=['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];return ['interpolate',['exponential',1.4],['zoom'],9,['*',pw,0.25],12,['*',pw,0.4],15,['*',pw,1.7],18,['*',pw,6]];}
 function netCasingWidth(){const pw=['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];const pad=2.8;return ['interpolate',['exponential',1.4],['zoom'],9,['+',['*',pw,0.06],pad],12,['+',['*',pw,0.4],pad],15,['+',['*',pw,1.7],pad],18,['+',['*',pw,6],pad]];}
 const NAME_KEYS=['NAME','Name','name','DISTRICT','District','district','AC_NAME','LAC_NAME','CONSTITUEN','Constituency','LABEL'];
 function featName(p){for(const k of NAME_KEYS)if(p&&p[k]!=null&&p[k]!=='')return String(p[k]);return '';}
