@@ -407,6 +407,94 @@ async function up(kind){
     else{show(el,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
   }catch(e){show(el,false,'Request failed: '+e.message);logUpload(ds,f.name,false,e.message);}
 }
+/* ===== Resumable, per-file video upload ===== */
+var VID_CHUNK=5*1024*1024;   // 5 MB per chunk
+var vidItems=[];             // {file,name,size,uploaded,pct,status,detail,xhr}
+var vidRunning=false;
+function vidFmtSize(b){b=Number(b)||0;if(b>=1073741824)return (b/1073741824).toFixed(2)+' GB';if(b>=1048576)return (b/1048576).toFixed(1)+' MB';if(b>=1024)return (b/1024).toFixed(0)+' KB';return b+' B';}
+function vidQueueAdd(files){
+  for(var i=0;i<files.length;i++){
+    var f=files[i];
+    if(!f||!f.size)continue; // skip empty / zero-byte
+    var dup=vidItems.find(function(it){return it.name===f.name&&it.size===f.size&&it.status!=='failed';});
+    if(dup)continue;
+    vidItems.push({file:f,name:f.name,size:f.size,uploaded:0,pct:0,status:'queued',detail:'',xhr:null});
+  }
+  vidRender();
+}
+function vidRender(){
+  var el=document.getElementById('vidList');if(!el)return;
+  if(!vidItems.length){el.innerHTML='<div style="color:#8a93a3;font-size:13px">No files selected yet.</div>';return;}
+  el.innerHTML=vidItems.map(function(it,i){
+    var color=it.status==='done'?'#1d9e75':it.status==='failed'?'#c0392b':it.status==='uploading'?'#2d6cdf':'#9aa7b8';
+    var txt=it.status==='uploading'?('Uploading '+it.pct+'%'):it.status==='done'?'Done':it.status==='failed'?('Failed'+(it.detail?': '+it.detail:'')):it.status==='resuming'?'Checking…':'Queued';
+    var btn=it.status==='failed'?'<button class="btn ghost" style="padding:1px 8px;font-size:12px;margin-left:8px" onclick="vidRetry('+i+')">Retry</button>':(it.status==='queued'&&!vidRunning?'<button class="btn ghost" style="padding:1px 8px;font-size:12px;margin-left:8px" onclick="vidRemove('+i+')">Remove</button>':'');
+    return '<div style="border:1px solid #e2e7ee;border-radius:8px;padding:8px 10px;margin:6px 0">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'
+      +'<span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escLog(it.name)+'</span>'
+      +'<span style="font-size:12px;color:'+color+';white-space:nowrap">'+escLog(txt)+btn+'</span></div>'
+      +'<div style="height:8px;background:#eef1f5;border-radius:5px;overflow:hidden;margin-top:6px"><div style="height:100%;width:'+it.pct+'%;background:'+color+';transition:width .2s"></div></div>'
+      +'<div style="font-size:11px;color:#8a93a3;margin-top:4px">'+vidFmtSize(it.uploaded)+' / '+vidFmtSize(it.size)+'</div>'
+      +'</div>';
+  }).join('');
+}
+function vidRemove(i){if(vidRunning)return;vidItems.splice(i,1);vidRender();}
+function vidClearDone(){vidItems=vidItems.filter(function(x){return x.status!=='done';});vidRender();}
+function vidRetry(i){var it=vidItems[i];if(!it)return;it.status='queued';it.detail='';vidRender();if(!vidRunning)vidStart();}
+async function vidStart(){
+  if(vidRunning)return;
+  if(!vidItems.length){var o=document.getElementById('oVid');if(o)show(o,false,'Choose one or more video files first.');return;}
+  vidRunning=true;
+  var sb=document.getElementById('vidStartBtn');if(sb)sb.disabled=true;
+  vidRender();
+  for(var i=0;i<vidItems.length;i++){
+    var it=vidItems[i];
+    if(it.status==='done'||it.status==='failed')continue;
+    await vidUploadOne(it);
+  }
+  vidRunning=false;
+  if(sb)sb.disabled=false;
+  var done=vidItems.filter(function(x){return x.status==='done';}).length;
+  var failed=vidItems.filter(function(x){return x.status==='failed';}).length;
+  var out=document.getElementById('oVid');
+  if(out)show(out,failed===0,'Finished: '+done+' of '+vidItems.length+' file(s) uploaded'+(failed?', '+failed+' failed — press Retry.':'.'));
+  vidRender();refresh();
+}
+function vidUploadOne(it){
+  return new Promise(function(resolve){
+    it.status='resuming';it.detail='';vidRender();
+    fetch('/api/video/upload-status?name='+encodeURIComponent(it.name),{cache:'no-store'})
+      .then(function(r){return r.json();})
+      .then(function(j){it.uploaded=(j&&Number(j.uploaded))||0;if(it.uploaded>it.size)it.uploaded=0;sendNext();})
+      .catch(function(){it.uploaded=0;sendNext();});
+    function finishOk(){it.status='done';it.pct=100;vidRender();logUpload('Survey video',it.name,true,'Uploaded '+vidFmtSize(it.size));resolve();}
+    function finishFail(msg){it.status='failed';it.detail=msg;vidRender();logUpload('Survey video',it.name,false,msg);resolve();}
+    function sendNext(){
+      if(it.uploaded>=it.size){finishOk();return;}
+      it.status='uploading';
+      var start=it.uploaded,end=Math.min(start+VID_CHUNK,it.size);
+      var fd=new FormData();
+      fd.append('name',it.name);fd.append('offset',start);fd.append('total',it.size);
+      fd.append('chunk',it.file.slice(start,end),'chunk');
+      var xhr=new XMLHttpRequest();it.xhr=xhr;
+      xhr.open('POST','/api/video/upload-chunk');
+      xhr.upload.onprogress=function(e){if(e.lengthComputable){it.pct=Math.min(100,Math.floor((start+e.loaded)/it.size*100));vidRender();}};
+      xhr.onload=function(){
+        if(xhr.status>=200&&xhr.status<300){
+          var res={};try{res=JSON.parse(xhr.responseText);}catch(_){}
+          if(res.status==='error'){finishFail(res.message||'server error');return;}
+          if(res.status==='resync'){it.uploaded=Number(res.uploaded)||0;}
+          else if(res.status==='complete'){it.uploaded=it.size;}
+          else{it.uploaded=(res.uploaded!=null)?Number(res.uploaded):end;}
+          it.pct=Math.min(100,Math.floor(it.uploaded/it.size*100));vidRender();
+          sendNext();
+        }else{finishFail('HTTP '+xhr.status);}
+      };
+      xhr.onerror=function(){finishFail('network error');};
+      xhr.send(fd);
+    }
+  });
+}
 async function build(){
   const el=document.getElementById('oBuild');show(el,true,'Building segments…');
   try{const r=await fetch('/api/segments/build',{method:'POST'});const j=await r.json();
@@ -766,10 +854,13 @@ const PANELS={
     +'<button class="btn" onclick="build()">Build segments</button>'
     +'<div class="out" id="oBuild"></div>',
   'vid-zip':'<div class="ip-title">Survey video files</div>'
-    +'<p class="ip-sub">Upload a ZIP of the NSV video files. They are stored on the server and linked to roads by the catalogue.</p>'
-    +'<div class="ip-field"><label class="ip-label">Video ZIP</label><input type="file" id="zfile" accept=".zip"></div>'
-    +'<button class="btn" onclick="up(\'zip\')">Upload video zip</button>'
-    +'<div class="out" id="oZip"></div>',
+    +'<p class="ip-sub">Select the NSV video files and upload them directly. Each file is sent to the server in small chunks with a live progress bar and its own status, so a dropped connection only re-sends the unfinished chunk — never the whole batch. If a file fails, the others keep going; press <b>Retry</b>, or just re-select the same files later to resume from where it stopped.</p>'
+    +'<div class="ip-field"><label class="ip-label">Video files (MP4, MOV, AVI, MKV…)</label><input type="file" id="vidFiles" accept="video/*,.mp4,.mov,.avi,.mkv,.m4v" multiple onchange="vidQueueAdd(this.files)"></div>'
+    +'<button class="btn" id="vidStartBtn" onclick="vidStart()">Upload videos</button> '
+    +'<button class="btn ghost" onclick="vidClearDone()">Clear finished</button>'
+    +'<div id="vidList" style="margin-top:12px"></div>'
+    +'<div class="out" id="oVid"></div>'
+    +'<p class="hint">Files are split into 5&nbsp;MB chunks and stored on the server under the video folder. After uploading, use <b>Video catalogue</b> to link each file to its road section and driving direction.</p>',
   'vid-cat':'<div class="ip-title">Video catalogue</div>'
     +'<p class="ip-sub">Link each road section to its video file and direction.</p>'
     +'<div class="ip-field"><label class="ip-label">Catalogue CSV</label><input type="file" id="vfile" accept=".csv"></div>'
@@ -870,7 +961,7 @@ const HUB=[
     {id:'bnd-constituency',label:'Constituency boundary',fmt:'Shapefile & ZIP / GeoJSON'}
   ]},
   {id:'video',cat:'Survey Videos',icon:'film',types:[
-    {id:'vid-zip',label:'Video files',fmt:'ZIP file'},
+    {id:'vid-zip',label:'Video files',fmt:'MP4/MOV files · resumable'},
     {id:'vid-cat',label:'Video catalogue',fmt:'CSV file'}
   ]}
 ];

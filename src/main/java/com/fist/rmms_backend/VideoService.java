@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,11 +36,15 @@ public class VideoService {
 
     private final JdbcTemplate jdbc;
     private final Path videoDir;
+    /** Incomplete uploads live here as "<name>.part" until the last chunk arrives. */
+    private final Path partsDir;
 
     public VideoService(JdbcTemplate jdbc, @Value("${app.video-dir:video-store}") String dir) throws IOException {
         this.jdbc = jdbc;
         this.videoDir = Paths.get(dir).toAbsolutePath();
+        this.partsDir = this.videoDir.resolve(".uploads");
         Files.createDirectories(this.videoDir);
+        Files.createDirectories(this.partsDir);
     }
 
     @Transactional
@@ -75,6 +80,70 @@ public class VideoService {
             }
         }
         return count;
+    }
+
+    // ------------------------------------------------------------------
+    //  Resumable, per-file chunked upload
+    //  The browser sends one video at a time in ~5 MB chunks; each chunk is
+    //  appended to "<name>.part". When the part reaches the declared total it
+    //  is atomically moved to the final file. A dropped connection only loses
+    //  the current chunk — uploadedBytes() lets the client resume from there.
+    // ------------------------------------------------------------------
+
+    /** basename only -> protects against path traversal (same guard as storeZip). */
+    private static String safeName(String name) {
+        if (name == null) throw new IllegalArgumentException("missing file name");
+        String base = Paths.get(name).getFileName().toString();
+        if (base.isEmpty() || base.equals(".") || base.equals("..")) {
+            throw new IllegalArgumentException("invalid file name");
+        }
+        return base;
+    }
+
+    /** Bytes the server already holds for this file (size of its .part), or 0. */
+    public long uploadedBytes(String name) throws IOException {
+        Path part = partsDir.resolve(safeName(name) + ".part");
+        return Files.exists(part) ? Files.size(part) : 0L;
+    }
+
+    /**
+     * Append one chunk. {@code offset} must equal the bytes already stored; if
+     * the client is out of step we reply "resync" with the true offset instead
+     * of corrupting the file. When the part reaches {@code total} it is moved
+     * into place and we reply "complete"; otherwise "partial".
+     */
+    public Map<String, Object> putChunk(String name, long offset, long total, MultipartFile chunk)
+            throws IOException {
+        String base = safeName(name);
+        Path part = partsDir.resolve(base + ".part");
+        Map<String, Object> r = new HashMap<>();
+
+        long current = Files.exists(part) ? Files.size(part) : 0L;
+        if (offset != current) {
+            r.put("status", "resync");
+            r.put("uploaded", current);
+            return r;
+        }
+
+        long written = 0;
+        byte[] buf = new byte[8192];
+        try (InputStream in = chunk.getInputStream();
+             OutputStream os = Files.newOutputStream(part,
+                     StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+            int n;
+            while ((n = in.read(buf)) > 0) { os.write(buf, 0, n); written += n; }
+        }
+
+        long newLen = current + written;
+        if (total > 0 && newLen >= total) {
+            Files.move(part, videoDir.resolve(base), StandardCopyOption.REPLACE_EXISTING);
+            r.put("status", "complete");
+            r.put("uploaded", total);
+        } else {
+            r.put("status", "partial");
+            r.put("uploaded", newLen);
+        }
+        return r;
     }
 
     /** Read the catalog CSV: section_label, video_file, direction. */

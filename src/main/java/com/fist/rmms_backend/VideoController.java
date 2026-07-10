@@ -32,6 +32,41 @@ public class VideoController {
         return r;
     }
 
+    /** How many bytes the server already holds for this file, so the client can resume. */
+    @GetMapping("/upload-status")
+    public Map<String, Object> uploadStatus(@RequestParam("name") String name) {
+        Map<String, Object> r = new HashMap<>();
+        try {
+            r.put("status", "ok");
+            r.put("uploaded", service.uploadedBytes(name));
+        } catch (Exception e) {
+            r.put("status", "error");
+            r.put("message", String.valueOf(e.getMessage()));
+            r.put("uploaded", 0);
+        }
+        return r;
+    }
+
+    /**
+     * Append one chunk of a single video. The client sends files one at a time
+     * in small chunks; a failure only affects the current chunk, never the
+     * whole batch. Returns {status: complete|partial|resync, uploaded: bytes}.
+     */
+    @PostMapping("/upload-chunk")
+    public Map<String, Object> uploadChunk(@RequestParam("name") String name,
+                                           @RequestParam("offset") long offset,
+                                           @RequestParam("total") long total,
+                                           @RequestParam("chunk") MultipartFile chunk) {
+        try {
+            return service.putChunk(name, offset, total, chunk);
+        } catch (Exception e) {
+            Map<String, Object> r = new HashMap<>();
+            r.put("status", "error");
+            r.put("message", String.valueOf(e.getMessage()));
+            return r;
+        }
+    }
+
     /** Upload the catalog CSV: section_label, video_file, direction. */
     @PostMapping("/upload-catalog")
     public Map<String, Object> uploadCatalog(@RequestParam("file") MultipartFile file) {
