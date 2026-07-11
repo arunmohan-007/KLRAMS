@@ -176,7 +176,7 @@ public class AssetController {
                 SELECT json_build_object('type','FeatureCollection','features',
                     COALESCE(json_agg(json_build_object(
                         'type','Feature',
-                        'geometry', ST_AsGeoJSON(geom)::json,
+                        'geometry', ST_AsGeoJSON(geom, 6)::json,
                         'properties', jsonb_build_object(
                             'road', section_label,
                             'from_ch', start_chainage,

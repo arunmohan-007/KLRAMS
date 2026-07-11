@@ -74,7 +74,7 @@ public class RoadController {
                 'features', COALESCE(json_agg(
                     json_build_object(
                         'type','Feature',
-                        'geometry', ST_AsGeoJSON(r.geom)::json,
+                        'geometry', ST_AsGeoJSON(r.geom, 6)::json,
                         'properties', (to_jsonb(r) - 'geom')
                             || jsonb_build_object(
                                  'road', r."Section_La",

@@ -19,8 +19,20 @@ map.on('load',()=>{
          waiting for a fresh fetch. Fire-and-forget on a short delay so it never
          competes with the initial map paint; syncLazyVis() (and addCondLayers,
          which now honours the toggle) keep the layer hidden while showCond is off. */
+      /* Build 167 — also background-preload the FWD map layer AFTER the segments
+         finish, so switching "FWD (D0)" on is an instant visibility flip instead
+         of a fetch at click time. addAssetLayer honours the toggle state, so the
+         preloaded layer stays hidden until showFwd is turned on. The download is
+         shared with 24-fwd.js via fwdGeojsonFetch (one fetch per login). */
+      const _preloadFwd=()=>{try{
+        if(typeof ASSETS==='undefined'||typeof loadAsset!=='function')return;
+        const _fa=ASSETS.find(x=>x.type==='fwd');
+        if(_fa&&!map.getSource(_fa.layer))loadAsset(_fa);
+      }catch(e){}};
       if(typeof loadSegments==='function'&&!map.getSource('segs')){
-        setTimeout(()=>{try{loadSegments();}catch(e){}},1500);
+        setTimeout(()=>{try{loadSegments().then(_preloadFwd,_preloadFwd);}catch(e){}},1500);
+      }else{
+        setTimeout(_preloadFwd,1500);
       }
     });
 });

@@ -97,7 +97,7 @@ public class FullNetworkController {
                 'features', COALESCE(json_agg(
                     json_build_object(
                         'type','Feature',
-                        'geometry', ST_AsGeoJSON(f.geom)::json,
+                        'geometry', ST_AsGeoJSON(f.geom, 6)::json,
                         'properties', f.props
                     )
                 ), '[]'::json)

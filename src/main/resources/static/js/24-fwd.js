@@ -22,7 +22,11 @@
   var FK=(typeof FROM_KEYS!=='undefined')?FROM_KEYS:['fromch','fromchainage','startch','startchainage','chainagefrom','chfrom','frch','fromm','startm','from','start'];
   var TK=(typeof TO_KEYS!=='undefined')?TO_KEYS:['toch','tochainage','endch','endchainage','chainageto','chto','tch','tom','endm','to','end'];
   function pp(p,cands){if(!p)return null;for(var k in p){if(cands.indexOf(ck(k))>=0){var v=p[k];if(v!=null&&v!=='')return v;}}return null;}
-  function d0raw(p){for(var k in p){var c=ck(k);if(c==='d0'||c==='do'){var v=p[k];if(v!=null&&v!=='')return +v;}}return null;}
+  /* keys starting with '_' are internal fields injected by 06-assets.js on the
+     SAME shared geojson object (__d0 already in microns, __dscale, __sec). ck()
+     strips the underscores, so '__d0' would read as a duplicate 'd0' and break
+     the mm→micron auto-scale. Skip them here and in index() below. */
+  function d0raw(p){for(var k in p){if(k.charAt(0)==='_')continue;var c=ck(k);if(c==='d0'||c==='do'){var v=p[k];if(v!=null&&v!=='')return +v;}}return null;}
 
   /* index the FWD features by road, as chainage ranges carrying D0..Dn (microns) */
   function index(gj){
@@ -35,7 +39,7 @@
       var p=f.properties||{};var road=pp(p,RK);if(road==null||road==='')return;
       var from=+pp(p,FK), to=+pp(p,TK);
       var ds=[];
-      Object.keys(p).forEach(function(k){var m=ck(k).match(/^d(\d+)$/);if(m){var v=p[k];if(v!=null&&v!=='')ds.push([+m[1],Math.round(+v*sc)]);}});
+      Object.keys(p).forEach(function(k){if(k.charAt(0)==='_')return;var m=ck(k).match(/^d(\d+)$/);if(m){var v=p[k];if(v!=null&&v!=='')ds.push([+m[1],Math.round(+v*sc)]);}});
       ds.sort(function(a,b){return a[0]-b[0];});
       var d0=null;for(var i=0;i<ds.length;i++){if(ds[i][0]===0){d0=ds[i][1];break;}}
       (by[road]=by[road]||[]).push({from:from,to:to,d0:d0,ds:ds});
@@ -47,8 +51,12 @@
     if(FWD.loading)return Promise.resolve();
     if(FWD.ready&&!force)return Promise.resolve();
     FWD.loading=true;
-    return fetch('/api/assets/fwd/geojson',{credentials:'same-origin'})
-      .then(function(r){return r.ok?r.json():null;})
+    /* Build 167 — reuse the shared download from 06-assets.js (fwdGeojsonFetch)
+       instead of fetching /api/assets/fwd/geojson a second time per login. */
+    var _p=(typeof fwdGeojsonFetch==='function')
+      ?fwdGeojsonFetch(force)
+      :fetch('/api/assets/fwd/geojson',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;});
+    return _p
       .then(function(gj){ if(gj&&gj.features&&gj.features.length)index(gj); FWD.loading=false; })
       .catch(function(){ FWD.loading=false; });
   };

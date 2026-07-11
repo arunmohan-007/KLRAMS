@@ -164,8 +164,20 @@ function addAssetLayer(a,gj,asLine){
       if(t)map.setLayoutProperty(a.layer,'visibility',t.checked?'visible':'none');});
   }
 }
+/* Build 167 — single shared FWD download: both the as-fwd map layer (loadAsset
+   below) and the chainage-lookup module (24-fwd.js) need /api/assets/fwd/geojson.
+   Each used to fetch it independently, so every login downloaded the FWD survey
+   twice. Share one promise; cleared on failure so a later toggle can retry. */
+function fwdGeojsonFetch(force){
+  if(force)window._fwdGeoP=null;
+  if(!window._fwdGeoP){
+    window._fwdGeoP=fetch('/api/assets/fwd/geojson',{credentials:'same-origin'}).then(r=>r.ok?r.json():null);
+    window._fwdGeoP.catch(()=>{window._fwdGeoP=null;});
+  }
+  return window._fwdGeoP;
+}
 function loadAsset(a){
-    return fetch('/api/assets/'+a.type+'/geojson').then(r=>r.json()).then(gj=>{
+    return (a.type==='fwd'?fwdGeojsonFetch():fetch('/api/assets/'+a.type+'/geojson').then(r=>r.json())).then(gj=>{
       if(!gj||!gj.features||!gj.features.length)return;
       const asLine=(a.type==='fwd')||((a.kind==='point')&&isStretchData(gj));
       const go=()=>{if(asLine)linRefFeatures(gj);if(a.type==='fwd'){const sc=fwdScale(gj);gj.features.forEach(f=>{const v=fwdD0(f.properties);if(v!=null&&v!=='')f.properties.__d0=Math.round(+v*sc);f.properties.__dscale=sc;});}
