@@ -41,7 +41,17 @@ map.on('load',()=>{
       const _preloadPci=()=>{setTimeout(()=>{try{
         if(typeof generatePCI==='function'&&typeof DATA!=='undefined'&&DATA&&!map.getLayer('pci-avg'))generatePCI(true);
       }catch(e){}},300);};
-      const _afterSegs=()=>{_preloadFwd().then(_preloadPci,_preloadPci);};
+      /* Build 170 — if the user jumps straight into NSV footage, hold the
+         remaining background steps while the video is actually PLAYING: the FWD
+         download would fight the video stream for bandwidth ("Buffering…") and
+         the 33k-segment PCI compute would jank the main thread mid-playback.
+         Resumes when the video pauses/ends/closes. The HUD still pulls FWD
+         on-demand itself (FWD.at lazy-load) if it needs deflections sooner. */
+      const _videoIdle=()=>new Promise(res=>{(function chk(){try{
+        const v=document.getElementById('video'),dk=document.getElementById('dock');
+        if(dk&&dk.classList.contains('open')&&v&&v.src&&!v.paused&&!v.ended)return setTimeout(chk,4000);
+      }catch(e){}res();})();});
+      const _afterSegs=()=>{_videoIdle().then(_preloadFwd).then(_videoIdle,_videoIdle).then(_preloadPci,_preloadPci);};
       if(typeof loadSegments==='function'&&!map.getSource('segs')){
         setTimeout(()=>{try{loadSegments().then(_afterSegs,_afterSegs);}catch(e){}},1500);
       }else{
