@@ -104,8 +104,13 @@ function pciPopup(lngLat,props,basis){
   const cmp='<div style="font-size:10.5px;color:#64718a;margin-top:6px;border-top:1px solid #eef1f5;padding-top:5px">Composite <b>'+((av>=0)?av.toFixed(1):'\u2013')+'</b> &middot; Worst-Lane <b>'+((wv>=0)?wv.toFixed(1):'\u2013')+'</b></div>';
   new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML('<div class="pop"><div class="sec">'+pciBasisLabel(basis)+laneNote+' &middot; '+(props.road||'')+'</div>'+head+'<table>'+rows+'</table>'+cmp+'</div>').addTo(map);
 }
-function generatePCI(){
-  if(!DATA){setPciStatus('Loading segments\u2026');loadSegments().then(()=>{if(DATA&&DATA.features&&DATA.features.length)generatePCI();else setPciStatus('No condition segments yet. Build them in the Data console.');});return;}
+/* Build 168 \u2014 silent=true is the background login preload (15-main.js): compute
+   PCI and create the layers hidden, but DON'T auto-tick the Composite toggle
+   (that auto-tick exists for the explicit "Generate PCI" button, so a click
+   always shows something). Toggling a PCI switch on is then an instant
+   visibility flip instead of a full 33k-segment recompute at click time. */
+function generatePCI(silent){
+  if(!DATA){setPciStatus('Loading segments\u2026');loadSegments().then(()=>{if(DATA&&DATA.features&&DATA.features.length)generatePCI(silent);else setPciStatus('No condition segments yet. Build them in the Data console.');});return;}
   PCI_PARAMS.forEach(pp=>{const el=document.getElementById('w_'+pp.key);if(el)PCI_W[pp.key]=+el.value||0;});
   let nA=0,lenA=0,pA=0,nW=0,lenW=0,pW=0;
   DATA.features.forEach(f=>{const L=Math.max(0,(+f.properties.to_ch||0)-(+f.properties.from_ch||0))||1;
@@ -121,7 +126,7 @@ function generatePCI(){
     }else{map.setPaintProperty(L.id,'line-color',pciColorExpr(L.prop));}
   });
   const ta=document.getElementById('showPciAvg'),tw=document.getElementById('showPciWorst');
-  if(ta&&tw&&!ta.checked&&!tw.checked)ta.checked=true;
+  if(!silent&&ta&&tw&&!ta.checked&&!tw.checked)ta.checked=true;
   map.setLayoutProperty('pci-avg','visibility',(ta&&ta.checked)?'visible':'none');
   map.setLayoutProperty('pci-worst','visibility',(tw&&tw.checked)?'visible':'none');
   renderPciSummary({avg:lenA?pA/lenA:null,worst:lenW?pW/lenW:null,nA:nA,nW:nW,total:DATA.features.length});

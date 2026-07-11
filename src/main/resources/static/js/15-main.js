@@ -29,10 +29,20 @@ map.on('load',()=>{
         const _fa=ASSETS.find(x=>x.type==='fwd');
         if(_fa&&!map.getSource(_fa.layer))loadAsset(_fa);
       }catch(e){}};
+      /* Build 168 — precompute PCI silently once the segments are in memory, so
+         the Composite/Worst-Lane PCI toggles flip on instantly instead of running
+         the full 33k-segment recompute at click time. silent=true keeps both
+         layers hidden and does NOT auto-tick the Composite toggle. Deferred a
+         beat so the segment paint finishes first (PCI is pure CPU, no download).
+         FWD (network-bound) starts in parallel — they don't compete. */
+      const _preloadPci=()=>{setTimeout(()=>{try{
+        if(typeof generatePCI==='function'&&typeof DATA!=='undefined'&&DATA&&!map.getLayer('pci-avg'))generatePCI(true);
+      }catch(e){}},800);};
+      const _preloadAfterSegs=()=>{_preloadFwd();_preloadPci();};
       if(typeof loadSegments==='function'&&!map.getSource('segs')){
-        setTimeout(()=>{try{loadSegments().then(_preloadFwd,_preloadFwd);}catch(e){}},1500);
+        setTimeout(()=>{try{loadSegments().then(_preloadAfterSegs,_preloadAfterSegs);}catch(e){}},1500);
       }else{
-        setTimeout(_preloadFwd,1500);
+        setTimeout(_preloadAfterSegs,1500);
       }
     });
 });
