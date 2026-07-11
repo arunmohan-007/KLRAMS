@@ -24,25 +24,28 @@ map.on('load',()=>{
          of a fetch at click time. addAssetLayer honours the toggle state, so the
          preloaded layer stays hidden until showFwd is turned on. The download is
          shared with 24-fwd.js via fwdGeojsonFetch (one fetch per login). */
+      /* Build 169 — STRICT sequential preload order, one download at a time so
+         nothing competes for bandwidth on slow links:
+           1. Road Network  (already fully loaded above — this chain runs after it)
+           2. Condition Data (segments)
+           3. FWD            (map layer + chainage lookup share one download;
+                              24-fwd.js no longer self-boots on its own timer)
+           4. PCI            (pure CPU compute over the segments, no download)
+         Every step creates its layers hidden; the toggles just flip visibility. */
       const _preloadFwd=()=>{try{
-        if(typeof ASSETS==='undefined'||typeof loadAsset!=='function')return;
+        if(typeof ASSETS==='undefined'||typeof loadAsset!=='function')return Promise.resolve();
         const _fa=ASSETS.find(x=>x.type==='fwd');
-        if(_fa&&!map.getSource(_fa.layer))loadAsset(_fa);
-      }catch(e){}};
-      /* Build 168 — precompute PCI silently once the segments are in memory, so
-         the Composite/Worst-Lane PCI toggles flip on instantly instead of running
-         the full 33k-segment recompute at click time. silent=true keeps both
-         layers hidden and does NOT auto-tick the Composite toggle. Deferred a
-         beat so the segment paint finishes first (PCI is pure CPU, no download).
-         FWD (network-bound) starts in parallel — they don't compete. */
+        return Promise.resolve((_fa&&!map.getSource(_fa.layer))?loadAsset(_fa):null)
+          .then(()=>{try{if(window.FWD&&FWD.load)return FWD.load();}catch(e){}});
+      }catch(e){return Promise.resolve();}};
       const _preloadPci=()=>{setTimeout(()=>{try{
         if(typeof generatePCI==='function'&&typeof DATA!=='undefined'&&DATA&&!map.getLayer('pci-avg'))generatePCI(true);
-      }catch(e){}},800);};
-      const _preloadAfterSegs=()=>{_preloadFwd();_preloadPci();};
+      }catch(e){}},300);};
+      const _afterSegs=()=>{_preloadFwd().then(_preloadPci,_preloadPci);};
       if(typeof loadSegments==='function'&&!map.getSource('segs')){
-        setTimeout(()=>{try{loadSegments().then(_preloadAfterSegs,_preloadAfterSegs);}catch(e){}},1500);
+        setTimeout(()=>{try{loadSegments().then(_afterSegs,_afterSegs);}catch(e){}},1500);
       }else{
-        setTimeout(_preloadAfterSegs,1500);
+        setTimeout(_afterSegs,1500);
       }
     });
 });

@@ -83,8 +83,9 @@
     return {d0:r.d0, ds:r.ds, from:r.from, to:r.to, exact:!!exact};
   };
 
-  /* preload once the app is up, so FWD is available without toggling the layer */
-  function boot(){ FWD.load(); }
-  if(document.readyState!=='loading') setTimeout(boot,1500);
-  else document.addEventListener('DOMContentLoaded',function(){setTimeout(boot,1500);});
+  /* Build 169 — no self-boot timer any more. It used to start the FWD download
+     1.5s after page load, WHILE the ~6MB road network was still downloading, so
+     the two competed for bandwidth on slow links. 15-main.js now drives the
+     strict preload order (roads → condition → FWD → PCI) and calls FWD.load()
+     at the right slot; FWD.at() still lazy-loads as a safety net. */
 })();
