@@ -1,0 +1,44 @@
+# KLRAMS full stack: PostGIS database + the Spring Boot app.
+# Secrets come from a local .env file (copy .env.example -> .env, never commit it).
+#
+#   docker compose up -d --build
+#
+# First run only, restore the DB dump (see DEPLOY.md).
+
+services:
+  db:
+    image: postgis/postgis:16-3.4      # MUST be postgis, not plain postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Point the app at the db service (NOT localhost — that's the container itself)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}      # consumed by ${DB_PASSWORD} in application.properties
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}      # bootstrap super-admin password
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
+    ports:
+      - "8090:8090"                          # nginx proxies to this
+    volumes:
+      - klrams-data:/opt/klrams/data         # persists uploaded videos & data across rebuilds
+
+volumes:
+  pgdata:
+  klrams-data:

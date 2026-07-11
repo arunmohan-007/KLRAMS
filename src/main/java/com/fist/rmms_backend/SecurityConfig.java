@@ -6,6 +6,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.builders.WebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -45,6 +47,23 @@ public class SecurityConfig {
                 .role("SUPER_ADMIN").implies("ADMIN")
                 .role("ADMIN").implies("USER")
                 .build();
+    }
+
+    /**
+     * Serve public static assets (JS, CSS, images, favicon) completely outside
+     * the security filter chain. Two reasons:
+     *   1) Spring Security otherwise stamps every response with
+     *      "Cache-Control: no-store", forcing the browser to re-download all
+     *      ~30 JS modules + CSS on every page load and navigation.
+     *   2) These files are cache-busted with ?v=NNN in the HTML, so caching
+     *      them for a long time is safe — a change bumps the version.
+     * Ignored requests instead get the long-lived cache headers configured by
+     * spring.web.resources.cache.* in application.properties.
+     */
+    @Bean
+    public WebSecurityCustomizer staticAssetsIgnore() {
+        return (WebSecurity web) -> web.ignoring()
+                .requestMatchers("/js/**", "/css/**", "/img/**", "/favicon.ico");
     }
 
     @Bean

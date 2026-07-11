@@ -1,0 +1,44 @@
+# Sample nginx reverse-proxy for KLRAMS. Adapt paths/certs to your server.
+# The two things that matter most for this app:
+#   1) client_max_body_size — without it nginx rejects video uploads with 413
+#      (default limit is only 1 MB; chunks are 5 MB, zips much larger).
+#   2) http2 + gzip — the app is static-asset heavy on a high-latency link.
+
+server {
+    listen 443 ssl http2;
+    server_name klrams.fist.social;
+
+    # --- TLS (letsencrypt) ---
+    # ssl_certificate     /etc/letsencrypt/live/klrams.fist.social/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/klrams.fist.social/privkey.pem;
+
+    # --- Large uploads (videos) ---
+    client_max_body_size 2048M;
+    proxy_read_timeout   600s;
+    proxy_send_timeout   600s;
+    proxy_request_buffering off;      # stream big uploads straight to the app
+
+    # --- Compression (pairs with the app's caching fix) ---
+    gzip on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_types text/plain text/css text/javascript application/javascript
+               application/json application/geo+json image/svg+xml;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8090;   # or http://app:8090 if nginx is a container on the same network
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+
+# Redirect http -> https
+server {
+    listen 80;
+    server_name klrams.fist.social;
+    return 301 https://$host$request_uri;
+}

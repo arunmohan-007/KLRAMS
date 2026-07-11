@@ -1,0 +1,12 @@
+# Keep the build context small and never ship secrets/data into the image.
+.git/
+target/
+*.log
+*.dump
+video-store/
+*.mp4
+*.mov
+*.avi
+*.webm
+application-local.properties
+application-*.local.properties
