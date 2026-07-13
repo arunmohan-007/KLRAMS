@@ -92,5 +92,11 @@ function trafficPopupHTML(props){
   h+='</div>';
   return h;
 }
-function trafficPopup(lngLat,props){new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML(trafficPopupHTML(props)).addTo(map);}
+/* Fall back to a plain popup if klPopup (06-assets.js) is missing — protects
+   against a stale-cache mix where this file updated but 06 did not. */
+function trafficPopup(lngLat,props){
+  const h=trafficPopupHTML(props);
+  if(typeof klPopup==='function')klPopup(lngLat,h);
+  else new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML(h).addTo(map);
+}
 (function initTraffic(){const tg=document.getElementById('showTraffic');if(!tg)return;function showLayer(){if(map.getLayer('trafficstn-lyr'))map.setLayoutProperty('trafficstn-lyr','visibility','visible');}tg.addEventListener('change',function(e){if(e.target.checked){TRAFFIC_LOADED=false;loadTraffic(showLayer);}else if(map.getLayer('trafficstn-lyr'))map.setLayoutProperty('trafficstn-lyr','visibility','none');});})();

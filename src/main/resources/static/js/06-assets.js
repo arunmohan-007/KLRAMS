@@ -6,6 +6,27 @@
    ============================================================ */
 // ---- asset layers (bridges, culverts, furniture) ----
 const ASSET_DATA={}; /* Build 163 — loaded geojson per asset type, for the filter summary card */
+/* Shared opener for the tall .klpop cards (geotech assets, traffic). The CSS
+   max-height cap alone is not enough: near the map edge maplibre can still
+   anchor the card partly outside the viewport, leaving rows unreachable.
+   After the popup renders, pan the map just enough that the whole card
+   (plus tip) is inside the container. */
+function klPopup(lngLat,html){
+  const p=new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML(html).addTo(map);
+  setTimeout(function(){
+    try{
+      const el=p.getElement(); if(!el)return;
+      const r=el.getBoundingClientRect(), m=map.getContainer().getBoundingClientRect();
+      const pad=12; let dx=0,dy=0;
+      if(r.top<m.top+pad)dy=r.top-(m.top+pad);
+      else if(r.bottom>m.bottom-pad)dy=Math.min(r.bottom-(m.bottom-pad),r.top-(m.top+pad));
+      if(r.left<m.left+pad)dx=r.left-(m.left+pad);
+      else if(r.right>m.right-pad)dx=Math.min(r.right-(m.right-pad),r.left-(m.left+pad));
+      if(dx||dy)map.panBy([Math.round(dx),Math.round(dy)],{duration:220});
+    }catch(e){}
+  },80);
+  return p;
+}
 const ASSETS=[
   {type:'bridge',  layer:'as-bridge',  kind:'line',  color:'#8a5cb8', width:6, toggle:'showBridge',  label:'Bridge'},
   {type:'furniture_line', layer:'as-furnl', kind:'line', color:'#0fa3a3', width:4, toggle:'showFurnL', label:'Furniture (line)'},
@@ -92,7 +113,7 @@ function assetProPopup(lngLat,p,type,label){
   let extra='';Object.keys(p).forEach(k=>{if(handled[k])return;const v=p[k];if(v==null||v==='')return;extra+='<div class="kp-attr"><span class="kp-k">'+escH(_assetPrettyKey(k))+'</span><span class="kp-v">'+escH(v)+'</span></div>';});
   if(extra)h+='<div class="kp-block"><div class="kp-eyebrow">Additional</div><div class="kp-attrs">'+extra+'</div></div>';
   h+='</div>';
-  new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML(h).addTo(map);
+  klPopup(lngLat,h);
 }
 function assetPopup(lngLat,p,label,type){
   p=p||{};
@@ -122,7 +143,7 @@ function assetPopup(lngLat,p,label,type){
   if(rows)h+='<div class="kp-block"><div class="kp-eyebrow">'+(isFwd?'Details':'Attributes')+'</div><div class="kp-attrs">'+rows+'</div></div>';
   if(defl.length)h+='<div class="kp-block"><div class="kp-eyebrow">Deflections'+(sc===1000?' · microns':'')+'</div><div class="kp-grid">'+defl.map(d=>'<div class="kp-gcell"><span class="kp-gk">D'+d[0]+'</span><span class="kp-gv">'+escH(sc===1000?Math.round(+d[1]*sc):d[1])+'</span></div>').join('')+'</div></div>';
   h+='</div>';
-  new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML(h).addTo(map);
+  klPopup(lngLat,h);
 }
 const ICON_SVGS={
  'ic-soil':'<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13" fill="#8a4d1f" stroke="#fff" stroke-width="2.4"/><path d="M8 18c2-2 4 2 7 0s4 2 7 0" fill="none" stroke="#fff" stroke-width="2"/><circle cx="11" cy="12" r="1.5" fill="#fff"/><circle cx="17" cy="11" r="1.2" fill="#fff"/><circle cx="20" cy="14" r="1.4" fill="#fff"/></svg>',
