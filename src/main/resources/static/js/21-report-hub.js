@@ -22,6 +22,11 @@ const RH_SETS=[
   {key:'flood',    label:'Flood Susceptibility',kind:'client',                          title:'Flood Susceptibility Report',file:'flood-susceptibility-report'}
 ];
 let rhTab='fwd', rhSearch='', rhDistrict='', rhRoad='', rhSec='', rhCache={};
+/* Perf: the condition dataset is ~33k rows × ~40 columns. Rendering it all at
+   once froze the tab, so the table is paged; columns and filter <option> lists
+   are computed once per dataset (session-scoped, like rhCache). */
+let rhPage=0, rhColsCache={}, rhOptsCache={}, rhSearchTimer=null;
+const RH_PAGE_SIZE=300;
 
 /* ---- open / close ---- */
 function openReportHub(){
@@ -33,14 +38,21 @@ function openReportHub(){
 function closeReportHub(){ const s=document.getElementById('reportHub'); if(s)s.classList.remove('open'); }
 function rhSet(k){return RH_SETS.find(x=>x.key===k)||RH_SETS[0];}
 function rhScreenTab(k){
-  rhTab=k; rhSearch=''; rhDistrict=''; rhRoad=''; rhSec='';
+  rhTab=k; rhSearch=''; rhDistrict=''; rhRoad=''; rhSec=''; rhPage=0;
   RH_SETS.forEach(s=>{const b=document.getElementById('rhTab_'+s.key);if(b)b.classList.toggle('on',s.key===k);});
   rhRenderTab(k);
 }
-function rhSetSearch(v){rhSearch=v;rhRender();const si=document.getElementById('rhSearch');if(si){si.focus();si.setSelectionRange(si.value.length,si.value.length);}}
-function rhSetDistrict(v){rhDistrict=v;rhRender();}
-function rhSetRoad(v){rhRoad=v;rhRender();}
-function rhSetSec(v){rhSec=v;rhRender();}
+/* Search is debounced: filtering scans every value of every row, so doing it
+   per keystroke locked up typing on the large datasets. */
+function rhSetSearch(v){
+  rhSearch=v;rhPage=0;
+  clearTimeout(rhSearchTimer);
+  rhSearchTimer=setTimeout(()=>{rhRender();const si=document.getElementById('rhSearch');if(si){si.focus();si.setSelectionRange(si.value.length,si.value.length);}},250);
+}
+function rhSetDistrict(v){rhDistrict=v;rhPage=0;rhRender();}
+function rhSetRoad(v){rhRoad=v;rhPage=0;rhRender();}
+function rhSetSec(v){rhSec=v;rhPage=0;rhRender();}
+function rhGoPage(p){rhPage=p;rhRender();const tw=document.querySelector('#rhBody .reg-tablewrap');if(tw)tw.scrollTop=0;}
 
 /* ---- build rows (join Road Name + PWD Section by Section Label) ---- */
 function rhConsolidateLanes(out){
@@ -66,6 +78,9 @@ function rhConsolidateLanes(out){
 function rhFlatten(props){
   const out={};
   Object.keys(props||{}).forEach(k=>{
+    /* loadSegments (07-data-loaders.js) mutates the shared DATA features with
+       L_<xsp> lane flags for the map layer filters; they are not report data. */
+    if(/^L_(CC|CL\d+|CR\d+)$/i.test(k))return;
     if(k==='lane_vals'){
       let lv=props[k]; if(typeof lv==='string'){try{lv=JSON.parse(lv);}catch(e){lv=null;}}
       if(lv&&typeof lv==='object'){Object.keys(lv).forEach(sp=>{const o=lv[sp];if(o&&typeof o==='object'){Object.keys(o).forEach(m=>{if(o[m]!=null)out[sp+'_'+m]=o[m];});}else if(o!=null&&o!=='')out[sp]=o;});}
@@ -90,6 +105,14 @@ function rhEnsure(set){
         const src=(typeof CLIMATE_ROWS!=='undefined'&&CLIMATE_ROWS)||[];
         const rows=src.map(function(r){return {sec:r.sec,road:r.name||(roadProps(r.sec).Road_Name||''),pwd:roadProps(r.sec).PWD_Sec||'',district:roadProps(r.sec).District||'',data:r.props||{}};});
         rhCache[set.key]=rows; return rows;
+      }
+      /* Reuse GeoJSON the map viewer already downloaded (condition segments are
+         a multi-MB payload) instead of fetching the same thing a second time. */
+      if(set.kind==='segments'&&typeof DATA!=='undefined'&&DATA&&DATA.features&&DATA.features.length){
+        const rows=rhBuildRows(DATA);rhCache[set.key]=rows;return rows;
+      }
+      if(set.kind==='asset'&&typeof ASSET_DATA!=='undefined'&&ASSET_DATA[set.type]&&ASSET_DATA[set.type].features&&ASSET_DATA[set.type].features.length){
+        const rows=rhBuildRows(ASSET_DATA[set.type]);rhCache[set.key]=rows;return rows;
       }
       const url=set.kind==='segments'?'/api/segments/geojson':'/api/assets/'+set.type+'/geojson';
       return fetch(url).then(r=>r.json()).then(gj=>{const rows=rhBuildRows(gj);rhCache[set.key]=rows;return rows;}).catch(()=>{rhCache[set.key]=[];return [];});
@@ -144,16 +167,29 @@ function rhFilteredRows(){
   if(rhSec)rows=rows.filter(r=>String(r.sec)===rhSec);
   return rows;
 }
-function rhDistrictOptions(rows){const set={};(rows||[]).forEach(r=>{if(r.district)set[r.district]=1;});return '<option value="">All districts</option>'+Object.keys(set).sort().map(d=>'<option value="'+escH(d)+'"'+(rhDistrict===d?' selected':'')+'>'+escH(d)+'</option>').join('');}
-function rhRoadOptions(rows){const set={};(rows||[]).forEach(r=>{if(r.road)set[r.road]=1;});return '<option value="">All road names</option>'+Object.keys(set).sort((a,b)=>String(a).localeCompare(String(b))).map(d=>'<option value="'+escH(d)+'"'+(rhRoad===d?' selected':'')+'>'+escH(d)+'</option>').join('');}
-function rhSecOptions(rows){const set={};(rows||[]).forEach(r=>{if(r.sec)set[r.sec]=1;});return '<option value="">All section labels</option>'+Object.keys(set).sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true})).map(d=>'<option value="'+escH(d)+'"'+(rhSec===d?' selected':'')+'>'+escH(d)+'</option>').join('');}
-function rhToolbar(allRows,count){
+/* Option lists are built once per dataset (no selected attrs — the current
+   selection is applied via select.value after the innerHTML swap). Rebuilding
+   them on every render meant re-sorting and re-escaping thousands of section
+   labels per keystroke. */
+function rhOptions(setKey,allRows){
+  if(rhOptsCache[setKey])return rhOptsCache[setKey];
+  const uniq=get=>{const s={};(allRows||[]).forEach(r=>{const v=get(r);if(v)s[v]=1;});return Object.keys(s);};
+  const opt=(vals,blank)=>'<option value="">'+blank+'</option>'+vals.map(d=>'<option value="'+escH(d)+'">'+escH(d)+'</option>').join('');
+  rhOptsCache[setKey]={
+    road:opt(uniq(r=>r.road).sort((a,b)=>String(a).localeCompare(String(b))),'All road names'),
+    district:opt(uniq(r=>r.district).sort(),'All districts'),
+    sec:opt(uniq(r=>r.sec).sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true})),'All section labels')
+  };
+  return rhOptsCache[setKey];
+}
+function rhToolbar(setKey,allRows,countHtml){
+  const o=rhOptions(setKey,allRows);
   return '<div class="reg-bar">'
     +'<input id="rhSearch" class="reg-search" placeholder="Search any value&hellip;" value="'+escH(rhSearch)+'" oninput="rhSetSearch(this.value)">'
-    +'<select class="reg-sel" onchange="rhSetRoad(this.value)" title="Filter by road name">'+rhRoadOptions(allRows)+'</select>'
-    +'<select class="reg-sel" onchange="rhSetDistrict(this.value)" title="Filter by district">'+rhDistrictOptions(allRows)+'</select>'
-    +'<select class="reg-sel" onchange="rhSetSec(this.value)" title="Filter by section label">'+rhSecOptions(allRows)+'</select>'
-    +'<span class="reg-count">'+(count!=null?count:(allRows||[]).length)+' rows</span>'
+    +'<select id="rhRoadSel" class="reg-sel" onchange="rhSetRoad(this.value)" title="Filter by road name">'+o.road+'</select>'
+    +'<select id="rhDistSel" class="reg-sel" onchange="rhSetDistrict(this.value)" title="Filter by district">'+o.district+'</select>'
+    +'<select id="rhSecSel" class="reg-sel" onchange="rhSetSec(this.value)" title="Filter by section label">'+o.sec+'</select>'
+    +'<span class="reg-count">'+countHtml+'</span>'
     +'<span class="reg-exp"><button class="btn ghost" onclick="rhExportExcel()">Excel</button><button class="btn ghost" onclick="rhPrint()">PDF</button></span>'
     +'</div>';
 }
@@ -164,20 +200,43 @@ function rhRenderTab(k){
   body.innerHTML='<div class="dash-loading">Loading '+escH(set.label)+'&hellip;</div>';
   rhEnsure(set).then(()=>{ if(rhTab!==k)return; rhRender(); }).catch(()=>{ if(rhTab===k)body.innerHTML='<div class="dash-loading">Could not load '+escH(set.label)+'.</div>'; });
 }
+function rhColumnsFor(set){
+  if(!rhColsCache[set.key])rhColsCache[set.key]=rhColumns(rhCache[set.key]||[]);
+  return rhColsCache[set.key];
+}
+function rhPager(pages){
+  if(pages<=1)return '';
+  const btn=(label,p,dis)=>'<button class="btn ghost" style="min-width:70px'+(dis?';opacity:.45;cursor:default':'')+'"'+(dis?' disabled':' onclick="rhGoPage('+p+')"')+'>'+label+'</button>';
+  return '<div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 0 16px">'
+    +btn('&lsaquo; Prev',rhPage-1,rhPage<=0)
+    +'<span style="font-size:12px;color:#5a6b82">Page '+(rhPage+1)+' of '+pages+'</span>'
+    +btn('Next &rsaquo;',rhPage+1,rhPage>=pages-1)
+    +'</div>';
+}
 function rhRender(){
   const set=rhSet(rhTab); const allRows=rhCache[set.key]||[]; const rows=rhFilteredRows();
   const body=document.getElementById('rhBody'); if(!body)return;
-  if(!allRows.length){body.innerHTML=rhToolbar(allRows,0)+'<div class="dash-loading">No '+escH(set.label)+' data found yet. '+(set.kind==='client'?'Import the flood CSV in the Climate module, then reopen this report.':'Upload it in the Data Console, then reopen this report.')+'</div>';return;}
-  const cols=rhColumns(allRows);
+  if(!allRows.length){body.innerHTML=rhToolbar(set.key,allRows,'0 rows')+'<div class="dash-loading">No '+escH(set.label)+' data found yet. '+(set.kind==='client'?'Import the flood CSV in the Climate module, then reopen this report.':'Upload it in the Data Console, then reopen this report.')+'</div>';return;}
+  const cols=rhColumnsFor(set);
+  /* Page the table: dumping all ~33k condition rows into one innerHTML froze
+     the browser for many seconds and left a million-cell DOM behind. Exports
+     (rhMatrix) still cover every filtered row, not just the visible page. */
+  const pages=Math.max(1,Math.ceil(rows.length/RH_PAGE_SIZE));
+  if(rhPage>pages-1)rhPage=pages-1; if(rhPage<0)rhPage=0;
+  const start=rhPage*RH_PAGE_SIZE, pageRows=rows.slice(start,start+RH_PAGE_SIZE);
+  const countHtml=pages>1?((start+1)+'&ndash;'+(start+pageRows.length)+' of '+rows.length+' rows'):(rows.length+' rows');
   const head='<tr>'+cols.map(c=>'<th'+(c.n?' class="n"':'')+'>'+escH(c.l)+'</th>').join('')+'</tr>';
-  let tb='';rows.forEach((r,i)=>{tb+='<tr>'+cols.map(c=>'<td'+(c.n?' class="n"':(c.cls?' class="'+c.cls+'"':''))+'>'+rhCell(c.g(r,i))+'</td>').join('')+'</tr>';});
-  body.innerHTML=rhToolbar(allRows,rows.length)+'<div class="reg-tablewrap"><table class="reg-table"><thead>'+head+'</thead><tbody>'+(tb||'<tr><td colspan="'+cols.length+'" style="text-align:center;color:#8a93a3;padding:18px">No rows match.</td></tr>')+'</tbody></table></div>';
+  let tb='';pageRows.forEach((r,i)=>{tb+='<tr>'+cols.map(c=>'<td'+(c.n?' class="n"':(c.cls?' class="'+c.cls+'"':''))+'>'+rhCell(c.g(r,start+i))+'</td>').join('')+'</tr>';});
+  body.innerHTML=rhToolbar(set.key,allRows,countHtml)+'<div class="reg-tablewrap"><table class="reg-table"><thead>'+head+'</thead><tbody>'+(tb||'<tr><td colspan="'+cols.length+'" style="text-align:center;color:#8a93a3;padding:18px">No rows match.</td></tr>')+'</tbody></table></div>'+rhPager(pages);
+  const rs=document.getElementById('rhRoadSel');if(rs)rs.value=rhRoad;
+  const ds=document.getElementById('rhDistSel');if(ds)ds.value=rhDistrict;
+  const ss=document.getElementById('rhSecSel');if(ss)ss.value=rhSec;
   const si=document.getElementById('rhSearch'); if(si&&rhSearch){si.focus();si.setSelectionRange(si.value.length,si.value.length);}
 }
 
 /* ---- export (Excel + PDF), filtered ---- */
 function rhMatrix(){
-  const set=rhSet(rhTab); const rows=rhFilteredRows(); const cols=rhColumns(rhCache[set.key]||rows);
+  const set=rhSet(rhTab); const rows=rhFilteredRows(); const cols=rhColumnsFor(set);
   const header=cols.map(c=>c.l);
   const data=rows.map((r,i)=>cols.map(c=>{const v=c.g(r,i);return v==null?'':v;}));
   return {header,data,title:set.title,file:set.file,cols};
