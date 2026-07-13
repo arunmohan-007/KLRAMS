@@ -4,6 +4,7 @@
    datasets available as filterable, exportable reports:
      • FWD (D0 deflection)
      • Road Condition Data (segments)
+     • Traffic Station & Count (stations + count summaries)
      • Sub-Grade Soil
      • Bituminous Core
      • Pavement Crust
@@ -16,6 +17,7 @@
 const RH_SETS=[
   {key:'fwd',      label:'FWD',                kind:'asset',    type:'fwd',             title:'FWD (D0 Deflection) Report', file:'fwd-report'},
   {key:'cond',     label:'Road Condition Data',kind:'segments',                        title:'Road Condition Data Report', file:'road-condition-report'},
+  {key:'traffic',  label:'Traffic Station & Count',kind:'traffic',                     title:'Traffic Station & Count Report',file:'traffic-station-count-report'},
   {key:'subgrade', label:'Sub-Grade Soil',     kind:'asset',    type:'subgrade',        title:'Sub-Grade Soil Report',      file:'subgrade-soil-report'},
   {key:'core',     label:'Bituminous Core',    kind:'asset',    type:'bituminous_core', title:'Bituminous Core Report',     file:'bituminous-core-report'},
   {key:'crust',    label:'Pavement Crust',     kind:'asset',    type:'pavement_crust',  title:'Pavement Crust Report',      file:'pavement-crust-report'},
@@ -96,11 +98,47 @@ function rhBuildRows(gj){
   rows.sort((a,b)=>String(a.sec).localeCompare(String(b.sec),undefined,{numeric:true}));
   return rows;
 }
+/* Traffic Station & Count rows: one row per station from /api/traffic/store,
+   joined to the road network by Section Label like every other report, with
+   the count object flattened into columns (totals, ADT, peak hour, direction
+   split, vehicle classes). trfCountObj/trfPad come from 16-traffic.js. */
+function rhTrafficRows(st){
+  const counts=(st&&st.counts)||{};
+  const rows=((st&&st.stations)||[]).map(rec=>{
+    const sec=rec.section||''; const rp=roadProps(sec); const d={};
+    d['Station']=rec.name||'';
+    if(rec.ch!=null&&rec.ch!=='')d['Chainage (m)']=rec.ch;
+    if(rec.xsp)d['XSP']=rec.xsp;
+    if(rec.lat!=null&&rec.lat!=='')d['Lat']=rec.lat;
+    if(rec.lng!=null&&rec.lng!=='')d['Lng']=rec.lng;
+    const c=(typeof trfCountObj==='function')?trfCountObj(counts[rec.name]):counts[rec.name];
+    if(c){
+      const days=c.days||1;
+      if(c.dateMin)d['Survey dates']=c.dateMin+((c.dateMax&&c.dateMax!==c.dateMin)?(' – '+c.dateMax):'');
+      d['Survey days']=days;
+      if(c.total!=null){d['Total (veh)']=c.total;d['ADT (veh/day)']=Math.round(c.total/days);}
+      let pv=null,pt='';
+      if(c.peak&&c.peak.both){pv=c.peak.both.v;pt=c.peak.both.t||'';}
+      else{const bh=c.byHour||[];let ph=0,phh=-1;for(let i=0;i<24;i++){const a=(+bh[i]||0)/days;if(a>ph){ph=a;phh=i;}}if(phh>=0){pv=Math.round(ph);pt=trfPad(phh)+':00–'+trfPad((phh+1)%24)+':00';}}
+      if(pv!=null){d['Peak hour (veh)']=pv;d['Peak hour time']=pt;}
+      Object.keys(c.byDir||{}).sort().forEach(dir=>{d['Dir: '+dir+' (veh)']=c.byDir[dir];});
+      Object.keys(c.byClass||{}).sort().forEach(cl=>{d[cl]=c.byClass[cl];});
+    }
+    return {sec:sec,road:rp.Road_Name||rec.road||'',pwd:rp.PWD_Sec||'',district:rp.District||'',data:d};
+  });
+  rows.sort((a,b)=>String(a.data.Station).localeCompare(String(b.data.Station),undefined,{numeric:true}));
+  return rows;
+}
 function rhEnsure(set){
   return Promise.resolve()
     .then(()=>(!ROADS||!Object.keys(ROADS).length)?loadRoads():null)
     .then(()=>{
       if(rhCache[set.key])return rhCache[set.key];
+      if(set.kind==='traffic'){
+        return fetch('/api/traffic/store').then(r=>r.json())
+          .then(st=>{const rows=rhTrafficRows(st);rhCache[set.key]=rows;return rows;})
+          .catch(()=>{rhCache[set.key]=[];return [];});
+      }
       if(set.kind==='client'){
         const src=(typeof CLIMATE_ROWS!=='undefined'&&CLIMATE_ROWS)||[];
         const rows=src.map(function(r){return {sec:r.sec,road:r.name||(roadProps(r.sec).Road_Name||''),pwd:roadProps(r.sec).PWD_Sec||'',district:roadProps(r.sec).District||'',data:r.props||{}};});
