@@ -249,6 +249,25 @@
   .dash-note{font-size:11.5px;color:var(--muted);margin-top:22px;line-height:1.6;background:#fff;border:1px solid var(--hair);border-radius:14px;padding:14px 18px}
   .dash-note b{color:var(--ink-2)}
 
+  /* survey dashboard (tab: Surveys) — year pills + district chips */
+  .svy-bar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:20px}
+  .svy-years{display:flex;gap:10px;flex-wrap:wrap}
+  .svy-pill{display:flex;flex-direction:column;align-items:flex-start;gap:1px;font:inherit;cursor:pointer;background:#fff;border:1px solid var(--hair);border-radius:13px;padding:8px 16px;box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s}
+  .svy-pill:hover{border-color:#c3d0de}
+  .svy-pill .svy-pill-cap{font-size:9.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+  .svy-pill .svy-pill-yr{font-size:16px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+  .svy-pill.on{background:linear-gradient(135deg,#0e7a54,#15976a);border-color:#0e7a54;box-shadow:0 4px 14px rgba(21,151,106,.35)}
+  .svy-pill.on .svy-pill-cap{color:rgba(255,255,255,.75)}
+  .svy-pill.on .svy-pill-yr{color:#fff}
+  .svy-dists{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;max-width:62%}
+  .svy-chip{font:inherit;font-size:11.5px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:999px;padding:6px 13px;cursor:pointer;transition:all .15s}
+  .svy-chip:hover{border-color:#c3d0de;background:#f6f9fc}
+  .svy-chip.on{background:#123a5e;border-color:#123a5e;color:#fff;box-shadow:0 3px 10px rgba(18,58,94,.3)}
+  .svy-kpis{grid-template-columns:1.4fr 1fr 1fr 1fr 1fr}
+  .svy-sel td{background:#eef8f3!important}
+  @media(max-width:1200px){.svy-kpis{grid-template-columns:1fr 1fr 1fr}}
+  @media(max-width:680px){.svy-kpis{grid-template-columns:1fr}.svy-dists{max-width:100%;justify-content:flex-start}}
+
   /* longest roads (top 10 SH / MDR) */
   .lr-card{margin-bottom:18px}
   .lr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}

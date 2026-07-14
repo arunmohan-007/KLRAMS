@@ -28,8 +28,8 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
-  <link rel="stylesheet" href="css/app.css?v=122">
-  <link rel="stylesheet" href="css/klrams-dark.css?v=8">
+  <link rel="stylesheet" href="css/app.css?v=123">
+  <link rel="stylesheet" href="css/klrams-dark.css?v=9">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
     .cond-metric-row{display:flex;align-items:center;gap:8px;margin:0 0 12px 24px;padding:0}
@@ -272,6 +272,7 @@
       <button class="dash-tab" data-tab="pcia" onclick="dashTab('pcia')">PCI Analysis</button>
       <button class="dash-tab" data-tab="culv" onclick="dashTab('culv')">Culverts</button>
       <button class="dash-tab" data-tab="brid" onclick="dashTab('brid')">Bridges</button>
+      <button class="dash-tab" data-tab="survey" onclick="dashTab('survey')">Surveys</button>
     </div>
     <div id="dashBody"><div class="dash-loading">Loading network figures…</div></div>
   </div>
@@ -936,11 +937,11 @@
   <script src="js/02-map-core.js?v=117"></script>
   <script src="js/03-condition-style-filter.js?v=117"></script>
   <script src="js/04-geo-helpers-boundaries.js?v=117"></script>
-  <script src="js/05-road-network.js?v=118"></script>
+  <script src="js/05-road-network.js?v=119"></script>
   <script src="js/06-assets.js?v=168"></script>
   <script src="js/07-data-loaders.js?v=162"></script>
   <script src="js/08-condition-popup-nsv.js?v=160"></script>
-  <script src="js/09-dashboard-core.js?v=118"></script>
+  <script src="js/09-dashboard-core.js?v=119"></script>
   <script src="js/10-pci-report.js?v=118"></script>
   <script src="js/11-dashboard-charts.js?v=119"></script>
   <script src="js/12-nsv-video.js?v=167"></script>
@@ -958,6 +959,7 @@
   <script src="js/24-fwd.js?v=162"></script>
   <script src="js/25-nsv-module.js?v=161"></script>
   <script src="js/26-layers-collapse.js?v=2"></script>
+  <script src="js/27-survey-dashboard.js?v=3"></script>
   <script src="js/launcher.js?v=161"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page

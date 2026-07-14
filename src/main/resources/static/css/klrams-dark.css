@@ -907,6 +907,19 @@ select option:disabled{color:var(--k-faint)!important}
 .nvp-empty{color:var(--k-muted)!important}
 .nvp-cnt{color:var(--k-faint)!important;border-top:1px solid var(--k-line)!important;background:var(--k-elev)!important}
 
+/* ---------- survey dashboard (Surveys tab) ---------- */
+.svy-pill{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;box-shadow:none!important}
+.svy-pill:hover{border-color:var(--k-accent)!important}
+.svy-pill .svy-pill-cap{color:var(--k-muted)!important}
+.svy-pill .svy-pill-yr{color:var(--k-text)!important}
+.svy-pill.on{background:linear-gradient(135deg,#0e7a54,#15976a)!important;border-color:#15976a!important}
+.svy-pill.on .svy-pill-cap{color:rgba(255,255,255,.75)!important}
+.svy-pill.on .svy-pill-yr{color:#fff!important}
+.svy-chip{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;color:var(--k-text)!important}
+.svy-chip:hover{background:var(--k-elev2)!important;border-color:var(--k-accent)!important}
+.svy-chip.on{background:var(--k-accent)!important;border-color:var(--k-accent)!important;color:#06251f!important;box-shadow:none!important}
+.svy-sel td{background:rgba(45,212,191,.08)!important}
+
 /* ---------- misc surface tweaks ---------- */
 .locpin{filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}
 .kl-open{box-shadow:none!important}

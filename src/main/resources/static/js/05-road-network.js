@@ -344,7 +344,14 @@ function renderNetScopeCard(list,rows){
   const AD=(typeof ASSET_DATA!=='undefined')?ASSET_DATA:{};
   [['bridge','#8a5cb8','Bridges'],['culvert','#e07b2a','Culverts'],['fwd','#7b1fa2','FWD points'],['subgrade','#8a4d1f','Soil tests'],['bituminous_core','#5c6470','Bituminous core test']]
     .forEach(t=>{const gj=AD[t[0]];if(gj&&gj.features)tiles.push([t[1],_nscCountIn(gj.features,'__sec'),t[2]]);});
-  if(typeof TRAFFIC_STN!=='undefined'&&TRAFFIC_STN.features&&TRAFFIC_STN.features.length)tiles.push(['#1565c0',_nscCountIn(TRAFFIC_STN.features,'section'),'Traffic stations']);
+  /* A dual carriageway's A/B pair (TVM_STN_021A / TVM_STN_021B) is ONE
+     physical station — count distinct base names (trailing A/B after the
+     station number stripped), matching SurveyDashboardController. */
+  if(typeof TRAFFIC_STN!=='undefined'&&TRAFFIC_STN.features&&TRAFFIC_STN.features.length){
+    const stnSet=new Set();
+    TRAFFIC_STN.features.forEach(f=>{const p=(f&&f.properties)||{};if(!window.NET_SCOPE.has(String(p.section!=null?p.section:'')))return;const nm=String(p.name||'').trim();stnSet.add(nm?nm.replace(/([0-9])[ABab]$/,'$1'):('__anon'+stnSet.size));});
+    tiles.push(['#1565c0',stnSet.size,'Traffic stations']);
+  }
   document.getElementById('nscStats').innerHTML=tiles.map(t=>'<span class="nsc-stat'+(t[3]?' txt':'')+'" style="--sc:'+t[0]+'"><span class="n">'+t[1]+'</span><span class="l">'+t[2]+'</span></span>').join('');
   /* owners of the matched roads — prefer the "Current owner" attribute
      (Current_Ow / Current_Owner…) over any other owner-ish column */
