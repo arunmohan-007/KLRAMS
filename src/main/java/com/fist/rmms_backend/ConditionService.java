@@ -129,6 +129,71 @@ public class ConditionService {
         return count;
     }
 
+    /**
+     * Scans the CSV for duplicate survey rows — the same (Section_Label, XSP,
+     * Start_Chainage, End_Chainage) appearing more than once. Duplicates inflate
+     * every lane-km total (dashboard, network-scope card, reports) because a raw
+     * row sum counts the stretch twice while the segment build collapses it, so
+     * the upload pauses for user confirmation whenever any are present.
+     * Returns: rows (total data rows), duplicates (extra copies beyond the first),
+     * dup_km (lane-km those extra copies double-count), sections (per-section
+     * breakdown, worst first).
+     */
+    public Map<String, Object> analyzeDuplicates(InputStream in) throws Exception {
+        BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        String headerLine = br.readLine();
+        Map<String, Object> rep = new HashMap<>();
+        rep.put("rows", 0); rep.put("duplicates", 0); rep.put("dup_km", 0.0);
+        rep.put("sections", new ArrayList<>());
+        if (headerLine == null) return rep;
+
+        String[] headers = parseCsvLine(headerLine);
+        Map<String, Integer> idx = new HashMap<>();
+        for (int i = 0; i < headers.length; i++) {
+            idx.put(headers[i].trim().replace("\uFEFF", ""), i);
+        }
+
+        Map<String, Integer> seen = new HashMap<>();
+        Map<String, double[]> perSection = new HashMap<>();   // section -> {extraRows, extraMetres}
+        String line;
+        int total = 0, extra = 0;
+        double extraM = 0;
+        while ((line = br.readLine()) != null) {
+            if (line.trim().isEmpty()) continue;
+            String[] c = parseCsvLine(line);
+            total++;
+            String section = get(c, idx, "Section_Label");
+            Double s = num(get(c, idx, "Start_Chainage"));
+            Double e = num(get(c, idx, "End_Chainage"));
+            String key = section + "|" + get(c, idx, "XSP") + "|" + s + "|" + e;
+            if (seen.merge(key, 1, Integer::sum) > 1) {
+                double len = (s != null && e != null && e > s) ? (e - s) : 0;
+                extra++;
+                extraM += len;
+                perSection.computeIfAbsent(section == null ? "?" : section, k -> new double[2]);
+                double[] agg = perSection.get(section == null ? "?" : section);
+                agg[0]++; agg[1] += len;
+            }
+        }
+
+        List<Map<String, Object>> sections = new ArrayList<>();
+        perSection.entrySet().stream()
+            .sorted((a, b) -> Double.compare(b.getValue()[1], a.getValue()[1]))
+            .forEach(en -> {
+                Map<String, Object> m = new HashMap<>();
+                m.put("section", en.getKey());
+                m.put("rows", (int) en.getValue()[0]);
+                m.put("km", Math.round(en.getValue()[1] / 10.0) / 100.0);
+                sections.add(m);
+            });
+
+        rep.put("rows", total);
+        rep.put("duplicates", extra);
+        rep.put("dup_km", Math.round(extraM / 10.0) / 100.0);
+        rep.put("sections", sections);
+        return rep;
+    }
+
     public long count() {
         Long n = jdbc.queryForObject("SELECT count(*) FROM condition", Long.class);
         return n == null ? 0 : n;

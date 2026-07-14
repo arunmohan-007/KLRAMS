@@ -396,17 +396,33 @@ const EP={
   catalog:{url:'/api/video/upload-catalog',inp:'vfile',out:'oCat',busy:'Loading catalogue…',ok:j=>'✓ Linked '+j.entries+' roads to videos.'}
 };
 const UP_LABEL={condition:'Condition data',zip:'Survey video zip',catalog:'Video catalogue'};
-async function up(kind){
+async function up(kind,force){
   const c=EP[kind], el=document.getElementById(c.out), f=document.getElementById(c.inp).files[0];
   if(!f){show(el,false,'Choose a file first.');return;}
   show(el,true,c.busy);
   const fd=new FormData();fd.append('file',f);
   const ds=UP_LABEL[kind]||kind;
-  try{const r=await fetch(c.url,{method:'POST',body:fd});const j=await r.json();
+  try{const r=await fetch(c.url+(force?'?force=true':''),{method:'POST',body:fd});const j=await r.json();
     if(j.status==='ok'){const msg=c.ok(j);show(el,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    else if(j.status==='duplicates'){showDupPrompt(el,j,kind);logUpload(ds,f.name,false,'Paused: '+j.duplicates+' duplicate row(s) found — awaiting confirmation');}
     else{show(el,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
   }catch(e){show(el,false,'Request failed: '+e.message);logUpload(ds,f.name,false,e.message);}
 }
+/* Duplicate pre-check: the same section + lane (XSP) + chainage appearing on more
+   than one row double-counts that stretch in every lane-km total. Nothing has been
+   imported yet at this point — the user decides to import as-is or cancel. */
+function showDupPrompt(el,j,kind){
+  const secs=(j.sections||[]).slice(0,8).map(s=>'<li><b>'+escLog(s.section)+'</b> — '+s.rows+' duplicate row(s), '+s.km+' km double-counted</li>').join('')
+    +((j.sections||[]).length>8?'<li>… and '+(j.sections.length-8)+' more section(s)</li>':'');
+  el.className='out err';
+  el.innerHTML='&#9888; Duplicate rows found: <b>'+j.duplicates+'</b> of '+j.rows+' rows repeat the same section, lane (XSP) and chainage'
+    +(j.dup_km?(', double-counting <b>'+j.dup_km+' lane-km</b>'):'')+'.'
+    +(secs?('<ul style="margin:6px 0 0 18px;padding:0">'+secs+'</ul>'):'')
+    +'<div style="margin-top:8px">Duplicates inflate the lane-km totals shown on the dashboard and reports. Clean the file and re-upload, or import as-is.</div>'
+    +'<div style="margin-top:8px"><button class="btn" onclick="up(\''+kind+'\',true)">Import anyway</button> '
+    +'<button class="btn ghost" onclick="dupCancel(\''+kind+'\')">Cancel</button></div>';
+}
+function dupCancel(kind){show(document.getElementById(EP[kind].out),false,'Import cancelled — nothing was loaded.');}
 /* ===== Resumable, per-file video upload ===== */
 var VID_CHUNK=5*1024*1024;   // 5 MB per chunk
 var vidItems=[];             // {file,name,size,uploaded,pct,status,detail,xhr}
@@ -848,7 +864,8 @@ const PANELS={
     +'<p class="ip-sub">Import the raw condition survey CSV (IRI, cracking, potholes…). After it loads, switch to <b>Build segments</b> to cut it against the road network.</p>'
     +'<div class="ip-field"><label class="ip-label">Condition CSV</label><input type="file" id="cfile" accept=".csv"></div>'
     +'<button class="btn" onclick="up(\'condition\')">Upload CSV</button> <button class="btn ghost" onclick="refresh()">Refresh counts</button>'
-    +'<div class="out" id="oCond"></div>',
+    +'<div class="out" id="oCond"></div>'
+    +'<p class="hint">The file is checked for duplicate rows (same Section_Label, XSP and chainage) before anything is imported — duplicates double-count lane-km in the dashboard totals. If any are found you can cancel, clean the file and re-upload, or import as-is.</p>',
   'cond-build':'<div class="ip-title">Build segments</div>'
     +'<p class="ip-sub">Cut the imported condition data into linearly-referenced segments along the current road network. Run this after importing condition data or updating roads.</p>'
     +'<button class="btn" onclick="build()">Build segments</button>'
