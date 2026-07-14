@@ -78,7 +78,7 @@ public class SiteController {
     private static final String DEFAULT_FAQ = """
 [{"q":"What is KLRAMS?","a":"KLRAMS (Kerala Road Asset Management System) is a GIS-based platform of the Public Works Department, Government of Kerala, for surveying, assessing and managing the condition of the State's road network. It is operated by the RMMS Cell at the Kerala Highway Research Institute (KHRI)."},
 {"q":"What does the system manage?","a":"Road inventory and classification, pavement condition (PCI), traffic surveys, Falling Weight Deflectometer (FWD) geotechnical data, and a repository of Government Orders on an interactive map."},
-{"q":"What is the Pavement Condition Index (PCI)?","a":"PCI is a measure of pavement condition computed as per IRC:82, used to prioritise maintenance across the network."},
+{"q":"What is the Pavement Condition Index (PCI)?","a":"PCI is a measure of pavement condition computed as per IRC:82-2023, used to prioritise maintenance across the network."},
 {"q":"What is FWD?","a":"The Falling Weight Deflectometer measures pavement deflection (D0); these readings indicate the structural condition of the road."},
 {"q":"Where can I find Government Orders?","a":"Open the GOs tab on the public portal to browse and search Government Orders and circulars by folder and name."}]
 """;

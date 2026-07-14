@@ -29,7 +29,7 @@
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
   <link rel="stylesheet" href="css/app.css?v=122">
-  <link rel="stylesheet" href="css/klrams-dark.css?v=7">
+  <link rel="stylesheet" href="css/klrams-dark.css?v=8">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
     .cond-metric-row{display:flex;align-items:center;gap:8px;margin:0 0 12px 24px;padding:0}
@@ -282,7 +282,7 @@
     <div class="dash-head">
       <div>
         <div class="dash-eyebrow">Pavement Condition Index</div>
-        <h1 class="dash-h1">PCI &mdash; IRC:82</h1>
+        <h1 class="dash-h1">PCI &mdash; IRC:82-2023</h1>
         <div class="dash-h1-sub">Set the six distress weightages and generate the index, or open the detailed report. The map is hidden while you work here.</div>
       </div>
       <button class="dash-close" onclick="closePciScreen()" title="Back to map">&times;</button>
@@ -300,7 +300,7 @@
           <div class="pci-wgrid" id="pciWeights"></div>
           <div class="pci-actions">
             <button class="btn" onclick="generatePCI()">Generate PCI</button>
-            <button class="btn ghost" onclick="resetPciWeights()">Reset to IRC:82</button>
+            <button class="btn ghost" onclick="resetPciWeights()">Reset to IRC:82-2023</button>
           </div>
           <div class="statusline" id="pciStatus"></div>
           <div id="pciSummary"></div>
@@ -308,7 +308,7 @@
         <div class="pci-card">
           <div class="eyebrow" style="margin-top:0">PCI rating scale (Table 5.5)</div>
           <div class="legend pcileg" id="pciLegend"></div>
-          <div class="note" style="margin-top:12px"><b>Generate PCI</b> produces two layers &mdash; <b>Composite PCI</b> (area-weighted distress) and <b>Worst-Lane PCI</b> (maximum distress per parameter). Each parameter&rsquo;s distress is converted to a 0&ndash;100 index; thresholds follow IRC:82 Table&nbsp;5.3 (editable under Road Condition). Default weightages are IRC:82 Table&nbsp;5.4 (&Sigma;&nbsp;=&nbsp;1.00).</div>
+          <div class="note" style="margin-top:12px"><b>Generate PCI</b> produces two layers &mdash; <b>Composite PCI</b> (area-weighted distress) and <b>Worst-Lane PCI</b> (maximum distress per parameter). Each parameter&rsquo;s distress is converted to a 0&ndash;100 index; thresholds follow IRC:82-2023 Table&nbsp;5.3 (editable under Road Condition). Default weightages are IRC:82-2023 Table&nbsp;5.4 (&Sigma;&nbsp;=&nbsp;1.00).</div>
         </div>
       </div>
     </div>
@@ -339,7 +339,7 @@
           <span class="bk"><span class="bksw" style="background:var(--fair)"></span>Fair <i id="kFairLo">2.55</i>&ndash;<i id="kFairHi">3.3</i></span>
           <span class="bk"><span class="bksw" style="background:var(--poor)"></span>Poor &gt; <i id="kPoor">3.3</i></span>
         </div>
-        <div class="note" style="margin-top:10px">Defaults per Table 5.3, Draft Revision of IRC:82 (Urban Roads). Editable.</div>
+        <div class="note" style="margin-top:10px">Defaults per Table 5.3, IRC:82-2023. Editable.</div>
         <button class="btn ghost" style="margin-top:10px" onclick="resetThresholds()">Reset to IRC defaults</button>
         <div class="statusline" id="status">Loading&hellip;</div>
       </div>
@@ -904,7 +904,7 @@
         if(d<bd){bd=d;best=e.p;}}
       return best;
     };
-    /* PCI computed LIVE by the real IRC:82 engine (segPCI): avg=Composite, worst=Worst-Lane.
+    /* PCI computed LIVE by the real IRC:82-2023 engine (segPCI): avg=Composite, worst=Worst-Lane.
        Works at any chainage without generating the layer; persists per road. */
     KL.pci=function(road,ch){
       KL.sync();
@@ -940,12 +940,12 @@
   <script src="js/06-assets.js?v=168"></script>
   <script src="js/07-data-loaders.js?v=162"></script>
   <script src="js/08-condition-popup-nsv.js?v=160"></script>
-  <script src="js/09-dashboard-core.js?v=117"></script>
-  <script src="js/10-pci-report.js?v=117"></script>
+  <script src="js/09-dashboard-core.js?v=118"></script>
+  <script src="js/10-pci-report.js?v=118"></script>
   <script src="js/11-dashboard-charts.js?v=119"></script>
   <script src="js/12-nsv-video.js?v=167"></script>
   <script src="js/13-search.js?v=117"></script>
-  <script src="js/14-pci-engine.js?v=168"></script>
+  <script src="js/14-pci-engine.js?v=169"></script>
   <script src="js/15-main.js?v=121"></script>
   <script src="js/16-traffic.js?v=168"></script>
   <script src="js/17-measure.js?v=117"></script>
@@ -1212,9 +1212,9 @@
       {k:['worst lane','worst-lane','worst pci','worstlane'],
        a:"Worst-Lane PCI uses the lowest-scoring lane for each section instead of the average — so it highlights the most distressed lane that may need attention first.\n\nToggle 'Worst-Lane PCI' under the PCI group in the Layers panel."},
       {k:['composite pci','what is composite pci','composite index','lane average pci','averaged pci','combined pci'],
-       a:"**COMPOSITE PCI (Pavement Condition Index — IRC:82):**\n\n**What it is:**\nComposite PCI gives ONE overall condition score (0–100) for each road SEGMENT, pooling the distress from all surveyed lanes.\n\n**How it's calculated (per segment):**\n\n**Step 1 — Pool distress across lanes:**\nFor each distress parameter separately (IRI, Crack, Rutting, Pothole, Ravelling, Patch), average its value across the lanes present (CC, CL1, CL2, CR1, CR2). Lanes are treated as equal area, so this is a plain average per parameter.\n\n**Step 2 — Compute ONE PCI from the pooled distress:**\nEach pooled distress is turned into a 0–100 sub-index, then blended using IRC:82 PARAMETER weights (not lane area):\n• IRI = 0.40 (heaviest)\n• Crack = 0.16\n• Rutting = 0.14\n• Ravelling = 0.12\n• Patch work = 0.10\n• Pothole = 0.08\n\n**Important — order matters:**\n• Composite = pool distress FIRST, then compute ONE PCI\n• Worst-Lane = compute a PCI per lane, then take the MINIMUM\nPCI is non-linear, so the order changes the result.\n\n**Network-average PCI (Dashboard):**\nThe single network figure is LENGTH-weighted: Σ(segment PCI × segment length) ÷ Σ(length). Longer segments count more.\n\n**Why use Composite:**\n✓ Single balanced number for overall road health\n✓ Averages out 'good' and 'bad' lanes\n✓ Best for network-level planning\n\n**Rating scale:**\n• 90–100 = Excellent · 80–90 = Good · 60–80 = Satisfactory\n• 40–60 = Fair · 20–40 = Poor · 0–20 = Fail\n\n**Where to see it:**\nLayers → PCI group → 'Composite PCI', or Dashboard → PCI Analysis tab"},
+       a:"**COMPOSITE PCI (Pavement Condition Index — IRC:82-2023):**\n\n**What it is:**\nComposite PCI gives ONE overall condition score (0–100) for each road SEGMENT, pooling the distress from all surveyed lanes.\n\n**How it's calculated (per segment):**\n\n**Step 1 — Pool distress across lanes:**\nFor each distress parameter separately (IRI, Crack, Rutting, Pothole, Ravelling, Patch), average its value across the lanes present (CC, CL1, CL2, CR1, CR2). Lanes are treated as equal area, so this is a plain average per parameter.\n\n**Step 2 — Compute ONE PCI from the pooled distress:**\nEach pooled distress is turned into a 0–100 sub-index, then blended using IRC:82-2023 PARAMETER weights (not lane area):\n• IRI = 0.40 (heaviest)\n• Crack = 0.16\n• Rutting = 0.14\n• Ravelling = 0.12\n• Patch work = 0.10\n• Pothole = 0.08\n\n**Important — order matters:**\n• Composite = pool distress FIRST, then compute ONE PCI\n• Worst-Lane = compute a PCI per lane, then take the MINIMUM\nPCI is non-linear, so the order changes the result.\n\n**Network-average PCI (Dashboard):**\nThe single network figure is LENGTH-weighted: Σ(segment PCI × segment length) ÷ Σ(length). Longer segments count more.\n\n**Why use Composite:**\n✓ Single balanced number for overall road health\n✓ Averages out 'good' and 'bad' lanes\n✓ Best for network-level planning\n\n**Rating scale:**\n• 90–100 = Excellent · 80–90 = Good · 60–80 = Satisfactory\n• 40–60 = Fair · 20–40 = Poor · 0–20 = Fail\n\n**Where to see it:**\nLayers → PCI group → 'Composite PCI', or Dashboard → PCI Analysis tab"},
       {k:['worst lane pci','what is worst lane pci','worst pci','worstlane pci','most distressed lane','lane pci'],
-       a:"**WORST-LANE PCI (Most Distressed Lane — IRC:82):**\n\n**What it is:**\nWorst-Lane PCI is the LOWEST per-lane PCI for each segment — it highlights the worst-condition lane that may need urgent repair.\n\n**How it's calculated (per segment):**\n1. Compute a FULL IRC:82 PCI for EACH lane on its own (CC, CL1, CL2, CR1, CR2), from that lane's own distresses\n2. Take the MINIMUM of those per-lane PCIs\n\nExample: if CL1's PCI = 70 and CR1's PCI = 65 → Worst-Lane = 65.\n\n**How this differs from Composite:**\n• **Composite** = pool the lane DISTRESSES first, then compute ONE PCI (a balanced view of the whole carriageway)\n• **Worst-Lane** = compute a PCI per lane, then take the MIN\n\nNote: Composite does NOT simply average the lane PCIs — it averages the raw distresses per parameter, then runs one PCI. Because PCI is non-linear, the two methods give different numbers.\n\n**Why use it:**\n✓ Finds urgent problem areas (won't miss a distressed lane)\n✓ Conservative / safety-focused (worst conditions drive the score)\n✓ Better for targeting repairs\n\n**Same rating scale as Composite (90–100 Excellent → 0–20 Fail)**\n\n**When to use each:**\n• **Composite** → Network planning, overall priorities\n• **Worst-Lane** → Maintenance, safety, targeting repairs\n\n**Where to see it:**\nLayers → PCI group → 'Worst-Lane PCI', or Dashboard → PCI Analysis tab"},
+       a:"**WORST-LANE PCI (Most Distressed Lane — IRC:82-2023):**\n\n**What it is:**\nWorst-Lane PCI is the LOWEST per-lane PCI for each segment — it highlights the worst-condition lane that may need urgent repair.\n\n**How it's calculated (per segment):**\n1. Compute a FULL IRC:82-2023 PCI for EACH lane on its own (CC, CL1, CL2, CR1, CR2), from that lane's own distresses\n2. Take the MINIMUM of those per-lane PCIs\n\nExample: if CL1's PCI = 70 and CR1's PCI = 65 → Worst-Lane = 65.\n\n**How this differs from Composite:**\n• **Composite** = pool the lane DISTRESSES first, then compute ONE PCI (a balanced view of the whole carriageway)\n• **Worst-Lane** = compute a PCI per lane, then take the MIN\n\nNote: Composite does NOT simply average the lane PCIs — it averages the raw distresses per parameter, then runs one PCI. Because PCI is non-linear, the two methods give different numbers.\n\n**Why use it:**\n✓ Finds urgent problem areas (won't miss a distressed lane)\n✓ Conservative / safety-focused (worst conditions drive the score)\n✓ Better for targeting repairs\n\n**Same rating scale as Composite (90–100 Excellent → 0–20 Fail)**\n\n**When to use each:**\n• **Composite** → Network planning, overall priorities\n• **Worst-Lane** → Maintenance, safety, targeting repairs\n\n**Where to see it:**\nLayers → PCI group → 'Worst-Lane PCI', or Dashboard → PCI Analysis tab"},
       {k:['what is pci','pci band','pci rating','pci range','pavement condition index','meaning of pci','about pci'],
        a:"**PCI — PAVEMENT CONDITION INDEX (0–100 Scale):**\n\n**What it measures:**\nPCI is a single number (0–100) that tells you the OVERALL HEALTH of the pavement/road.\n\n**Rating Breakdown:**\n\n| Rating | Score | Condition | Action |\n|--------|-------|-----------|--------|\n| **Excellent** | 90–100 | Like new, perfect condition | Monitor regularly |\n| **Good** | 80–90 | Minor wear, still safe | Routine maintenance |\n| **Satisfactory** | 60–80 | Noticeable distress | Plan maintenance |\n| **Fair** | 40–60 | Significant damage visible | Schedule repair soon |\n| **Poor** | 20–40 | Heavy distress, unsafe | Urgent repair needed |\n| **Fail** | 0–20 | Critical damage | Emergency action |\n\n**Where PCI comes from:**\n• Based on metrics like IRI, Crack, Pothole, Rutting, Texture, Ravelling, Patch work\n• Different lane values (CL1, CR1) → averaged into Composite or worst selected for Worst-Lane\n\n**Two types of PCI:**\n• **Composite PCI** → Average of all lanes (balanced view)\n• **Worst-Lane PCI** → Worst lane only (safety/urgent focus)\n\n**See your PCI:**\n• Click any road → popup shows PCI if available\n• Dashboard → PCI Analysis tab → see network PCI by rating"},
       {k:['dashboard','dash board','analytics','network average','reports','summary'],

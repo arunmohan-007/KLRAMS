@@ -98,7 +98,7 @@
         <label class="sw">Furniture — point <span class="cnt" id="cFurnP">—</span><input type="checkbox" id="tFurnP"></label>
       </div>
 
-      <h3>PCI (IRC:82)</h3>
+      <h3>PCI (IRC:82-2023)</h3>
       <div class="grp">
         <label class="sw">Composite PCI <span class="cnt" id="cPciA">—</span><input type="checkbox" id="tPciA"></label>
         <label class="sw">Worst-Lane PCI <span class="cnt" id="cPciW">—</span><input type="checkbox" id="tPciW"></label>
@@ -396,7 +396,7 @@ bindToggle('tFwd',fwdLayer,function(){
 document.getElementById('fwdLegend').innerHTML='<div class="hint" style="margin:2px 0 4px">D0 deflection (microns)</div>'+
   FWD_LEGEND.map(function(r){return '<div class="li"><span class="swatch" style="background:'+r[0]+'"></span>'+esc(r[1])+'</div>';}).join('');
 
-/* ---- PCI engine (IRC:82) — ported from js/14-pci-engine.js. Composite = area-
+/* ---- PCI engine (IRC:82-2023) — ported from js/14-pci-engine.js. Composite = area-
    weighted distress average across lanes; Worst-Lane = min of per-lane PCIs.
    Computed in the browser from the segments GeoJSON already loaded (SEG_GJ). */
 var PCI_PARAMS=[{key:'crack',label:'Cracking'},{key:'ravelling',label:'Ravelling'},{key:'pothole',label:'Pothole'},{key:'patch_work',label:'Patch work'},{key:'rutting',label:'Rut depth'},{key:'iri',label:'IRI'}];

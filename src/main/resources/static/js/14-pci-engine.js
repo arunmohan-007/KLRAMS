@@ -1,6 +1,6 @@
 /* ============================================================
    KLRAMS viewer · 14-pci-engine.js   (build 75)
-   IRC:82 PCI engine: per-parameter indices, editable weights, rating bands, PCI map layers and popup.
+   IRC:82-2023 PCI engine: per-parameter indices, editable weights, rating bands, PCI map layers and popup.
 
    BUILD 75 CORRECTNESS FIX — lane aggregation order.
    PCI is a NON-LINEAR function of the distresses, so the order of
@@ -17,7 +17,7 @@
    Per-lane distresses come from lane_vals (CC / CL1 / CL2 / CR1 / CR2).
    When a stretch has no lane breakdown, it falls back to the segment values.
    ============================================================ */
-/* ===== IRC:82 Pavement Condition Index (PCI) module ===== */
+/* ===== IRC:82-2023 Pavement Condition Index (PCI) module ===== */
 const PCI_PARAMS=[{key:'crack',label:'Cracking'},{key:'ravelling',label:'Ravelling'},{key:'pothole',label:'Pothole'},{key:'patch_work',label:'Patch work'},{key:'rutting',label:'Rut depth'},{key:'iri',label:'IRI (roughness)'}];
 const PCI_W_DEFAULT={crack:0.16,ravelling:0.12,pothole:0.08,patch_work:0.10,rutting:0.14,iri:0.40};
 const PCI_W=Object.assign({},PCI_W_DEFAULT);
@@ -42,7 +42,7 @@ function pciLaneDists(props){
   PCI_LANE_KEYS.forEach(L=>{let any=false;const d={};PCI_PARAMS.forEach(pp=>{const v=props[L+'_'+pp.key];if(v!=null&&v!==''){d[pp.key]=+v;any=true;}});if(any)out[L]=d;});
   return out;
 }
-/* Weighted IRC:82 PCI from one raw distress object. */
+/* Weighted IRC:82-2023 PCI from one raw distress object. */
 function pciFromDist(dist){let sw=0,acc=0;PCI_PARAMS.forEach(pp=>{const w=+PCI_W[pp.key]||0;if(w<=0)return;const raw=dist?dist[pp.key]:null;if(raw==null||raw==='')return;const I=indIndex(pp.key,+raw);if(I==null)return;acc+=w*I;sw+=w;});return sw>0?acc/sw:null;}
 /* Segment-level fallback distress object when there is no lane breakdown:
    worst -> the segment MAX columns (iri, crack, ...); avg -> the avg_* columns. */

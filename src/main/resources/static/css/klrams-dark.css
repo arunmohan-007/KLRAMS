@@ -46,6 +46,17 @@ html,body{background:var(--k-bg)!important;color:var(--k-text)!important}
 ::-webkit-scrollbar-thumb{background:#2a3645;border-radius:6px;border:2px solid transparent;background-clip:padding-box}
 ::-webkit-scrollbar-thumb:hover{background:#3a4858;background-clip:padding-box}
 
+/* native selects — app.css paints them white while --text is repointed to a
+   light color, which leaves light-on-white dropdowns. Restyle every select
+   dark; color-scheme makes the native popup list itself render dark. */
+select{
+  background:var(--k-elev)!important;color:var(--k-text)!important;
+  border:1px solid var(--k-line)!important;color-scheme:dark;
+}
+select:focus{outline:none!important;border-color:var(--k-accent)!important;box-shadow:0 0 0 3px var(--k-ring)!important}
+select option{background:var(--k-elev)!important;color:var(--k-text)!important}
+select option:disabled{color:var(--k-faint)!important}
+
 /* ---------- top bar ---------- */
 .topbar{
   background:var(--k-bg)!important;

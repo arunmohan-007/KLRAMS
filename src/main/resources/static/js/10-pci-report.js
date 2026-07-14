@@ -199,11 +199,11 @@ function printPciReport(){
     '@page{size:A4 landscape;margin:12mm}';
   const doc='<!doctype html><html><head><meta charset="utf-8"><title>KLRAMS PCI Report</title><style>'+css+'</style></head><body>'+
     '<div class="brand"><div><div class="t">KLRAMS \u2014 Pavement Condition Index Report</div><div class="s">Kerala Road Asset Management System \u00b7 Kerala PWD \u00b7 '+grpWord+'</div></div>'+
-    '<div class="r">Generated '+escH(dt)+'<br>Method: IRC:82 PCI &middot; area-weighted</div></div>'+
+    '<div class="r">Generated '+escH(dt)+'<br>Method: IRC:82-2023 PCI &middot; area-weighted</div></div>'+
     '<div class="kpi"><div><div class="v">'+(avg!=null?avg.toFixed(1):'\u2013')+(ab?' <span class="chip" style="background:'+ab.color+'">'+ab.label+'</span>':'')+'</div><div class="s" style="font-size:11px;color:#5b6b80">Network average PCI (area-weighted)</div></div></div>'+
-    '<div class="meta"><b>Coverage:</b> '+sections.length+' road sections \u00b7 '+Object.keys(groups).length+' '+((mode==='district')?'districts':'PWD sections')+' \u00b7 '+(tot/1000).toFixed(1)+' km scored.<br><b>Class distribution:</b> '+dist+'<br><b>Weightages (IRC:82 Table 5.4):</b> '+wrow+'</div>'+
+    '<div class="meta"><b>Coverage:</b> '+sections.length+' road sections \u00b7 '+Object.keys(groups).length+' '+((mode==='district')?'districts':'PWD sections')+' \u00b7 '+(tot/1000).toFixed(1)+' km scored.<br><b>Class distribution:</b> '+dist+'<br><b>Weightages (IRC:82-2023 Table 5.4):</b> '+wrow+'</div>'+
     body+
-    '<div class="foot"><span>KLRAMS \u00b7 Fist Innovations Pvt. Ltd.</span><span>PCI per IRC:82 \u2014 for maintenance planning</span></div>'+
+    '<div class="foot"><span>KLRAMS \u00b7 Fist Innovations Pvt. Ltd.</span><span>PCI per IRC:82-2023 \u2014 for maintenance planning</span></div>'+
     '</body></html>';
   const w=window.open('','_blank');
   if(!w){alert('Please allow pop-ups to generate the printable report.');return;}
@@ -276,7 +276,7 @@ function renderPciAnalysisNow(){
       (worst&&clsAvgs.length>1?'<div class="ps"><div class="ps-k">Most distressed</div><div class="ps-v sm">'+escH(worst.cls)+'<small>'+worst.avg.toFixed(0)+'</small></div></div>':'')+
     '</div></div>';
   const rows=PCI_ORDER.filter(lb=>(d.overall[lb]||0)>0).map(lb=>({label:lb,km:(d.overall[lb]||0)/1000}));
-  const donutHtml=donutCard('Network length by PCI rating','Share of surveyed length in each IRC:82 rating band',rows,{colorFn:pciClassColor,centerSmall:'km surveyed',full:l=>l});
+  const donutHtml=donutCard('Network length by PCI rating','Share of surveyed length in each IRC:82-2023 rating band',rows,{colorFn:pciClassColor,centerSmall:'km surveyed',full:l=>l});
   html+='<div class="comp-row pcia-top">'+hero+donutHtml+'</div>';
   let cards='';
   classes.forEach(cls=>{
