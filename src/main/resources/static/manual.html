@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLRAMS · User Manual — Kerala PWD</title>
+<meta name="description" content="KLRAMS User Manual — Kerala Road Asset Management System, RMMS Cell, KHRI." />
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0b1220; --panel:#101b2e; --panel-2:#0e1726; --edge:#20304c; --edge-soft:#1a2740;
+    --text:#eaf0fa; --muted:#93a3bb; --muted-2:#5f6e86;
+    --green:#19b277; --blue:#3b86e6; --gold:#d3aa3e; --violet:#8a68e6; --teal:#17b3b3; --amber:#ffa630; --red:#e05c5c;
+    --disp:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--body);background:var(--void);color:var(--text);-webkit-font-smoothing:antialiased}
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(90% 60% at 82% -10%, rgba(59,134,230,.13) 0%, transparent 60%),
+      radial-gradient(70% 50% at 8% 108%, rgba(25,178,119,.10) 0%, transparent 60%),
+      var(--void)}
+  .bg-grid{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.45;
+    background-image:linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px);
+    background-size:44px 44px;
+    -webkit-mask-image:radial-gradient(85% 80% at 50% 20%,#000 30%,transparent 100%);mask-image:radial-gradient(85% 80% at 50% 20%,#000 30%,transparent 100%)}
+
+  /* ---------- top bar ---------- */
+  .top{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;gap:14px;
+    padding:12px clamp(16px,3vw,34px);background:rgba(11,18,32,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--edge-soft)}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0;text-decoration:none;color:var(--text)}
+  .glyph{width:38px;height:38px;border-radius:10px;flex:none;background:linear-gradient(135deg,#19b277,#0d7a51);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 4px 14px rgba(13,122,81,.4)}
+  .glyph svg{width:20px;height:20px}
+  .bk .t{font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:.5px}
+  .bk .t span{color:#e6c878}
+  .bk .s{font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted-2);margin-top:1px}
+  .top-r{display:flex;align-items:center;gap:9px;flex-shrink:0}
+  .tbtn{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+    border:1px solid var(--edge);border-radius:999px;padding:7px 14px;text-decoration:none;background:rgba(255,255,255,.02);cursor:pointer;transition:.18s}
+  .tbtn:hover{color:#fff;border-color:var(--blue);background:rgba(59,134,230,.1)}
+  .tbtn svg{width:13px;height:13px}
+  .rolechip{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#9ee8c6;border:1px solid rgba(25,178,119,.4);background:rgba(25,178,119,.08);border-radius:999px;padding:7px 13px}
+
+  /* ---------- layout ---------- */
+  .wrap{position:relative;z-index:2;display:flex;gap:clamp(18px,3vw,42px);max-width:1400px;margin:0 auto;padding:26px clamp(16px,3vw,34px) 60px}
+  .toc{width:264px;flex:none;position:sticky;top:76px;align-self:flex-start;max-height:calc(100vh - 96px);overflow:auto;
+    background:linear-gradient(165deg,var(--panel),var(--panel-2));border:1px solid var(--edge-soft);border-radius:16px;padding:16px 10px 14px;scrollbar-width:thin}
+  .toc h4{font-family:var(--mono);font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted-2);padding:2px 12px 10px}
+  .toc a{display:flex;align-items:baseline;gap:8px;color:var(--muted);text-decoration:none;font-size:12.3px;line-height:1.35;padding:6px 12px;border-radius:9px;border-left:2px solid transparent;transition:.15s}
+  .toc a b{font-family:var(--mono);font-weight:600;font-size:10px;color:var(--muted-2);flex:none;min-width:20px}
+  .toc a:hover{color:#fff;background:rgba(255,255,255,.04)}
+  .toc a.on{color:#fff;background:rgba(59,134,230,.12);border-left-color:var(--blue)}
+  .toc a.sub{padding-left:30px;font-size:11.6px}
+  .toc .gap{height:8px}
+  .doc{flex:1;min-width:0;max-width:880px}
+
+  /* ---------- hero ---------- */
+  .hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#12203a 0%,#0e1a2e 55%,#102a26 100%);border:1px solid var(--edge);border-radius:22px;padding:clamp(26px,4vw,46px);margin-bottom:34px}
+  .hero::after{content:"";position:absolute;width:340px;height:340px;right:-120px;top:-140px;border-radius:50%;background:radial-gradient(closest-side,rgba(59,134,230,.35),transparent 70%);pointer-events:none}
+  .hero .kick{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:14px}
+  .hero .kick::before{content:"";width:26px;height:1.5px;background:linear-gradient(90deg,var(--amber),transparent)}
+  .hero h1{font-family:var(--disp);font-weight:700;font-size:clamp(26px,3.6vw,40px);letter-spacing:-.015em;line-height:1.1}
+  .hero h1 em{font-style:normal;background:linear-gradient(92deg,#7ee6b0,#5aa5f0 55%,#b79aff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{color:var(--muted);font-size:14px;line-height:1.65;margin-top:12px;max-width:640px}
+  .meta{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}
+  .mchip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border:1px solid var(--edge);border-radius:999px;padding:7px 13px;background:rgba(255,255,255,.03)}
+  .mchip i{width:6px;height:6px;border-radius:50%;background:var(--ac,#3b86e6);box-shadow:0 0 7px var(--ac,#3b86e6)}
+
+  /* ---------- section headings ---------- */
+  .ch{margin:52px 0 18px;display:flex;align-items:center;gap:15px;scroll-margin-top:86px}
+  .ch .num{--ac:var(--blue);width:46px;height:46px;flex:none;border-radius:13px;display:flex;align-items:center;justify-content:center;
+    font-family:var(--disp);font-weight:700;font-size:19px;color:#fff;
+    background:linear-gradient(135deg,color-mix(in srgb,var(--ac) 92%,#fff 4%),color-mix(in srgb,var(--ac) 55%,#000 30%));
+    box-shadow:0 6px 18px -6px var(--ac),inset 0 0 0 1px rgba(255,255,255,.14)}
+  .ch h2{font-family:var(--disp);font-weight:700;font-size:clamp(21px,2.6vw,27px);letter-spacing:-.01em}
+  .ch .sub{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted-2);margin-top:3px;font-weight:500}
+  h3{font-family:var(--disp);font-weight:700;font-size:17.5px;margin:34px 0 12px;display:flex;align-items:center;gap:10px;scroll-margin-top:86px}
+  h3::before{content:"";width:4px;height:18px;border-radius:3px;background:var(--ac,var(--blue));box-shadow:0 0 8px var(--ac,var(--blue))}
+  h4{font-family:var(--disp);font-weight:600;font-size:14.5px;margin:22px 0 9px;color:#d7e2f2}
+  p{color:#c3cede;font-size:13.6px;line-height:1.72;margin:0 0 13px}
+  p b,li b{color:#eef3fb}
+  ul,ol{margin:0 0 14px 22px;color:#c3cede;font-size:13.6px;line-height:1.72}
+  li{margin-bottom:6px}
+  li::marker{color:var(--muted-2)}
+  a.inl{color:#7db4f5;text-decoration:none;border-bottom:1px dotted rgba(125,180,245,.5)}
+  a.inl:hover{color:#a8ccf8}
+  code{font-family:var(--mono);font-size:12px;background:rgba(59,134,230,.12);border:1px solid rgba(59,134,230,.22);color:#9cc4f2;border-radius:6px;padding:1.5px 6px}
+  pre{background:#0a1526;border:1px solid var(--edge-soft);border-left:3px solid var(--teal);border-radius:12px;padding:14px 16px;margin:0 0 16px;overflow:auto}
+  pre code{background:none;border:none;padding:0;color:#8fd8d8;font-size:12px;line-height:1.65}
+
+  /* ---------- tables ---------- */
+  .tbl{width:100%;border-collapse:separate;border-spacing:0;margin:0 0 18px;background:linear-gradient(165deg,var(--panel),var(--panel-2));border:1px solid var(--edge-soft);border-radius:14px;overflow:hidden;font-size:12.8px}
+  .tbl th{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);text-align:left;padding:11px 14px;background:rgba(255,255,255,.03);border-bottom:1px solid var(--edge)}
+  .tbl td{padding:10px 14px;border-bottom:1px solid rgba(32,48,76,.55);color:#c3cede;line-height:1.55;vertical-align:top}
+  .tbl tr:last-child td{border-bottom:none}
+  .tbl tr:hover td{background:rgba(255,255,255,.018)}
+  .tbl td b{color:#eef3fb}
+  .tblwrap{overflow-x:auto;margin:0 0 18px}
+  .tblwrap .tbl{margin:0;min-width:560px}
+
+  /* condition chips */
+  .pill{display:inline-flex;align-items:center;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.08em;border-radius:999px;padding:3px 10px}
+  .pill.good{color:#7ee6b0;background:rgba(25,178,119,.13);border:1px solid rgba(25,178,119,.4)}
+  .pill.fair{color:#ffd48a;background:rgba(255,166,48,.12);border:1px solid rgba(255,166,48,.4)}
+  .pill.poor{color:#f0a0a0;background:rgba(224,92,92,.13);border:1px solid rgba(224,92,92,.45)}
+  .pill.role{color:#b9a4f5;background:rgba(138,104,230,.13);border:1px solid rgba(138,104,230,.45)}
+  .pill.band{border:1px solid transparent;color:#08131f}
+
+  /* ---------- callouts ---------- */
+  .note{display:flex;gap:12px;background:rgba(59,134,230,.07);border:1px solid rgba(59,134,230,.28);border-radius:13px;padding:13px 15px;margin:0 0 16px}
+  .note.tip{background:rgba(25,178,119,.07);border-color:rgba(25,178,119,.3)}
+  .note.warn{background:rgba(255,166,48,.07);border-color:rgba(255,166,48,.32)}
+  .note .ic{flex:none;width:20px;height:20px;color:var(--blue)}
+  .note.tip .ic{color:var(--green)}
+  .note.warn .ic{color:var(--amber)}
+  .note div{font-size:12.8px;line-height:1.65;color:#c3cede}
+  .note b{color:#eef3fb}
+
+  /* ---------- figures ---------- */
+  .fig{margin:6px 0 26px}
+  .fig-box{position:relative;border:1px solid var(--edge);border-radius:15px;overflow:hidden;background:#0a1424}
+  .fig-box img{display:block;width:100%;cursor:zoom-in}
+  .fig-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;min-height:170px;padding:26px 20px;text-align:center;
+    background:
+      repeating-linear-gradient(-45deg,rgba(255,255,255,.014) 0 12px,transparent 12px 24px),
+      radial-gradient(60% 90% at 50% 0%,rgba(59,134,230,.08),transparent 70%)}
+  .fig-empty svg{width:30px;height:30px;color:var(--muted-2)}
+  .fig-empty .fe-t{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2)}
+  .fig-empty .fe-h{font-size:12px;color:var(--muted);max-width:520px;line-height:1.6}
+  .fig-tools{position:absolute;top:10px;right:10px;display:flex;gap:7px;opacity:0;transition:.18s}
+  .fig-box:hover .fig-tools{opacity:1}
+  .fig-empty ~ .fig-tools, .fig-box.nopic .fig-tools{opacity:1}
+  .fbtn{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
+    color:#dfe9f7;background:rgba(11,18,32,.85);border:1px solid var(--edge);border-radius:999px;padding:6px 12px;backdrop-filter:blur(6px);transition:.15s}
+  .fbtn:hover{border-color:var(--blue);color:#fff;background:rgba(59,134,230,.25)}
+  .fbtn.del:hover{border-color:var(--red);background:rgba(224,92,92,.25)}
+  .fbtn svg{width:11px;height:11px}
+  .fig figcaption{font-size:12.2px;color:var(--muted);line-height:1.6;margin-top:9px;padding-left:2px}
+  .fig figcaption .fig-no{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#7db4f5;margin-right:8px}
+  .fig-busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(11,18,32,.72);backdrop-filter:blur(3px);font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#9cc4f2}
+  .fig-box.busy .fig-busy{display:flex}
+
+  /* ---------- lightbox ---------- */
+  .lb{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;background:rgba(4,8,16,.9);backdrop-filter:blur(8px);padding:34px;cursor:zoom-out}
+  .lb.open{display:flex}
+  .lb img{max-width:100%;max-height:92vh;border-radius:12px;border:1px solid var(--edge);box-shadow:0 30px 80px rgba(0,0,0,.6)}
+  .lb .lb-cap{position:fixed;left:0;right:0;bottom:12px;text-align:center;font-size:12px;color:var(--muted)}
+
+  /* ---------- toast ---------- */
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);z-index:90;font-size:12.6px;font-weight:600;color:#eaf0fa;
+    background:#122036;border:1px solid var(--edge);border-left:3px solid var(--green);border-radius:12px;padding:12px 18px;box-shadow:0 18px 40px rgba(0,0,0,.5);transition:transform .25s ease;max-width:80vw}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+  .toast.err{border-left-color:var(--red)}
+
+  .foot{margin-top:60px;border-top:1px solid var(--edge-soft);padding-top:16px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .foot span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2)}
+
+  @media (max-width:1020px){.toc{display:none}.wrap{display:block}}
+
+  /* ---------- print ---------- */
+  @media print{
+    body{background:#fff;color:#111}
+    .bg,.bg-grid,.top,.toc,.fig-tools,.fbtn,.lb,.toast,.no-print{display:none !important}
+    .wrap{padding:0;display:block;max-width:none}
+    .doc{max-width:none}
+    .hero{background:#f2f5fa;border-color:#ccd6e4}
+    .hero h1,.ch h2,h3,h4{color:#0c1524}
+    .hero h1 em{-webkit-text-fill-color:initial;color:#0c1524;background:none}
+    p,ul,ol,li,.note div,.tbl td,.fig figcaption{color:#26313f}
+    .tbl,.note,.fig-box,pre{background:#fff;border-color:#ccd6e4}
+    .tbl th{background:#eef2f7;color:#4a5666}
+    .ch,.fig,.tbl,pre,.note{break-inside:avoid}
+    a.inl{color:#1a4f9c;border-bottom:none}
+  }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="bg-grid"></div>
+
+  <header class="top no-print">
+    <a class="brand" href="/home.html">
+      <span class="glyph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h3l-1.4 18H4.5L6 3zm9 0h3l1.5 18h-3.1L15 3zm-3.6 0h1.2l.25 4h-1.7l.25-4zm-.5 7h2.2l.25 4h-2.7l.25-4zm-.5 7h3.2l.25 4h-3.7l.25-4z"/></svg></span>
+      <span class="bk"><span class="t">KL<span>RAMS</span> · User Manual</span><br><span class="s">Kerala Road Asset Management System</span></span>
+    </a>
+    <div class="top-r">
+      <span class="rolechip" id="roleBadge">Signed in</span>
+      <button class="tbtn" onclick="window.print()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7"/></svg>Print / PDF</button>
+      <a class="tbtn" href="/home.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>Home</a>
+      <a class="tbtn" href="/logout">Sign out</a>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <aside class="toc no-print" id="toc">
+      <h4>Contents</h4>
+      <a href="#ch1"><b>1</b> Introduction</a>
+      <a href="#ch2"><b>2</b> Getting Started</a>
+      <a href="#ch3"><b>3</b> The Portals</a>
+      <a href="#ch4"><b>4</b> The GIS Viewer</a>
+      <a class="sub" href="#s4-3">4.3 Road Inspector</a>
+      <a class="sub" href="#s4-4">4.4 Road Condition Data</a>
+      <a class="sub" href="#s4-5">4.5 NSV Survey Video</a>
+      <a class="sub" href="#s4-6">4.6 PCI (IRC:82-2023)</a>
+      <a class="sub" href="#s4-7">4.7 FWD</a>
+      <a class="sub" href="#s4-8">4.8 Traffic stations</a>
+      <a class="sub" href="#s4-11">4.11 Network Dashboard</a>
+      <a class="sub" href="#s4-12">4.12 Report Hub</a>
+      <a href="#ch5"><b>5</b> The Data Console</a>
+      <a href="#ch6"><b>6</b> GO Portal</a>
+      <a href="#ch7"><b>7</b> Users &amp; Security</a>
+      <a href="#ch8"><b>8</b> Site Control</a>
+      <a href="#ch9"><b>9</b> Troubleshooting &amp; FAQ</a>
+      <div class="gap"></div>
+      <a href="#appA"><b>A</b> Road data dictionary</a>
+      <a href="#appB"><b>B</b> Condition thresholds</a>
+      <a href="#appC"><b>C</b> PCI method — IRC:82-2023</a>
+      <a href="#appD"><b>D</b> Screenshot manager</a>
+    </aside>
+
+    <main class="doc">
+      <section class="hero">
+        <span class="kick">Official user manual</span>
+        <h1>Kerala Road Asset Management System<br><em>from survey to decision</em>.</h1>
+        <p>The complete guide to KLRAMS — the GIS viewer, NSV survey video, Pavement Condition Index, FWD, traffic, the Data Console, Government Orders and administration. Operated by the RMMS Cell, Kerala Highway Research Institute (KHRI), Public Works Department, Government of Kerala.</p>
+        <div class="meta">
+          <span class="mchip" style="--ac:var(--green)"><i></i>Version 1.1 · July 2026</span>
+          <span class="mchip" style="--ac:var(--gold)"><i></i>PCI per IRC:82-2023</span>
+          <span class="mchip" style="--ac:var(--blue)"><i></i>Kerala PWD · KHRI · RMMS Cell</span>
+          <span class="mchip" id="figProgress" style="--ac:var(--violet)"><i></i>Figures: …</span>
+        </div>
+      </section>
+      <!-- ============ 1. INTRODUCTION ============ -->
+      <div class="ch" id="ch1"><span class="num" style="--ac:var(--green)">1</span><h2>Introduction<span class="sub">What KLRAMS is and who uses it</span></h2></div>
+
+      <h3 style="--ac:var(--green)">1.1 What is KLRAMS?</h3>
+      <p>KLRAMS (Kerala Road Asset Management System) is a GIS-based road asset management platform for the Public Works Department, Government of Kerala. It is operated by the RMMS Cell at the Kerala Highway Research Institute (KHRI). KLRAMS brings the department's road data together on one interactive map:</p>
+      <ul>
+        <li><b>Road network</b> — State Highway and Major District Road centrelines with full inventory attributes (class, lane type, carriageway, surface, ownership, chainage, start/end locations).</li>
+        <li><b>Pavement condition</b> — Network Survey Vehicle (NSV) survey results (IRI roughness, cracking, potholes, rutting, texture, patching, ravelling) placed on the map lane-by-lane at every chainage.</li>
+        <li><b>NSV survey video</b> — the actual survey footage, played back in sync with the map: as the video plays, a vehicle marker drives along the road with live chainage and lane-wise condition read-out.</li>
+        <li><b>PCI</b> — a built-in <b>IRC:82-2023</b> Pavement Condition Index engine that converts raw distress data into a 0–100 index per stretch, with editable weightages, colour-coded map layers, and exportable reports.</li>
+        <li><b>FWD</b> — Falling Weight Deflectometer structural survey results (D0 deflection) as colour-coded segments along the network.</li>
+        <li><b>Traffic</b> — survey stations with ADT, peak-hour, direction split and vehicle-class breakdown.</li>
+        <li><b>Structures &amp; furniture</b> — bridges, culverts and roadside furniture placed by chainage.</li>
+        <li><b>Government Orders</b> — a searchable GO repository with folder organisation.</li>
+      </ul>
+
+      <h3 style="--ac:var(--green)">1.2 Who uses it?</h3>
+      <table class="tbl">
+        <tr><th>Role</th><th>Typical user</th><th>What they can do</th></tr>
+        <tr><td><span class="pill role">USER</span></td><td>Field engineers, section staff</td><td>View everything — map, dashboards, reports, videos, GOs</td></tr>
+        <tr><td><span class="pill role">ADMIN</span></td><td>RMMS Cell data operators</td><td>Everything above <b>plus</b> import/edit data in the Data Console and GO Portal</td></tr>
+        <tr><td><span class="pill role">SUPER_ADMIN</span></td><td>System administrator</td><td>Everything above <b>plus</b> User Management, Site Control and Login Activity</td></tr>
+      </table>
+      <p>Role gating is applied both in the interface (buttons hidden for lower roles) and enforced on the server.</p>
+
+      <h3 style="--ac:var(--green)">1.3 System at a glance</h3>
+      <table class="tbl">
+        <tr><th>Component</th><th>Detail</th></tr>
+        <tr><td><b>Access</b></td><td>Web browser (Chrome / Edge / Firefox recommended), no installation</td></tr>
+        <tr><td><b>Map engine</b></td><td>MapLibre GL (WebGL). A <b>Lite map</b> is provided for machines without graphics acceleration</td></tr>
+        <tr><td><b>Backend</b></td><td>Spring Boot (Java), PostgreSQL + PostGIS</td></tr>
+        <tr><td><b>PCI standard</b></td><td>IRC:82-2023 — <i>Code of Practice for Maintenance of Bituminous Road Surfaces</i></td></tr>
+      </table>
+
+      <!-- ============ 2. GETTING STARTED ============ -->
+      <div class="ch" id="ch2"><span class="num" style="--ac:var(--blue)">2</span><h2>Getting Started<span class="sub">Signing in and finding your way</span></h2></div>
+
+      <h3>2.1 Signing in</h3>
+      <ol>
+        <li>Open the KLRAMS address in your browser. The <b>public portal</b> loads without a login.</li>
+        <li>Click <b>Sign in</b> (or open <code>/login.html</code>).</li>
+        <li>Enter the username and password issued by the RMMS Cell.</li>
+      </ol>
+      <figure class="fig" data-img="fig-02-01-login.png" data-hint="Capture /login.html with the username and password form visible.">
+        <figcaption><span class="fig-no">Figure 2.1</span>The KLRAMS Console sign-in page.</figcaption>
+      </figure>
+      <div class="note tip"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
+        <div><b>First login:</b> new accounts are created with a temporary password and are forced to change it at first sign-in. You will be redirected to the <b>Change password</b> page automatically; choose a new password to continue.</div></div>
+      <figure class="fig" data-img="fig-02-02-change-password.png" data-hint="Capture /change-password.html.">
+        <figcaption><span class="fig-no">Figure 2.2</span>First-login password change.</figcaption>
+      </figure>
+
+      <h3>2.2 Where things are</h3>
+      <table class="tbl">
+        <tr><th>Page</th><th>URL</th><th>Login needed</th></tr>
+        <tr><td>Public portal (KHRI)</td><td><code>/welcome.html</code></td><td>No</td></tr>
+        <tr><td>GO Portal (viewing)</td><td><code>/go.html</code></td><td>No (viewing); upload needs ADMIN</td></tr>
+        <tr><td>Staff home</td><td><code>/home.html</code></td><td>Yes</td></tr>
+        <tr><td>GIS Viewer</td><td><code>/map.html</code></td><td>Yes</td></tr>
+        <tr><td>GIS Viewer (Lite)</td><td><code>/map-lite.html</code></td><td>Yes</td></tr>
+        <tr><td>Data Console</td><td><code>/index.html</code></td><td>Yes (imports need ADMIN)</td></tr>
+        <tr><td><b>User Manual (this page)</b></td><td><code>/manual.html</code></td><td>Yes</td></tr>
+        <tr><td>User Management</td><td><code>/users.html</code></td><td>SUPER_ADMIN</td></tr>
+        <tr><td>Login Activity</td><td><code>/login-report.html</code></td><td>SUPER_ADMIN</td></tr>
+        <tr><td>Site Control</td><td><code>/admin.html</code></td><td>SUPER_ADMIN</td></tr>
+      </table>
+
+      <h3>2.3 Browser requirements</h3>
+      <p>The main GIS viewer uses WebGL. If your machine or remote-desktop session has no graphics acceleration, KLRAMS detects this and offers the <b>Lite map</b> (see § 4.18) which needs no WebGL.</p>
+
+      <!-- ============ 3. PORTALS ============ -->
+      <div class="ch" id="ch3"><span class="num" style="--ac:var(--gold)">3</span><h2>The Portals<span class="sub">Public site and staff home</span></h2></div>
+
+      <h3 style="--ac:var(--gold)">3.1 Public portal</h3>
+      <p>The public portal presents KHRI / RMMS Cell information — About, Contact and FAQ content (editable by administrators through <b>Site Control</b>, § 8) and public access to the <b>GO Portal</b>.</p>
+      <figure class="fig" data-img="fig-03-01-public-portal.png" data-hint="Capture /welcome.html — full page.">
+        <figcaption><span class="fig-no">Figure 3.1</span>The public KHRI portal (no login required).</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--gold)">3.2 Staff home</h3>
+      <p>After signing in you land on the <b>staff home portal</b> — a launcher for every module. Tiles that your role cannot use are hidden automatically.</p>
+      <figure class="fig" data-img="fig-03-02-home-portal.png" data-hint="Capture /home.html after login as SUPER_ADMIN so every tile is visible.">
+        <figcaption><span class="fig-no">Figure 3.2</span>Staff home with module tiles: GIS Viewer, Data Console, GO Portal, User Manual, Site Control, User Management, Login Activity — plus quick chips into the viewer tools.</figcaption>
+      </figure>
+      <!-- ============ 4. GIS VIEWER ============ -->
+      <div class="ch" id="ch4"><span class="num" style="--ac:var(--violet)">4</span><h2>The GIS Viewer<span class="sub">Everything KLRAMS knows, on one map</span></h2></div>
+      <p>The GIS viewer (<code>/map.html</code>) is the heart of KLRAMS. Everything the system knows about a road is reachable from this one screen.</p>
+
+      <h3 style="--ac:var(--violet)" id="s4-1">4.1 Screen layout</h3>
+      <figure class="fig" data-img="fig-04-01-gis-overview.png" data-hint="Capture map.html with the Road network layer ON, layers panel open, zoomed to the network.">
+        <figcaption><span class="fig-no">Figure 4.1</span>GIS viewer: icon rail (left), layers panel, search bar (top), map canvas, legend (bottom-left), Sahaayi assistant (bottom-right).</figcaption>
+      </figure>
+      <table class="tbl">
+        <tr><th>Element</th><th>Where</th><th>What it does</th></tr>
+        <tr><td><b>Icon rail</b></td><td>far left</td><td>Switches the side panel: <b>Layers</b>, <b>Network</b>, <b>Filter</b>, <b>Base map</b>, <b>Measure</b>, and a shortcut back to the <b>Console</b></td></tr>
+        <tr><td><b>App launcher</b> (grid icon)</td><td>top-left</td><td>Opens the in-map launcher: Dashboard, Asset Register, PCI, Report Hub, NSV Videos and more</td></tr>
+        <tr><td><b>Search bar</b></td><td>top centre</td><td>Road search (name / number / section label) — see § 4.13</td></tr>
+        <tr><td><b>Legend</b></td><td>bottom-left</td><td>Automatic legend for whichever layers are on</td></tr>
+        <tr><td><b>Lite map / Sign out</b></td><td>top-right</td><td>Switch to the WebGL-free viewer; end your session</td></tr>
+        <tr><td><b>Ask Sahaayi</b></td><td>bottom-right</td><td>The KLRAMS assistant (§ 4.17)</td></tr>
+      </table>
+      <figure class="fig" data-img="fig-04-02-app-launcher.png" data-hint="Capture map.html with the grid launcher open.">
+        <figcaption><span class="fig-no">Figure 4.2</span>The app launcher: one click to Dashboard, Asset Register, PCI, Report Hub, NSV Videos.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-2">4.2 Map layers</h3>
+      <p>Open the <b>Layers</b> panel from the icon rail. Layers are grouped; click a group to expand it and use the toggles. Data loads on demand — the first time you switch a layer on it may take a moment.</p>
+      <table class="tbl">
+        <tr><th>Group</th><th>Layers</th></tr>
+        <tr><td><b>Road Network</b></td><td>PWD road centrelines (SH / MDR); <b>Full Road Network</b> (secondary network, by road name)</td></tr>
+        <tr><td><b>Road Condition Data &amp; FWD</b></td><td>NSV condition segments (lane-wise); FWD D0 segments</td></tr>
+        <tr><td><b>Administrative boundary</b></td><td>District boundary; Constituency boundary</td></tr>
+        <tr><td><b>Structures &amp; furniture</b></td><td>Bridges; Culverts; Furniture (point); Furniture (line)</td></tr>
+        <tr><td><b>PCI</b></td><td>Composite PCI; Worst-Lane PCI (generate first — § 4.6)</td></tr>
+        <tr><td><b>Traffic stations</b></td><td>Survey stations with counts</td></tr>
+        <tr><td><b>Sub-grade soil, Bituminous core &amp; Pavement crust</b></td><td>Geotechnical investigation layers</td></tr>
+        <tr><td><b>Climate</b></td><td>Flood susceptibility and related climate layers</td></tr>
+      </table>
+      <p>The <b>Network</b> panel adds display controls for the road network itself: <b>colour by attribute</b> (e.g. road class, surface type, ownership) and <b>filter by attribute</b>, with a live legend.</p>
+      <figure class="fig" data-img="fig-04-03-network-panel.png" data-hint="Capture the Network panel open with 'Colour by attribute' set (e.g. Road class) and the legend showing SH / MDR.">
+        <figcaption><span class="fig-no">Figure 4.3</span>Colouring the network by an attribute; the legend updates automatically.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-3">4.3 Road Inspector — click any road</h3>
+      <p>Click any road on the map to open the <b>Road Inspector</b>. This is the single most useful action in the viewer — the inspector brings together everything KLRAMS knows at that exact spot:</p>
+      <ul>
+        <li><b>Road identity</b> — road name, road number, class (SH / MDR / …), section label.</li>
+        <li><b>Geometry &amp; referencing</b> — <b>start location</b> and <b>end location</b>, <b>road start / end chainage</b>, measured length, and the <b>chainage at the point you clicked</b>.</li>
+        <li><b>Inventory</b> — lane type, single/dual carriageway, pavement width band, construction type, surface type, current owner, PWD section, CRN, district.</li>
+        <li><b>Condition at that chainage</b> — for every condition layer you have on, the values of the 100 m block you clicked (lane-wise).</li>
+        <li><b>PCI cards</b> — the computed PCI at that stretch (once PCI has been generated).</li>
+        <li><b>NSV survey coverage</b> — a coverage bar showing how much of the road has survey video, with any gaps.</li>
+        <li><b>▶ Play footage</b> — launches the synchronized NSV video (§ 4.5). The button appears only when footage exists for this road.</li>
+      </ul>
+      <figure class="fig" data-img="fig-04-04-road-inspector.png" data-hint="Click mid-way along a surveyed road with the Condition layer ON, so the inspector shows attributes + condition values + Play footage.">
+        <figcaption><span class="fig-no">Figure 4.4</span>Road Inspector: identity, start/end locations and chainages, inventory attributes, condition at the clicked chainage, NSV coverage and the Play footage button.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-4">4.4 Road Condition Data (NSV survey)</h3>
+      <p>Switch on <b>Road Condition Data</b> in the Layers panel. The network is drawn as colour-coded segments — by default coloured by <b>IRI</b> (roughness) into <b>Good / Fair / Poor</b> bands.</p>
+      <p><b>Lane-wise display.</b> Condition is stored per lane (XSP: <code>CC</code>, <code>CL1</code>, <code>CL2</code>, <code>CR1</code>, <code>CR2</code>). On the map each lane is drawn as its own parallel line offset from the centreline, so a dual-lane road shows its left and right survey lanes side by side.</p>
+      <p><b>Colour by any parameter.</b> In the layer's style controls choose the parameter to colour by:</p>
+      <table class="tbl">
+        <tr><th>Parameter</th><th>Unit</th><th><span class="pill good">Good</span></th><th><span class="pill fair">Fair</span></th><th><span class="pill poor">Poor</span></th></tr>
+        <tr><td>IRI (roughness)</td><td>m/km</td><td>&lt; 2.55</td><td>2.55 – 3.30</td><td>&gt; 3.30</td></tr>
+        <tr><td>Cracking</td><td>% area</td><td>&lt; 5</td><td>5 – 15</td><td>&gt; 15</td></tr>
+        <tr><td>Pothole</td><td>count</td><td>&lt; 1</td><td>1 – 3</td><td>&gt; 3</td></tr>
+        <tr><td>Rutting</td><td>mm</td><td>&lt; 5</td><td>5 – 10</td><td>&gt; 10</td></tr>
+        <tr><td>Texture</td><td>—</td><td>&lt; 1</td><td>1 – 3</td><td>&gt; 3</td></tr>
+        <tr><td>Patch work</td><td>%</td><td>&lt; 5</td><td>5 – 10</td><td>&gt; 10</td></tr>
+        <tr><td>Ravelling</td><td>%</td><td>&lt; 5</td><td>5 – 10</td><td>&gt; 10</td></tr>
+      </table>
+      <p>The Good/Fair/Poor thresholds are pre-set per <b>IRC:82-2023 (Table 5.3)</b> but <b>editable</b> in the panel (with a "Reset to IRC defaults" button), so you can explore stricter or looser bands without touching the data.</p>
+      <figure class="fig" data-img="fig-04-05-condition-iri.png" data-hint="Capture the Condition layer ON, coloured by IRI, zoomed enough that the parallel lane lines are visible, legend showing Good/Fair/Poor.">
+        <figcaption><span class="fig-no">Figure 4.5</span>NSV condition segments coloured Good/Fair/Poor by IRI; parallel lines are the survey lanes.</figcaption>
+      </figure>
+      <figure class="fig" data-img="fig-04-06-condition-inspector.png" data-hint="Capture the Road Inspector open on a condition segment showing the condition table.">
+        <figcaption><span class="fig-no">Figure 4.6</span>Clicking a segment shows every distress value for that 100 m block, per lane.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-5">4.5 NSV Survey Video — synchronized playback</h3>
+      <p>This is KLRAMS's signature feature: the Network Survey Vehicle footage plays <b>in sync with the map</b>.</p>
+      <p><b>To start:</b> click a surveyed road → in the Road Inspector press <b>▶ Play footage</b>. (The button only shows on roads that have footage in the video catalogue.)</p>
+      <ol>
+        <li>A <b>video dock</b> opens at the bottom of the screen and the survey footage starts playing from the chainage you clicked.</li>
+        <li>A <b>vehicle marker (car icon)</b> appears on the road and drives along the centreline in step with the video.</li>
+        <li>The live <b>HUD</b> shows the current <b>chainage</b> (metres from the road start), the <b>direction of travel</b> (Forward = start→end, i.e. increasing chainage; Back = decreasing), and the <b>lane-wise IRI</b> at the vehicle's position.</li>
+        <li>A <b>condition read-out</b> for the current chainage block updates continuously as the vehicle moves — so you can watch the pavement in the video and read its measured condition at the same instant.</li>
+      </ol>
+      <table class="tbl">
+        <tr><th>Dock control</th><th>What it does</th></tr>
+        <tr><td><b>Speed</b> 0.25× / 0.5× / 1× / 1.5× / 2×</td><td>Playback speed</td></tr>
+        <tr><td><b>Front / Back</b></td><td>Direction of travel along the road</td></tr>
+        <tr><td><b>Seek bar</b></td><td>Jump to any point; the map marker jumps with it</td></tr>
+        <tr><td><b>Follow</b></td><td>Keeps the map centred on the moving vehicle (the map pans/zooms automatically)</td></tr>
+        <tr><td><b>Fullscreen</b></td><td>Expands the video</td></tr>
+      </table>
+      <p><b>Chainage synchronisation.</b> The video is linearly referenced to the road: every video moment maps to a chainage, and every chainage maps to a location on the centreline. Clicking a different point on the same road while the dock is open <b>seeks the video to that chainage</b>. The start and end of the footage correspond to the road's start/end locations recorded in the inventory.</p>
+      <p><b>Coverage and gaps.</b> The inspector's <i>NSV survey coverage</i> bar shows the percentage of the road covered by footage and marks any gaps; playback skips over gaps automatically.</p>
+      <figure class="fig" data-img="fig-04-07-nsv-video-sync.png" data-hint="Capture the video dock open mid-playback: car marker on the road, HUD showing chainage + IRI, dock controls visible.">
+        <figcaption><span class="fig-no">Figure 4.7</span>Survey footage in the dock; the car marker drives the map at the matching chainage with live IRI; speed and Front/Back controls on the dock.</figcaption>
+      </figure>
+      <figure class="fig" data-img="fig-04-08-nsv-follow.png" data-hint="Capture the same playback with Follow enabled, map zoomed to the car.">
+        <figcaption><span class="fig-no">Figure 4.8</span>Follow mode keeps the vehicle in view as it drives.</figcaption>
+      </figure>
+      <p><b>NSV Videos catalogue.</b> The launcher's <b>NSV Videos</b> app lists every road with footage — with direction (forward/reverse) and coverage — and opens playback directly.</p>
+      <figure class="fig" data-img="fig-04-09-nsv-catalogue.png" data-hint="Capture launcher → NSV Videos screen.">
+        <figcaption><span class="fig-no">Figure 4.9</span>The NSV Videos screen: all surveyed roads, their footage direction and coverage.</figcaption>
+      </figure>
+      <h3 style="--ac:var(--violet)" id="s4-6">4.6 Pavement Condition Index (PCI) — IRC:82-2023</h3>
+      <p>KLRAMS computes PCI from the NSV distress data using the <b>IRC:82-2023</b> method — no external processing needed. Each parameter's distress is converted to a 0–100 index using the thresholds of <b>Table 5.3</b>, and combined with the weightages of <b>Table 5.4</b>.</p>
+      <p><b>Open:</b> launcher → <b>PCI</b> (or the PCI group in Layers).</p>
+      <h4>Weightages (editable)</h4>
+      <p>Each distress parameter is converted to a 0–100 index and combined using weightages. The defaults follow <b>IRC:82-2023 Table 5.4</b> (Σ = 1.00) and can be edited before generating; <b>Reset to IRC:82-2023</b> restores them.</p>
+      <table class="tbl">
+        <tr><th>Parameter</th><th>Default weight (IRC:82-2023)</th></tr>
+        <tr><td>IRI (roughness)</td><td>0.40</td></tr>
+        <tr><td>Cracking</td><td>0.16</td></tr>
+        <tr><td>Rut depth</td><td>0.14</td></tr>
+        <tr><td>Ravelling</td><td>0.12</td></tr>
+        <tr><td>Patch work</td><td>0.10</td></tr>
+        <tr><td>Pothole</td><td>0.08</td></tr>
+      </table>
+      <figure class="fig" data-img="fig-04-10-pci-weightages.png" data-hint="Capture the PCI screen, Weightages tab, with the editable weightage factors and the Generate PCI button.">
+        <figcaption><span class="fig-no">Figure 4.10</span>PCI screen, Weightages tab: editable IRC:82-2023 weightage factors and the Generate PCI button.</figcaption>
+      </figure>
+      <h4>Generate and map</h4>
+      <p>Press <b>Generate PCI</b>. Two map layers become available:</p>
+      <ul>
+        <li><b>Composite PCI</b> — the carriageway-wide index (lane distresses pooled, one PCI).</li>
+        <li><b>Worst-Lane PCI</b> — the minimum of the per-lane PCIs (the weakest lane governs).</li>
+      </ul>
+      <p>Segments are coloured by rating band (Appendix C). Clicking a stretch shows a PCI popup with the index, band, per-parameter sub-indices and the recommended intervention.</p>
+      <figure class="fig" data-img="fig-04-11-pci-map.png" data-hint="Capture the PCI layer ON after generating, legend showing Excellent…Fail.">
+        <figcaption><span class="fig-no">Figure 4.11</span>Composite PCI layer with the six-band legend.</figcaption>
+      </figure>
+      <figure class="fig" data-img="fig-04-12-pci-popup.png" data-hint="Click a PCI segment and capture the popup.">
+        <figcaption><span class="fig-no">Figure 4.12</span>PCI at a stretch: index, band and per-parameter breakdown.</figcaption>
+      </figure>
+      <h4>PCI Report</h4>
+      <p>The <b>Report</b> tab produces the formal output:</p>
+      <ul>
+        <li><b>Per-section</b> and <b>per-chainage</b> tables (every 100 m block with its distresses, sub-indices and PCI).</li>
+        <li>A <b>band distribution bar</b> across the selected scope.</li>
+        <li><b>CSV export</b> and <b>print/PDF</b> output for circulation.</li>
+      </ul>
+      <figure class="fig" data-img="fig-04-13-pci-report.png" data-hint="Capture the PCI screen → Report tab with a table of chainage rows.">
+        <figcaption><span class="fig-no">Figure 4.13</span>PCI Report: per-chainage table with distribution bar; CSV and PDF export.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-7">4.7 FWD — structural condition</h3>
+      <p>The Falling Weight Deflectometer survey measures pavement deflection under a standard load; <b>D0</b> (centre deflection, microns) is the primary structural indicator.</p>
+      <p>Switch on <b>FWD (D0)</b> in the Layers panel. Deflection ranges (From–To chainage) are drawn as colour-coded segments along the centreline. Use the <b>D0 range (microns)</b> min/max filter in the panel to isolate weak stretches. Click a segment for the full deflection bowl (D0, D200, D300, D600, D900…), load and pavement temperature — every column from the survey CSV is kept and shown.</p>
+      <figure class="fig" data-img="fig-04-14-fwd-layer.png" data-hint="Capture the FWD layer ON with legend, panel showing the D0 range filter.">
+        <figcaption><span class="fig-no">Figure 4.14</span>FWD segments coloured by D0 with the range filter.</figcaption>
+      </figure>
+      <figure class="fig" data-img="fig-04-15-fwd-popup.png" data-hint="Click an FWD segment and capture the popup.">
+        <figcaption><span class="fig-no">Figure 4.15</span>FWD segment detail: chainage range and full deflection data.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-8">4.8 Traffic stations</h3>
+      <p>Switch on <b>Traffic stations</b>. Stations are placed on their road <b>by chainage</b> (falling back to surveyed lat/long). Click a station for the full survey summary:</p>
+      <ul>
+        <li><b>ADT</b> (average daily traffic) and total volume with survey dates,</li>
+        <li><b>Peak hour</b> — volume, time window and dominant direction,</li>
+        <li><b>Direction split</b> — totals and per-day volumes each way,</li>
+        <li><b>Vehicle-class breakdown</b> (car/jeep/van, two-wheeler, auto, bus, LCV, HCV/truck…),</li>
+        <li>Hour-of-day profile.</li>
+      </ul>
+      <p>A <b>Minimum ADT</b> filter in the panel hides low-volume stations when you're scanning for heavy corridors.</p>
+      <figure class="fig" data-img="fig-04-16-traffic-station.png" data-hint="Capture the Traffic layer ON with one station popup open (ADT, peak hour, split).">
+        <figcaption><span class="fig-no">Figure 4.16</span>Traffic station: ADT, peak hour, direction split, class breakdown.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-9">4.9 Structures &amp; road furniture</h3>
+      <p>Bridges (line features, From–To chainage), culverts (points at a chainage) and road furniture (points/lines) are placed on the centreline by linear reference. Each type has its own map icon; click for the structure's attributes (name, type, spans, size, condition…).</p>
+      <figure class="fig" data-img="fig-04-17-structures.png" data-hint="Capture the Structures layers ON, zoomed to show icons, one popup open.">
+        <figcaption><span class="fig-no">Figure 4.17</span>Bridges, culverts and furniture with a structure popup open.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-10">4.10 Asset Register</h3>
+      <p>Launcher → <b>Asset Register</b> opens the tabular register with <b>Road / Bridge / Culvert</b> tabs — the same data as the map, in sortable table form for inventory review.</p>
+      <figure class="fig" data-img="fig-04-18-asset-register.png" data-hint="Capture the Asset Register screen, Road tab.">
+        <figcaption><span class="fig-no">Figure 4.18</span>Asset Register: road inventory tab.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-11">4.11 Network Dashboard</h3>
+      <p>Launcher → <b>Dashboard</b> opens the network analytics screen with four tabs:</p>
+      <ul>
+        <li><b>Network Overview</b> — total network length (with the <b>dual-carriageway correction</b>: A/B carriageway pairs are averaged so dual roads are not double-counted), as-drawn length, SH/MDR split, network by road class (donut), network by current owner (ranked bars), and the longest SH / MDR roads with a district filter.</li>
+        <li><b>PCI Analysis</b> — network-wide IRC:82-2023 PCI distribution and rankings (after generating PCI).</li>
+        <li><b>Culverts</b> and <b>Bridges</b> — structure inventories and condition summaries.</li>
+      </ul>
+      <figure class="fig" data-img="fig-04-19-dashboard-overview.png" data-hint="Capture Dashboard → Network Overview tab.">
+        <figcaption><span class="fig-no">Figure 4.19</span>Network Overview: corrected network length, class split, ownership, longest roads.</figcaption>
+      </figure>
+      <figure class="fig" data-img="fig-04-20-dashboard-pci.png" data-hint="Capture Dashboard → PCI Analysis after generating PCI.">
+        <figcaption><span class="fig-no">Figure 4.20</span>Dashboard → PCI Analysis tab.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-12">4.12 Report Hub</h3>
+      <p>Launcher → <b>Report Hub</b> gathers the printable/exportable reports in one place, one tab per dataset: <b>Condition</b>, <b>FWD</b>, <b>Sub-Grade Soil</b>, <b>Bituminous Core</b>, <b>Pavement Crust</b>, <b>Traffic</b> (station &amp; count report), and <b>Flood</b>.</p>
+      <figure class="fig" data-img="fig-04-21-report-hub.png" data-hint="Capture the Report Hub open, e.g. the FWD tab.">
+        <figcaption><span class="fig-no">Figure 4.21</span>Report Hub with dataset tabs.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-13">4.13 Search — roads and places</h3>
+      <ul>
+        <li><b>Road search</b> (top search bar): type a road name, road number or section label; matches list instantly; selecting one zooms to the road.</li>
+        <li><b>Location search</b> (Base map panel → <i>Find a location</i>): search any place name, or type a coordinate like <code>8.5241, 76.9366</code> to jump straight there.</li>
+      </ul>
+      <figure class="fig" data-img="fig-04-22-road-search.png" data-hint="Capture the search bar with a query typed and the suggestion list open.">
+        <figcaption><span class="fig-no">Figure 4.22</span>Road search suggestions.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-14">4.14 Base maps</h3>
+      <p>The <b>Base map</b> panel switches the background: <b>Streets (OSM)</b>, <b>Satellite (Esri)</b>, <b>Terrain (OpenTopo)</b>, <b>Light (Carto)</b>, <b>Dark — Night</b>. A background <b>opacity</b> slider lets the data stand out over any base.</p>
+      <figure class="fig" data-img="fig-04-23-basemaps.png" data-hint="Capture the Base map panel open; pick Satellite for visual interest.">
+        <figcaption><span class="fig-no">Figure 4.23</span>Base map choices and opacity control.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-15">4.15 Measure tools</h3>
+      <p>The <b>Measure</b> panel offers <b>Length</b>, <b>Area</b> and <b>Route</b> modes. Click on the map to add points; use <b>Undo point</b> and <b>Clear</b> to correct. Values update live as you draw.</p>
+      <figure class="fig" data-img="fig-04-24-measure.png" data-hint="Capture the Measure panel with a drawn measurement on the map.">
+        <figcaption><span class="fig-no">Figure 4.24</span>Measuring a length along a road.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-16">4.16 Filters</h3>
+      <p>The <b>Filter</b> panel applies attribute filters per layer — road network, condition, PCI, FWD, traffic. Choose <i>show matching only</i>, combine multiple conditions with <b>Match all / any</b>, and clear with one click. (A section is locked until its layer is switched on — use the <i>Turn on layer</i> shortcut in the panel.)</p>
+      <figure class="fig" data-img="fig-04-25-filters.png" data-hint="Capture the Filter panel with one active filter and the map showing only matching segments.">
+        <figcaption><span class="fig-no">Figure 4.25</span>Attribute filters, e.g. condition IRI &gt; 3.3 — show matching only.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-17">4.17 Sahaayi — the KLRAMS assistant</h3>
+      <p><b>Ask Sahaayi</b> (bottom-right) opens the built-in assistant for quick questions about the data and how to use the viewer.</p>
+      <figure class="fig" data-img="fig-04-26-sahaayi.png" data-hint="Capture the Sahaayi panel open with a sample question/answer.">
+        <figcaption><span class="fig-no">Figure 4.26</span>The Sahaayi chat panel.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-18">4.18 Lite map (no graphics acceleration)</h3>
+      <p>On machines without WebGL (some VDI/remote desktops), use <b>Lite map</b> (top-right button, or <code>/map-lite.html</code>). It renders the network without graphics acceleration — reduced styling, same data. If the main viewer cannot start WebGL it directs you there automatically.</p>
+      <figure class="fig" data-img="fig-04-27-map-lite.png" data-hint="Capture /map-lite.html with the network visible.">
+        <figcaption><span class="fig-no">Figure 4.27</span>The Lite viewer.</figcaption>
+      </figure>
+      <!-- ============ 5. DATA CONSOLE ============ -->
+      <div class="ch" id="ch5"><span class="num" style="--ac:var(--teal)">5</span><h2>The Data Console<span class="sub">Loading and managing every dataset</span></h2></div>
+      <p>The Data Console (<code>/index.html</code>) is where administrators load and manage every dataset. It has three tabs: <b>Data counts</b>, <b>Data Import Hub</b>, and <b>Upload log</b>. Viewing is open to all staff; <b>importing and removing data requires ADMIN</b>.</p>
+      <figure class="fig" data-img="fig-05-01-console-counts.png" data-hint="Capture Data Console → Data counts tab with data loaded.">
+        <figcaption><span class="fig-no">Figure 5.1</span>Data counts: every dataset with its stored row count, plus Refresh and Remove actions.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--teal)">5.1 Data counts</h3>
+      <p>One row per dataset (roads, condition, segments, FWD, assets, traffic, videos, boundaries…) showing what is currently stored. <b>Refresh counts</b> re-reads the database; <b>Remove current data</b> (per dataset) clears that dataset — use with care, this cannot be undone.</p>
+
+      <h3 style="--ac:var(--teal)">5.2 Data Import Hub</h3>
+      <figure class="fig" data-img="fig-05-02-console-import.png" data-hint="Capture Data Console → Data Import Hub tab.">
+        <figcaption><span class="fig-no">Figure 5.2</span>The Import Hub: choose the data category, format and file, then Import.</figcaption>
+      </figure>
+      <p>Pick the <b>Data Category</b>, the file, and any parameters, then press <b>Import</b>. The import formats:</p>
+
+      <h4>Road network (Shapefile ZIP / GeoJSON)</h4>
+      <ul>
+        <li>A shapefile <b>.zip</b> must contain the <code>.shp</code>, <code>.dbf</code> and <code>.prj</code>; it is read in your browser and converted before upload. GeoJSON is accepted directly.</li>
+        <li>Every feature <b>must carry a non-blank <code>Section_La</code></b> (section label) — the key that all other datasets reference. Geometry must be LineString.</li>
+        <li><b>Modes:</b> <i>Merge</i> (default) updates existing sections by <code>Section_La</code> and adds new ones; <i>Replace</i> wipes and reloads the whole network. Validation runs first — a bad file changes nothing.</li>
+        <li>Re-importing a road with the same <code>Section_La</code> refreshes that road.</li>
+      </ul>
+
+      <h4>Condition survey (CSV)</h4>
+      <p>Expected columns (header names exactly as below):</p>
+      <pre><code>Survey_Type, Section_Label, XSP, IRI, CRACK, Pothole, Rutting, Texture,
+Patch_Work, Ravelling, Start_Chainage, End_Chainage,
+Start_Latitude, Start_Longitude, End_Latitude, End_Longitude</code></pre>
+      <ul>
+        <li><code>Section_Label</code> must match the road's <code>Section_La</code>. <code>XSP</code> is the lane code (<code>CC</code>, <code>CL1</code>, <code>CL2</code>, <code>CR1</code>, <code>CR2</code>).</li>
+        <li>Import is <b>additive by section</b>: sections present in the file are replaced; others are kept.</li>
+        <li>After importing, press <b>Build segments</b> — this cuts the condition rows into map segments along the centreline by chainage (linear referencing). The condition layer reads these segments.</li>
+      </ul>
+
+      <h4>FWD survey (CSV)</h4>
+      <pre><code>Section_Label, Start_Chainage, End_Chainage, D0, D200, D300, D600, D900, ...</code></pre>
+      <ul>
+        <li>Each row is a chainage <b>range</b> carrying the deflection bowl; every extra column is preserved and shown in the popup.</li>
+        <li>After importing, press <b>Build FWD segments</b> to place the ranges on the network.</li>
+      </ul>
+
+      <h4>Structures &amp; furniture (CSV)</h4>
+      <ul>
+        <li><b>Bridges / line assets:</b> <code>Section_Label, Start_Chainage, End_Chainage, …attributes</code></li>
+        <li><b>Culverts / point assets:</b> <code>Section_Label, Chainage, …attributes</code> (optional <code>Latitude</code>/<code>Longitude</code> override the chainage placement)</li>
+        <li>All other columns are kept as attributes and shown in the popup.</li>
+      </ul>
+
+      <h4>Traffic survey</h4>
+      <p>Two files: <b>stations</b> (name, road, section, chainage, lat/long, lane) and <b>counts</b> (per-station volumes: totals, dates, direction split, class breakdown, hourly profile). Stations are placed by chainage on their section; counts attach by station name.</p>
+
+      <h4>Survey video files &amp; catalogue</h4>
+      <ul>
+        <li><b>Videos:</b> upload a <b>.zip</b> of the footage files (large uploads resume automatically if interrupted). Videos are stored on the server disk and streamed at <code>/videos/…</code>.</li>
+        <li><b>Catalogue CSV:</b> links each road to its file:</li>
+      </ul>
+      <pre><code>section_label, video_file, direction</code></pre>
+      <p><code>direction</code> is <code>forward</code> (footage runs start→end / increasing chainage) or <code>reverse</code>. This is what powers the map-synchronized playback and the Front/Back control (§ 4.5).</p>
+
+      <h4>Boundaries &amp; Full Road Network</h4>
+      <ul>
+        <li><b>District boundary</b> and <b>Constituency boundary</b>: GeoJSON polygon uploads.</li>
+        <li><b>Full road network (by Road Name)</b>: the secondary network layer.</li>
+      </ul>
+      <div class="note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
+        <div><b>After any road-network upload</b> the viewer's cached GeoJSON is refreshed automatically, so the next map load shows the new data. If a layer ever looks stale, reload the page.</div></div>
+
+      <h3 style="--ac:var(--teal)">5.3 Upload log</h3>
+      <p>Every import is logged — who, when, what file, result. Use <b>Clear finished</b> to tidy the list.</p>
+      <figure class="fig" data-img="fig-05-03-console-log.png" data-hint="Capture Data Console → Upload log tab after a few imports.">
+        <figcaption><span class="fig-no">Figure 5.3</span>Upload log with the most recent imports.</figcaption>
+      </figure>
+
+      <!-- ============ 6. GO PORTAL ============ -->
+      <div class="ch" id="ch6"><span class="num" style="--ac:var(--gold)">6</span><h2>GO Portal<span class="sub">Government Orders repository</span></h2></div>
+      <p>The GO Portal (<code>/go.html</code>) is the department's searchable Government Order repository. <b>Viewing and downloading is public</b>; uploading and managing requires ADMIN.</p>
+      <ul>
+        <li><b>Folders</b> organise GOs (nested names like <code>Maintenance Sanctions/2026</code> are supported).</li>
+        <li><b>Upload</b> a GO with its <b>GO name</b> and <b>GO number</b>; the document itself is stored securely in the database.</li>
+        <li><b>Search</b> across GO name, number and filename.</li>
+        <li>Click a GO to <b>view or download</b> it.</li>
+        <li>Admins can delete documents; a folder can be removed only when empty.</li>
+      </ul>
+      <figure class="fig" data-img="fig-06-01-go-portal.png" data-hint="Capture /go.html with a folder selected and at least one GO listed.">
+        <figcaption><span class="fig-no">Figure 6.1</span>GO Portal: folder tree, document list and search.</figcaption>
+      </figure>
+
+      <!-- ============ 7. USERS & SECURITY ============ -->
+      <div class="ch" id="ch7"><span class="num" style="--ac:var(--amber)">7</span><h2>User Management &amp; Security<span class="sub">Accounts, roles, audit</span></h2></div>
+
+      <h3 style="--ac:var(--amber)">7.1 Accounts and roles (SUPER_ADMIN)</h3>
+      <p><b>User Management</b> (<code>/users.html</code>) creates and manages staff accounts:</p>
+      <ul>
+        <li><b>Create user</b> — username, full name, role (<b>USER / ADMIN / SUPER_ADMIN</b>) and a temporary password. New users must change the password at first login.</li>
+        <li><b>Edit</b> — change role or full name, <b>enable/disable</b> an account.</li>
+        <li><b>Reset password</b> — issues a new temporary password (forces a change at next login).</li>
+        <li>The last enabled SUPER_ADMIN is protected — it cannot be demoted, disabled or deleted.</li>
+      </ul>
+      <figure class="fig" data-img="fig-07-01-users.png" data-hint="Capture /users.html with 2–3 accounts of different roles.">
+        <figcaption><span class="fig-no">Figure 7.1</span>User Management: account list with roles and status; the create-user form.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--amber)">7.2 Changing your own password</h3>
+      <p>Any signed-in user can change their password from the account menu (or <code>/change-password.html</code>).</p>
+
+      <h3 style="--ac:var(--amber)">7.3 Login Activity (SUPER_ADMIN)</h3>
+      <p><code>/login-report.html</code> lists sign-in events — who signed in, when, and from where — for audit.</p>
+      <figure class="fig" data-img="fig-07-02-login-activity.png" data-hint="Capture /login-report.html with a few events.">
+        <figcaption><span class="fig-no">Figure 7.2</span>Login Activity report.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--amber)">7.4 What is public and what is protected</h3>
+      <table class="tbl">
+        <tr><th>Public (no login)</th><th>Protected (login)</th></tr>
+        <tr><td>Public portal, sign-in page</td><td>GIS viewer &amp; Lite map</td></tr>
+        <tr><td>GO Portal (viewing/downloading)</td><td>Staff home, User Manual, Data Console (imports: ADMIN)</td></tr>
+        <tr><td>Public site content (About/Contact/FAQ)</td><td>User Management, Site Control, Login Activity (SUPER_ADMIN)</td></tr>
+      </table>
+
+      <!-- ============ 8. SITE CONTROL ============ -->
+      <div class="ch" id="ch8"><span class="num" style="--ac:var(--violet)">8</span><h2>Site Control<span class="sub">Editing the public portal</span></h2></div>
+      <p><b>Site Control</b> (<code>/admin.html</code>, SUPER_ADMIN) edits the public portal's content without touching code:</p>
+      <ul>
+        <li><b>About</b> — the KHRI / RMMS Cell description shown on the public portal.</li>
+        <li><b>Contact</b> — address, phone, email block.</li>
+        <li><b>FAQ</b> — the public FAQ entries.</li>
+      </ul>
+      <p>Edit and <b>Save</b> each section; the public portal updates immediately.</p>
+      <figure class="fig" data-img="fig-08-01-site-control.png" data-hint="Capture /admin.html showing the three editable sections.">
+        <figcaption><span class="fig-no">Figure 8.1</span>Site Control: editing the public About / Contact / FAQ content.</figcaption>
+      </figure>
+
+      <!-- ============ 9. TROUBLESHOOTING ============ -->
+      <div class="ch" id="ch9"><span class="num" style="--ac:var(--red)">9</span><h2>Troubleshooting &amp; FAQ<span class="sub">Common questions, quick fixes</span></h2></div>
+      <h4>The map is blank / "Enable graphics to view the map".</h4>
+      <p>Your browser session has no WebGL. Use the <b>Lite map</b> button (or <code>/map-lite.html</code>), or enable hardware acceleration in the browser settings.</p>
+      <h4>I imported roads but the map still shows the old network.</h4>
+      <p>The viewer refreshes its road cache automatically after an upload; simply reload the page. If it persists, use the Data Console's refresh, then reload.</p>
+      <h4>Condition/FWD data imported but nothing shows on the map.</h4>
+      <p>Segments must be <b>built</b> after import — press <i>Build segments</i> (condition) or <i>Build FWD segments</i> in the Import Hub. Also confirm the CSV's <code>Section_Label</code> values exactly match the roads' <code>Section_La</code> — unmatched rows are dropped (the import result reports how many).</p>
+      <h4>The Play footage button doesn't appear on a road.</h4>
+      <p>That road has no entry in the video catalogue. Upload the footage zip and the catalogue CSV row linking <code>section_label</code> to <code>video_file</code>.</p>
+      <h4>A video plays but the marker/chainage looks wrong-way-round.</h4>
+      <p>Check the catalogue's <code>direction</code> for that road — <code>forward</code> means the footage runs from start chainage to end chainage; set <code>reverse</code> if it was filmed the other way.</p>
+      <h4>PCI layers are greyed out.</h4>
+      <p>PCI must be generated first: open PCI → (adjust weightages if needed) → <b>Generate PCI</b>.</p>
+      <h4>Upload says "roads table has no Section_La column" / features rejected.</h4>
+      <p>The shapefile/GeoJSON must carry <code>Section_La</code> on every feature; fix the attribute table and re-export.</p>
+      <h4>I can't see the Data Console import buttons.</h4>
+      <p>Imports require the ADMIN role — your account is USER (view-only). Contact the RMMS Cell.</p>
+      <h4>Large video zip upload was interrupted.</h4>
+      <p>Re-run the same upload — it resumes from where it stopped.</p>
+      <!-- ============ APPENDICES ============ -->
+      <div class="ch" id="appA"><span class="num" style="--ac:var(--green)">A</span><h2>Road data dictionary<span class="sub">Attributes carried by each road section</span></h2></div>
+      <p>Attributes carried by each road section (from the PWD road inventory shapefile):</p>
+      <div class="tblwrap"><table class="tbl">
+        <tr><th>Field</th><th>Meaning</th><th>Values / unit</th></tr>
+        <tr><td><code>Section_La</code></td><td><b>Section label — the unique key</b> every dataset references</td><td>text</td></tr>
+        <tr><td><code>Road_Name</code></td><td>Road name</td><td>text</td></tr>
+        <tr><td><code>Road_Num</code></td><td>Road number</td><td>e.g. SH 01</td></tr>
+        <tr><td><code>Road_Class</code></td><td>Classification</td><td><code>SH</code> State Highway · <code>MDR</code> Major District Road · <code>ODR</code> Other District Road · <code>NH</code> National Highway</td></tr>
+        <tr><td><code>Road_Type</code></td><td>Lane type</td><td><code>SLR</code> Single · <code>ILR</code> Intermediate · <code>TLR</code> Two Lane · <code>WTL</code> Wide Two Lane · <code>FLR</code> Four Lane</td></tr>
+        <tr><td><code>Single_Du</code></td><td>Carriageway</td><td><code>Single</code> / <code>Dual</code> (dual roads are stored as two centrelines, section label suffixed <code>A</code> / <code>B</code>)</td></tr>
+        <tr><td><code>Rd_Str_Loc</code> / <code>Rd_End_Loc</code></td><td><b>Start / end location</b> (place names)</td><td>text</td></tr>
+        <tr><td><code>Rd_Str_cha</code> / <code>Rd_End_cha</code></td><td><b>Start / end chainage</b></td><td>metres</td></tr>
+        <tr><td><code>Measrd_Len</code></td><td>Measured length</td><td>metres</td></tr>
+        <tr><td><code>Pavement_W</code></td><td>Pavement width band</td><td>1: ≥3.75 &amp; &lt;5.5 m · 2: &gt;5.5 &amp; &lt;7 m · 3: ≥7 &amp; &lt;10.5 m · 4: ≥10.5 &amp; ≤12.5 m · 5: &gt;12.5 m</td></tr>
+        <tr><td><code>Cons_Type</code></td><td>Construction</td><td><code>FLX</code> Flexible · <code>RGD</code> Rigid · <code>CMP</code> Composite · <code>WBM</code> · <code>GRV</code> Gravel · <code>ERT</code> Earthen · <code>PVB</code> Paver Block</td></tr>
+        <tr><td><code>Surface_Ty</code></td><td>Surface</td><td><code>BT</code> Bituminous · <code>CC</code> Cement Concrete · <code>PVB</code> Paver Block · <code>WBM</code> · <code>GRV</code> Gravel · <code>ERT</code> Earthen</td></tr>
+        <tr><td><code>Current_Ow</code></td><td>Current owner</td><td>PWD Section / PWD Maintenance / KRFB / KRFB-PMU / KSTP / RICK / KMRL</td></tr>
+        <tr><td><code>PWD_Sec</code></td><td>PWD section office</td><td>text</td></tr>
+        <tr><td><code>CRN</code></td><td>Core road network number</td><td>text</td></tr>
+        <tr><td><code>District</code></td><td>District</td><td>text</td></tr>
+      </table></div>
+      <div class="note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
+        <div><b>Linear referencing rule</b> — a chainage <code>c</code> is placed on the centreline at fraction <code>c / L</code>, where the reference length <code>L</code> is, in priority order: <code>Rd_End_cha − Rd_Str_cha</code>, else <code>Measrd_Len</code>, else the geometric length.</div></div>
+
+      <div class="ch" id="appB"><span class="num" style="--ac:var(--blue)">B</span><h2>Condition parameters &amp; thresholds<span class="sub">Default Good / Fair / Poor bands</span></h2></div>
+      <p>NSV condition is recorded per lane (<code>XSP</code>) for every 100 m block (<code>Start_Chainage</code>–<code>End_Chainage</code>), with start/end coordinates. Default Good/Fair/Poor bands per <b>IRC:82-2023 Table 5.3</b> (editable in the viewer):</p>
+      <table class="tbl">
+        <tr><th>Parameter</th><th>Unit</th><th><span class="pill fair">Fair from</span></th><th><span class="pill poor">Poor from</span></th></tr>
+        <tr><td>IRI</td><td>m/km</td><td>2.55</td><td>3.30</td></tr>
+        <tr><td>Crack</td><td>%</td><td>5</td><td>15</td></tr>
+        <tr><td>Pothole</td><td>count</td><td>1</td><td>3</td></tr>
+        <tr><td>Rutting</td><td>mm</td><td>5</td><td>10</td></tr>
+        <tr><td>Texture</td><td>—</td><td>1</td><td>3</td></tr>
+        <tr><td>Patch work</td><td>%</td><td>5</td><td>10</td></tr>
+        <tr><td>Ravelling</td><td>%</td><td>5</td><td>10</td></tr>
+      </table>
+
+      <div class="ch" id="appC"><span class="num" style="--ac:var(--gold)">C</span><h2>PCI method — IRC:82-2023<span class="sub">Weightages and rating bands</span></h2></div>
+      <p><b>Method (IRC:82-2023).</b> Each distress is converted to a 0–100 sub-index using the Table 5.3 thresholds; the PCI is the weighted combination using the (editable) Table 5.4 weightages — defaults: IRI 0.40, Cracking 0.16, Rut depth 0.14, Ravelling 0.12, Patch work 0.10, Pothole 0.08 (Σ = 1.00).</p>
+      <p><b>Lane aggregation.</b></p>
+      <ul>
+        <li><i>Worst-Lane PCI</i> = the minimum of the per-lane PCIs.</li>
+        <li><i>Composite PCI</i> = one PCI computed from the lane distresses pooled across the carriageway.</li>
+      </ul>
+      <p><b>Rating bands and recommended action:</b></p>
+      <table class="tbl">
+        <tr><th>PCI</th><th>Rating</th><th>Recommended intervention</th></tr>
+        <tr><td>90 – 100</td><td><span class="pill band" style="background:#22c55e">Excellent</span></td><td>Routine maintenance</td></tr>
+        <tr><td>80 – 90</td><td><span class="pill band" style="background:#84cc16">Good</span></td><td>Preventive maintenance</td></tr>
+        <tr><td>60 – 80</td><td><span class="pill band" style="background:#eab308">Satisfactory</span></td><td>Resurfacing (structural check)</td></tr>
+        <tr><td>40 – 60</td><td><span class="pill band" style="background:#f97316">Fair</span></td><td>Minor rehabilitation</td></tr>
+        <tr><td>20 – 40</td><td><span class="pill band" style="background:#ef4444;color:#fff">Poor</span></td><td>Major rehabilitation / overlay</td></tr>
+        <tr><td>0 – 20</td><td><span class="pill band" style="background:#991b1b;color:#fff">Fail</span></td><td>Reconstruction</td></tr>
+      </table>
+
+      <div class="ch" id="appD"><span class="num" style="--ac:var(--violet)">D</span><h2>Screenshot manager<span class="sub">Figure status &amp; uploads</span></h2></div>
+      <p>Every figure in this manual is listed below with its upload status. <span data-requires="admin">As an administrator you can upload or replace a screenshot right here, or from the figure itself anywhere in the manual — hover a figure and use <b>Upload PNG</b> / <b>Replace</b> / <b>Remove</b>.</span> Recommended capture: a 1440×900 browser window, signed in as SUPER_ADMIN, with representative data loaded. PNG is preferred (JPG/WebP also accepted).</p>
+      <div class="tblwrap"><table class="tbl" id="figManager">
+        <tr><th>Figure</th><th>File</th><th>Status</th><th class="no-print" data-requires="admin">Action</th></tr>
+      </table></div>
+      <div class="foot">
+        <span>&copy; Kerala PWD &middot; KHRI &middot; RMMS Cell</span>
+        <span>KLRAMS User Manual &middot; v1.1</span>
+      </div>
+    </main>
+  </div>
+
+  <div class="lb" id="lb" onclick="this.classList.remove('open')"><img id="lbImg" alt=""><div class="lb-cap" id="lbCap"></div></div>
+  <div class="toast" id="toast"></div>
+  <input type="file" id="figFile" accept="image/png,image/jpeg,image/webp" hidden>
+
+<script>
+(function(){
+  'use strict';
+  var API = '/api/manual/images';
+  var imgMap = {};          // name -> {uploaded_at, size_bytes}
+  var roleRank = 1;         // 1 USER · 2 ADMIN · 3 SUPER_ADMIN
+  var pendingName = null;   // figure being uploaded via the hidden file input
+  var figs = Array.prototype.slice.call(document.querySelectorAll('.fig[data-img]'));
+
+  function isAdmin(){ return roleRank >= 2; }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function toast(msg, err){
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.classList.toggle('err', !!err); t.classList.add('show');
+    clearTimeout(t._h); t._h = setTimeout(function(){ t.classList.remove('show'); }, 3200);
+  }
+  function figNo(fig){ var n = fig.querySelector('.fig-no'); return n ? n.textContent : ''; }
+  function figCap(fig){
+    var c = fig.querySelector('figcaption'); if(!c) return '';
+    var t = c.cloneNode(true); var no = t.querySelector('.fig-no'); if(no) no.remove();
+    return t.textContent.trim();
+  }
+  function imgUrl(name){ var m = imgMap[name]; return API + '/' + name + (m && m.uploaded_at ? '?v=' + m.uploaded_at : ''); }
+
+  var CAM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 8h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13.5" r="3.5"/></svg>';
+  var UP  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V4M6 10l6-6 6 6M4 21h16"/></svg>';
+  var DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/></svg>';
+
+  function renderFig(fig){
+    var name = fig.getAttribute('data-img');
+    var has = !!imgMap[name];
+    var box = fig.querySelector('.fig-box');
+    if(!box){
+      box = document.createElement('div'); box.className = 'fig-box';
+      fig.insertBefore(box, fig.firstChild);
+    }
+    var html = '';
+    if(has){
+      html += '<img src="' + imgUrl(name) + '" loading="lazy" alt="' + esc(figNo(fig)) + '">';
+    } else {
+      html += '<div class="fig-empty">' + CAM +
+              '<span class="fe-t">Screenshot pending — ' + esc(name) + '</span>' +
+              '<span class="fe-h">' + esc(fig.getAttribute('data-hint') || '') + '</span></div>';
+    }
+    if(isAdmin()){
+      html += '<div class="fig-tools no-print">' +
+              '<button class="fbtn" data-up="' + esc(name) + '">' + UP + (has ? 'Replace' : 'Upload PNG') + '</button>' +
+              (has ? '<button class="fbtn del" data-del="' + esc(name) + '">' + DEL + 'Remove</button>' : '') +
+              '</div>';
+    }
+    html += '<div class="fig-busy">Uploading…</div>';
+    box.classList.toggle('nopic', !has);
+    box.innerHTML = html;
+    var im = box.querySelector('img');
+    if(im) im.addEventListener('click', function(){
+      document.getElementById('lbImg').src = imgUrl(name);
+      document.getElementById('lbCap').textContent = figNo(fig) + ' — ' + figCap(fig);
+      document.getElementById('lb').classList.add('open');
+    });
+  }
+
+  function renderManager(){
+    var tbl = document.getElementById('figManager');
+    Array.prototype.slice.call(tbl.querySelectorAll('tr')).slice(1).forEach(function(r){ r.remove(); });
+    figs.forEach(function(fig){
+      var name = fig.getAttribute('data-img');
+      var has = !!imgMap[name];
+      var tr = document.createElement('tr');
+      var kb = has && imgMap[name].size_bytes ? ' · ' + Math.round(imgMap[name].size_bytes/1024) + ' KB' : '';
+      tr.innerHTML =
+        '<td><a class="inl" href="#' + (fig.closest('[id]') ? '' : '') + '" data-jump>' + esc(figNo(fig)) + '</a><br><span style="color:var(--muted-2);font-size:11px">' + esc(figCap(fig)) + '</span></td>' +
+        '<td><code>' + esc(name) + '</code></td>' +
+        '<td>' + (has ? '<span class="pill good">Uploaded' + kb + '</span>' : '<span class="pill fair">Pending</span>') + '</td>' +
+        (isAdmin() ? '<td class="no-print"><button class="fbtn" data-up="' + esc(name) + '">' + UP + (has ? 'Replace' : 'Upload') + '</button></td>' : '');
+      tr.querySelector('[data-jump]').addEventListener('click', function(e){
+        e.preventDefault(); fig.scrollIntoView({behavior:'smooth', block:'center'});
+      });
+      tbl.appendChild(tr);
+    });
+  }
+
+  function renderProgress(){
+    var done = figs.filter(function(f){ return !!imgMap[f.getAttribute('data-img')]; }).length;
+    var el = document.getElementById('figProgress');
+    if(el) el.innerHTML = '<i></i>Figures: ' + done + ' / ' + figs.length + ' uploaded';
+  }
+
+  function renderAll(){ figs.forEach(renderFig); renderManager(); renderProgress(); }
+
+  function refresh(){
+    fetch(API, {credentials:'same-origin'})
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(list){
+        imgMap = {};
+        (list || []).forEach(function(m){ imgMap[m.name] = m; });
+        renderAll();
+      })
+      .catch(function(){ renderAll(); });
+  }
+
+  /* one hidden file input shared by every Upload/Replace button (event delegation) */
+  document.addEventListener('click', function(e){
+    var up = e.target.closest('[data-up]');
+    if(up){ pendingName = up.getAttribute('data-up'); document.getElementById('figFile').click(); return; }
+    var del = e.target.closest('[data-del]');
+    if(del){
+      var name = del.getAttribute('data-del');
+      if(!confirm('Remove the screenshot ' + name + ' from the manual?')) return;
+      fetch(API + '/' + name, {method:'DELETE', credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if(j && j.ok){ toast('Screenshot removed'); refresh(); }
+          else toast((j && j.error) || 'Remove failed', true);
+        })
+        .catch(function(){ toast('Remove failed — check your connection', true); });
+    }
+  });
+
+  document.getElementById('figFile').addEventListener('change', function(){
+    var f = this.files[0]; this.value = '';
+    if(!f || !pendingName) return;
+    var name = pendingName; pendingName = null;
+    var fig = figs.filter(function(x){ return x.getAttribute('data-img') === name; })[0];
+    var box = fig && fig.querySelector('.fig-box');
+    if(box) box.classList.add('busy');
+    var fd = new FormData();
+    fd.append('name', name); fd.append('file', f);
+    fetch(API, {method:'POST', body:fd, credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(box) box.classList.remove('busy');
+        if(j && j.ok){ toast('Screenshot saved — ' + name); refresh(); }
+        else toast((j && j.error) || 'Upload failed', true);
+      })
+      .catch(function(){ if(box) box.classList.remove('busy'); toast('Upload failed — check your connection', true); });
+  });
+
+  /* role badge + admin controls appear once role-gate resolves /api/me */
+  window.RoleGate = window.RoleGate || {};
+  window.RoleGate.onReady = function(me){
+    var r = (me && me.role) || 'USER';
+    roleRank = r === 'SUPER_ADMIN' ? 3 : r === 'ADMIN' ? 2 : 1;
+    var el = document.getElementById('roleBadge');
+    if(el) el.textContent = r === 'SUPER_ADMIN' ? 'Super Admin' : r === 'ADMIN' ? 'Admin' : 'View only';
+    renderAll();
+  };
+
+  /* TOC scroll-spy */
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a[href^="#"]'));
+  var targets = links.map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); }).filter(Boolean);
+  function spy(){
+    var y = window.scrollY + 110, cur = targets[0];
+    targets.forEach(function(t){ if(t.offsetTop <= y) cur = t; });
+    links.forEach(function(a){ a.classList.toggle('on', cur && a.getAttribute('href') === '#' + cur.id); });
+  }
+  window.addEventListener('scroll', spy, {passive:true});
+
+  renderAll();   /* placeholders immediately */
+  refresh();     /* then real images */
+  spy();
+})();
+</script>
+<script src="/js/role-gate.js" defer></script>
+</body>
+</html>
