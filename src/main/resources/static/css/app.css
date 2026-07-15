@@ -177,6 +177,20 @@
   .dash-close:hover{color:#fff;background:var(--ink);border-color:var(--ink)}
   .dash-loading{padding:54px;text-align:center;color:var(--muted)}
 
+  /* dashboard hub — tile picker shown before a specific dashboard opens full-screen */
+  .dash-hub{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
+  .dash-hub-tile{display:block;width:100%;text-align:left;cursor:pointer;font:inherit;position:relative;padding:24px 46px 22px 22px;overflow:hidden;appearance:none;-webkit-appearance:none;transition:transform .18s,box-shadow .18s,border-color .18s}
+  .dash-hub-tile::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:var(--tc);border-radius:18px 18px 0 0}
+  .dash-hub-tile::after{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;background:var(--tcbg);opacity:.6;transition:transform .25s}
+  .dash-hub-tile:hover{transform:translateY(-3px);box-shadow:0 16px 32px -8px var(--tcglow),0 4px 12px rgba(20,30,50,.08);border-color:var(--tc)}
+  .dash-hub-tile:hover::after{transform:scale(1.15)}
+  .dash-hub-ic{position:relative;display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:13px;background:var(--tcbg);color:var(--tc);margin-bottom:14px}
+  .dash-hub-ic svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .dash-hub-tile h3{position:relative;font-size:16.5px;margin-bottom:5px}
+  .dash-hub-tile .sub{position:relative;margin-bottom:0;line-height:1.55}
+  .dash-hub-arrow{position:absolute;right:20px;top:24px;color:var(--tc);opacity:.55;font-size:18px;transition:.18s}
+  .dash-hub-tile:hover .dash-hub-arrow{opacity:1;transform:translateX(3px)}
+
   /* KPI hero strip */
   .kpi-row{display:grid;grid-template-columns:1.55fr 1fr 1fr 1fr;gap:16px;margin-bottom:22px}
   .kpi{position:relative;background:#fff;border:1px solid var(--hair);border-radius:18px;padding:20px 22px 18px;box-shadow:var(--shadow);overflow:hidden}

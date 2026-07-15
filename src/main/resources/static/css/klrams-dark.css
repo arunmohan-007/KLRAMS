@@ -707,6 +707,11 @@ select option:disabled{color:var(--k-faint)!important}
 .dleg .nm{color:var(--k-text)!important}
 .dleg .vl{color:#fff!important}
 .dleg .vl .pc{color:var(--k-muted)!important}
+
+/* dashboard hub tiles */
+.dash-hub-tile:hover{box-shadow:0 16px 32px -8px var(--tcglow),0 4px 14px rgba(0,0,0,.45)!important;border-color:var(--tc)!important}
+.dash-hub-ic{background:var(--tcbg)!important;color:var(--tc)!important}
+.dash-hub-arrow{color:var(--tc)!important}
 .rbar .rk{color:var(--k-faint)!important}
 .rbar .rk.medal{color:var(--k-accent)!important}
 .rbar .rb-nm{color:var(--k-text)!important}

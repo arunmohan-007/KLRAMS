@@ -6,19 +6,27 @@
    ============================================================ */
 // ===== dashboard =====
 let dashData=null;
-function closeDashboard(){document.getElementById('dashboard').classList.remove('open');}
+let dashView='hub';   // 'hub' = tile picker, 'detail' = one dashboard full-screen
+function closeDashboard(){
+  if(dashView==='detail'){dashBackToHub();return;}
+  document.getElementById('dashboard').classList.remove('open');
+}
+function dashBackToHub(){
+  dashView='hub';
+  document.getElementById('dashHub').style.display='';
+  document.getElementById('dashBody').style.display='none';
+  const sc=document.getElementById('dashScope'),sb=document.getElementById('dashSub'),cb=document.getElementById('dashCloseBtn');
+  if(sc)sc.textContent='Dashboards';
+  if(sb)sb.textContent='Choose a dashboard to explore network, pavement, asset and survey figures.';
+  if(cb)cb.title='Back to map';
+}
 let dashTabCur='overview';
 function loadDashboard(){
   const dash=document.getElementById('dashboard');dash.classList.add('open');
-  setDashTab('overview');
-  if(dashData){renderDashboard();return;}
-  document.getElementById('dashBody').innerHTML='<div class="dash-loading">Loading network figures…</div>';
-  fetch('/api/dashboard/summary').then(r=>r.json()).then(d=>{dashData=d;if(dashTabCur==='overview')renderDashboard();})
-    .catch(e=>{document.getElementById('dashBody').innerHTML='<div class="dash-loading">Could not load dashboard: '+e.message+'</div>';});
+  dashBackToHub();
 }
 function setDashTab(which){
   dashTabCur=which;
-  document.querySelectorAll('.dash-tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===which));
   const sc=document.getElementById('dashScope'),sb=document.getElementById('dashSub');
   if(which==='pcia'){if(sc)sc.textContent='PCI Analysis';if(sb)sb.textContent='IRC:82-2023 Pavement Condition Index · share of network length by rating, and rating split by road class.';}
   else if(which==='pci'){if(sc)sc.textContent='PCI Report';if(sb)sb.textContent='IRC:82-2023 Pavement Condition Index · PWD-section-wise — Section Label, Road Name and PCI class.';}
@@ -28,11 +36,20 @@ function setDashTab(which){
   else{if(sc)sc.textContent='Road Network Overview';if(sb)sb.textContent='Kerala PWD — network length, classification and ownership at a glance.';}
 }
 function dashTab(which){
+  dashView='detail';
+  document.getElementById('dashHub').style.display='none';
+  document.getElementById('dashBody').style.display='';
+  const cb=document.getElementById('dashCloseBtn');if(cb)cb.title='Back to dashboards';
   setDashTab(which);
   if(which==='pci'){renderPciReport();}
   else if(which==='pcia'){renderPciAnalysis();}
   else if(which==='culv'){renderAssetDash('culvert');}
   else if(which==='brid'){renderAssetDash('brid');}
   else if(which==='survey'){renderSurveyDash();}
-  else{if(dashData)renderDashboard();else document.getElementById('dashBody').innerHTML='<div class="dash-loading">Loading network figures…</div>';}
+  else{
+    if(dashData){renderDashboard();return;}
+    document.getElementById('dashBody').innerHTML='<div class="dash-loading">Loading network figures…</div>';
+    fetch('/api/dashboard/summary').then(r=>r.json()).then(d=>{dashData=d;if(dashTabCur==='overview')renderDashboard();})
+      .catch(e=>{document.getElementById('dashBody').innerHTML='<div class="dash-loading">Could not load dashboard: '+e.message+'</div>';});
+  }
 }

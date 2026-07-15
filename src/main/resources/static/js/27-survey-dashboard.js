@@ -107,10 +107,11 @@ function svyPaint(){
     '<div class="sub">Lane-km surveyed in '+escH(y.year)+' — click a district to focus the whole dashboard</div>'+
     rankedBars(nsvRows,{click:'svySetDistrict',selName:svyDistrict,colorFn:()=> '#15976a'})+'</div>';
 
-  const mixRows=SVY_MET.filter(m=>m.k!=='nsv_lane_km').map(m=>({label:m.name,n:+s[m.k]||0}));
-  const mixCard=cDonutCard('Point-test mix — '+scopeLbl,
-    'How the physical test programme of '+escH(y.year)+' splits across FWD, traffic, soil and core testing',
-    mixRows,{colorFn:(l,i)=>SVY_MET.filter(m=>m.k!=='nsv_lane_km')[i].col,centerSmall:'tests'});
+  const trafficRows=dists.map(d=>({label:d.district,n:+d.traffic_stations||0}));
+  const mixCard='<div class="dcard"><div class="dcard-head"><h3>Traffic stations by district</h3>'+
+    '<span class="totchip">'+fmtN(mTot.traffic_stations)+'</span></div>'+
+    '<div class="sub">Classified traffic count stations per district in '+escH(y.year)+'</div>'+
+    cBars(trafficRows,{colorFn:()=> '#d4a02e'})+'</div>';
 
   const fwdRows=dists.map(d=>({label:d.district,n:+d.fwd_points||0}));
   const fwdCard='<div class="dcard"><div class="dcard-head"><h3>FWD points by district</h3>'+
