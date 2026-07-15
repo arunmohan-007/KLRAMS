@@ -34,16 +34,17 @@ public class SegmentController {
         return result;
     }
 
-    /** Serve the segments as GeoJSON for the map. */
+    /** Serve the segments as GeoJSON for the map.
+     *  Defaults to the active survey period; ?period_id= selects another. */
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> geojson() {
+    public ResponseEntity<String> geojson(@RequestParam(value = "period_id", required = false) Integer periodId) {
         // no-cache: the browser must revalidate every load, so freshly built
         // segments show up on a normal reload (no hard-refresh / restart needed).
         // The body is still served from the in-memory cache, so this is cheap.
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noCache())
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(service.segmentsGeoJson());
+                .body(service.segmentsGeoJson(periodId));
     }
 
     @GetMapping("/count")

@@ -35,27 +35,42 @@ import java.util.zip.ZipInputStream;
 public class VideoService {
 
     private final JdbcTemplate jdbc;
+    private final SurveyPeriodService periods;
     private final Path videoDir;
     /** Incomplete uploads live here as "<name>.part" until the last chunk arrives. */
     private final Path partsDir;
 
-    public VideoService(JdbcTemplate jdbc, @Value("${app.video-dir:video-store}") String dir) throws IOException {
+    public VideoService(JdbcTemplate jdbc, SurveyPeriodService periods,
+                        @Value("${app.video-dir:video-store}") String dir) throws IOException {
         this.jdbc = jdbc;
+        this.periods = periods;
         this.videoDir = Paths.get(dir).toAbsolutePath();
         this.partsDir = this.videoDir.resolve(".uploads");
         Files.createDirectories(this.videoDir);
         Files.createDirectories(this.partsDir);
     }
 
+    @jakarta.annotation.PostConstruct
     @Transactional
     public void ensureSchema() {
         jdbc.execute("""
             CREATE TABLE IF NOT EXISTS road_video (
-                section_label text PRIMARY KEY,
+                section_label text,
                 video_file    text,
-                direction     text
+                direction     text,
+                period_id     integer
             )
             """);
+        // The NSV video is recorded during a survey cycle, so the catalog rows
+        // carry the survey period: a section may map to a different video in
+        // each period. Older databases had section_label as the primary key —
+        // swap it for a surrogate id + (section, period) uniqueness, and adopt
+        // pre-period rows into the current (active) period.
+        jdbc.execute("ALTER TABLE road_video ADD COLUMN IF NOT EXISTS period_id integer");
+        periods.ensureSurrogatePk("road_video", "section_label");
+        jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS road_video_sec_period_ux ON road_video(section_label, period_id)");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS road_video_period_idx ON road_video(period_id)");
+        jdbc.update("UPDATE road_video SET period_id = ? WHERE period_id IS NULL", periods.activePeriodId());
     }
 
     /** Extract every file from the uploaded zip into the video folder (retained). */
@@ -146,10 +161,9 @@ public class VideoService {
         return r;
     }
 
-    /** Read the catalog CSV: section_label, video_file, direction. */
+    /** Read the catalog CSV (section_label, video_file, direction) into one survey period. */
     @Transactional
-    public int loadCatalog(InputStream in) throws Exception {
-        ensureSchema();
+    public int loadCatalog(InputStream in, int periodId) throws Exception {
         BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
         String header = br.readLine();
         if (header == null) return 0;
@@ -174,20 +188,22 @@ public class VideoService {
             String dir  = normDir(iDir != null ? val(c, iDir) : null);
             if (road == null || file == null) continue;
             jdbc.update("""
-                INSERT INTO road_video (section_label, video_file, direction)
-                VALUES (?,?,?)
-                ON CONFLICT (section_label)
+                INSERT INTO road_video (section_label, video_file, direction, period_id)
+                VALUES (?,?,?,?)
+                ON CONFLICT (section_label, period_id)
                 DO UPDATE SET video_file = EXCLUDED.video_file, direction = EXCLUDED.direction
-                """, road, file, dir);
+                """, road, file, dir, periodId);
             count++;
         }
         return count;
     }
 
-    public List<Map<String, Object>> catalog() {
+    /** Catalog of one survey period (null = the active period the viewer shows). */
+    public List<Map<String, Object>> catalog(Integer periodId) {
         try {
             return jdbc.queryForList(
-                "SELECT section_label AS road, video_file AS file, direction FROM road_video");
+                "SELECT section_label AS road, video_file AS file, direction FROM road_video WHERE period_id = ?",
+                periods.resolve(periodId));
         } catch (Exception e) {
             return Collections.emptyList();
         }

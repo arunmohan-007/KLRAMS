@@ -52,20 +52,24 @@ public class ConditionService {
                 start_lng double precision,
                 end_lat double precision,
                 end_lng double precision,
-                geom geometry(LineString, 4326)
+                geom geometry(LineString, 4326),
+                period_id integer
             )
             """);
+        // Older databases predate the period_id column (see SurveyPeriodService).
+        jdbc.execute("ALTER TABLE condition ADD COLUMN IF NOT EXISTS period_id integer");
         jdbc.execute("CREATE INDEX IF NOT EXISTS condition_geom_idx ON condition USING GIST (geom)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS condition_section_idx ON condition (section_label)");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS condition_period_idx ON condition (period_id)");
     }
 
     @Transactional
-    public int loadCsv(InputStream in) throws Exception {
+    public int loadCsv(InputStream in, int periodId) throws Exception {
         ensureSchema();
-        // Additive by section: replace only the section labels present in THIS file,
-        // so uploading another section adds to the data and re-uploading a section
-        // refreshes just that one. (Previously this TRUNCATEd the whole table on
-        // every upload, which wiped all previously-loaded sections.)
+        // Additive by section WITHIN the chosen survey period: replace only the
+        // section labels present in THIS file for THIS period, so uploading a new
+        // survey cycle never touches older periods' data, and re-uploading a
+        // section refreshes just that one within its period.
 
         BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
         String headerLine = br.readLine();
@@ -80,7 +84,7 @@ public class ConditionService {
         final String sql =
             "INSERT INTO condition (survey_type, section_label, xsp, iri, crack, pothole, rutting, " +
             "texture, patch_work, ravelling, start_chainage, end_chainage, start_lat, start_lng, " +
-            "end_lat, end_lng, geom) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, " +
+            "end_lat, end_lng, period_id, geom) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, " +
             "ST_SetSRID(ST_MakeLine(ST_MakePoint(?,?), ST_MakePoint(?,?)), 4326))";
 
         // Track which section labels we've already cleared during this upload so each
@@ -95,7 +99,7 @@ public class ConditionService {
 
             String section = get(c, idx, "Section_Label");
             if (section != null && replaced.add(section)) {
-                jdbc.update("DELETE FROM condition WHERE section_label = ?", section);
+                jdbc.update("DELETE FROM condition WHERE section_label = ? AND period_id = ?", section, periodId);
             }
 
             Double slng = num(get(c, idx, "Start_Longitude"));
@@ -117,6 +121,7 @@ public class ConditionService {
                 num(get(c, idx, "Start_Chainage")),
                 num(get(c, idx, "End_Chainage")),
                 slat, slng, elat, elng,
+                periodId,
                 slng, slat, elng, elat
             });
             count++;

@@ -300,6 +300,7 @@
     <button class="kl-open kl-big" onclick="openLauncher()" title="Explore KLRAMS modules"><svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg></button>
     <div class="brand"><span class="t">KLRAMS</span><span class="s">Data Console — Kerala Road Asset Management System</span></div>
     <span class="spacer"></span>
+    <a class="vlink" href="/survey-archive.html" title="View any survey period's layers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/></svg><span>Survey archive</span></a>
     <a class="vlink" href="/map.html" title="Open the GIS viewer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg><span>GIS viewer</span></a>
     <a class="signout" href="/logout" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg><span>Sign out</span></a>
   </div>
@@ -399,10 +400,19 @@ const UP_LABEL={condition:'Condition data',zip:'Survey video zip',catalog:'Video
 async function up(kind,force){
   const c=EP[kind], el=document.getElementById(c.out), f=document.getElementById(c.inp).files[0];
   if(!f){show(el,false,'Choose a file first.');return;}
+  let url=c.url, pTag='';
+  if(kind==='condition'||kind==='catalog'){
+    const pid=spSelVal();
+    if(!pid){show(el,false,'Select the survey period this data belongs to first (create one under Survey Periods).');return;}
+    url+='?periodId='+pid+(force?'&force=true':'');
+    pTag=' ['+spName(pid)+']';
+  }else{
+    url+=(force?'?force=true':'');
+  }
   show(el,true,c.busy);
   const fd=new FormData();fd.append('file',f);
-  const ds=UP_LABEL[kind]||kind;
-  try{const r=await fetch(c.url+(force?'?force=true':''),{method:'POST',body:fd});const j=await r.json();
+  const ds=(UP_LABEL[kind]||kind)+pTag;
+  try{const r=await fetch(url,{method:'POST',body:fd});const j=await r.json();
     if(j.status==='ok'){const msg=c.ok(j);show(el,true,msg);logUpload(ds,f.name,true,msg);refresh();}
     else if(j.status==='duplicates'){showDupPrompt(el,j,kind);logUpload(ds,f.name,false,'Paused: '+j.duplicates+' duplicate row(s) found — awaiting confirmation');}
     else{show(el,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
@@ -598,13 +608,15 @@ async function upGeo(){
   const out=document.getElementById('oGeo');
   const f=document.getElementById('geofile').files[0];
   if(!f){show(out,false,'Choose a CSV first.');return;}
+  const pid=spSelVal();
+  if(!pid){show(out,false,'Select the survey period this data belongs to first (create one under Survey Periods).');return;}
   const type=document.getElementById('geoType').value;
   const GEO_LABEL={subgrade:'Sub-grade soil',bituminous_core:'Bituminous core',pavement_crust:'Pavement crust',fwd:'FWD (deflection)'};
-  const ds=GEO_LABEL[type]||type;
+  const ds=(GEO_LABEL[type]||type)+' ['+spName(pid)+']';
   show(out,true,'Uploading & referencing…');
   const fd=new FormData();fd.append('file',f);
   try{
-    const r=await fetch('/api/assets/'+type+'/upload',{method:'POST',body:fd});
+    const r=await fetch('/api/assets/'+type+'/upload?periodId='+pid,{method:'POST',body:fd});
     const j=await r.json();
     if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' record(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
     else{show(out,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
@@ -752,10 +764,10 @@ function trfAggregate(rows,header){
 }
 function trfGetStore(){try{return JSON.parse(localStorage.getItem(TRF_KEY))||{};}catch(e){return {};}}
 function trfPutStore(o){o.v=1;o.savedAt=new Date().toISOString();try{localStorage.setItem(TRF_KEY,JSON.stringify(o));return true;}catch(e){return false;}}
-async function trfPost(kind,payload){try{const r=await fetch('/api/traffic/'+kind,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});return r.ok;}catch(e){return false;}}
+async function trfPost(kind,payload,pid){try{const r=await fetch('/api/traffic/'+kind+'?periodId='+pid,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)return false;const j=await r.json();return !j.error;}catch(e){return false;}}
 function trfReadFile(id){return new Promise((res,rej)=>{const f=document.getElementById(id).files[0];if(!f){rej(new Error('Choose a CSV first.'));return;}const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('File read error.'));r.readAsText(f);});}
-async function upTraffic(kind){const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');const _tf=((document.getElementById(kind==='stations'?'trfStn':'trfCnt').files[0])||{}).name||'—';const _tds=(kind==='stations'?'Traffic stations':'Traffic counts');try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx={};pr.header.forEach((h,i)=>idx[h]=i);const store=trfGetStore();if(kind==='stations'){if(idx['Station Name']===undefined){show(out,false,'CSV needs a Station Name column.');return;}const _inc=pr.rows.map(r=>({name:r[idx['Station Name']]||'',road:(idx['Description']!==undefined?r[idx['Description']]:'')||'',section:(idx['Section Label']!==undefined?String(r[idx['Section Label']]||'').trim():''),ch:(idx['Chainage']!==undefined&&String(r[idx['Chainage']]).trim()!==''&&!isNaN(+r[idx['Chainage']]))?+r[idx['Chainage']]:null,lat:(idx['Latitude']!==undefined&&!isNaN(+r[idx['Latitude']]))?+r[idx['Latitude']]:null,lng:(idx['Longitude']!==undefined&&!isNaN(+r[idx['Longitude']]))?+r[idx['Longitude']]:null,xsp:(idx['Xsp Code']!==undefined?r[idx['Xsp Code']]:'')||''})).filter(r=>r.name);const _by={};(store.stations||[]).forEach(x=>_by[x.name]=x);_inc.forEach(x=>_by[x.name]=x);store.stations=Object.values(_by);const srv=await trfPost('stations',store.stations);trfPutStore(store);show(out,true,'\u2713 '+store.stations.length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}else{if(!pr.header.some(h=>trfNorm(h)==='STATION_NAME')){show(out,false,'CSV needs a STATION_NAME column.');return;}store.counts=Object.assign(store.counts||{},trfAggregate(pr.rows,pr.header));const srv=await trfPost('counts',store.counts);trfPutStore(store);show(out,true,'\u2713 Counts for '+Object.keys(store.counts).length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}logUpload(_tds,_tf,true,(kind==='stations'?((store.stations||[]).length+' stations'):('counts for '+Object.keys(store.counts||{}).length+' stations')));trfState();refresh();}catch(e){show(out,false,e.message||String(e));logUpload(_tds,_tf,false,e.message||String(e));}}
-function trfClear(){localStorage.removeItem(TRF_KEY);fetch('/api/traffic/clear',{method:'POST'}).catch(()=>{});trfState();const a=document.getElementById('oTrfStn'),b=document.getElementById('oTrfCnt');if(b)b.className='out';if(a){a.className='out';show(a,true,'Cleared.');}}
+async function upTraffic(kind){const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');const _tf=((document.getElementById(kind==='stations'?'trfStn':'trfCnt').files[0])||{}).name||'—';const _pid=spSelVal();if(!_pid){show(out,false,'Select the survey period this data belongs to first (create one under Survey Periods).');return;}const _tds=(kind==='stations'?'Traffic stations':'Traffic counts')+' ['+spName(_pid)+']';try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx={};pr.header.forEach((h,i)=>idx[h]=i);const store=trfGetStore();if(kind==='stations'){if(idx['Station Name']===undefined){show(out,false,'CSV needs a Station Name column.');return;}const _inc=pr.rows.map(r=>({name:r[idx['Station Name']]||'',road:(idx['Description']!==undefined?r[idx['Description']]:'')||'',section:(idx['Section Label']!==undefined?String(r[idx['Section Label']]||'').trim():''),ch:(idx['Chainage']!==undefined&&String(r[idx['Chainage']]).trim()!==''&&!isNaN(+r[idx['Chainage']]))?+r[idx['Chainage']]:null,lat:(idx['Latitude']!==undefined&&!isNaN(+r[idx['Latitude']]))?+r[idx['Latitude']]:null,lng:(idx['Longitude']!==undefined&&!isNaN(+r[idx['Longitude']]))?+r[idx['Longitude']]:null,xsp:(idx['Xsp Code']!==undefined?r[idx['Xsp Code']]:'')||''})).filter(r=>r.name);const _by={};(store.stations||[]).forEach(x=>_by[x.name]=x);_inc.forEach(x=>_by[x.name]=x);store.stations=Object.values(_by);const srv=await trfPost('stations',store.stations,_pid);trfPutStore(store);show(out,true,'\u2713 '+store.stations.length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}else{if(!pr.header.some(h=>trfNorm(h)==='STATION_NAME')){show(out,false,'CSV needs a STATION_NAME column.');return;}store.counts=Object.assign(store.counts||{},trfAggregate(pr.rows,pr.header));const srv=await trfPost('counts',store.counts,_pid);trfPutStore(store);show(out,true,'\u2713 Counts for '+Object.keys(store.counts).length+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.'));}logUpload(_tds,_tf,true,(kind==='stations'?((store.stations||[]).length+' stations'):('counts for '+Object.keys(store.counts||{}).length+' stations')));trfState();refresh();}catch(e){show(out,false,e.message||String(e));logUpload(_tds,_tf,false,e.message||String(e));}}
+function trfClear(){const pid=spSelVal();if(!pid){alert('Select the survey period to clear first.');return;}if(!confirm('Clear the traffic stations and counts of "'+spName(pid)+'"? Other periods are kept.'))return;localStorage.removeItem(TRF_KEY);fetch('/api/traffic/clear?periodId='+pid,{method:'POST'}).catch(()=>{});trfState();const a=document.getElementById('oTrfStn'),b=document.getElementById('oTrfCnt');if(b)b.className='out';if(a){a.className='out';show(a,true,'Cleared.');}}
 function trfState(){const el=document.getElementById('trfState');if(!el)return;const s=trfGetStore();const ns=(s.stations||[]).length;const nc=Object.keys(s.counts||{}).length;el.innerHTML=(ns||nc)?('<b>'+ns+'</b> stations \u00b7 counts for <b>'+nc+'</b>'+(s.savedAt?(' \u00b7 saved '+new Date(s.savedAt).toLocaleString()):'')+'. Open the viewer to see them.'):'No traffic data stored.';}
 trfState();
 async function goLoadFolders(){
@@ -836,6 +848,7 @@ const HUB_ICONS={
   traffic:'<rect x="8" y="3" width="8" height="18" rx="3"/><circle cx="12" cy="7.5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="16.5" r="1.4"/>',
   map:'<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/>',
   fwd:'<path d="M12 3v9M12 12l-3.5-3.5M12 12l3.5-3.5M5 16h14M5 20h14"/>',
+  cal:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/>',
   doc:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5ZM14 3v5h5"/>'
 };
 function hubIcon(n){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+(HUB_ICONS[n]||HUB_ICONS.doc)+'</svg>';}
@@ -854,14 +867,32 @@ function geoPanel(type,title,sub){
   return '<div class="ip-title">'+title+'</div>'
     +'<p class="ip-sub">'+sub+'</p>'
     +'<select id="geoType" style="display:none"><option value="'+type+'" selected></option></select>'
+    +spSelField()
     +'<div class="ip-field"><label class="ip-label">CSV file</label><input type="file" id="geofile" accept=".csv"></div>'
     +'<button class="btn" onclick="upGeo()">Upload data CSV</button>'
     +'<div class="out" id="oGeo"></div>'
-    +'<p class="hint">Additive by section: re-uploading a section replaces just that section’s records; other sections are kept. Switch the matching layer on in the viewer and click any icon for full details.</p>';
+    +'<p class="hint">Additive by section within the chosen survey period: re-uploading a section replaces just that section’s records in that period; other sections and other periods are kept. Switch the matching layer on in the viewer and click any icon for full details.</p>';
+}
+/* Survey-period selector shown on every field-survey importer. The import is
+   stored under the chosen period; the main map shows the ACTIVE period and the
+   Survey Archive can show any of them. */
+function spSelField(){
+  return '<div class="ip-field"><label class="ip-label">Import into survey period</label>'
+    +'<select id="spSel"><option value="">Loading periods…</option></select>'
+    +'<div class="hint" style="margin-top:5px">New survey cycle? Create its period under <b>Survey Periods</b> first — data is stored per period, older surveys are never overwritten.</div></div>';
 }
 const PANELS={
+  'svy-periods':'<div class="ip-title">Survey periods</div>'
+    +'<p class="ip-sub">A survey period is one named survey cycle (e.g. <b>Survey 1</b>, 01-Nov-2025 to 01-Sep-2026). Every field-survey import is stored under the period you pick, so a new cycle never overwrites the previous one. The <b>active</b> period is what the GIS viewer shows; older periods stay viewable in the <a class="viewer" href="/survey-archive.html">Survey Archive</a>.</p>'
+    +'<div id="spAdmin" class="hint">Loading periods…</div>'
+    +'<div class="ip-field" style="margin-top:14px"><label class="ip-label">Create a new period</label>'
+    +'<input type="text" id="spNewName" placeholder="Name — e.g. Survey 2" style="margin-bottom:6px">'
+    +'<div style="display:flex;gap:8px"><input type="date" id="spNewStart" style="flex:1"><input type="date" id="spNewEnd" style="flex:1"></div></div>'
+    +'<button class="btn" onclick="spCreate()">Create period</button>'
+    +'<div class="out" id="oSp"></div>',
   'cond-survey':'<div class="ip-title">Condition survey</div>'
     +'<p class="ip-sub">Import the raw condition survey CSV (IRI, cracking, potholes…). After it loads, switch to <b>Build segments</b> to cut it against the road network.</p>'
+    +spSelField()
     +'<div class="ip-field"><label class="ip-label">Condition CSV</label><input type="file" id="cfile" accept=".csv"></div>'
     +'<button class="btn" onclick="up(\'condition\')">Upload CSV</button> <button class="btn ghost" onclick="refresh()">Refresh counts</button>'
     +'<div class="out" id="oCond"></div>'
@@ -879,7 +910,8 @@ const PANELS={
     +'<div class="out" id="oVid"></div>'
     +'<p class="hint">Files are split into 5&nbsp;MB chunks and stored on the server under the video folder. After uploading, use <b>Video catalogue</b> to link each file to its road section and driving direction.</p>',
   'vid-cat':'<div class="ip-title">Video catalogue</div>'
-    +'<p class="ip-sub">Link each road section to its video file and direction.</p>'
+    +'<p class="ip-sub">Link each road section to its video file and direction. The NSV video is recorded during a survey cycle, so the catalogue is stored per survey period — like the condition and FWD data it was filmed with.</p>'
+    +spSelField()
     +'<div class="ip-field"><label class="ip-label">Catalogue CSV</label><input type="file" id="vfile" accept=".csv"></div>'
     +'<button class="btn" onclick="up(\'catalog\')">Upload catalogue</button>'
     +'<div class="out" id="oCat"></div>'
@@ -913,6 +945,7 @@ const PANELS={
   'fwd-survey':'<div class="ip-title">FWD survey (deflection)</div>'
     +'<p class="ip-sub">Upload the FWD deflection CSV — placed on the network by chainage <b>range</b> (From/To), carrying D0…Dn. After it loads, run <b>Build FWD segments</b> to cut the coloured segments, just like condition data.</p>'
     +'<select id="geoType" style="display:none"><option value="fwd" selected></option></select>'
+    +spSelField()
     +'<div class="ip-field"><label class="ip-label">FWD CSV</label><input type="file" id="geofile" accept=".csv"></div>'
     +'<button class="btn" onclick="upGeo()">Upload data CSV</button>'
     +'<div class="out" id="oGeo"></div>'
@@ -923,6 +956,7 @@ const PANELS={
     +'<div class="out" id="oFwdBuild"></div>',
   'traffic':'<div class="ip-title">Traffic survey</div>'
     +'<p class="ip-sub">Import the station list, then the counts. Stations are placed by chainage; counts are summarised per station (ADT, peak hour, direction-wise).</p>'
+    +spSelField()
     +'<div class="ip-field"><label class="ip-label">1 · Traffic stations CSV</label><input type="file" id="trfStn" accept=".csv"></div>'
     +'<button class="btn" onclick="upTraffic(\'stations\')">Upload stations</button>'
     +'<div class="out" id="oTrfStn"></div>'
@@ -945,6 +979,9 @@ const PANELS={
     +'<p class="hint">A shapefile zip must contain the <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> (and <code>.prj</code>) together. Appears as a toggleable layer in the viewer. <b>Remove current data</b> deletes the stored constituency boundary.</p>'
 };
 const HUB=[
+  {id:'periods',cat:'Survey Periods',icon:'cal',types:[
+    {id:'svy-periods',label:'Manage survey periods',fmt:'Action — no file'}
+  ]},
   {id:'condition',cat:'Condition Data',icon:'pulse',types:[
     {id:'cond-survey',label:'Condition survey',fmt:'CSV file'},
     {id:'cond-build',label:'Build segments',fmt:'Action — no file'}
@@ -1017,6 +1054,106 @@ function selectType(id){
   document.getElementById('fmtList').innerHTML=hubRow(true,hubIcon('doc'),t?t.fmt:'',"",false);
   document.getElementById('paramBody').innerHTML=PANELS[id]||'<div class="hub-empty">No importer.</div>';
   if(id==='traffic')trfState();
+  if(document.getElementById('spSel'))spFillSel();
+  if(id==='svy-periods')spRenderAdmin();
+}
+
+/* ===================== Survey periods ===================== */
+let SP_LIST=[];
+async function spLoad(){
+  try{
+    const r=await fetch('/api/survey-periods',{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    SP_LIST=await r.json();
+    if(!Array.isArray(SP_LIST))SP_LIST=[];
+  }catch(e){SP_LIST=[];}
+  return SP_LIST;
+}
+function spActive(){return SP_LIST.find(p=>p.is_active)||null;}
+function spName(id){const p=SP_LIST.find(x=>+x.id===+id);return p?p.name:('period '+id);}
+/* fill the "Import into survey period" select on the current panel (defaults to the active period) */
+async function spFillSel(){
+  await spLoad();
+  const el=document.getElementById('spSel');if(!el)return;
+  if(!SP_LIST.length){el.innerHTML='<option value="">No periods yet — create one under Survey Periods</option>';return;}
+  const act=spActive();
+  el.innerHTML=SP_LIST.map(p=>'<option value="'+(+p.id)+'"'+((act&&p.id===act.id)?' selected':'')+'>'
+    +escLog(p.name)+(p.is_active?' · current':'')+((p.start_date||p.end_date)?(' ('+escLog(p.start_date||'…')+' – '+escLog(p.end_date||'…')+')'):'')+'</option>').join('');
+}
+/* selected period id on the current importer panel, or null */
+function spSelVal(){const el=document.getElementById('spSel');const v=el?el.value:'';return v?+v:null;}
+async function spRenderAdmin(){
+  const el=document.getElementById('spAdmin');if(!el)return;
+  el.innerHTML='Loading periods…';
+  let av=null;
+  try{
+    const r=await fetch('/api/survey-periods/availability',{cache:'no-store'});
+    if(r.ok)av=await r.json();
+  }catch(e){}
+  await spLoad();
+  const rows=(av&&av.periods)||SP_LIST.map(p=>Object.assign({counts:{}},p));
+  if(!rows.length){el.innerHTML='No survey periods yet — create the first one below.';return;}
+  const CNT_LBL=[['condition','condition rows'],['fwd','FWD'],['traffic_stations','traffic stn'],['subgrade','soil'],['bituminous_core','core'],['pavement_crust','crust'],['videos','video links']];
+  el.innerHTML=rows.map(p=>{
+    const c=p.counts||{};
+    const total=CNT_LBL.reduce((s,x)=>s+(+c[x[0]]||0),0);
+    const parts=CNT_LBL.filter(x=>+c[x[0]]>0).map(x=>Number(c[x[0]]).toLocaleString()+' '+x[1]).join(' · ')||'no data yet';
+    return '<div style="border:1px solid #e2e7ee;border-radius:10px;padding:10px 12px;margin:6px 0;color:#1f2a3d">'
+      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<b>'+escLog(p.name)+'</b>'
+      +(p.is_active?'<span class="badge ok">active — shown in viewer</span>':'<button class="btn ghost" style="padding:2px 10px;font-size:12px" onclick="spActivate('+(+p.id)+')">Set active</button>')
+      +'<span class="spacer"></span>'
+      +'<button class="btn ghost" style="padding:2px 10px;font-size:12px" onclick="spRename('+(+p.id)+')">Rename</button>'
+      +(!p.is_active&&total===0?'<button class="btn ghost" style="padding:2px 10px;font-size:12px" onclick="spDelete('+(+p.id)+')">Delete</button>':'')
+      +'</div>'
+      +'<div style="font-size:12px;color:#64718a;margin-top:4px">'+escLog((p.start_date||'…')+' – '+(p.end_date||'…'))+' &nbsp;·&nbsp; '+parts+'</div>'
+      +'</div>';
+  }).join('');
+}
+async function spCreate(){
+  const out=document.getElementById('oSp');
+  const name=(document.getElementById('spNewName').value||'').trim();
+  const s=document.getElementById('spNewStart').value,e=document.getElementById('spNewEnd').value;
+  if(!name){show(out,false,'Enter a period name (e.g. Survey 2).');return;}
+  if(!s||!e){show(out,false,'Pick the start and end dates of the survey period.');return;}
+  show(out,true,'Creating…');
+  try{
+    const r=await fetch('/api/survey-periods',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,start_date:s,end_date:e})});
+    const j=await r.json();
+    if(j.status==='ok'){show(out,true,'✓ Created "'+name+'". Pick it in the importers to load its data.');document.getElementById('spNewName').value='';spRenderAdmin();}
+    else show(out,false,'Error: '+(j.message||'failed'));
+  }catch(e2){show(out,false,'Request failed: '+e2.message);}
+}
+async function spActivate(id){
+  if(!confirm('Make "'+spName(id)+'" the active period? The GIS viewer will show this period\'s condition, FWD, traffic, soil, core and crust layers.'))return;
+  try{
+    const r=await fetch('/api/survey-periods/'+id+'/activate',{method:'POST'});
+    const j=await r.json();
+    if(j.status==='ok'){spRenderAdmin();logUpload('Survey period','—',true,'Activated "'+spName(id)+'"');}
+    else alert('Error: '+(j.message||'failed'));
+  }catch(e){alert('Request failed: '+e.message);}
+}
+async function spRename(id){
+  const p=SP_LIST.find(x=>+x.id===+id);if(!p)return;
+  const name=prompt('Period name:',p.name);if(name==null||!name.trim())return;
+  /* keep the stored dates; the API needs ISO dates, so re-read them from the list */
+  const iso=d=>{const m=String(d||'').match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);if(!m)return null;
+    const mo={Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12}[m[2]];
+    return mo?m[3]+'-'+String(mo).padStart(2,'0')+'-'+m[1]:null;};
+  const body={name:name.trim(),start_date:iso(p.start_date),end_date:iso(p.end_date)};
+  try{
+    const r=await fetch('/api/survey-periods/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();
+    if(j.status==='ok')spRenderAdmin();else alert('Error: '+(j.message||'failed'));
+  }catch(e){alert('Request failed: '+e.message);}
+}
+async function spDelete(id){
+  if(!confirm('Delete the empty period "'+spName(id)+'"?'))return;
+  try{
+    const r=await fetch('/api/survey-periods/'+id,{method:'DELETE'});
+    const j=await r.json();
+    if(j.status==='ok')spRenderAdmin();else alert('Error: '+(j.message||'failed'));
+  }catch(e){alert('Request failed: '+e.message);}
 }
 /* build the hub and land on the Count tab */
 renderCats();

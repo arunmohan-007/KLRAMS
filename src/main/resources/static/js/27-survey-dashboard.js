@@ -1,16 +1,18 @@
 /* ============================================================
    KLRAMS viewer · 27-survey-dashboard.js
-   Survey Dashboard tab — year-wise (financial year) and
-   district-wise volumes for every field survey stream:
+   Survey Dashboard tab — per survey period and district-wise
+   volumes for every field survey stream:
    NSV condition (lane-km), FWD points, traffic stations,
    sub-grade soil tests and bituminous cores.
+   Each record is tagged with a survey period at import time
+   (Data Console), so the pills are the named periods.
    Reuses .kpi / .dcard / .rbars / .donut / .amx styling and the
    count-chart helpers (cDonutCard, cBars) from 20-asset-dashboard.js.
    Loaded as an ordered classic script from map.html.
    ============================================================ */
 
 let svyData=null;          // /api/survey-dashboard/summary payload
-let svyYear=null;          // selected "2025-26" label
+let svyPeriodId=null;      // selected period id
 let svyDistrict=null;      // selected district or null = all
 
 const SVY_MET=[
@@ -41,9 +43,9 @@ function renderSurveyDash(){
     return r.json();
   }).then(d=>{
     svyLoading=false;
-    if(!d||!Array.isArray(d.years))throw new Error('unexpected response');
+    if(!d||!Array.isArray(d.periods))throw new Error('unexpected response');
     svyData=d;                       // only cache a payload of the right shape
-    if(!svyYear)svyYear=d.default_year||(d.years[0]&&d.years[0].year);
+    if(!svyPeriodId)svyPeriodId=(d.default_period&&d.default_period.id)||(d.periods[0]&&d.periods[0].id);
     if(dashTabCur==='survey')svyPaint();
   }).catch(e=>{
     svyLoading=false;svyData=null;   // never poison the cache with an error body
@@ -56,39 +58,40 @@ function renderSurveyDash(){
   });
 }
 
-function svyYearObj(){
-  const ys=(svyData&&Array.isArray(svyData.years))?svyData.years:[];
-  return ys.find(y=>y.year===svyYear)||ys[0]||null;
+function svyPeriodObj(){
+  const ps=(svyData&&Array.isArray(svyData.periods))?svyData.periods:[];
+  return ps.find(p=>p.id===svyPeriodId)||ps[0]||null;
 }
-function svySetYear(y){svyYear=y;svyDistrict=null;svyPaint();}
+function svySetPeriod(id){svyPeriodId=id;svyDistrict=null;svyPaint();}
 function svySetDistrict(name){svyDistrict=(svyDistrict===name)?null:name;svyPaint();}
 
-/* scope = selected district's metric map, or the year totals */
-function svyScope(y){
-  if(!svyDistrict)return y.totals||{};
-  return (y.districts||[]).find(d=>d.district===svyDistrict)||{};
+/* scope = selected district's metric map, or the period totals */
+function svyScope(p){
+  if(!svyDistrict)return p.totals||{};
+  return (p.districts||[]).find(d=>d.district===svyDistrict)||{};
 }
 
 function svyPaint(){
   const body=document.getElementById('dashBody');if(!body)return;
-  const y=svyYearObj();
-  if(!y){
+  const p=svyPeriodObj();
+  if(!p){
     body.innerHTML='<div class="dash-loading">No survey data uploaded yet.</div>';return;
   }
-  const s=svyScope(y);
-  const dists=y.districts||[];
+  const s=svyScope(p);
+  const dists=p.districts||[];
+  const pName=escH(p.name||'');
 
-  /* ---- controls: year pills + district chips ---- */
+  /* ---- controls: period pills + district chips ---- */
   const pills='<div class="svy-bar"><div class="svy-years">'+
-    (svyData.years||[]).map(yy=>'<button type="button" class="svy-pill'+(yy.year===svyYear?' on':'')+'" onclick="svySetYear(\''+qq(yy.year)+'\')">'
-      +'<span class="svy-pill-cap">Survey Year</span><span class="svy-pill-yr">'+escH(yy.year)+'</span></button>').join('')+
+    (svyData.periods||[]).map(pp=>'<button type="button" class="svy-pill'+(pp.id===svyPeriodId?' on':'')+'" title="'+escH(pp.range||'')+'" onclick="svySetPeriod('+(+pp.id)+')">'
+      +'<span class="svy-pill-cap">Survey Period'+(pp.is_active?' · current':'')+'</span><span class="svy-pill-yr">'+escH(pp.name)+'</span></button>').join('')+
     '</div><div class="svy-dists"><button type="button" class="svy-chip'+(svyDistrict?'':' on')+'" onclick="svyDistrict=null;svyPaint()">All Districts</button>'+
     dists.map(d=>'<button type="button" class="svy-chip'+(d.district===svyDistrict?' on':'')+'" onclick="svySetDistrict(\''+qq(d.district)+'\')">'+escH(d.district)+'</button>').join('')+
     '</div></div>';
 
   /* ---- KPI cards ---- */
   const scopeLbl=svyDistrict?escH(svyDistrict):'All districts';
-  const mTot=y.totals||{};
+  const mTot=p.totals||{};
   const kpi='<div class="kpi-row svy-kpis">'+SVY_MET.map((m,i)=>{
     const v=+s[m.k]||0, tot=+mTot[m.k]||0;
     const pc=(svyDistrict&&tot)?Math.round(v/tot*100):null;
@@ -104,19 +107,19 @@ function svyPaint(){
   const nsvRows=dists.map(d=>({label:d.district,km:+d.nsv_lane_km||0}));
   const nsvCard='<div class="dcard"><div class="dcard-head"><h3>NSV condition survey by district</h3>'+
     '<span class="totchip">'+fmtKm(mTot.nsv_lane_km)+' lane km</span></div>'+
-    '<div class="sub">Lane-km surveyed in '+escH(y.year)+' — click a district to focus the whole dashboard</div>'+
+    '<div class="sub">Lane-km surveyed in '+pName+' — click a district to focus the whole dashboard</div>'+
     rankedBars(nsvRows,{click:'svySetDistrict',selName:svyDistrict,colorFn:()=> '#15976a'})+'</div>';
 
   const trafficRows=dists.map(d=>({label:d.district,n:+d.traffic_stations||0}));
   const mixCard='<div class="dcard"><div class="dcard-head"><h3>Traffic stations by district</h3>'+
     '<span class="totchip">'+fmtN(mTot.traffic_stations)+'</span></div>'+
-    '<div class="sub">Classified traffic count stations per district in '+escH(y.year)+'</div>'+
+    '<div class="sub">Classified traffic count stations per district in '+pName+'</div>'+
     cBars(trafficRows,{colorFn:()=> '#d4a02e'})+'</div>';
 
   const fwdRows=dists.map(d=>({label:d.district,n:+d.fwd_points||0}));
   const fwdCard='<div class="dcard"><div class="dcard-head"><h3>FWD points by district</h3>'+
     '<span class="totchip">'+fmtN(mTot.fwd_points)+'</span></div>'+
-    '<div class="sub">Deflection test points per district in '+escH(y.year)+'</div>'+
+    '<div class="sub">Deflection test points per district in '+pName+'</div>'+
     cBars(fwdRows,{colorFn:()=> '#2a5d9c'})+'</div>';
 
   /* ---- district × survey matrix ---- */
@@ -130,11 +133,11 @@ function svyPaint(){
   rows+='<tr class="amx-tot"><td><b>Total</b></td>'+SVY_MET.map(m=>'<td class="n"><b>'+svyFmt(m.k,mTot[m.k])+'</b></td>').join('')+'</tr>';
   const matrix='<div class="dcard"><div class="dcard-head"><h3>District-wise survey coverage</h3>'+
     '<span class="totchip">'+dists.length+' district'+(dists.length===1?'':'s')+'</span></div>'+
-    '<div class="sub">Every survey stream by district for '+escH(y.year)+' — click a row to focus</div>'+
+    '<div class="sub">Every survey stream by district for '+pName+' — click a row to focus</div>'+
     '<div class="amx-wrap"><table class="amx">'+head+rows+'</table></div></div>';
 
-  const note='<div class="dash-note"><b>About these figures.</b> The survey year is the financial year (April–March) taken from each record’s survey date; '+
-    'streams uploaded without a per-row date (NSV condition, traffic stations) are shown under the active survey cycle. '+
+  const note='<div class="dash-note"><b>About these figures.</b> Every record is tagged with the survey period chosen when it was imported in the Data Console'+
+    (p.range?(' — '+pName+' covers '+escH(p.range)):'')+'. '+
     '<b>NSV lane-km</b> is the sum of surveyed chainage over every lane strip (XSP), so a two-lane road surveyed end-to-end counts twice its length. '+
     'Point tests (FWD, soil, core) and stations are counted per record. Records whose section label is not in the road network appear as <b>(unmapped)</b>.</div>';
 

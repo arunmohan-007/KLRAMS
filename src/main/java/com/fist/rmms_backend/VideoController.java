@@ -12,9 +12,11 @@ import java.util.Map;
 public class VideoController {
 
     private final VideoService service;
+    private final SurveyPeriodService periods;
 
-    public VideoController(VideoService service) {
+    public VideoController(VideoService service, SurveyPeriodService periods) {
         this.service = service;
+        this.periods = periods;
     }
 
     /** Upload a .zip of video files; they are extracted and kept on the server. */
@@ -67,12 +69,18 @@ public class VideoController {
         }
     }
 
-    /** Upload the catalog CSV: section_label, video_file, direction. */
+    /** Upload the catalog CSV (section_label, video_file, direction) into one survey period. */
     @PostMapping("/upload-catalog")
-    public Map<String, Object> uploadCatalog(@RequestParam("file") MultipartFile file) {
+    public Map<String, Object> uploadCatalog(@RequestParam("file") MultipartFile file,
+                                             @RequestParam(value = "periodId", required = false) Integer periodId) {
         Map<String, Object> r = new HashMap<>();
         try {
-            int n = service.loadCatalog(file.getInputStream());
+            if (periodId == null || !periods.exists(periodId)) {
+                r.put("status", "error");
+                r.put("message", "Select the survey period this video catalogue belongs to before importing.");
+                return r;
+            }
+            int n = service.loadCatalog(file.getInputStream(), periodId);
             r.put("status", "ok");
             r.put("entries", n);
         } catch (Exception e) {
@@ -82,9 +90,10 @@ public class VideoController {
         return r;
     }
 
-    /** The map reads this to know which video + direction belongs to each road. */
+    /** The map reads this to know which video + direction belongs to each road.
+     *  Defaults to the active survey period; ?period_id= selects another. */
     @GetMapping("/catalog")
-    public List<Map<String, Object>> catalog() {
-        return service.catalog();
+    public List<Map<String, Object>> catalog(@RequestParam(value = "period_id", required = false) Integer periodId) {
+        return service.catalog(periodId);
     }
 }

@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLRAMS · Survey Archive — view any survey period</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{--ink:#0e2038;--accent:#16a06b;--accent-d:#0d7a51;--hair:#e2e7ee;--muted:#64718a;--text:#1f2a3d;--surface:#fff;--bg:#eef1f5;
+    --good:#2ba66a;--fair:#FFC400;--poor:#da4b43;--net:#8a99ad;
+    --sans:"Inter",system-ui,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",monospace;--shadow:0 1px 2px rgba(14,32,56,.06),0 8px 24px rgba(14,32,56,.10)}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--sans);color:var(--text);background:var(--bg);display:flex;flex-direction:column;height:100vh}
+  .topbar{height:52px;flex:0 0 auto;background:var(--ink);color:#fff;display:flex;align-items:center;gap:12px;padding:0 16px;z-index:1200}
+  .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#1ec98a);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .mark svg{width:16px;height:16px}
+  .brand .t{font-size:15px;font-weight:600}
+  .brand .s{font-size:11px;color:#9fb0c9;margin-left:8px}
+  .pill{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#9fe8c8;border:1px solid rgba(30,201,138,.4);background:rgba(30,201,138,.12);border-radius:999px;padding:5px 11px}
+  .spacer{flex:1}
+  .topbar a{color:#cdd9ea;text-decoration:none;font-size:13px;font-weight:500;padding:6px 10px;border-radius:7px}
+  .topbar a:hover{color:#fff;background:rgba(255,255,255,.08)}
+  .main{flex:1;display:flex;min-height:0}
+  #map{flex:1;min-width:0;background:#dfe6ee}
+  .panel{width:300px;flex:0 0 auto;background:var(--surface);border-left:1px solid var(--hair);overflow-y:auto;padding:14px}
+  .panel h3{font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);margin:2px 0 10px}
+  .grp{border:1px solid var(--hair);border-radius:11px;padding:10px 12px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .sw{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:500;padding:6px 0}
+  .sw + .sw{border-top:1px solid #f0f3f7}
+  .sw .cnt{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-left:auto;margin-right:10px;white-space:nowrap}
+  .sw.off{opacity:.45}
+  .sw.off .cnt{color:#b9c2cc}
+  .sw input{appearance:none;width:40px;height:22px;border-radius:20px;background:#cfd7e2;position:relative;cursor:pointer;transition:.18s;flex:0 0 auto;margin:0}
+  .sw input:checked{background:var(--accent)}
+  .sw input:disabled{cursor:not-allowed}
+  .sw input::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.18s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .sw input:checked::after{transform:translateX(18px)}
+  .dot{width:11px;height:11px;border-radius:3px;flex:0 0 auto;border:1px solid rgba(0,0,0,.12)}
+  label.lbl{display:block;font-size:11px;font-weight:600;color:#46556e;margin:2px 0 5px}
+  select{width:100%;font-family:var(--sans);font-size:13px;color:var(--text);background:#fff;border:1px solid var(--hair);border-radius:8px;padding:8px 10px}
+  select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(22,160,107,.14)}
+  .hint{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:6px}
+  .status{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px;min-height:14px}
+  .legend{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+  .legend .li{display:flex;align-items:center;gap:9px;font-size:12px}
+  .legend .swatch{width:15px;height:15px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(0,0,0,.1)}
+  .lp{font-family:var(--sans);font-size:12.5px;max-height:260px;overflow:auto}
+  .lp h4{margin:0 0 6px;font-size:13.5px;color:var(--ink)}
+  .lp table{border-collapse:collapse;width:100%}
+  .lp td{padding:2px 6px 2px 0;vertical-align:top}
+  .lp td:first-child{color:var(--muted);white-space:nowrap}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/></svg></span>
+    <div class="brand"><span class="t">KLRAMS</span><span class="s">Survey Archive — view any survey period</span></div>
+    <span class="pill" id="perPill">—</span>
+    <span class="spacer"></span>
+    <a href="/index.html">Data console</a>
+    <a href="/map.html">GIS viewer</a>
+    <a href="/home.html">Home</a>
+  </div>
+
+  <div class="main">
+    <div id="map"></div>
+    <div class="panel">
+      <div class="grp">
+        <h3>Survey period</h3>
+        <label class="lbl" for="perSel">Show data collected during</label>
+        <select id="perSel"></select>
+        <div class="hint">Each import in the Data Console is tagged with a survey period, so every cycle is kept separately. The <b>current</b> period is what the GIS viewer shows.</div>
+      </div>
+
+      <div class="grp">
+        <h3>Layers in this period</h3>
+        <div id="layerList"></div>
+        <div class="status" id="status"></div>
+        <div class="hint">Greyed layers have no data in the selected period. The road network is always shown underneath.</div>
+      </div>
+
+      <div class="grp">
+        <h3>Legend</h3>
+        <div class="legend">
+          <div class="li"><span class="swatch" style="background:var(--good)"></span>Condition — good (IRI &lt; 2.55)</div>
+          <div class="li"><span class="swatch" style="background:var(--fair)"></span>Condition — fair (IRI 2.55–3.30)</div>
+          <div class="li"><span class="swatch" style="background:var(--poor)"></span>Condition — poor (IRI ≥ 3.30)</div>
+          <div class="li"><span class="swatch" style="background:#1a9850"></span>FWD segment — D0 &lt; 100 µm → <span class="swatch" style="background:#b2182b;margin-left:2px"></span> &gt; 700 µm</div>
+          <div class="li"><span class="swatch" style="background:#d4a02e;border-radius:50%"></span>Traffic station</div>
+          <div class="li"><span class="swatch" style="background:#6b4e9e;border-radius:50%"></span>Sub-grade soil test</div>
+          <div class="li"><span class="swatch" style="background:#c2603f;border-radius:50%"></span>Bituminous core</div>
+          <div class="li"><span class="swatch" style="background:#2a5d9c;border-radius:50%"></span>Pavement crust</div>
+          <div class="li"><span class="swatch" style="background:var(--net)"></span>Road network</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+var map=L.map('map',{preferCanvas:true}).setView([10.2,76.4],8);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+
+function escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function popupHtml(title,p){
+  var rows=Object.keys(p||{}).map(function(k){return '<tr><td>'+escH(k)+'</td><td><b>'+escH(p[k])+'</b></td></tr>';}).join('');
+  return '<div class="lp"><h4>'+escH(title)+'</h4><table>'+rows+'</table></div>';
+}
+function iriColor(v){v=+v;if(isNaN(v))return '#b9c2cc';if(v<2.55)return '#2ba66a';if(v<3.30)return '#FFC400';return '#da4b43';}
+function d0Color(v){v=+v;if(isNaN(v))return '#9aa0a6';if(v<100)return '#1a9850';if(v<200)return '#91cf60';if(v<350)return '#fee08b';if(v<500)return '#fdae61';if(v<700)return '#f46d43';return '#b2182b';}
+/* D0 lives in the kept CSV attrs under a slightly different header per file */
+function findD0(p){for(var k in p){var kk=String(k).toLowerCase().replace(/[^a-z0-9]/g,'');if(kk==='d0'||kk==='do'){return p[k];}}return null;}
+
+/* ---- layer registry: id, label, availability-count key, fetch url, renderer ---- */
+var LAYERS=[
+  {id:'cond',   label:'Condition segments', dot:'#2ba66a', key:'condition_segments',
+   url:function(pid){return '/api/segments/geojson?period_id='+pid;},
+   make:function(gj){return L.geoJSON(gj,{style:function(f){return {color:iriColor(f.properties&&f.properties.iri),weight:3.5,opacity:.95};},
+     onEachFeature:function(f,l){l.bindPopup(popupHtml('Condition · '+(f.properties.road||''),f.properties));}});}},
+  {id:'fwdseg', label:'FWD segments',       dot:'#fdae61', key:'fwd_segments',
+   url:function(pid){return '/api/fwd-segments/geojson?period_id='+pid;},
+   make:function(gj){return L.geoJSON(gj,{style:function(f){return {color:d0Color(f.properties&&f.properties.d0),weight:4,opacity:.95};},
+     onEachFeature:function(f,l){l.bindPopup(popupHtml('FWD · '+(f.properties.road||''),f.properties));}});}},
+  {id:'fwd',    label:'FWD points',         dot:'#2a5d9c', key:'fwd',
+   url:function(pid){return '/api/assets/fwd/geojson?period_id='+pid;},
+   make:function(gj){return L.geoJSON(gj,{pointToLayer:function(f,ll){return L.circleMarker(ll,{radius:4,color:'#123c6b',weight:1,fillColor:d0Color(findD0(f.properties)),fillOpacity:.9});},
+     onEachFeature:function(f,l){l.bindPopup(popupHtml('FWD point · '+(f.properties.road||''),f.properties));}});}},
+  {id:'traffic',label:'Traffic stations',   dot:'#d4a02e', key:'traffic_stations',
+   url:function(pid){return '/api/traffic/stations/geojson?period_id='+pid;},
+   make:function(gj){return L.geoJSON(gj,{pointToLayer:function(f,ll){return L.circleMarker(ll,{radius:6,color:'#8a6a12',weight:1.5,fillColor:'#d4a02e',fillOpacity:.95});},
+     onEachFeature:function(f,l){l.bindPopup(popupHtml('Traffic station · '+(f.properties.name||''),f.properties));}});}},
+  {id:'soil',   label:'Sub-grade soil',     dot:'#6b4e9e', key:'subgrade',
+   url:function(pid){return '/api/assets/subgrade/geojson?period_id='+pid;},
+   make:function(gj){return L.geoJSON(gj,{pointToLayer:function(f,ll){return L.circleMarker(ll,{radius:5,color:'#4a3570',weight:1,fillColor:'#6b4e9e',fillOpacity:.9});},
+     onEachFeature:function(f,l){l.bindPopup(popupHtml('Soil test · '+(f.properties.road||''),f.properties));}});}},
+  {id:'core',   label:'Bituminous core',    dot:'#c2603f', key:'bituminous_core',
+   url:function(pid){return '/api/assets/bituminous_core/geojson?period_id='+pid;},
+   make:function(gj){return L.geoJSON(gj,{pointToLayer:function(f,ll){return L.circleMarker(ll,{radius:5,color:'#8a4029',weight:1,fillColor:'#c2603f',fillOpacity:.9});},
+     onEachFeature:function(f,l){l.bindPopup(popupHtml('Bituminous core · '+(f.properties.road||''),f.properties));}});}},
+  {id:'crust',  label:'Pavement crust',     dot:'#2a5d9c', key:'pavement_crust',
+   url:function(pid){return '/api/assets/pavement_crust/geojson?period_id='+pid;},
+   make:function(gj){return L.geoJSON(gj,{pointToLayer:function(f,ll){return L.circleMarker(ll,{radius:5,color:'#1b3f6e',weight:1,fillColor:'#2a5d9c',fillOpacity:.9});},
+     onEachFeature:function(f,l){l.bindPopup(popupHtml('Pavement crust · '+(f.properties.road||''),f.properties));}});}}
+];
+
+var periods=[];        // availability payload rows
+var curPid=null;
+var live={};           // layer id -> Leaflet layer currently on the map
+var cache={};          // 'id|pid' -> Leaflet layer (built once per period)
+var wanted={};         // layer id -> user wants it on (persists across period switches)
+LAYERS.forEach(function(l){wanted[l.id]=(l.id==='cond');});   // condition on by default
+
+function setStatus(t){document.getElementById('status').textContent=t||'';}
+function curPeriod(){for(var i=0;i<periods.length;i++)if(+periods[i].id===+curPid)return periods[i];return null;}
+
+/* roads base layer, once */
+fetch('/api/roads/geojson').then(function(r){return r.json();}).then(function(gj){
+  var lyr=L.geoJSON(gj,{style:{color:'#8a99ad',weight:1.4,opacity:.7}}).addTo(map);
+  try{map.fitBounds(lyr.getBounds(),{padding:[16,16]});}catch(e){}
+  lyr.bringToBack();
+}).catch(function(){});
+
+function loadPeriods(){
+  fetch('/api/survey-periods/availability',{cache:'no-store'}).then(function(r){
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(d){
+    periods=(d&&d.periods)||[];
+    var sel=document.getElementById('perSel');
+    sel.innerHTML=periods.map(function(p){
+      return '<option value="'+(+p.id)+'"'+(p.is_active?' selected':'')+'>'+escH(p.name)+(p.is_active?' · current':'')
+        +((p.start_date||p.end_date)?(' ('+escH(p.start_date||'…')+' – '+escH(p.end_date||'…')+')'):'')+'</option>';
+    }).join('')||'<option value="">No survey periods yet</option>';
+    var act=periods.filter(function(p){return p.is_active;})[0];
+    curPid=act?act.id:(periods[0]&&periods[0].id);
+    if(curPid!=null)sel.value=String(curPid);
+    renderLayerList();
+    refreshLayers();
+  }).catch(function(e){
+    setStatus('Could not load periods ('+e.message+') — sign in first?');
+  });
+}
+document.getElementById('perSel').addEventListener('change',function(){
+  curPid=+this.value||null;
+  renderLayerList();
+  refreshLayers();
+});
+
+function renderLayerList(){
+  var p=curPeriod();
+  var c=(p&&p.counts)||{};
+  document.getElementById('perPill').textContent=p?p.name:'—';
+  document.getElementById('layerList').innerHTML=LAYERS.map(function(l){
+    var n=+c[l.key]||0;
+    var off=n===0;
+    return '<div class="sw'+(off?' off':'')+'" title="'+(off?'No data in this period':'')+'">'
+      +'<span class="dot" style="background:'+l.dot+'"></span>'+l.label
+      +'<span class="cnt">'+(off?'no data':n.toLocaleString())+'</span>'
+      +'<input type="checkbox" id="tg_'+l.id+'"'+(off?' disabled':(wanted[l.id]?' checked':''))
+      +' onchange="toggleLayer(\''+l.id+'\',this.checked)"></div>';
+  }).join('');
+}
+
+function toggleLayer(id,on){wanted[id]=on;refreshLayers();}
+
+function refreshLayers(){
+  if(curPid==null)return;
+  var p=curPeriod(),c=(p&&p.counts)||{};
+  LAYERS.forEach(function(l){
+    var key=l.id+'|'+curPid;
+    var shouldShow=wanted[l.id]&&(+c[l.key]||0)>0;
+    if(live[l.id]){map.removeLayer(live[l.id]);delete live[l.id];}
+    if(!shouldShow)return;
+    if(cache[key]){live[l.id]=cache[key].addTo(map);return;}
+    setStatus('Loading '+l.label+'…');
+    fetch(l.url(curPid)).then(function(r){return r.json();}).then(function(gj){
+      var lyr=l.make(gj);
+      cache[key]=lyr;
+      /* only add if the user still wants it and the period hasn't changed */
+      if(wanted[l.id]&&+curPid===+key.split('|')[1]){live[l.id]=lyr.addTo(map);}
+      setStatus('');
+    }).catch(function(e){setStatus('Failed to load '+l.label+' ('+e.message+')');});
+  });
+}
+
+loadPeriods();
+</script>
+</body>
+</html>

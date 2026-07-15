@@ -38,13 +38,14 @@ public class FwdSegmentController {
         return result;
     }
 
-    /** Serve the FWD segments as GeoJSON for the map. */
+    /** Serve the FWD segments as GeoJSON for the map.
+     *  Defaults to the active survey period; ?period_id= selects another. */
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> geojson() {
+    public ResponseEntity<String> geojson(@RequestParam(value = "period_id", required = false) Integer periodId) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noCache())
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(service.segmentsGeoJson());
+                .body(service.segmentsGeoJson(periodId));
     }
 
     @GetMapping("/count")

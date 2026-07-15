@@ -34,12 +34,17 @@ public class AssetController {
 
     private static final Set<String> LINE_TYPES  = Set.of("bridge", "furniture_line");
     private static final Set<String> POINT_TYPES = Set.of("culvert", "furniture_point", "subgrade", "bituminous_core", "pavement_crust", "fwd");
+    /* Field-survey streams belong to a survey period; permanent inventory
+       (bridge, culvert, furniture) does not. */
+    private static final Set<String> SURVEY_TYPES = Set.of("fwd", "subgrade", "bituminous_core", "pavement_crust");
 
     private final JdbcTemplate jdbc;
+    private final SurveyPeriodService periods;
     private final ObjectMapper om = new ObjectMapper();
 
-    public AssetController(JdbcTemplate jdbc) {
+    public AssetController(JdbcTemplate jdbc, SurveyPeriodService periods) {
         this.jdbc = jdbc;
+        this.periods = periods;
     }
 
     private void ensure() {
@@ -51,15 +56,19 @@ public class AssetController {
                 start_chainage double precision,
                 end_chainage double precision,
                 attrs jsonb,
-                geom geometry
+                geom geometry,
+                period_id integer
             )""");
+        jdbc.execute("ALTER TABLE road_assets ADD COLUMN IF NOT EXISTS period_id integer");
         jdbc.execute("CREATE INDEX IF NOT EXISTS road_assets_type_idx ON road_assets(asset_type)");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS road_assets_period_idx ON road_assets(period_id)");
     }
 
     @PostMapping("/{type}/upload")
     @Transactional
     public Map<String, Object> upload(@PathVariable String type,
-                                      @RequestParam("file") MultipartFile file) {
+                                      @RequestParam("file") MultipartFile file,
+                                      @RequestParam(value = "periodId", required = false) Integer periodId) {
         Map<String, Object> r = new HashMap<>();
         type = type.toLowerCase();
         boolean isLine = LINE_TYPES.contains(type);
@@ -67,6 +76,13 @@ public class AssetController {
             r.put("status", "error"); r.put("message", "Unknown asset type: " + type);
             return r;
         }
+        boolean isSurvey = SURVEY_TYPES.contains(type);
+        if (isSurvey && (periodId == null || !periods.exists(periodId))) {
+            r.put("status", "error");
+            r.put("message", "Select the survey period this data belongs to before importing.");
+            return r;
+        }
+        if (!isSurvey) periodId = null;   // permanent inventory is period-less
         try {
             ensure();
             BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
@@ -108,9 +124,16 @@ public class AssetController {
                 Double e = isLine ? num(val(c, iEnd))
                         : (type.equals("fwd") && iEnd != null ? num(val(c, iEnd)) : null);
                 if (sec == null || s == null || (isLine && (e == null || e <= s))) { skipped++; continue; }
-                // first row for this section in this upload -> clear its old rows of this type
+                // first row for this section in this upload -> clear its old rows of
+                // this type, only within the chosen survey period (older periods keep
+                // their data; inventory types have no period)
                 if (replacedSections.add(sec)) {
-                    jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ?", type, sec);
+                    if (periodId != null) {
+                        jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ? AND period_id = ?",
+                                type, sec, periodId);
+                    } else {
+                        jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ?", type, sec);
+                    }
                 }
                 // keep every column as attrs
                 Map<String,String> attrs = new LinkedHashMap<>();
@@ -121,11 +144,11 @@ public class AssetController {
                 Double lat = iLat != null ? num(val(c, iLat)) : null;
                 Double lon = iLon != null ? num(val(c, iLon)) : null;
                 if (!isLine && lat != null && lon != null && lat != 0 && lon != 0) {
-                    jdbc.update("INSERT INTO road_assets (asset_type, section_label, start_chainage, end_chainage, attrs, geom) VALUES (?,?,?,?,?::jsonb, ST_SetSRID(ST_MakePoint(?,?),4326))",
-                            type, sec, s, e, om.writeValueAsString(attrs), lon, lat);
+                    jdbc.update("INSERT INTO road_assets (asset_type, section_label, start_chainage, end_chainage, attrs, period_id, geom) VALUES (?,?,?,?,?::jsonb,?, ST_SetSRID(ST_MakePoint(?,?),4326))",
+                            type, sec, s, e, om.writeValueAsString(attrs), periodId, lon, lat);
                 } else {
-                    jdbc.update("INSERT INTO road_assets (asset_type, section_label, start_chainage, end_chainage, attrs) VALUES (?,?,?,?,?::jsonb)",
-                            type, sec, s, e, om.writeValueAsString(attrs));
+                    jdbc.update("INSERT INTO road_assets (asset_type, section_label, start_chainage, end_chainage, attrs, period_id) VALUES (?,?,?,?,?::jsonb,?)",
+                            type, sec, s, e, om.writeValueAsString(attrs), periodId);
                 }
                 loaded++;
             }
@@ -169,10 +192,11 @@ public class AssetController {
     }
 
     @GetMapping(value = "/{type}/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
-    public String geojson(@PathVariable String type) {
+    public String geojson(@PathVariable String type,
+                          @RequestParam(value = "period_id", required = false) Integer periodId) {
         try {
             ensure();
-            String g = jdbc.queryForObject("""
+            String base = """
                 SELECT json_build_object('type','FeatureCollection','features',
                     COALESCE(json_agg(json_build_object(
                         'type','Feature',
@@ -183,8 +207,15 @@ public class AssetController {
                             'to_ch', end_chainage) || COALESCE(attrs,'{}'::jsonb)
                     )), '[]'::json))::text
                 FROM road_assets WHERE asset_type = ? AND geom IS NOT NULL
-                """, String.class, type.toLowerCase());
-            return g;
+                """;
+            String t = type.toLowerCase();
+            // Survey streams are filtered to one period (default: the active one);
+            // inventory types (bridge, culvert, furniture) ignore the parameter.
+            if (SURVEY_TYPES.contains(t)) {
+                return jdbc.queryForObject(base + " AND period_id = ?",
+                        String.class, t, periods.resolve(periodId));
+            }
+            return jdbc.queryForObject(base, String.class, t);
         } catch (Exception e) {
             return "{\"type\":\"FeatureCollection\",\"features\":[]}";
         }

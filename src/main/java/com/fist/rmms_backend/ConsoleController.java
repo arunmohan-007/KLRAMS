@@ -20,9 +20,11 @@ import java.util.Map;
 public class ConsoleController {
 
     private final JdbcTemplate jdbc;
+    private final SurveyPeriodService periods;
 
-    public ConsoleController(JdbcTemplate jdbc) {
+    public ConsoleController(JdbcTemplate jdbc, SurveyPeriodService periods) {
         this.jdbc = jdbc;
+        this.periods = periods;
     }
 
     private long cnt(String sql, Object... args) {
@@ -60,6 +62,11 @@ public class ConsoleController {
         m.put("traffic_stations", cnt("SELECT count(*) FROM traffic_stations"));
         m.put("traffic_counts", cnt("SELECT count(*) FROM traffic_counts"));
         m.put("boundary", cnt("SELECT count(*) FROM boundary"));
+        try {
+            int pid = periods.activePeriodId();
+            m.put("active_period_id", pid);
+            m.put("active_period", periods.nameOf(pid));
+        } catch (Exception ignore) { }
         return m;
     }
 }

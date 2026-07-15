@@ -19,13 +19,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class FwdSegmentService {
 
     private final JdbcTemplate jdbc;
+    private final SurveyPeriodService periods;
 
     /* Assemble the segment GeoJSON once and serve later requests from memory;
-       cleared on every build. */
+       only the active period is cached (Survey Archive requests for other
+       periods are built per request); cleared on every build. */
     private volatile String cachedGeoJson;
+    private volatile Integer cachedPeriodId;
 
-    public FwdSegmentService(JdbcTemplate jdbc) {
+    public FwdSegmentService(JdbcTemplate jdbc, SurveyPeriodService periods) {
         this.jdbc = jdbc;
+        this.periods = periods;
     }
 
     @Transactional
@@ -35,7 +39,7 @@ public class FwdSegmentService {
         jdbc.execute("""
             CREATE TABLE fwd_segments AS
             WITH src AS (
-                SELECT a.section_label, a.start_chainage, a.end_chainage, a.attrs,
+                SELECT a.section_label, a.start_chainage, a.end_chainage, a.attrs, a.period_id,
                     (SELECT (e.value)::double precision
                        FROM jsonb_each_text(a.attrs) e
                       WHERE regexp_replace(lower(e.key), '[^a-z0-9]', '', 'g') IN ('d0','do')
@@ -58,7 +62,7 @@ public class FwdSegmentService {
                 WHERE r.geom IS NOT NULL
             )
             SELECT
-                section_label, start_chainage, end_chainage, d0,
+                section_label, start_chainage, end_chainage, period_id, d0,
                 ST_LineSubstring(ST_LineMerge(road_geom),
                     GREATEST(LEAST(start_chainage / measured_len, 1.0), 0.0),
                     GREATEST(LEAST(end_chainage   / measured_len, 1.0), 0.0)) AS geom
@@ -69,24 +73,35 @@ public class FwdSegmentService {
         jdbc.execute("DELETE FROM fwd_segments WHERE geom IS NULL OR ST_IsEmpty(geom)");
         jdbc.execute("ALTER TABLE fwd_segments ADD COLUMN seg_id serial PRIMARY KEY");
         jdbc.execute("CREATE INDEX fwd_segments_geom_idx ON fwd_segments USING GIST (geom)");
+        jdbc.execute("CREATE INDEX fwd_segments_period_idx ON fwd_segments (period_id)");
 
         Long n = jdbc.queryForObject("SELECT count(*) FROM fwd_segments", Long.class);
         cachedGeoJson = null;   // segments changed -> next /geojson rebuilds the cache
         return n == null ? 0 : n.intValue();
     }
 
-    public String segmentsGeoJson() {
+    /** GeoJSON of one survey period's FWD segments (null = active period). */
+    public String segmentsGeoJson(Integer requestedPeriodId) {
+        int pid = periods.resolve(requestedPeriodId);
         String body = cachedGeoJson;
-        if (body == null) {
-            synchronized (this) {
-                if (cachedGeoJson == null) cachedGeoJson = buildGeoJson();
-                body = cachedGeoJson;
+        Integer cachedPid = cachedPeriodId;
+        if (body != null && cachedPid != null && cachedPid == pid) return body;
+        synchronized (this) {
+            if (cachedGeoJson != null && cachedPeriodId != null && cachedPeriodId == pid) return cachedGeoJson;
+            body = buildGeoJson(pid);
+            if (pid == periods.activePeriodId()) {
+                cachedGeoJson = body;
+                cachedPeriodId = pid;
             }
+            return body;
         }
-        return body;
     }
 
-    private String buildGeoJson() {
+    public String segmentsGeoJson() {
+        return segmentsGeoJson(null);
+    }
+
+    private String buildGeoJson(int periodId) {
         try {
             String sql = """
                 SELECT json_build_object('type','FeatureCollection','features',
@@ -97,9 +112,9 @@ public class FwdSegmentService {
                             'road', section_label, 'from_ch', start_chainage,
                             'to_ch', end_chainage, 'd0', d0)
                     )), '[]'::json))::text
-                FROM fwd_segments
+                FROM fwd_segments WHERE period_id = ?
                 """;
-            return jdbc.queryForObject(sql, String.class);
+            return jdbc.queryForObject(sql, String.class, periodId);
         } catch (Exception e) {
             return "{\"type\":\"FeatureCollection\",\"features\":[]}";
         }

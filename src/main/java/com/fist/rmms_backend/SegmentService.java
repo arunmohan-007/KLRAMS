@@ -19,13 +19,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class SegmentService {
 
     private final JdbcTemplate jdbc;
+    private final SurveyPeriodService periods;
 
     /* The segment GeoJSON is large and unchanged between rebuilds, so assemble it
-       once and serve every later request from memory. Cleared on buildSegments(). */
+       once and serve every later request from memory. Only one period (normally
+       the active one) is cached; other periods — rare, Survey Archive views —
+       are built per request. Cleared on buildSegments(). */
     private volatile String cachedGeoJson;
+    private volatile Integer cachedPeriodId;
 
-    public SegmentService(JdbcTemplate jdbc) {
+    public SegmentService(JdbcTemplate jdbc, SurveyPeriodService periods) {
         this.jdbc = jdbc;
+        this.periods = periods;
     }
 
     @Transactional
@@ -36,7 +41,7 @@ public class SegmentService {
             CREATE TABLE condition_segments AS
             WITH agg AS (
                 SELECT
-                    section_label, start_chainage, end_chainage,
+                    section_label, start_chainage, end_chainage, period_id,
                     MAX(iri) AS iri, MAX(crack) AS crack, MAX(pothole) AS pothole,
                     MAX(rutting) AS rutting, MAX(texture) AS texture,
                     MAX(patch_work) AS patch_work, MAX(ravelling) AS ravelling,
@@ -59,7 +64,7 @@ public class SegmentService {
                 WHERE start_chainage IS NOT NULL
                   AND end_chainage   IS NOT NULL
                   AND end_chainage > start_chainage
-                GROUP BY section_label, start_chainage, end_chainage
+                GROUP BY section_label, start_chainage, end_chainage, period_id
             ),
             joined AS (
                 SELECT a.*, r.geom AS road_geom,
@@ -72,7 +77,7 @@ public class SegmentService {
                 WHERE r.geom IS NOT NULL
             )
             SELECT
-                section_label, start_chainage, end_chainage,
+                section_label, start_chainage, end_chainage, period_id,
                 iri, crack, pothole, rutting, texture, patch_work, ravelling,
                 avg_iri, avg_crack, avg_pothole, avg_rutting, avg_texture, avg_patch_work, avg_ravelling,
                 lane_count, xsp_list, lane_vals,
@@ -86,24 +91,37 @@ public class SegmentService {
         jdbc.execute("DELETE FROM condition_segments WHERE geom IS NULL OR ST_IsEmpty(geom)");
         jdbc.execute("ALTER TABLE condition_segments ADD COLUMN seg_id serial PRIMARY KEY");
         jdbc.execute("CREATE INDEX condition_segments_geom_idx ON condition_segments USING GIST (geom)");
+        jdbc.execute("CREATE INDEX condition_segments_period_idx ON condition_segments (period_id)");
 
         Long n = jdbc.queryForObject("SELECT count(*) FROM condition_segments", Long.class);
         cachedGeoJson = null;   // segments changed -> next /geojson rebuilds the cache
         return n == null ? 0 : n.intValue();
     }
 
-    public String segmentsGeoJson() {
+    /** GeoJSON of one survey period's segments (null = active period). */
+    public String segmentsGeoJson(Integer requestedPeriodId) {
+        int pid = periods.resolve(requestedPeriodId);
         String body = cachedGeoJson;
-        if (body == null) {
-            synchronized (this) {
-                if (cachedGeoJson == null) cachedGeoJson = buildGeoJson();
-                body = cachedGeoJson;
+        Integer cachedPid = cachedPeriodId;
+        if (body != null && cachedPid != null && cachedPid == pid) return body;
+        synchronized (this) {
+            if (cachedGeoJson != null && cachedPeriodId != null && cachedPeriodId == pid) return cachedGeoJson;
+            body = buildGeoJson(pid);
+            // Keep the active period resident: it serves every map open. A stale
+            // cache from a previous active period is simply replaced.
+            if (pid == periods.activePeriodId()) {
+                cachedGeoJson = body;
+                cachedPeriodId = pid;
             }
+            return body;
         }
-        return body;
     }
 
-    private String buildGeoJson() {
+    public String segmentsGeoJson() {
+        return segmentsGeoJson(null);
+    }
+
+    private String buildGeoJson(int periodId) {
         // ST_AsGeoJSON(geom, 6): 6-decimal coordinates (~0.1 m) cut the payload size
         // substantially versus the 9-decimal default, with no visible loss for roads.
         String sql = """
@@ -120,9 +138,9 @@ public class SegmentService {
                         'avg_patch_work', avg_patch_work, 'avg_ravelling', avg_ravelling,
                         'lane_count', lane_count, 'xsp_list', xsp_list, 'lane_vals', lane_vals)
                 )), '[]'::json))::text
-            FROM condition_segments
+            FROM condition_segments WHERE period_id = ?
             """;
-        return jdbc.queryForObject(sql, String.class);
+        return jdbc.queryForObject(sql, String.class, periodId);
     }
 
     public long count() {

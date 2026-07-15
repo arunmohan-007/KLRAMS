@@ -12,9 +12,11 @@ import java.util.Map;
 public class ConditionController {
 
     private final ConditionService service;
+    private final SurveyPeriodService periods;
 
-    public ConditionController(ConditionService service) {
+    public ConditionController(ConditionService service, SurveyPeriodService periods) {
         this.service = service;
+        this.periods = periods;
     }
 
     /**
@@ -26,9 +28,15 @@ public class ConditionController {
      */
     @PostMapping("/upload")
     public Map<String, Object> upload(@RequestParam("file") MultipartFile file,
-                                      @RequestParam(value = "force", defaultValue = "false") boolean force) {
+                                      @RequestParam(value = "force", defaultValue = "false") boolean force,
+                                      @RequestParam(value = "periodId", required = false) Integer periodId) {
         Map<String, Object> result = new HashMap<>();
         try {
+            if (periodId == null || !periods.exists(periodId)) {
+                result.put("status", "error");
+                result.put("message", "Select the survey period this data belongs to before importing.");
+                return result;
+            }
             byte[] data = file.getBytes();
             if (!force) {
                 Map<String, Object> rep = service.analyzeDuplicates(new ByteArrayInputStream(data));
@@ -37,7 +45,7 @@ public class ConditionController {
                     return rep;
                 }
             }
-            int n = service.loadCsv(new ByteArrayInputStream(data));
+            int n = service.loadCsv(new ByteArrayInputStream(data), periodId);
             result.put("status", "ok");
             result.put("inserted", n);
         } catch (Exception e) {
