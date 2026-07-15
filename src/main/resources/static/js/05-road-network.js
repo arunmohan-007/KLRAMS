@@ -6,13 +6,31 @@
    ============================================================ */
 // ---- road network: attribute metadata, colour-by, filter-by ----
 const SKIP_ATTRS=new Set(['road','name','len','id']);
-const CAT_PALETTE=['#e0a33a','#3b6fa0','#2ba66a','#da4b43','#8a5cb8','#0fa3a3','#c2628e','#7a8b2f','#b06a2c','#5470c6','#9a6324','#46728e'];
+/* Kerala has 14 districts and the PWD_Sec attribute carries a similar
+   handful of divisions — a 12-colour palette pushed most of them into the
+   grey "other" bucket even though they're common values, not rare ones.
+   Widened to 20 so district- and PWD-section-level colouring gives every
+   value its own colour. */
+const CAT_PALETTE=['#e0a33a','#3b6fa0','#2ba66a','#da4b43','#8a5cb8','#0fa3a3','#c2628e','#7a8b2f','#b06a2c','#5470c6','#9a6324','#46728e','#d97ec9','#3fae8f','#c9563c','#6f6fce','#4a90d9','#b8464f','#8c9c3f','#5c8a3a'];
+const CAT_MAX=CAT_PALETTE.length;
 /* Road_Num is an identifier, not a magnitude — a smooth gradient makes
    neighbouring numbers (45 vs 46) look almost identical. Hash each number
    into this wider, high-contrast palette instead, so adjacent road numbers
    land on unrelated colours. Order is deliberately non-monotonic (not just
    a hue ramp) to avoid any residual "nearby number -> nearby colour" drift. */
 const ROAD_NUM_PALETTE=['#e0a33a','#3b6fa0','#da4b43','#2ba66a','#8a5cb8','#c2628e','#0fa3a3','#7a8b2f','#5470c6','#b06a2c','#46728e','#9a6324','#d97ec9','#3fae8f','#c9563c','#6f6fce'];
+/* Some categorical attributes have far more distinct values than any hand-
+   picked palette can cover (e.g. PWD_Sec repeats per district — 15 districts
+   x a dozen-odd sections each is 100+ distinct labels). For those, hash each
+   string to its own hue instead of falling back to a shared grey "other" —
+   every value gets a colour, it's just generated rather than curated. */
+function _strHash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+function hashCatColor(s){
+  const h=_strHash(String(s));
+  /* golden-angle step keeps adjacent hashes from landing on similar hues */
+  const hue=(h*137.508)%360;
+  return 'hsl('+hue.toFixed(1)+',55%,50%)';
+}
 let ATTRS={}, netMode='all', netFilters=[];
 let _netFitT=null;
 function buildAttrMeta(gj){
@@ -21,15 +39,24 @@ function buildAttrMeta(gj){
   gj.features.forEach(f=>Object.keys(f.properties||{}).forEach(k=>keys.add(k)));
   keys.forEach(k=>{
     if(SKIP_ATTRS.has(k))return;
-    let numeric=true; const distinct=new Set(); let min=Infinity,max=-Infinity; let seen=0;
+    let numeric=true; const distinct=new Map(); let min=Infinity,max=-Infinity; let seen=0;
     for(const f of gj.features){
       const v=f.properties[k]; if(v==null||v==='')continue; seen++;
       const n=+v;
       if(isNaN(n)) numeric=false; else {min=Math.min(min,n);max=Math.max(max,n);}
-      if(distinct.size<=40) distinct.add(String(v));
+      const s=String(v);
+      if(distinct.has(s)) distinct.set(s,distinct.get(s)+1);
+      else if(distinct.size<=400) distinct.set(s,1);
     }
     if(!seen)return;
-    ATTRS[k]={numeric:numeric&&min!==Infinity,min,max,values:[...distinct].sort()};
+    /* valuesByFreq drives colour assignment: the most COMMON values earn a
+       distinct colour first, so a value that alphabetically sorts past the
+       palette limit (but actually covers a big share of the network) no
+       longer gets bucketed into the grey "other" catch-all. values (plain
+       alphabetical) is kept for filter dropdowns/datalists, where sorting
+       by name is what a user searching for one entry expects. */
+    const valuesByFreq=[...distinct.keys()].sort((a,b)=>(distinct.get(b)-distinct.get(a))||a.localeCompare(b));
+    ATTRS[k]={numeric:numeric&&min!==Infinity,min,max,values:[...distinct.keys()].sort(),valuesByFreq};
   });
   const sel=document.getElementById('netColorBy');
   sel.innerHTML='<option value="__class__">Default (SH / MDR)</option>';
@@ -56,7 +83,14 @@ function netColorByExpr(attr){
     return ['interpolate',['linear'],['to-number',['coalesce',['get',attr],lo]],lo,'#9ec97f',(lo+hi)/2,'#e4a13a',hi,'#c0392b'];
   }
   const e=['match',['to-string',['get',attr]]];
-  m.values.slice(0,12).forEach((v,i)=>{e.push(v,CAT_PALETTE[i%CAT_PALETTE.length]);});
+  const list=m.valuesByFreq||m.values;
+  if(list.length<=CAT_MAX){
+    list.forEach((v,i)=>{e.push(v,CAT_PALETTE[i%CAT_PALETTE.length]);});
+  }else{
+    /* too many distinct values for a curated palette — hash every one of
+       them to its own colour so nothing collapses into a shared "other". */
+    list.forEach(v=>{e.push(v,hashCatColor(v));});
+  }
   e.push('#9aa7b5');
   return e;
 }
@@ -70,8 +104,18 @@ function renderNetLegend(attr){
     return;
   }
   if(m.numeric){el.innerHTML=`<div class="lg"><span class="bar" style="background:linear-gradient(90deg,#9ec97f,#e4a13a,#c0392b)"></span><span class="lgt">${m.min} → ${m.max}</span></div>`;return;}
-  m.values.slice(0,12).forEach((v,i)=>{const lbl=dec(attr,v);el.innerHTML+=`<div class="lg"><span class="bar" style="background:${CAT_PALETTE[i%CAT_PALETTE.length]}"></span><span class="lgt" title="${lbl}">${lbl}</span></div>`;});
-  if(m.values.length>12)el.innerHTML+='<div class="lg"><span class="bar" style="background:#9aa7b5"></span><span class="lgt">other</span></div>';
+  const ordered=m.valuesByFreq||m.values;
+  if(ordered.length<=CAT_MAX){
+    ordered.forEach((v,i)=>{const lbl=dec(attr,v);el.innerHTML+=`<div class="lg"><span class="bar" style="background:${CAT_PALETTE[i%CAT_PALETTE.length]}"></span><span class="lgt" title="${lbl}">${lbl}</span></div>`;});
+  }else{
+    /* too many distinct values to list one swatch per row — show a sample
+       (most common first) plus a note, matching the road-number legend's
+       "hashed, not grouped" framing instead of implying a shared "other". */
+    const shown=ordered.slice(0,24);
+    shown.forEach(v=>{const lbl=dec(attr,v);el.innerHTML+=`<div class="lg"><span class="bar" style="background:${hashCatColor(v)}"></span><span class="lgt" title="${lbl}">${lbl}</span></div>`;});
+    const more=ordered.length-shown.length;
+    if(more>0)el.innerHTML+=`<div class="lg"><span class="lgt">+${more} more value(s), each auto-coloured (hashed, not grouped as "other")</span></div>`;
+  }
 }
 function setNetMode(m){netMode=m;document.getElementById('nAll').classList.toggle('on',m==='all');document.getElementById('nAny').classList.toggle('on',m==='any');applyNetFilter();}
 function addNetFilter(){netFilters.push({attr:Object.keys(ATTRS).sort()[0]||'',op:'=',val:''});renderNetFilters();}
