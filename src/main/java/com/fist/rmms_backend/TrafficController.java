@@ -54,7 +54,12 @@ public class TrafficController {
     }
 
     /** Add/update stations by (name, survey period) — additive. Body: JSON array of
-     *  {name,road,section,ch,lat,lng,xsp}. Stations of other periods are never touched. */
+     *  {name,road,section,ch,lat,lng,xsp}. Stations of other periods are never touched.
+     *
+     *  Placement is by chainage, not lat/lng (see stationsGeojson()), so a row whose
+     *  section text doesn't match any roads."Section_La" can never be placed — it is
+     *  rejected here rather than imported silently, and named back to the caller so
+     *  the bad section label can be fixed at the source. */
     @PostMapping("/stations")
     public Map<String, Object> saveStations(@RequestBody String body,
                                             @RequestParam(value = "periodId", required = false) Integer periodId) throws Exception {
@@ -75,7 +80,22 @@ public class TrafficController {
                 n++;
             }
         }
-        return Map.of("saved", n);
+
+        List<Map<String, Object>> skipped = jdbc.queryForList(
+            "SELECT t.name, t.section FROM traffic_stations t " +
+            "WHERE t.period_id = ? AND (t.section IS NULL OR t.chainage IS NULL OR NOT EXISTS " +
+            "  (SELECT 1 FROM roads r WHERE r.\"Section_La\" = t.section)) ORDER BY t.name", periodId);
+        if (!skipped.isEmpty()) {
+            jdbc.update(
+                "DELETE FROM traffic_stations t WHERE t.period_id = ? AND (t.section IS NULL OR t.chainage IS NULL OR NOT EXISTS " +
+                "  (SELECT 1 FROM roads r WHERE r.\"Section_La\" = t.section))", periodId);
+        }
+
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("saved", n - skipped.size());
+        res.put("skipped", skipped.size());
+        res.put("skipped_stations", skipped);
+        return res;
     }
 
     /** Add/update counts by (station name, survey period) — additive. Body: JSON object
@@ -136,23 +156,38 @@ public class TrafficController {
         return out;
     }
 
-    /** Stations as a GeoJSON FeatureCollection (lat/lng points).
-     *  Defaults to the active survey period; ?period_id= selects another. */
+    /** Stations as a GeoJSON FeatureCollection, placed by linear reference (chainage
+     *  along the matching roads."Section_La" centreline) — same method the map viewer
+     *  uses client-side, not the station's stored lat/lng. Defaults to the active
+     *  survey period; ?period_id= selects another. */
     @GetMapping("/stations/geojson")
     public Map<String, Object> stationsGeojson(@RequestParam(value = "period_id", required = false) Integer periodId) {
         int pid = periods.resolve(periodId);
-        List<Map<String, Object>> feats = jdbc.query(
-                "SELECT name,road,section,chainage,lat,lng,xsp FROM traffic_stations " +
-                        "WHERE lat IS NOT NULL AND lng IS NOT NULL AND period_id = ? ORDER BY name",
+        String lenExpr = """
+            COALESCE(
+                NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
+                NULLIF(r."Measrd_Len"::double precision, 0),
+                ST_Length(r.geom::geography))
+            """;
+        List<Map<String, Object>> feats = jdbc.query("""
+                SELECT t.name, t.road, t.section, t.chainage, t.lat, t.lng, t.xsp,
+                       ST_X(ST_LineInterpolatePoint(ST_LineMerge(r.geom), GREATEST(LEAST(t.chainage / %1$s, 1.0), 0.0))) AS px,
+                       ST_Y(ST_LineInterpolatePoint(ST_LineMerge(r.geom), GREATEST(LEAST(t.chainage / %1$s, 1.0), 0.0))) AS py
+                FROM traffic_stations t JOIN roads r ON r."Section_La" = t.section
+                WHERE t.chainage IS NOT NULL AND r.geom IS NOT NULL AND t.period_id = ?
+                ORDER BY t.name
+                """.formatted(lenExpr),
                 (rs, i) -> {
                     Map<String, Object> geom = new LinkedHashMap<>();
                     geom.put("type", "Point");
-                    geom.put("coordinates", Arrays.asList(rs.getDouble("lng"), rs.getDouble("lat")));
+                    geom.put("coordinates", Arrays.asList(rs.getDouble("px"), rs.getDouble("py")));
                     Map<String, Object> props = new LinkedHashMap<>();
                     props.put("name", rs.getString("name"));
                     props.put("road", rs.getString("road"));
                     props.put("section", rs.getString("section"));
                     props.put("ch", rs.getObject("chainage"));
+                    props.put("lat", rs.getObject("lat"));
+                    props.put("lng", rs.getObject("lng"));
                     props.put("xsp", rs.getString("xsp"));
                     Map<String, Object> f = new LinkedHashMap<>();
                     f.put("type", "Feature");
