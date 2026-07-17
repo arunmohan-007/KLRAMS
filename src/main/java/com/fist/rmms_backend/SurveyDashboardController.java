@@ -134,6 +134,41 @@ public class SurveyDashboardController {
         return res;
     }
 
+    /** Lists the raw records behind an "(unmapped)" district bucket, i.e. rows whose
+     *  section text didn't match any roads."Section_La" — so a data-entry typo or a
+     *  missing road section can be tracked down instead of just seeing the count. */
+    @GetMapping("/unmapped")
+    public List<Map<String, Object>> unmapped(
+            @RequestParam(defaultValue = "traffic_stations") String type,
+            @RequestParam(required = false) Integer period_id) {
+
+        int pid = period_id != null ? period_id : periods.activePeriodId();
+
+        return switch (type) {
+            case "traffic_stations" -> jdbc.queryForList(
+                "SELECT t.name, t.road, t.section, t.chainage " +
+                "FROM traffic_stations t LEFT JOIN roads r ON r.\"Section_La\" = t.section " +
+                "WHERE r.\"Section_La\" IS NULL AND t.period_id = ? ORDER BY t.name", pid);
+            case "nsv_lane_km" -> jdbc.queryForList(
+                "SELECT DISTINCT c.section_label " +
+                "FROM condition c LEFT JOIN roads r ON r.\"Section_La\" = c.section_label " +
+                "WHERE r.\"Section_La\" IS NULL AND c.period_id = ? ORDER BY 1", pid);
+            case "fwd_points", "subgrade_tests", "bituminous_cores" -> {
+                String assetType = switch (type) {
+                    case "fwd_points" -> "fwd";
+                    case "subgrade_tests" -> "subgrade";
+                    default -> "bituminous_core";
+                };
+                yield jdbc.queryForList(
+                    "SELECT a.id, a.section_label, a.start_chainage, a.end_chainage " +
+                    "FROM road_assets a LEFT JOIN roads r ON r.\"Section_La\" = a.section_label " +
+                    "WHERE a.asset_type = ? AND r.\"Section_La\" IS NULL AND a.period_id = ? " +
+                    "ORDER BY a.section_label", assetType, pid);
+            }
+            default -> throw new IllegalArgumentException("Unknown type: " + type);
+        };
+    }
+
     private static String rangeLabel(Map<String, Object> p) {
         Object s = p.get("start_date"), e = p.get("end_date");
         if (s == null && e == null) return "";
