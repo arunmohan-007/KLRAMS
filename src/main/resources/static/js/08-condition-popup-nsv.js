@@ -141,7 +141,7 @@ function buildPopup(props,roadId,ch,lane){
   if(c){
     var lv=null;try{lv=(typeof c.lane_vals==='string')?JSON.parse(c.lane_vals):c.lane_vals;}catch(e){}
     var lanes=lv?Object.keys(lv).sort():[];
-    var metrics=[['iri','IRI','m/km'],['crack','Crack','%'],['rutting','Rutting','mm'],['ravelling','Ravel','%'],['texture','Texture',''],['patch_work','Patch','%']]
+    var metrics=[['iri','IRI','m/km'],['crack','Cracking','%'],['pothole','Pothole','nos/km'],['rutting','Rut Depth','mm'],['ravelling','Ravelling','%'],['texture','Texture Depth','mm'],['patch_work','Patch Work','sqm']]
       .filter(function(m){return c['avg_'+m[0]]!=null||c[m[0]]!=null;});
     var cellCol=function(mk,x){return (x!=null&&typeof PMAP!=='undefined'&&PMAP[mk])?rating(mk,x):'';};
     H+='<table class="kc-ctbl"><tr><th class="mh">Metric</th>';
@@ -182,6 +182,9 @@ function buildPopup(props,roadId,ch,lane){
     H+='<div class="kc-condhead">Deflection (microns) &middot; '+rng+'</div><div class="kc-kvs">';
     if(fwd!=null)H+='<div class="kc-kv"><span class="k">Central deflection (D0)</span><span class="v">'+fwd+' &micro;m</span></div>';
     dnums.forEach(function(d){H+='<div class="kc-kv"><span class="k">Deflection '+d[0]+'</span><span class="v">'+d[1]+' &micro;m</span></div>';});
+    /* FWD survey v2 — Pavement/Air Temp recorded per drop (°C); null on older surveys */
+    if(_fr&&_fr.pt!=null)H+='<div class="kc-kv"><span class="k">Pavement temp</span><span class="v">'+_fr.pt+' &deg;C</span></div>';
+    if(_fr&&_fr.at!=null)H+='<div class="kc-kv"><span class="k">Air temp</span><span class="v">'+_fr.at+' &deg;C</span></div>';
     if(traf!=null)H+='<div class="kc-kv"><span class="k">Traffic location</span><span class="v">'+esc(String(traf))+'</span></div>';
     if(soil!=null)H+='<div class="kc-kv"><span class="k">Soil sub-grade</span><span class="v">'+esc(String(soil))+'</span></div>';
     if(core!=null)H+='<div class="kc-kv"><span class="k">Bituminous core</span><span class="v">'+esc(String(core))+'</span></div>';

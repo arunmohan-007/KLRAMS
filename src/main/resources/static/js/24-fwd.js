@@ -27,6 +27,11 @@
      strips the underscores, so '__d0' would read as a duplicate 'd0' and break
      the mm→micron auto-scale. Skip them here and in index() below. */
   function d0raw(p){for(var k in p){if(k.charAt(0)==='_')continue;var c=ck(k);if(c==='d0'||c==='do'){var v=p[k];if(v!=null&&v!=='')return +v;}}return null;}
+  /* Build 170 — FWD survey v2 adds Pavement Temp / Air Temp columns (°C).
+     Matched loosely so 'Pavement Temp', 'Pav_Temp', 'Pavement Temperature',
+     'Air Temp' etc. all resolve; kept as uploaded (no scaling). */
+  function tempOf(p,re){for(var k in p){if(k.charAt(0)==='_')continue;if(re.test(ck(k))){var v=parseFloat(p[k]);if(!isNaN(v))return v;}}return null;}
+  var PT_RE=/^pav(ement)?tem/, AT_RE=/^airtem/;
 
   /* index the FWD features by road, as chainage ranges carrying D0..Dn (microns) */
   function index(gj){
@@ -42,7 +47,7 @@
       Object.keys(p).forEach(function(k){if(k.charAt(0)==='_')return;var m=ck(k).match(/^d(\d+)$/);if(m){var v=p[k];if(v!=null&&v!=='')ds.push([+m[1],Math.round(+v*sc)]);}});
       ds.sort(function(a,b){return a[0]-b[0];});
       var d0=null;for(var i=0;i<ds.length;i++){if(ds[i][0]===0){d0=ds[i][1];break;}}
-      (by[road]=by[road]||[]).push({from:from,to:to,d0:d0,ds:ds});
+      (by[road]=by[road]||[]).push({from:from,to:to,d0:d0,ds:ds,pt:tempOf(p,PT_RE),at:tempOf(p,AT_RE)});
     });
     FWD.byRoad=by; FWD.ready=true;
   }
@@ -63,7 +68,8 @@
   FWD.reload=function(){return FWD.load(true);};
 
   /* FWD record at a chainage: exact range first, else nearest range (so it still shows).
-     Returns { d0, ds:[[n,microns],...], from, to, exact } or null. */
+     Returns { d0, ds:[[n,microns],...], pt, at, from, to, exact } or null
+     (pt/at = pavement/air temperature in °C, null on pre-v2 surveys). */
   FWD.at=function(road,ch){
     if(!FWD.ready){FWD.load();return null;}
     var arr=FWD.byRoad[road];
@@ -80,7 +86,7 @@
       } else if(!best){best=e;}
     }
     var r=exact||best;if(!r)return null;
-    return {d0:r.d0, ds:r.ds, from:r.from, to:r.to, exact:!!exact};
+    return {d0:r.d0, ds:r.ds, pt:r.pt, at:r.at, from:r.from, to:r.to, exact:!!exact};
   };
 
   /* Build 169 — no self-boot timer any more. It used to start the FWD download

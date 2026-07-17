@@ -5,7 +5,7 @@
    share one global scope, so load order is preserved exactly.
    ============================================================ */
 const GOOD='#2ba66a',FAIR='#FFC400',POOR='#da4b43',NET='#8a99ad',NONE='#b9c2cc';
-const PARAMS=[{key:'iri',label:'IRI',unit:' m/km',fair:2.55,poor:3.30},{key:'crack',label:'Crack',unit:' %',fair:5,poor:15},{key:'pothole',label:'Pothole',unit:'',fair:1,poor:3},{key:'rutting',label:'Rutting',unit:' mm',fair:5,poor:10},{key:'texture',label:'Texture',unit:'',fair:1,poor:3},{key:'patch_work',label:'Patch work',unit:' %',fair:5,poor:10},{key:'ravelling',label:'Ravelling',unit:' %',fair:5,poor:10}];
+const PARAMS=[{key:'iri',label:'IRI',unit:' m/km',fair:2.55,poor:3.30},{key:'crack',label:'Crack',unit:' %',fair:5,poor:15},{key:'pothole',label:'Pothole',unit:' nos/km',fair:1,poor:3},{key:'rutting',label:'Rutting',unit:' mm',fair:5,poor:10},{key:'texture',label:'Texture',unit:' mm',fair:1,poor:3},{key:'patch_work',label:'Patch work',unit:' sqm',fair:5,poor:10},{key:'ravelling',label:'Ravelling',unit:' %',fair:5,poor:10}];
 const PMAP={};PARAMS.forEach(p=>PMAP[p.key]=p);
 // decode lookups for shapefile codes
 const LK={
