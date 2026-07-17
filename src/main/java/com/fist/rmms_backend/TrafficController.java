@@ -3,6 +3,8 @@ package com.fist.rmms_backend;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,6 +27,8 @@ import java.util.*;
 @RequestMapping("/api/traffic")
 public class TrafficController {
 
+    private static final Logger log = LoggerFactory.getLogger(TrafficController.class);
+
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
     private final ObjectMapper om = new ObjectMapper();
@@ -46,10 +50,18 @@ public class TrafficController {
         // (name, period_id). Older databases had name as the primary key —
         // swap it for a surrogate id + a composite unique index (idempotent).
         for (String t : List.of("traffic_stations", "traffic_counts")) {
-            jdbc.execute("ALTER TABLE " + t + " ADD COLUMN IF NOT EXISTS period_id integer");
-            periods.ensureSurrogatePk(t, "name");
-            jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + t + "_name_period_ux ON " + t + "(name, period_id)");
-            jdbc.execute("CREATE INDEX IF NOT EXISTS " + t + "_period_idx ON " + t + "(period_id)");
+            try {
+                jdbc.execute("ALTER TABLE " + t + " ADD COLUMN IF NOT EXISTS period_id integer");
+                periods.ensureSurrogatePk(t, "name");
+                periods.dedupeKeepingLatest(t, "name", "period_id");
+                jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + t + "_name_period_ux ON " + t + "(name, period_id)");
+                jdbc.execute("CREATE INDEX IF NOT EXISTS " + t + "_period_idx ON " + t + "(period_id)");
+            } catch (Exception e) {
+                // Never let a schema-migration hiccup on one table take down the whole
+                // app at boot — that would break every module, not just traffic.
+                log.error("Traffic schema migration failed for {} — traffic endpoints may be degraded, " +
+                        "but the app will keep starting", t, e);
+            }
         }
     }
 

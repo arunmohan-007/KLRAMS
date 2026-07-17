@@ -120,6 +120,21 @@ public class SurveyPeriodService {
         if (pk == null) jdbc.execute("ALTER TABLE " + table + " ADD PRIMARY KEY (id)");
     }
 
+    /** Deletes duplicate rows sharing (col1, col2), keeping the highest surrogate
+     *  id. Call after ensureSurrogatePk (which guarantees an `id` column) and
+     *  before creating a UNIQUE INDEX on those columns — otherwise a leftover
+     *  duplicate from before period tracking existed (e.g. a station imported
+     *  twice under the same period) crashes the index creation, which crashes
+     *  the whole app on startup. Exact equality only, so NULLs never collide —
+     *  matching how a Postgres UNIQUE index treats NULLs, so nothing is deleted
+     *  that the index itself wouldn't have rejected. */
+    void dedupeKeepingLatest(String table, String col1, String col2) {
+        int n = jdbc.update("DELETE FROM " + table + " a USING " + table + " b " +
+                "WHERE a.id < b.id AND a." + col1 + " = b." + col1 + " AND a." + col2 + " = b." + col2);
+        if (n > 0) log.warn("Survey periods: removed {} duplicate row(s) from {} on ({}, {}) before adding unique index",
+                n, table, col1, col2);
+    }
+
     boolean tableExists(String table) {
         String reg = jdbc.queryForObject("SELECT to_regclass(?)::text", String.class, "public." + table);
         return reg != null;

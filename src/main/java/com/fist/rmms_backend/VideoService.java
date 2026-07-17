@@ -1,5 +1,7 @@
 package com.fist.rmms_backend;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -34,6 +36,8 @@ import java.util.zip.ZipInputStream;
 @Service
 public class VideoService {
 
+    private static final Logger log = LoggerFactory.getLogger(VideoService.class);
+
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
     private final Path videoDir;
@@ -67,9 +71,17 @@ public class VideoService {
         // swap it for a surrogate id + (section, period) uniqueness, and adopt
         // pre-period rows into the current (active) period.
         jdbc.execute("ALTER TABLE road_video ADD COLUMN IF NOT EXISTS period_id integer");
-        periods.ensureSurrogatePk("road_video", "section_label");
-        jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS road_video_sec_period_ux ON road_video(section_label, period_id)");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS road_video_period_idx ON road_video(period_id)");
+        try {
+            periods.ensureSurrogatePk("road_video", "section_label");
+            periods.dedupeKeepingLatest("road_video", "section_label", "period_id");
+            jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS road_video_sec_period_ux ON road_video(section_label, period_id)");
+            jdbc.execute("CREATE INDEX IF NOT EXISTS road_video_period_idx ON road_video(period_id)");
+        } catch (Exception e) {
+            // Never let a schema-migration hiccup here take down the whole app at
+            // boot — that would break every module, not just the video catalog.
+            log.error("Video catalog schema migration failed — video endpoints may be degraded, " +
+                    "but the app will keep starting", e);
+        }
         jdbc.update("UPDATE road_video SET period_id = ? WHERE period_id IS NULL", periods.activePeriodId());
     }
 
