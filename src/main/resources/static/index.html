@@ -644,7 +644,7 @@ async function upGeo(force){
   try{
     const r=await fetch('/api/assets/'+type+'/upload?periodId='+pid+(force?'&force=true':''),{method:'POST',body:fd});
     const j=await r.json();
-    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' record(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' record(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'')+(j.unmatched_kept_gps?' ⚠ '+j.unmatched_kept_gps+' point(s) kept via GPS coordinates but their Section_Label matches no road section — they will show as (unmapped)/OTHER in the dashboards.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
     else if(j.status==='exists'){
       if(confirm(existsMsg(j,spName(pid))))upGeo(true);
       else existsCancel(out,ds,f.name,j);
@@ -663,7 +663,7 @@ async function upAsset(force){
   try{
     const r=await fetch('/api/assets/'+type+'/upload'+(force?'?force=true':''),{method:'POST',body:fd});
     const j=await r.json();
-    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' '+type.replace('_',' ')+'(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' '+type.replace('_',' ')+'(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'')+(j.unmatched_kept_gps?' ⚠ '+j.unmatched_kept_gps+' point(s) kept via GPS coordinates but their Section_Label matches no road section — they will show as (unmapped)/OTHER in the dashboards.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
     else if(j.status==='exists'){
       if(confirm(existsMsg(j,null)))upAsset(true);
       else existsCancel(out,ds,f.name,j);

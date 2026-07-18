@@ -15,6 +15,7 @@ let fdbData=null;        // /api/fwd-dashboard/summary payload
 let fdbPeriodId=null;    // selected period id
 let fdbDistrict=null;    // selected district or null = all
 let fdbLoading=false;
+let fdbUnmap={};         // period id -> /api/fwd-dashboard/unmapped rows
 
 function fdbCol(cls,i){return (typeof CLASS_COL!=='undefined'&&CLASS_COL[cls])||DPAL[(i||0)%DPAL.length];}
 function fdbClsFull(l){return (typeof CLASS_SHORT!=='undefined'&&CLASS_SHORT[l])||l;}
@@ -239,6 +240,53 @@ function fdbTempCard(p){
     panels+table+'</div>';
 }
 
+/* ---- unmapped points card — the rows behind OTHER / (unmapped) ---- */
+function fdbUnmappedCard(p){
+  const oth=((p.classes||[]).find(c=>c.cls==='OTHER')||{}).points||0;
+  if(!oth)return '';
+  const rows=fdbUnmap[p.id];
+  let inner;
+  if(!rows){
+    inner='<div class="sub" style="padding:8px 0">Loading the point list…</div>';
+    fetch('/api/fwd-dashboard/unmapped?period_id='+(+p.id)).then(r=>{
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      return r.json();
+    }).then(d=>{
+      fdbUnmap[p.id]=Array.isArray(d)?d:[];
+      if(dashTabCur==='fwd')fdbPaint();
+    }).catch(()=>{
+      fdbUnmap[p.id]=[];
+      if(dashTabCur==='fwd')fdbPaint();
+    });
+  }else if(!rows.length){
+    inner='<div class="sub" style="padding:8px 0">Could not load the point list — reload the dashboard to retry.</div>';
+  }else{
+    const reasons={no_road:'Section label not in road network',blank_class:'Road has no Road_Class value'};
+    const ch=v=>v==null?'·':(+v).toFixed(3);
+    let body='';
+    rows.forEach((r,i)=>{
+      body+='<tr><td class="n">'+(i+1)+'</td>'+
+        '<td><b>'+escH(r.section_label||'')+'</b></td>'+
+        '<td class="n">'+ch(r.start_chainage)+(r.end_chainage!=null?' – '+ch(r.end_chainage):'')+'</td>'+
+        '<td class="n">'+(r.lat!=null?(+r.lat).toFixed(5)+', '+(+r.lng).toFixed(5):'<span class="z">·</span>')+'</td>'+
+        '<td>'+(reasons[r.reason]||escH(r.reason||''))+'</td>'+
+        '<td>'+(r.suggestion?'<b>'+escH(r.suggestion)+'</b>':'<span class="z">·</span>')+'</td></tr>';
+    });
+    inner='<div class="amx-wrap"><table class="amx">'+
+      '<tr><th class="n">#</th><th>Section label (as imported)</th><th class="n">Chainage (km)</th>'+
+      '<th class="n">GPS (lat, lng)</th><th>Why unmapped</th><th>Suggested section</th></tr>'+body+'</table></div>'+
+      '<div class="sub" style="margin-top:10px">To fix: correct the <b>Section_Label</b> in the FWD Excel to the exact '+
+      'road-network label (a suggestion appears when only case / spacing differs) and re-import the file for this '+
+      'period in the Data Console — re-uploading replaces the affected sections. If the section is genuinely missing '+
+      'from the network, add it to the road network first; if the road exists but has no class, fill in its Road_Class.</div>';
+  }
+  return '<div class="dcard"><div class="dcard-head"><h3>Points not mapped to district &amp; road class</h3>'+
+    '<span class="totchip">'+fmtN(oth)+'</span></div>'+
+    '<div class="sub">These points were kept at import because they carry GPS coordinates, but their section label '+
+    'doesn’t match the road network — so they count as <b>OTHER</b> / <b>(unmapped)</b> in every figure above.</div>'+
+    inner+'</div>';
+}
+
 /* ---- district × metrics matrix ---- */
 function fdbMatrix(p,unit){
   const dists=p.districts||[];
@@ -350,5 +398,5 @@ function fdbPaint(){
   body.innerHTML=pills+kpi+
     '<div class="comp-row">'+profCard+histCard+'</div>'+
     '<div class="comp-row">'+donutCardH+distBarsCard+'</div>'+
-    dumbCard+fdbTempCard(p)+fdbMatrix(p,unit)+note;
+    fdbUnmappedCard(p)+dumbCard+fdbTempCard(p)+fdbMatrix(p,unit)+note;
 }

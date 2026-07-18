@@ -217,10 +217,26 @@ public class AssetController {
             }
             int unmatched = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND geom IS NULL", type);
 
+            // Rows with GPS coordinates are inserted with a point geometry up
+            // front, so an unknown Section_Label doesn't get them deleted above —
+            // they'd show as "(unmapped)" / OTHER in the dashboards. Count them
+            // (whole type + period, i.e. what the dashboards will show) so the
+            // console can warn about them too.
+            int orphanGps = periodId != null
+                ? jdbc.queryForObject(
+                    "SELECT count(*) FROM road_assets a LEFT JOIN roads r ON r.\"Section_La\" = a.section_label " +
+                    "WHERE a.asset_type = ? AND a.period_id = ? AND r.\"Section_La\" IS NULL",
+                    Integer.class, type, periodId)
+                : jdbc.queryForObject(
+                    "SELECT count(*) FROM road_assets a LEFT JOIN roads r ON r.\"Section_La\" = a.section_label " +
+                    "WHERE a.asset_type = ? AND r.\"Section_La\" IS NULL",
+                    Integer.class, type);
+
             r.put("status","ok");
             r.put("loaded", loaded - unmatched);
             r.put("skipped_rows", skipped);
             r.put("unmatched_section_label", unmatched);
+            r.put("unmatched_kept_gps", orphanGps);
             return r;
         } catch (Exception ex) {
             throw new RuntimeException("Asset upload failed: " + ex.getMessage(), ex);

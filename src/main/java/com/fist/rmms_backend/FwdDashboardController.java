@@ -119,6 +119,34 @@ public class FwdDashboardController {
         return res;
     }
 
+    /** Lists the FWD points behind the "OTHER" road-class / "(unmapped)" district
+     *  bucket: rows whose section label matches no roads."Section_La" (these were
+     *  kept at import because they carried GPS coordinates — see AssetController)
+     *  plus rows whose matched road has a blank Road_Class. For unmatched labels a
+     *  suggestion is looked up by comparing labels with all non-alphanumerics
+     *  stripped, which catches case / spacing / punctuation typos. */
+    @GetMapping("/unmapped")
+    public List<Map<String, Object>> unmapped(@RequestParam(required = false) Integer period_id) {
+        int pid = period_id != null ? period_id : periods.activePeriodId();
+        return jdbc.queryForList("""
+            SELECT a.id, a.section_label, a.start_chainage, a.end_chainage,
+                   CASE WHEN GeometryType(a.geom) = 'POINT' THEN round(ST_Y(a.geom)::numeric, 6) END AS lat,
+                   CASE WHEN GeometryType(a.geom) = 'POINT' THEN round(ST_X(a.geom)::numeric, 6) END AS lng,
+                   CASE WHEN r."Section_La" IS NULL THEN 'no_road' ELSE 'blank_class' END AS reason,
+                   CASE WHEN r."Section_La" IS NULL THEN
+                       (SELECT r2."Section_La" FROM roads r2
+                         WHERE regexp_replace(upper(r2."Section_La"), '[^A-Z0-9]', '', 'g')
+                             = regexp_replace(upper(a.section_label), '[^A-Z0-9]', '', 'g')
+                         LIMIT 1)
+                   END AS suggestion
+            FROM road_assets a
+            LEFT JOIN roads r ON r."Section_La" = a.section_label
+            WHERE a.asset_type = 'fwd' AND a.period_id = ?
+              AND (r."Section_La" IS NULL OR NULLIF(upper(trim(r."Road_Class")), '') IS NULL)
+            ORDER BY a.section_label, a.start_chainage
+            """, pid);
+    }
+
     /* ---- everything computed for one scope (whole period or one district) ---- */
     private static Map<String, Object> scopeStats(List<Pt> pts, double[] edges) {
         Map<String, Object> s = new LinkedHashMap<>();
