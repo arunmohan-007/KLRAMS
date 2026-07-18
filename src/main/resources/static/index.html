@@ -910,7 +910,7 @@ function geoPanel(type,title,sub){
     +'<div class="ip-field"><label class="ip-label">CSV file</label><input type="file" id="geofile" accept=".csv"></div>'
     +'<button class="btn" onclick="upGeo()">Upload data CSV</button>'
     +'<div class="out" id="oGeo"></div>'
-    +'<p class="hint">Additive by section within the chosen survey period: re-uploading a section replaces just that section’s records in that period; other sections and other periods are kept. If a section in the file already has data in this period, you’ll be asked to confirm before it is replaced. Switch the matching layer on in the viewer and click any icon for full details.</p>';
+    +'<p class="hint">The file is first checked to be the right dataset — e.g. a Bituminous Core CSV is rejected by the Sub-Grade Soil importer, and vice versa. Additive by section within the chosen survey period: re-uploading a section replaces just that section’s records in that period; other sections and other periods are kept. If a section in the file already has data in this period, you’ll be asked to confirm before it is replaced. Switch the matching layer on in the viewer and click any icon for full details.</p>';
 }
 /* Survey-period selector shown on every field-survey importer. The import is
    stored under the chosen period; the main map shows the ACTIVE period and the

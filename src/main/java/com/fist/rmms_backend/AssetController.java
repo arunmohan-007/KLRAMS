@@ -39,6 +39,26 @@ public class AssetController {
        (bridge, culvert, furniture) does not. */
     private static final Set<String> SURVEY_TYPES = Set.of("fwd", "subgrade", "bituminous_core", "pavement_crust");
 
+    /* Every geotechnical survey stream shares the Section_Label + Chainage
+       columns, so a bituminous-core file used to import cleanly as sub-grade
+       soil. Each stream is now identified by its own lab columns (headers
+       compared with all non-alphanumerics stripped): the upload is rejected
+       unless at least one signature column of the requested type is present. */
+    private static final Map<String, List<String>> GEO_SIG = Map.of(
+        "subgrade",        List.of("cbr","mdd","omc","fdd","fmc","ll","pl","pi","soiltype","gravelcontent","sandcontent"),
+        "bituminous_core", List.of("coreno","bulkdensity","observedthickness","bituminouslayers"),
+        "pavement_crust",  List.of("basethickness","basetype","subbasethickness","subbasetype",
+                                   "surfacethickness","surfacetype","subgradecbr","subgradesoiltype"),
+        "fwd",             List.of("d0","do"));
+    private static final Map<String, String> GEO_TITLE = Map.of(
+        "subgrade","Sub-Grade Soil", "bituminous_core","Bituminous Core",
+        "pavement_crust","Pavement Crust", "fwd","FWD deflection");
+    private static final Map<String, String> GEO_EXPECT = Map.of(
+        "subgrade","CBR, MDD, OMC, FDD, FMC, LL/PL/PI, Soil Type",
+        "bituminous_core","Core No, Bulk Density of Binder/Wearing Course, Observed Thickness",
+        "pavement_crust","Base/Sub Base/Surface Thickness and Type, Sub Grade CBR, Sub Grade Soil Type",
+        "fwd","D0…Dn deflection columns");
+
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
     private final ObjectMapper om = new ObjectMapper();
@@ -88,6 +108,10 @@ public class AssetController {
         try {
             ensure();
             byte[] data = file.getBytes();
+            // Wrong-dataset guard: reject e.g. a core CSV sent to the soil importer
+            // before any other processing (never bypassed by force).
+            Map<String, Object> wrongType = validateGeoHeader(type, data);
+            if (wrongType != null) return wrongType;
             // Re-upload guard: a section in this file may already have rows of this
             // type (same period for survey streams). Importing would silently replace
             // them, so when force=false nothing is written — the response lists the
@@ -231,6 +255,47 @@ public class AssetController {
         } catch (Exception e) {
             return "{\"type\":\"FeatureCollection\",\"features\":[]}";
         }
+    }
+
+    /** How many signature columns of a stream appear in the (normalised) header.
+     *  Short tokens must match a column exactly; long ones (>= 10 chars) may also
+     *  appear inside a longer column name (e.g. "bulkdensity" inside
+     *  "Bulk Density of Binder Course gmcc"). */
+    private static int sigMatches(Set<String> normHeader, List<String> sig) {
+        int n = 0;
+        for (String s : sig)
+            for (String h : normHeader)
+                if (h.equals(s) || (s.length() >= 10 && h.contains(s))) { n++; break; }
+        return n;
+    }
+
+    /** null when the CSV header carries the requested stream's signature columns
+     *  (or the type has no signature); otherwise an error response saying what was
+     *  expected and, when recognisable, which importer the file belongs to. */
+    private Map<String, Object> validateGeoHeader(String type, byte[] data) throws Exception {
+        List<String> sig = GEO_SIG.get(type);
+        if (sig == null) return null;    // bridge / culvert / furniture: free-form columns
+        BufferedReader br = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(data), StandardCharsets.UTF_8));
+        String header = br.readLine();
+        if (header == null) return null; // empty file is reported by the main flow
+        Set<String> norm = new HashSet<>();
+        for (String c : parse(header))
+            norm.add(c.toLowerCase().replaceAll("[^a-z0-9]", ""));
+        if (sigMatches(norm, sig) > 0) return null;
+        String looksLike = null;
+        int best = 1;                    // need >= 2 matches to name another stream
+        for (Map.Entry<String, List<String>> e : GEO_SIG.entrySet()) {
+            if (e.getKey().equals(type)) continue;
+            int m = sigMatches(norm, e.getValue());
+            if (m > best) { best = m; looksLike = GEO_TITLE.get(e.getKey()); }
+        }
+        Map<String, Object> r = new HashMap<>();
+        r.put("status", "error");
+        r.put("message", "This file doesn't look like " + GEO_TITLE.get(type)
+            + " data — none of its columns match (expected e.g. " + GEO_EXPECT.get(type) + ")."
+            + (looksLike != null ? " It looks like " + looksLike + " data — use that importer instead." : "")
+            + " Nothing was imported.");
+        return r;
     }
 
     /** Which sections in the CSV already have rows of this type (and period, when
