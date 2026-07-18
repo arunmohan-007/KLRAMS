@@ -925,6 +925,28 @@ select option:disabled{color:var(--k-faint)!important}
 .svy-chip.on{background:var(--k-accent)!important;border-color:var(--k-accent)!important;color:#06251f!important;box-shadow:none!important}
 .svy-sel td{background:rgba(45,212,191,.08)!important}
 
+/* ---------- FWD dashboard (FWD Deflection tab) ---------- */
+.fdb-grid{stroke:var(--k-line)!important}
+.fdb-ax{fill:var(--k-muted)!important}
+.fdb-axt{fill:var(--k-faint)!important}
+.fdb-leg{color:var(--k-text)!important}
+.fdb-leg b{color:var(--k-muted)!important}
+.fdb-dumb:hover{background:rgba(255,255,255,.04)!important}
+.fdb-dumb.sel{background:rgba(45,212,191,.08)!important}
+.fdb-dumb-nm{color:var(--k-text)!important}
+.fdb-track{background:var(--k-elev2)!important}
+.fdb-dot{border-color:var(--k-elev)!important}
+.fdb-dumb-vals{color:var(--k-muted)!important}
+.fdb-dumb-vals b{color:var(--k-text)!important}
+.fdb-scale{color:var(--k-faint)!important;border-top:1px dashed var(--k-line)!important}
+.fdb-temp-panel{background:var(--k-elev)!important;border:1px solid var(--k-line)!important}
+.fdb-temp-name{color:var(--k-muted)!important}
+.fdb-temp-big{color:var(--k-text)!important}
+.fdb-temp-big .u,.fdb-temp-mm,.fdb-temp-n,.fdb-temp-none{color:var(--k-muted)!important}
+.fdb-empty{background:var(--k-elev)!important;border:1px dashed var(--k-line2)!important;color:var(--k-muted)!important}
+.fdb-empty b{color:var(--k-text)!important}
+.fdb-chart circle[stroke="#fff"]{stroke:var(--k-elev)!important}
+
 /* ---------- misc surface tweaks ---------- */
 .locpin{filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}
 .kl-open{box-shadow:none!important}
