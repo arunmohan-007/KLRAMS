@@ -397,14 +397,36 @@ const EP={
   catalog:{url:'/api/video/upload-catalog',inp:'vfile',out:'oCat',busy:'Loading catalogue…',ok:j=>'✓ Linked '+j.entries+' roads to videos.'}
 };
 const UP_LABEL={condition:'Condition data',zip:'Survey video zip',catalog:'Video catalogue'};
-async function up(kind,force){
+/* Existing-data confirm: the server found sections in this file that already have
+   data (status:"exists") — nothing has been imported yet. Build the native-confirm
+   message; items are either plain section labels or {section,n,from_ch,to_ch}.
+   period = survey-period name for period-scoped data (condition, FWD, soil, core,
+   crust), null for permanent inventory (roads, bridges, culverts, furniture). */
+function existsMsg(j,period){
+  const all=j.existing||[];
+  const list=all.slice(0,10).map(function(s){
+    if(typeof s==='string')return '• '+s;
+    let t='• '+s.section+' — '+s.n+' row(s)';
+    if(s.from_ch!=null&&s.to_ch!=null)t+=', chainage '+s.from_ch+'–'+s.to_ch;
+    return t;
+  });
+  return 'Data is already available for '+all.length+' section(s)'+(period?' in survey period “'+period+'”':'')+':\n\n'
+    +list.join('\n')+(all.length>10?'\n… and '+(all.length-10)+' more':'')
+    +(period?'\n\nOnly the data of survey period “'+period+'” will be replaced — other survey periods are not touched.':'')
+    +'\n\nDo you want to REPLACE the existing data with this file?\n\nOK = replace it · Cancel = keep the existing data';
+}
+function existsCancel(el,ds,fname,j){
+  show(el,false,'Import cancelled — the existing data was kept, nothing was loaded.');
+  logUpload(ds,fname,false,'Cancelled: '+(j.existing||[]).length+' section(s) already have data');
+}
+async function up(kind,force,replace){
   const c=EP[kind], el=document.getElementById(c.out), f=document.getElementById(c.inp).files[0];
   if(!f){show(el,false,'Choose a file first.');return;}
-  let url=c.url, pTag='';
+  let url=c.url, pTag='', pid=null;
   if(kind==='condition'||kind==='catalog'){
-    const pid=spSelVal();
+    pid=spSelVal();
     if(!pid){show(el,false,'Select the survey period this data belongs to first (create one under Survey Periods).');return;}
-    url+='?periodId='+pid+(force?'&force=true':'');
+    url+='?periodId='+pid+(force?'&force=true':'')+(replace?'&replace=true':'');
     pTag=' ['+spName(pid)+']';
   }else{
     url+=(force?'?force=true':'');
@@ -415,6 +437,10 @@ async function up(kind,force){
   try{const r=await fetch(url,{method:'POST',body:fd});const j=await r.json();
     if(j.status==='ok'){const msg=c.ok(j);show(el,true,msg);logUpload(ds,f.name,true,msg);refresh();}
     else if(j.status==='duplicates'){showDupPrompt(el,j,kind);logUpload(ds,f.name,false,'Paused: '+j.duplicates+' duplicate row(s) found — awaiting confirmation');}
+    else if(j.status==='exists'){
+      if(confirm(existsMsg(j,pid?spName(pid):null)))up(kind,force,true);
+      else existsCancel(el,ds,f.name,j);
+    }
     else{show(el,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
   }catch(e){show(el,false,'Request failed: '+e.message);logUpload(ds,f.name,false,e.message);}
 }
@@ -604,7 +630,7 @@ function logUpload(dataset,filename,ok,detail){
 /* refresh() is called from the UI + after each import; keep the name, refresh everything */
 async function refresh(){ loadSummary(); loadLog(); }
 refresh();
-async function upGeo(){
+async function upGeo(force){
   const out=document.getElementById('oGeo');
   const f=document.getElementById('geofile').files[0];
   if(!f){show(out,false,'Choose a CSV first.');return;}
@@ -616,13 +642,17 @@ async function upGeo(){
   show(out,true,'Uploading & referencing…');
   const fd=new FormData();fd.append('file',f);
   try{
-    const r=await fetch('/api/assets/'+type+'/upload?periodId='+pid,{method:'POST',body:fd});
+    const r=await fetch('/api/assets/'+type+'/upload?periodId='+pid+(force?'&force=true':''),{method:'POST',body:fd});
     const j=await r.json();
     if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' record(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    else if(j.status==='exists'){
+      if(confirm(existsMsg(j,spName(pid))))upGeo(true);
+      else existsCancel(out,ds,f.name,j);
+    }
     else{show(out,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
   }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,f.name,false,e.message);}
 }
-async function upAsset(){
+async function upAsset(force){
   const out=document.getElementById('oAsset');
   const f=document.getElementById('assetfile').files[0];
   if(!f){show(out,false,'Choose a CSV first.');return;}
@@ -631,13 +661,17 @@ async function upAsset(){
   show(out,true,'Uploading & referencing…');
   const fd=new FormData();fd.append('file',f);
   try{
-    const r=await fetch('/api/assets/'+type+'/upload',{method:'POST',body:fd});
+    const r=await fetch('/api/assets/'+type+'/upload'+(force?'?force=true':''),{method:'POST',body:fd});
     const j=await r.json();
     if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' '+type.replace('_',' ')+'(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    else if(j.status==='exists'){
+      if(confirm(existsMsg(j,null)))upAsset(true);
+      else existsCancel(out,ds,f.name,j);
+    }
     else{show(out,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
   }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,f.name,false,e.message);}
 }
-async function upRoads(){
+async function upRoads(force){
   const out=document.getElementById('oRoad');
   const f=document.getElementById('roadfile').files[0];
   if(!f){show(out,false,'Choose a file first.');return;}
@@ -657,13 +691,18 @@ async function upRoads(){
     const nf=(gj&&gj.features&&gj.features.length)||0;
     if(!nf){ show(out,false,'Parsed file has 0 features — check the file.'); return; }
     show(out,true,'Uploading '+nf+' features…');
-    const r=await fetch('/api/roads/upload?mode='+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
+    const r=await fetch('/api/roads/upload?mode='+mode+(force?'&force=true':''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
     const raw=await r.text();
     const ct=r.headers.get('content-type')||'';
     if(r.redirected || /text\/html/i.test(ct) || /^\s*</.test(raw)){
       show(out,false,'Session expired or not signed in (HTTP '+r.status+'). Sign out, sign back in, then upload again.'); return;
     }
     let j; try{ j=JSON.parse(raw); }catch(pe){ show(out,false,'Server returned non-JSON (HTTP '+r.status+'): '+raw.slice(0,400)); return; }
+    if(j.status==='exists'){
+      if(confirm(existsMsg(j,null)+'\n\n(These roads are already in the network — replacing updates their attributes and geometry; condition and asset data stay linked by Section Label.)'))upRoads(true);
+      else existsCancel(out,'Road network',f.name,j);
+      return;
+    }
     if(r.ok && j.status==='ok'){const msg='✓ '+(mode==='replace'?('Replaced network: '+j.inserted+' roads loaded.'):('Updated '+j.updated+', added '+j.inserted+' roads.'))+' Total now '+j.total_roads+'. Now click Build segments.';show(out,true,msg);logUpload('Road network',f.name,true,msg);refresh();}
     else{const em='HTTP '+r.status+': '+(j.message||j.error||'upload failed');show(out,false,'Error ('+em+')');logUpload('Road network',f.name,false,em);}
   }catch(e){ show(out,false,'Failed: '+(e&&e.message?e.message:String(e)));logUpload('Road network',f.name,false,(e&&e.message?e.message:String(e))); }
@@ -861,7 +900,7 @@ function assetPanel(type,title,sub){
     +'<div class="ip-field"><label class="ip-label">CSV file</label><input type="file" id="assetfile" accept=".csv"></div>'
     +'<button class="btn" onclick="upAsset()">Upload asset CSV</button>'
     +'<div class="out" id="oAsset"></div>'
-    +'<p class="hint">Additive by section: re-uploading a section replaces just that section’s records; other sections are kept. Rows with missing chainage or an unknown Section_Label are skipped and reported.</p>';
+    +'<p class="hint">Additive by section: re-uploading a section replaces just that section’s records; other sections are kept. If a section in the file already has data, you’ll be asked to confirm before it is replaced. Rows with missing chainage or an unknown Section_Label are skipped and reported.</p>';
 }
 function geoPanel(type,title,sub){
   return '<div class="ip-title">'+title+'</div>'
@@ -871,7 +910,7 @@ function geoPanel(type,title,sub){
     +'<div class="ip-field"><label class="ip-label">CSV file</label><input type="file" id="geofile" accept=".csv"></div>'
     +'<button class="btn" onclick="upGeo()">Upload data CSV</button>'
     +'<div class="out" id="oGeo"></div>'
-    +'<p class="hint">Additive by section within the chosen survey period: re-uploading a section replaces just that section’s records in that period; other sections and other periods are kept. Switch the matching layer on in the viewer and click any icon for full details.</p>';
+    +'<p class="hint">Additive by section within the chosen survey period: re-uploading a section replaces just that section’s records in that period; other sections and other periods are kept. If a section in the file already has data in this period, you’ll be asked to confirm before it is replaced. Switch the matching layer on in the viewer and click any icon for full details.</p>';
 }
 /* Survey-period selector shown on every field-survey importer. The import is
    stored under the chosen period; the main map shows the ACTIVE period and the
@@ -896,7 +935,7 @@ const PANELS={
     +'<div class="ip-field"><label class="ip-label">Condition CSV</label><input type="file" id="cfile" accept=".csv"></div>'
     +'<button class="btn" onclick="up(\'condition\')">Upload CSV</button> <button class="btn ghost" onclick="refresh()">Refresh counts</button>'
     +'<div class="out" id="oCond"></div>'
-    +'<p class="hint">The file is checked for duplicate rows (same Section_Label, XSP and chainage) before anything is imported — duplicates double-count lane-km in the dashboard totals. If any are found you can cancel, clean the file and re-upload, or import as-is.</p>',
+    +'<p class="hint">The file is checked before anything is imported: first for duplicate rows (same Section_Label, XSP and chainage — they double-count lane-km in the dashboard totals), then for sections that already have data in the chosen survey period. In both cases you’re asked to confirm before anything is replaced.</p>',
   'cond-build':'<div class="ip-title">Build segments</div>'
     +'<p class="ip-sub">Cut the imported condition data into linearly-referenced segments along the current road network. Run this after importing condition data or updating roads.</p>'
     +'<button class="btn" onclick="build()">Build segments</button>'
@@ -925,7 +964,7 @@ const PANELS={
     +'<div class="ip-field"><label class="ip-label">Shapefile ZIP (.shp/.shx/.dbf/.prj) or GeoJSON</label><input type="file" id="roadfile" accept=".zip,.geojson,.json"></div>'
     +'<button class="btn" onclick="upRoads()">Upload road network</button>'
     +'<div class="out" id="oRoad"></div>'
-    +'<p class="hint">The file must carry a <code>Section_La</code> for every road. Validation runs first — if it fails, nothing is changed. After upload, run <b>Build segments</b> to re-cut condition data.</p>',
+    +'<p class="hint">The file must carry a <code>Section_La</code> for every road. Validation runs first — if it fails, nothing is changed. In add/update mode, if any Section_La in the file already exists you’ll be asked to confirm before those roads are replaced. After upload, run <b>Build segments</b> to re-cut condition data.</p>',
   'full-net':'<div class="ip-title">Full road network (by Road Name)</div>'
     +'<p class="ip-sub">The second road layer in the viewer (no Section Label). Stored permanently, so it survives refresh and restart. Roads are matched by <code>Road_id</code> (then road number, then name).</p>'
     +'<div class="ip-field"><label class="ip-label">Mode</label><div class="ip-modes">'
@@ -949,7 +988,7 @@ const PANELS={
     +'<div class="ip-field"><label class="ip-label">FWD CSV</label><input type="file" id="geofile" accept=".csv"></div>'
     +'<button class="btn" onclick="upGeo()">Upload data CSV</button>'
     +'<div class="out" id="oGeo"></div>'
-    +'<p class="hint">Needs <code>Section_Label</code> (or <code>Label</code>), <code>From</code> and <code>To</code> chainage, and the <code>D0</code>…<code>Dn</code> deflection columns. Additive by section: re-uploading a section replaces just that section; other sections are kept.</p>',
+    +'<p class="hint">Needs <code>Section_Label</code> (or <code>Label</code>), <code>From</code> and <code>To</code> chainage, and the <code>D0</code>…<code>Dn</code> deflection columns. Additive by section: re-uploading a section replaces just that section; other sections are kept. If a section already has FWD data in this period, you’ll be asked to confirm before it is replaced.</p>',
   'fwd-build':'<div class="ip-title">Build FWD segments</div>'
     +'<p class="ip-sub">Cut the uploaded FWD survey into linearly-referenced coloured segments (by D0) along the road network. Run this after uploading FWD data or updating roads.</p>'
     +'<button class="btn" onclick="buildFwd()">Build FWD segments</button>'

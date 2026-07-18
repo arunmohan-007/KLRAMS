@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -197,6 +198,50 @@ public class ConditionService {
         rep.put("dup_km", Math.round(extraM / 10.0) / 100.0);
         rep.put("sections", sections);
         return rep;
+    }
+
+    /**
+     * Which Section_Labels in the CSV already carry condition rows in the chosen
+     * survey period? Importing would replace those sections' rows (see loadCsv),
+     * so the upload pauses for user confirmation when any are present. Returns a
+     * per-section breakdown: section, n (stored rows), from_ch/to_ch (stored
+     * chainage range) — empty when nothing would be replaced.
+     */
+    public List<Map<String, Object>> analyzeExisting(InputStream in, int periodId) throws Exception {
+        ensureSchema();
+        BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        String headerLine = br.readLine();
+        List<Map<String, Object>> hits = new ArrayList<>();
+        if (headerLine == null) return hits;
+
+        String[] headers = parseCsvLine(headerLine);
+        Map<String, Integer> idx = new HashMap<>();
+        for (int i = 0; i < headers.length; i++) {
+            idx.put(headers[i].trim().replace("\uFEFF", ""), i);
+        }
+
+        Set<String> sections = new LinkedHashSet<>();
+        String line;
+        while ((line = br.readLine()) != null) {
+            if (line.trim().isEmpty()) continue;
+            String section = get(parseCsvLine(line), idx, "Section_Label");
+            if (section != null) sections.add(section);
+        }
+
+        for (String section : sections) {
+            Map<String, Object> row = jdbc.queryForMap(
+                "SELECT count(*) AS n, min(start_chainage) AS from_ch, max(end_chainage) AS to_ch " +
+                "FROM condition WHERE section_label = ? AND period_id = ?", section, periodId);
+            if (((Number) row.get("n")).intValue() > 0) {
+                Map<String, Object> m = new HashMap<>();
+                m.put("section", section);
+                m.put("n", row.get("n"));
+                m.put("from_ch", row.get("from_ch"));
+                m.put("to_ch", row.get("to_ch"));
+                hits.add(m);
+            }
+        }
+        return hits;
     }
 
     public long count() {

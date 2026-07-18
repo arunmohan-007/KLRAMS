@@ -20,15 +20,19 @@ public class ConditionController {
     }
 
     /**
-     * Duplicate rows (same Section_Label + XSP + chainage) inflate every lane-km
-     * total, so the upload runs a pre-check first: when duplicates are present and
-     * force=false, nothing is imported — the response carries the duplicate report
-     * and the console asks the user whether to proceed. Re-posting with force=true
-     * imports the file as-is.
+     * Two pre-checks run before anything is imported; each pauses the upload for
+     * user confirmation via the Data Console:
+     *  - force=false: duplicate rows (same Section_Label + XSP + chainage) inflate
+     *    every lane-km total — the response carries the duplicate report; re-posting
+     *    with force=true imports the file as-is.
+     *  - replace=false: sections in the file that already carry data in this survey
+     *    period would be silently replaced — the response lists them
+     *    (status="exists"); re-posting with replace=true confirms the replace.
      */
     @PostMapping("/upload")
     public Map<String, Object> upload(@RequestParam("file") MultipartFile file,
                                       @RequestParam(value = "force", defaultValue = "false") boolean force,
+                                      @RequestParam(value = "replace", defaultValue = "false") boolean replace,
                                       @RequestParam(value = "periodId", required = false) Integer periodId) {
         Map<String, Object> result = new HashMap<>();
         try {
@@ -43,6 +47,14 @@ public class ConditionController {
                 if (((Number) rep.get("duplicates")).intValue() > 0) {
                     rep.put("status", "duplicates");
                     return rep;
+                }
+            }
+            if (!replace) {
+                var existing = service.analyzeExisting(new ByteArrayInputStream(data), periodId);
+                if (!existing.isEmpty()) {
+                    result.put("status", "exists");
+                    result.put("existing", existing);
+                    return result;
                 }
             }
             int n = service.loadCsv(new ByteArrayInputStream(data), periodId);

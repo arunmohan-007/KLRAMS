@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -68,7 +69,8 @@ public class AssetController {
     @Transactional
     public Map<String, Object> upload(@PathVariable String type,
                                       @RequestParam("file") MultipartFile file,
-                                      @RequestParam(value = "periodId", required = false) Integer periodId) {
+                                      @RequestParam(value = "periodId", required = false) Integer periodId,
+                                      @RequestParam(value = "force", defaultValue = "false") boolean force) {
         Map<String, Object> r = new HashMap<>();
         type = type.toLowerCase();
         boolean isLine = LINE_TYPES.contains(type);
@@ -85,7 +87,17 @@ public class AssetController {
         if (!isSurvey) periodId = null;   // permanent inventory is period-less
         try {
             ensure();
-            BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
+            byte[] data = file.getBytes();
+            // Re-upload guard: a section in this file may already have rows of this
+            // type (same period for survey streams). Importing would silently replace
+            // them, so when force=false nothing is written — the response lists the
+            // affected sections and the console asks the user to confirm. Re-posting
+            // with force=true performs the replace.
+            if (!force) {
+                Map<String, Object> exists = analyzeExisting(type, isSurvey ? periodId : null, data);
+                if (exists != null) return exists;
+            }
+            BufferedReader br = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(data), StandardCharsets.UTF_8));
             String header = br.readLine();
             if (header == null) { r.put("status","error"); r.put("message","Empty CSV"); return r; }
             String[] cols = parse(header);
@@ -219,6 +231,51 @@ public class AssetController {
         } catch (Exception e) {
             return "{\"type\":\"FeatureCollection\",\"features\":[]}";
         }
+    }
+
+    /** Which sections in the CSV already have rows of this type (and period, when
+     *  given)? Returns a status="exists" response with a per-section breakdown
+     *  (row count + stored chainage range), or null when nothing would be replaced. */
+    private Map<String, Object> analyzeExisting(String type, Integer periodId, byte[] data) throws Exception {
+        BufferedReader br = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(data), StandardCharsets.UTF_8));
+        String header = br.readLine();
+        if (header == null) return null;
+        String[] cols = parse(header);
+        Map<String,Integer> idx = new HashMap<>();
+        for (int i=0;i<cols.length;i++)
+            idx.put(cols[i].trim().toLowerCase().replace("\uFEFF","").replace(' ','_'), i);
+        Integer iSec = first(idx, "section_label","section_la","section_label_code","label","road");
+        if (iSec == null) return null;   // the upload itself reports the missing column
+        Set<String> secs = new LinkedHashSet<>();
+        String line;
+        while ((line = br.readLine()) != null) {
+            if (line.trim().isEmpty()) continue;
+            String sec = val(parse(line), iSec);
+            if (sec != null) secs.add(sec);
+        }
+        List<Map<String,Object>> hits = new ArrayList<>();
+        for (String sec : secs) {
+            Map<String,Object> row = periodId != null
+                ? jdbc.queryForMap("SELECT count(*) AS n, min(start_chainage) AS from_ch, " +
+                        "max(COALESCE(end_chainage, start_chainage)) AS to_ch FROM road_assets " +
+                        "WHERE asset_type = ? AND section_label = ? AND period_id = ?", type, sec, periodId)
+                : jdbc.queryForMap("SELECT count(*) AS n, min(start_chainage) AS from_ch, " +
+                        "max(COALESCE(end_chainage, start_chainage)) AS to_ch FROM road_assets " +
+                        "WHERE asset_type = ? AND section_label = ?", type, sec);
+            if (((Number) row.get("n")).intValue() > 0) {
+                Map<String,Object> m = new HashMap<>();
+                m.put("section", sec);
+                m.put("n", row.get("n"));
+                m.put("from_ch", row.get("from_ch"));
+                m.put("to_ch", row.get("to_ch"));
+                hits.add(m);
+            }
+        }
+        if (hits.isEmpty()) return null;
+        Map<String,Object> r = new HashMap<>();
+        r.put("status", "exists");
+        r.put("existing", hits);
+        return r;
     }
 
     private static Integer first(Map<String,Integer> idx, String... names) {

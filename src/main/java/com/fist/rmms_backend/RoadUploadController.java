@@ -36,6 +36,7 @@ public class RoadUploadController {
     @PostMapping("/upload")
     @Transactional
     public Map<String, Object> upload(@RequestParam(defaultValue = "merge") String mode,
+                                      @RequestParam(defaultValue = "false") boolean force,
                                       @RequestBody String body) {
         Map<String, Object> r = new HashMap<>();
         try {
@@ -76,6 +77,27 @@ public class RoadUploadController {
             }
             if (!problems.isEmpty())
                 return err(r, "Validation failed — nothing was changed. " + String.join("; ", problems));
+
+            // Re-upload guard (merge mode): sections already in the roads table would
+            // be silently overwritten by this file. When force=false nothing is
+            // written — the response lists them (status="exists") and the console
+            // asks the user to confirm; re-posting with force=true performs the
+            // update. Replace mode is confirmed client-side before the request.
+            if (!mode.equalsIgnoreCase("replace") && !force) {
+                Set<String> incoming = new LinkedHashSet<>();
+                for (JsonNode f : feats)
+                    incoming.add(f.get("properties").get("Section_La").asText().trim());
+                String in = String.join(",", Collections.nCopies(incoming.size(), "?"));
+                List<String> existing = jdbc.queryForList(
+                        "SELECT DISTINCT \"Section_La\" FROM roads WHERE \"Section_La\" IN (" + in + ") ORDER BY 1",
+                        String.class, incoming.toArray());
+                if (!existing.isEmpty()) {
+                    r.put("status", "exists");
+                    r.put("existing", existing);
+                    r.put("incoming_sections", incoming.size());
+                    return r;
+                }
+            }
 
             // The roads table inherited fixed widths from the original shapefile
             // import (e.g. Road_Name varchar(42)); longer values from a new
