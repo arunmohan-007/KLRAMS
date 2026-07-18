@@ -46,11 +46,18 @@ public class RoadUploadController {
 
             // table columns and types (excluding id and geom)
             List<Map<String, Object>> cols = jdbc.queryForList(
-                "SELECT column_name, data_type FROM information_schema.columns " +
+                "SELECT column_name, data_type, character_maximum_length FROM information_schema.columns " +
                 "WHERE table_name='roads' AND column_name NOT IN ('id','geom')");
             Map<String, String> colType = new LinkedHashMap<>();
-            for (Map<String, Object> c : cols)
-                colType.put(String.valueOf(c.get("column_name")), String.valueOf(c.get("data_type")));
+            Map<String, Integer> colMaxLen = new LinkedHashMap<>();   // width-limited char columns only
+            for (Map<String, Object> c : cols) {
+                String name = String.valueOf(c.get("column_name"));
+                String type = String.valueOf(c.get("data_type"));
+                colType.put(name, type);
+                Object ml = c.get("character_maximum_length");
+                if (ml instanceof Number && (type.startsWith("character")))
+                    colMaxLen.put(name, ((Number) ml).intValue());
+            }
             if (!colType.containsKey("Section_La"))
                 return err(r, "roads table has no Section_La column.");
 
@@ -69,6 +76,26 @@ public class RoadUploadController {
             }
             if (!problems.isEmpty())
                 return err(r, "Validation failed — nothing was changed. " + String.join("; ", problems));
+
+            // The roads table inherited fixed widths from the original shapefile
+            // import (e.g. Road_Name varchar(42)); longer values from a new
+            // district would abort the whole upload. Widen any char column the
+            // incoming data overflows to text before inserting.
+            Set<String> widen = new LinkedHashSet<>();
+            for (JsonNode f : feats) {
+                JsonNode p = f.get("properties");
+                Iterator<String> wi = p.fieldNames();
+                while (wi.hasNext()) {
+                    String k = wi.next();
+                    Integer cap = colMaxLen.get(k);
+                    JsonNode v = p.get(k);
+                    if (cap == null || v == null || v.isNull()) continue;
+                    if (v.asText().length() > cap) widen.add(k);
+                }
+            }
+            for (String k : widen)
+                jdbc.execute("ALTER TABLE roads ALTER COLUMN \"" + k + "\" TYPE text");
+            if (!widen.isEmpty()) r.put("widened_columns", new ArrayList<>(widen));
 
             int replaced = 0, inserted = 0, updated = 0;
             if (mode.equalsIgnoreCase("replace")) {
