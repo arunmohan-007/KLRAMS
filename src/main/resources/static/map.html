@@ -991,7 +991,7 @@
   <script src="js/25-nsv-module.js?v=161"></script>
   <script src="js/26-layers-collapse.js?v=2"></script>
   <script src="js/27-survey-dashboard.js?v=5"></script>
-  <script src="js/28-fwd-dashboard.js?v=3"></script>
+  <script src="js/28-fwd-dashboard.js?v=4"></script>
   <script src="js/launcher.js?v=161"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page
@@ -1029,17 +1029,21 @@
      Roles: SUPER_ADMIN → "Super Admin", ADMIN → "Admin", USER → "User". */
   (function(){
     var chip=document.getElementById('userChip');
-    if(!chip) return;
-    var avatar=document.getElementById('ucAvatar'),
-        nameEl=document.getElementById('ucName'),
-        roleEl=document.getElementById('ucRole');
     function label(r){ return r==='SUPER_ADMIN'?'Super Admin':r==='ADMIN'?'Admin':'User'; }
     fetch('/api/me',{headers:{'Accept':'application/json'},credentials:'same-origin'})
       .then(function(r){ return r.ok?r.json():null; })
       .then(function(me){
         if(!me||!me.authenticated) return;
-        var display=me.fullName||me.username||'User';
         var role=me.role||'USER';
+        /* Exposed for other modules (e.g. 28-fwd-dashboard.js) that need to
+           show/hide Super-Admin-only actions without their own /api/me call. */
+        window.__klRole=role;
+        document.dispatchEvent(new CustomEvent('kl-role-ready',{detail:role}));
+        if(!chip) return;
+        var avatar=document.getElementById('ucAvatar'),
+            nameEl=document.getElementById('ucName'),
+            roleEl=document.getElementById('ucRole');
+        var display=me.fullName||me.username||'User';
         /* Single neat line: role only. The name span is hidden; the full
            name + username go into the tooltip so the chip stays compact. */
         nameEl.style.display='none';

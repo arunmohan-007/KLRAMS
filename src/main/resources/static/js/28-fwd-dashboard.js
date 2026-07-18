@@ -20,6 +20,12 @@ let fdbUnmap={};         // period id -> /api/fwd-dashboard/unmapped rows
 
 const FDB_SURF_LBL={all:'All pavements',flexible:'Flexible (BT)',rigid:'Rigid (CC)',unknown:'Unclassified'};
 
+/* window.__klRole is set by map.html's profile-chip script once /api/me
+   resolves; 'kl-role-ready' fires at the same time so the Delete button can
+   appear without a page reload if the FWD tab was opened before it resolved. */
+function isSuperAdmin(){return window.__klRole==='SUPER_ADMIN';}
+document.addEventListener('kl-role-ready',function(){if(dashTabCur==='fwd')fdbPaint();});
+
 function fdbCol(cls,i){return (typeof CLASS_COL!=='undefined'&&CLASS_COL[cls])||DPAL[(i||0)%DPAL.length];}
 function fdbClsFull(l){return (typeof CLASS_SHORT!=='undefined'&&CLASS_SHORT[l])||l;}
 
@@ -295,6 +301,7 @@ function fdbUnmappedCard(p){
   }else{
     const reasons={no_road:'Section label not in road network',blank_class:'Road has no Road_Class value'};
     const ch=v=>v==null?'·':(+v).toFixed(3);
+    const noRoad=rows.filter(r=>r.reason==='no_road').length;
     let body='';
     rows.forEach((r,i)=>{
       body+='<tr><td class="n">'+(i+1)+'</td>'+
@@ -304,19 +311,48 @@ function fdbUnmappedCard(p){
         '<td>'+(reasons[r.reason]||escH(r.reason||''))+'</td>'+
         '<td>'+(r.suggestion?'<b>'+escH(r.suggestion)+'</b>':'<span class="z">·</span>')+'</td></tr>';
     });
+    const delBtn=(noRoad&&isSuperAdmin())?'<button type="button" class="btn danger" style="margin-top:10px" onclick="fdbDeleteOrphans('+(+p.id)+')">'+
+      'Delete '+noRoad+' unmatched point'+(noRoad===1?'':'s')+'</button>':'';
     inner='<div class="amx-wrap"><table class="amx">'+
       '<tr><th class="n">#</th><th>Section label (as imported)</th><th class="n">Chainage (km)</th>'+
       '<th class="n">GPS (lat, lng)</th><th>Why unmapped</th><th>Suggested section</th></tr>'+body+'</table></div>'+
       '<div class="sub" style="margin-top:10px">To fix: correct the <b>Section_Label</b> in the FWD Excel to the exact '+
       'road-network label (a suggestion appears when only case / spacing differs) and re-import the file for this '+
       'period in the Data Console — re-uploading replaces the affected sections. If the section is genuinely missing '+
-      'from the network, add it to the road network first; if the road exists but has no class, fill in its Road_Class.</div>';
+      'from the network, add it to the road network first; if the road exists but has no class, fill in its Road_Class.'+
+      (noRoad?' Import now places points strictly by Section_Label + chainage (no GPS fallback), so any row still '+
+       'showing "Section label not in road network" is either leftover from before this fix or a genuine data error — '+
+       'once you\'ve corrected and re-imported the real data, a Super Admin can permanently delete the leftovers below '+
+       '(or from Site Control → Data Cleanup).':'')+
+      '</div>'+delBtn;
   }
   return '<div class="dcard"><div class="dcard-head"><h3>Points not mapped to district &amp; road class</h3>'+
     '<span class="totchip">'+fmtN(oth)+'</span></div>'+
-    '<div class="sub">These points were kept at import because they carry GPS coordinates, but their section label '+
-    'doesn’t match the road network — so they count as <b>OTHER</b> / <b>(unmapped)</b> in every figure above.</div>'+
+    '<div class="sub">These points either don’t match any road section, or matched a road with no Road_Class set — '+
+    'so they count as <b>OTHER</b> / <b>(unmapped)</b> in every figure above.</div>'+
     inner+'</div>';
+}
+
+/* Permanently deletes FWD rows whose Section_Label matches no road, for one
+   period — the SUPER_ADMIN-only DELETE /api/assets/fwd/orphans endpoint. Rows
+   with a matched road but blank Road_Class are never touched by this (that's a
+   road-data gap, not a bad import); it only removes what the table above
+   already lists with reason "no_road". */
+function fdbDeleteOrphans(pid){
+  const rows=fdbUnmap[pid]||[];
+  const n=rows.filter(r=>r.reason==='no_road').length;
+  if(!n)return;
+  if(!confirm('Permanently delete '+n+' FWD point'+(n===1?'':'s')+' whose Section_Label matches no road?\n\n'+
+    'This cannot be undone. Only do this after confirming the section really is wrong (not just a road missing from '+
+    'the network) — otherwise correct the label in the source file and re-import instead.'))return;
+  fetch('/api/assets/fwd/orphans?periodId='+(+pid),{method:'DELETE'}).then(r=>{
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(d=>{
+    delete fdbUnmap[pid];
+    fdbData=null;             // counts changed — force a full re-fetch of the summary
+    if(dashTabCur==='fwd')renderFwdDash();
+  }).catch(e=>alert('Delete failed: '+e.message));
 }
 
 /* ---- district × metrics matrix ---- */

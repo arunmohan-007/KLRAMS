@@ -131,8 +131,6 @@ public class AssetController {
 
             Integer iSec = first(idx, "section_label","section_la","section_label_code","label","road");
             Integer iStart = first(idx, "start_chainage","start_chiange","start","chainage","chiange","from_chainage","from");
-            Integer iLat = first(idx, "point_latitude","latitude","lat");
-            Integer iLon = first(idx, "point_longitude","longitude","lon","lng");
             Integer iEnd = first(idx, "end_chainage","end_chiange","end","to_chainage",
                     "to_ch","toch","tochainage","chainage_to","chainageto","end_ch","endch","to");
             if (iSec == null || iStart == null)
@@ -177,15 +175,15 @@ public class AssetController {
                     String v = c[i].trim();
                     if (!v.isEmpty()) attrs.put(cols[i].trim(), v);
                 }
-                Double lat = iLat != null ? num(val(c, iLat)) : null;
-                Double lon = iLon != null ? num(val(c, iLon)) : null;
-                if (!isLine && lat != null && lon != null && lat != 0 && lon != 0) {
-                    jdbc.update("INSERT INTO road_assets (asset_type, section_label, start_chainage, end_chainage, attrs, period_id, geom) VALUES (?,?,?,?,?::jsonb,?, ST_SetSRID(ST_MakePoint(?,?),4326))",
-                            type, sec, s, e, om.writeValueAsString(attrs), periodId, lon, lat);
-                } else {
-                    jdbc.update("INSERT INTO road_assets (asset_type, section_label, start_chainage, end_chainage, attrs, period_id) VALUES (?,?,?,?,?::jsonb,?)",
-                            type, sec, s, e, om.writeValueAsString(attrs), periodId);
-                }
+                // Every asset type is placed by linear reference ONLY — Section_Label
+                // + chainage must resolve to a road, same as traffic stations. Any
+                // GPS columns in the CSV are kept as attrs for display but never used
+                // for placement — a bad Section_Label can no longer sneak a point
+                // past the unmatched-row cleanup below by getting a geom from GPS
+                // instead (it used to; that's how points with a typo'd section still
+                // showed up on the map but as "(unmapped)" / OTHER in the dashboards).
+                jdbc.update("INSERT INTO road_assets (asset_type, section_label, start_chainage, end_chainage, attrs, period_id) VALUES (?,?,?,?,?::jsonb,?)",
+                        type, sec, s, e, om.writeValueAsString(attrs), periodId);
                 loaded++;
             }
 
@@ -217,30 +215,63 @@ public class AssetController {
             }
             int unmatched = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND geom IS NULL", type);
 
-            // Rows with GPS coordinates are inserted with a point geometry up
-            // front, so an unknown Section_Label doesn't get them deleted above —
-            // they'd show as "(unmapped)" / OTHER in the dashboards. Count them
-            // (whole type + period, i.e. what the dashboards will show) so the
-            // console can warn about them too.
-            int orphanGps = periodId != null
-                ? jdbc.queryForObject(
-                    "SELECT count(*) FROM road_assets a LEFT JOIN roads r ON r.\"Section_La\" = a.section_label " +
-                    "WHERE a.asset_type = ? AND a.period_id = ? AND r.\"Section_La\" IS NULL",
-                    Integer.class, type, periodId)
-                : jdbc.queryForObject(
-                    "SELECT count(*) FROM road_assets a LEFT JOIN roads r ON r.\"Section_La\" = a.section_label " +
-                    "WHERE a.asset_type = ? AND r.\"Section_La\" IS NULL",
-                    Integer.class, type);
-
             r.put("status","ok");
             r.put("loaded", loaded - unmatched);
             r.put("skipped_rows", skipped);
             r.put("unmatched_section_label", unmatched);
-            r.put("unmatched_kept_gps", orphanGps);
             return r;
         } catch (Exception ex) {
             throw new RuntimeException("Asset upload failed: " + ex.getMessage(), ex);
         }
+    }
+
+    /** Permanently removes rows of {type} (optionally scoped to one survey period)
+     *  whose Section_Label matches no road — the only kind of row that can exist
+     *  today, since import no longer places anything by GPS for survey streams
+     *  (see upload()); this cleans up rows left over from before that fix, or from
+     *  a genuinely stale/renamed road section. Rows with a matched road but a
+     *  blank Road_Class are NOT touched — that's a road-network data gap, not an
+     *  import error, and the point itself is real. */
+    @DeleteMapping("/{type}/orphans")
+    public Map<String, Object> deleteOrphans(@PathVariable String type,
+                                             @RequestParam(value = "periodId", required = false) Integer periodId) {
+        ensure();
+        type = type.toLowerCase();
+        int n = periodId != null
+            ? jdbc.update("DELETE FROM road_assets a WHERE a.asset_type = ? AND a.period_id = ? " +
+                "AND NOT EXISTS (SELECT 1 FROM roads r WHERE r.\"Section_La\" = a.section_label)", type, periodId)
+            : jdbc.update("DELETE FROM road_assets a WHERE a.asset_type = ? " +
+                "AND NOT EXISTS (SELECT 1 FROM roads r WHERE r.\"Section_La\" = a.section_label)", type);
+        Map<String, Object> r = new HashMap<>();
+        r.put("status", "ok");
+        r.put("deleted", n);
+        return r;
+    }
+
+    /** Per (type, survey period) counts of orphan rows — Section_Label matches no
+     *  road — across every asset type in road_assets, for the Data Console's
+     *  "Data Cleanup" panel (Super Admin only). Every type is now placed by
+     *  linear reference only (see upload()), so an orphan here can only be a
+     *  leftover from before that fix, or a genuine bad Section_Label — never
+     *  expected behaviour. Inventory types (bridge, culvert, furniture_line,
+     *  furniture_point) have period_id NULL; period_name falls back to "—". */
+    @GetMapping("/orphans/summary")
+    public List<Map<String, Object>> orphanSummary() {
+        ensure();
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            SELECT a.asset_type AS type, a.period_id AS period_id, count(*) AS n
+            FROM road_assets a
+            WHERE NOT EXISTS (SELECT 1 FROM roads r WHERE r."Section_La" = a.section_label)
+            GROUP BY 1, 2
+            ORDER BY 1, 2
+            """);
+        Map<Integer, String> names = new HashMap<>();
+        for (Map<String, Object> p : periods.list()) names.put(((Number) p.get("id")).intValue(), (String) p.get("name"));
+        for (Map<String, Object> row : rows) {
+            Number pid = (Number) row.get("period_id");
+            row.put("period_name", pid != null ? names.getOrDefault(pid.intValue(), "period " + pid) : "—");
+        }
+        return rows;
     }
 
     @GetMapping(value = "/{type}/geojson", produces = MediaType.APPLICATION_JSON_VALUE)

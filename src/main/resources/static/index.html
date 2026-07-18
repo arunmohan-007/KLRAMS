@@ -644,7 +644,7 @@ async function upGeo(force){
   try{
     const r=await fetch('/api/assets/'+type+'/upload?periodId='+pid+(force?'&force=true':''),{method:'POST',body:fd});
     const j=await r.json();
-    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' record(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'')+(j.unmatched_kept_gps?' ⚠ '+j.unmatched_kept_gps+' point(s) kept via GPS coordinates but their Section_Label matches no road section — they will show as (unmapped)/OTHER in the dashboards.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' record(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
     else if(j.status==='exists'){
       if(confirm(existsMsg(j,spName(pid))))upGeo(true);
       else existsCancel(out,ds,f.name,j);
@@ -663,7 +663,7 @@ async function upAsset(force){
   try{
     const r=await fetch('/api/assets/'+type+'/upload'+(force?'?force=true':''),{method:'POST',body:fd});
     const j=await r.json();
-    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' '+type.replace('_',' ')+'(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'')+(j.unmatched_kept_gps?' ⚠ '+j.unmatched_kept_gps+' point(s) kept via GPS coordinates but their Section_Label matches no road section — they will show as (unmapped)/OTHER in the dashboards.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' '+type.replace('_',' ')+'(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
     else if(j.status==='exists'){
       if(confirm(existsMsg(j,null)))upAsset(true);
       else existsCancel(out,ds,f.name,j);
@@ -929,6 +929,11 @@ const PANELS={
     +'<div style="display:flex;gap:8px"><input type="date" id="spNewStart" style="flex:1"><input type="date" id="spNewEnd" style="flex:1"></div></div>'
     +'<button class="btn" onclick="spCreate()">Create period</button>'
     +'<div class="out" id="oSp"></div>',
+  'cleanup-orphans':'<div class="ip-title">Remove unmatched rows</div>'
+    +'<p class="ip-sub">Every road asset — bridges, culverts, furniture, FWD, Sub-Grade Soil, Bituminous Core, Pavement Crust — is placed strictly by <b>Section_Label</b> (+ chainage) — a row whose section doesn’t match any road is dropped at import. '
+    +'The rows below are leftovers from before that rule was enforced, or genuine data-entry errors (a mistyped or renamed Section_Label). '
+    +'Correcting the label in the source file and re-importing is always the better fix; deleting here is for rows you’ve confirmed are stale.</p>'
+    +'<div id="cleanupAdmin" class="hint">Loading…</div>',
   'cond-survey':'<div class="ip-title">Condition survey</div>'
     +'<p class="ip-sub">Import the raw condition survey CSV (IRI, cracking, potholes…). After it loads, switch to <b>Build segments</b> to cut it against the road network.</p>'
     +spSelField()
@@ -1021,6 +1026,9 @@ const HUB=[
   {id:'periods',cat:'Survey Periods',icon:'cal',types:[
     {id:'svy-periods',label:'Manage survey periods',fmt:'Action — no file'}
   ]},
+  {id:'cleanup',cat:'Data Cleanup',icon:'trash',types:[
+    {id:'cleanup-orphans',label:'Remove unmatched rows',fmt:'Action — no file'}
+  ]},
   {id:'condition',cat:'Condition Data',icon:'pulse',types:[
     {id:'cond-survey',label:'Condition survey',fmt:'CSV file'},
     {id:'cond-build',label:'Build segments',fmt:'Action — no file'}
@@ -1095,7 +1103,17 @@ function selectType(id){
   if(id==='traffic')trfState();
   if(document.getElementById('spSel'))spFillSel();
   if(id==='svy-periods')spRenderAdmin();
+  if(id==='cleanup-orphans')cleanupRenderAdmin();
 }
+function isSuperAdmin(){return !!(window.RoleGate&&RoleGate.me&&RoleGate.me.role==='SUPER_ADMIN');}
+/* role-gate.js is a deferred script, so window.RoleGate doesn't exist yet at
+   this point in the parse — hook onReady once parsing (and all defer scripts)
+   finish, so the Delete button appears/disappears once the role is known. */
+document.addEventListener('DOMContentLoaded',function(){
+  if(!window.RoleGate)return;
+  const prev=RoleGate.onReady;
+  RoleGate.onReady=function(me){if(prev)prev(me);if(curType==='cleanup-orphans')cleanupRenderAdmin();};
+});
 
 /* ===================== Survey periods ===================== */
 let SP_LIST=[];
@@ -1192,6 +1210,42 @@ async function spDelete(id){
     const r=await fetch('/api/survey-periods/'+id,{method:'DELETE'});
     const j=await r.json();
     if(j.status==='ok')spRenderAdmin();else alert('Error: '+(j.message||'failed'));
+  }catch(e){alert('Request failed: '+e.message);}
+}
+/* ===================== Data Cleanup (orphaned survey points) ===================== */
+const CLEANUP_LABEL={fwd:'FWD (deflection)',subgrade:'Sub-grade soil',bituminous_core:'Bituminous core',pavement_crust:'Pavement crust',
+  bridge:'Bridges',culvert:'Culverts',furniture_line:'Road furniture — line',furniture_point:'Road furniture — point'};
+async function cleanupRenderAdmin(){
+  const el=document.getElementById('cleanupAdmin');if(!el)return;
+  el.innerHTML='Loading…';
+  let rows=[];
+  try{rows=await (await fetch('/api/assets/orphans/summary',{cache:'no-store'})).json();}catch(e){}
+  if(!Array.isArray(rows)||!rows.length){el.innerHTML='No unmatched rows — every asset resolves to a road section.';return;}
+  const canDelete=isSuperAdmin();
+  el.innerHTML=rows.map(r=>{
+    return '<div style="border:1px solid #e2e7ee;border-radius:10px;padding:10px 12px;margin:6px 0;color:#1f2a3d">'
+      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<b>'+escLog(CLEANUP_LABEL[r.type]||r.type)+'</b>'
+      +'<span style="color:#64718a">— '+escLog(r.period_name||'—')+'</span>'
+      +'<span class="spacer"></span>'
+      +'<span style="font-weight:600">'+Number(r.n).toLocaleString()+' unmatched</span>'
+      +(canDelete
+        ?'<button class="btn ghost" style="padding:2px 10px;font-size:12px;color:#da4b43;border-color:#f3c9c6" onclick="cleanupDelete(\''+r.type+'\','+(r.period_id!=null?+r.period_id:'null')+',this)">Delete</button>'
+        :'<span class="hint" style="margin:0">Super Admin only</span>')
+      +'</div></div>';
+  }).join('')
+  +(canDelete?'':'<p class="hint" style="margin-top:10px">Sign in as a Super Admin to permanently delete these rows — or correct the Section_Label in the source file and re-import instead.</p>');
+}
+async function cleanupDelete(type,periodId,btn){
+  if(!confirm('Permanently delete every unmatched '+(CLEANUP_LABEL[type]||type)+' row'+(periodId!=null?' in this survey period':'')+'?\n\n'+
+    'This cannot be undone. Only proceed once you\'ve confirmed the Section_Label is genuinely wrong (not just a road missing from the network) — otherwise correct it in the source file and re-import instead.'))return;
+  if(btn){btn.disabled=true;btn.textContent='Deleting…';}
+  try{
+    const url='/api/assets/'+type+'/orphans'+(periodId!=null?('?periodId='+periodId):'');
+    const r=await fetch(url,{method:'DELETE'});
+    const j=await r.json();
+    if(j.status==='ok'){logUpload(CLEANUP_LABEL[type]||type,'—',true,'Deleted '+j.deleted+' unmatched row(s)');cleanupRenderAdmin();refresh();}
+    else alert('Error: '+(j.message||'failed'));
   }catch(e){alert('Request failed: '+e.message);}
 }
 /* build the hub and land on the Count tab */
