@@ -14,8 +14,11 @@
 let fdbData=null;        // /api/fwd-dashboard/summary payload
 let fdbPeriodId=null;    // selected period id
 let fdbDistrict=null;    // selected district or null = all
+let fdbSurface='all';    // 'all' | 'flexible' | 'rigid' | 'unknown' pavement type
 let fdbLoading=false;
 let fdbUnmap={};         // period id -> /api/fwd-dashboard/unmapped rows
+
+const FDB_SURF_LBL={all:'All pavements',flexible:'Flexible (BT)',rigid:'Rigid (CC)',unknown:'Unclassified'};
 
 function fdbCol(cls,i){return (typeof CLASS_COL!=='undefined'&&CLASS_COL[cls])||DPAL[(i||0)%DPAL.length];}
 function fdbClsFull(l){return (typeof CLASS_SHORT!=='undefined'&&CLASS_SHORT[l])||l;}
@@ -51,8 +54,12 @@ function fdbPeriodObj(){
   const ps=(fdbData&&Array.isArray(fdbData.periods))?fdbData.periods:[];
   return ps.find(p=>p.id===fdbPeriodId)||ps[0]||null;
 }
-function fdbSetPeriod(id){fdbPeriodId=id;fdbDistrict=null;fdbPaint();}
+function fdbSetPeriod(id){fdbPeriodId=id;fdbDistrict=null;fdbSurface='all';fdbPaint();}
 function fdbSetDistrict(name){fdbDistrict=(fdbDistrict===name)?null:name;fdbPaint();}
+function fdbSetSurface(s){fdbSurface=(fdbSurface===s)?'all':s;fdbDistrict=null;fdbPaint();}
+
+/* the selected pavement-type variant of the period (own stats, edges, districts) */
+function fdbVariant(p){return (p.variants&&(p.variants[fdbSurface]||p.variants.all))||p;}
 
 /* scope = selected district's entry, or the whole period */
 function fdbScope(p){
@@ -240,9 +247,34 @@ function fdbTempCard(p){
     panels+table+'</div>';
 }
 
+/* ---- flexible vs rigid comparison card ---- */
+function fdbSurfCard(p){
+  const mix=p.surface_mix||{};
+  if(!(+mix.flexible||+mix.rigid))return '';   // no pavement-type info in this period
+  const rows=['flexible','rigid','unknown'].map(k=>{
+    const v=p.variants&&p.variants[k];if(!v)return '';
+    const s=fdbScope(v),st=s.d0,u=fdbUnit(v);
+    return '<tr'+(fdbSurface===k?' class="svy-sel"':'')+' onclick="fdbSetSurface(\''+k+'\')" style="cursor:pointer">'+
+      '<td><b>'+FDB_SURF_LBL[k]+'</b></td><td class="n"><b>'+fmtN(s.points||0)+'</b></td>'+
+      (st?'<td class="n">'+fdbF(st.min,u)+'</td><td class="n"><b>'+fdbF(st.mean,u)+'</b></td>'+
+          '<td class="n">'+fdbF(st.p50,u)+'</td><td class="n">'+fdbF(st.p90,u)+'</td>'+
+          '<td class="n">'+fdbF(st.max,u)+'</td><td class="n">'+u+'</td>'
+         :'<td class="n" colspan="6"><span class="z">no D0 values</span></td>')+'</tr>';
+  }).join('');
+  return '<div class="dcard"><div class="dcard-head"><h3>Flexible vs rigid pavement</h3>'+
+    '<span class="totchip">'+(fdbDistrict?escH(fdbDistrict):'all districts')+'</span></div>'+
+    '<div class="sub">Rigid (CC / PQC) slabs deflect far less than flexible (BT) pavement, so their deflection figures are '+
+    'kept separate — each type has its own statistics, profile scale and histogram bins. Click a row (or use the pavement '+
+    'chips above) to switch the whole dashboard to that type.</div>'+
+    '<div class="amx-wrap"><table class="amx"><tr><th>Pavement</th><th class="n">Points</th><th class="n">D0 min</th>'+
+    '<th class="n">mean</th><th class="n">median</th><th class="n">90th</th><th class="n">max</th><th class="n">unit</th></tr>'+
+    rows+'</table></div></div>';
+}
+
 /* ---- unmapped points card — the rows behind OTHER / (unmapped) ---- */
 function fdbUnmappedCard(p){
-  const oth=((p.classes||[]).find(c=>c.cls==='OTHER')||{}).points||0;
+  const all=(p.variants&&p.variants.all)||p;
+  const oth=((all.classes||[]).find(c=>c.cls==='OTHER')||{}).points||0;
   if(!oth)return '';
   const rows=fdbUnmap[p.id];
   let inner;
@@ -325,16 +357,26 @@ function fdbPaint(){
   const body=document.getElementById('dashBody');if(!body)return;
   const p=fdbPeriodObj();
   if(!p){body.innerHTML='<div class="dash-loading">No FWD survey data uploaded yet.</div>';return;}
-  const unit=fdbUnit(p);
-  const s=fdbScope(p);
-  const dists=p.districts||[];
+  const v=fdbVariant(p);
+  const unit=fdbUnit(v);
+  const s=fdbScope(v);
+  const dists=v.districts||[];
   const pName=escH(p.name||'');
 
-  /* ---- controls: period pills + district chips ---- */
+  /* ---- controls: period pills + pavement-type chips + district chips ---- */
+  const mix=p.surface_mix||{};
+  const surfChips=(+mix.flexible||+mix.rigid)
+    ?'<div class="svy-dists">'+['all','flexible','rigid','unknown'].map(k=>{
+        if(k==='all')return '<button type="button" class="svy-chip'+(fdbSurface==='all'?' on':'')+'" onclick="fdbSetSurface(\'all\')">'+FDB_SURF_LBL.all+'</button>';
+        const n=+mix[k]||0;
+        if(!n)return k==='unknown'?'':'<span class="svy-chip" style="opacity:.45;cursor:default" title="No '+FDB_SURF_LBL[k]+' points in this period">'+FDB_SURF_LBL[k]+' · none</span>';
+        return '<button type="button" class="svy-chip'+(fdbSurface===k?' on':'')+'" onclick="fdbSetSurface(\''+k+'\')">'+FDB_SURF_LBL[k]+' · '+fmtN(n)+'</button>';
+      }).join('')+'</div>'
+    :'';
   const pills='<div class="svy-bar"><div class="svy-years">'+
     (fdbData.periods||[]).map(pp=>'<button type="button" class="svy-pill'+(pp.id===fdbPeriodId?' on':'')+'" title="'+escH(pp.range||'')+'" onclick="fdbSetPeriod('+(+pp.id)+')">'+
       '<span class="svy-pill-cap">Survey Period'+(pp.is_active?' · current':'')+'</span><span class="svy-pill-yr">'+escH(pp.name)+'</span></button>').join('')+
-    '</div><div class="svy-dists"><button type="button" class="svy-chip'+(fdbDistrict?'':' on')+'" onclick="fdbDistrict=null;fdbPaint()">All Districts</button>'+
+    '</div>'+surfChips+'<div class="svy-dists"><button type="button" class="svy-chip'+(fdbDistrict?'':' on')+'" onclick="fdbDistrict=null;fdbPaint()">All Districts</button>'+
     dists.map(d=>'<button type="button" class="svy-chip'+(d.district===fdbDistrict?' on':'')+'" onclick="fdbSetDistrict(\''+qq(d.district)+'\')">'+escH(d.district)+'</button>').join('')+
     '</div></div>';
 
@@ -344,13 +386,15 @@ function fdbPaint(){
   }
 
   /* ---- KPI cards ---- */
-  const scopeLbl=fdbDistrict?escH(fdbDistrict):'All districts';
+  const surfLbl=fdbSurface!=='all'?FDB_SURF_LBL[fdbSurface]:null;
+  const scopeLbl=(surfLbl?surfLbl+' · ':'')+(fdbDistrict?escH(fdbDistrict):'All districts');
   const d0=s.d0,tp=s.temps&&s.temps.pavement,ta=s.temps&&s.temps.air;
-  const pcTot=(fdbDistrict&&p.points)?Math.round((s.points||0)/p.points*100):null;
+  const pcTot=(fdbDistrict&&v.points)?Math.round((s.points||0)/v.points*100):null;
   const kpi='<div class="kpi-row svy-kpis">'+
     '<div class="kpi feature"><div class="ringmark"></div><div class="kcap">FWD test points</div>'+
     '<div class="kv">'+fmtN(s.points||0)+'<span class="u">points</span></div>'+
-    '<div class="kl">'+(pcTot!=null?scopeLbl+' · '+pcTot+'% of period total':'Falling Weight Deflectometer drops in '+pName)+'</div></div>'+
+    '<div class="kl">'+(pcTot!=null?scopeLbl+' · '+pcTot+'% of '+(surfLbl?surfLbl:'period')+' total'
+      :(surfLbl?surfLbl+' drops in '+pName:'Falling Weight Deflectometer drops in '+pName))+'</div></div>'+
     '<div class="kpi" style="--kc:#2a5d9c"><div class="kcap">Mean D0</div>'+
     '<div class="kv">'+(d0?fdbF(d0.mean,unit):'—')+'<span class="u">'+unit+'</span></div>'+
     '<div class="kl">Median '+(d0?fdbF(d0.p50,unit):'—')+' · characteristic (90th) '+(d0?fdbF(d0.p90,unit):'—')+'</div></div>'+
@@ -373,7 +417,7 @@ function fdbPaint(){
   const histCard='<div class="dcard"><div class="dcard-head"><h3>D0 distribution</h3>'+
     '<span class="totchip">'+scopeLbl+'</span></div>'+
     '<div class="sub">Number of FWD points per D0 band ('+unit+'), split by road class.</div>'+
-    fdbHistChart(s,p.hist_edges,unit)+'</div>';
+    fdbHistChart(s,v.hist_edges,unit)+'</div>';
 
   const clsRows=(s.classes||[]).map(c=>({label:c.cls,n:c.points}));
   const donutCardH=cDonutCard('Points by road class',
@@ -381,22 +425,24 @@ function fdbPaint(){
     clsRows,{colorFn:fdbCol,full:fdbClsFull,centerSmall:'points'});
 
   const distBarsCard='<div class="dcard"><div class="dcard-head"><h3>FWD points by district</h3>'+
-    '<span class="totchip">'+fmtN(p.points)+'</span></div>'+
-    '<div class="sub">Deflection test points per district in '+pName+' — click a district to focus the whole dashboard</div>'+
+    '<span class="totchip">'+fmtN(v.points)+'</span></div>'+
+    '<div class="sub">Deflection test points per district in '+pName+(surfLbl?' — '+surfLbl.toLowerCase()+' only':'')+' — click a district to focus the whole dashboard</div>'+
     fdbBars(dists.map(d=>({label:d.district,n:d.points})))+'</div>';
 
   const dumbCard='<div class="dcard"><div class="dcard-head"><h3>District-wise D0 — lower to higher</h3>'+
-    '<span class="totchip">'+unit+'</span></div>'+
+    '<span class="totchip">'+(surfLbl?surfLbl+' · ':'')+unit+'</span></div>'+
     '<div class="sub">Each row is one district &amp; class, sorted from the lowest mean D0 (strongest) to the highest (weakest). The band spans min–max; the dot marks the mean.</div>'+
-    fdbD0Districts(p,unit)+'</div>';
+    fdbD0Districts(v,unit)+'</div>';
 
   const note='<div class="dash-note"><b>About these figures.</b> <b>D0</b> is the deflection under the FWD loading plate — the primary indicator of pavement structural strength: lower D0 = stronger pavement. '+
     'Every point is tagged with the survey period chosen at import in the Data Console'+(p.range?(' — '+pName+' covers '+escH(p.range)):'')+'. '+
     'Road class and district come from the road network via each point’s section label; unmatched sections appear as <b>(unmapped)</b>. '+
+    '<b>Flexible</b> (BT) and <b>rigid</b> (CC / PQC) pavements are reported separately — rigid slabs deflect far less, so mixing them would distort every statistic; '+
+    'the pavement type comes from the FWD file’s pavement-type column when present, otherwise from the road network’s construction / surface type. '+
     'The <b>characteristic deflection</b> shown is the 90th percentile. Pavement and air temperatures are read from the uploaded FWD file when present — D0 rises with pavement temperature, so readings are normally corrected to a standard temperature before overlay design (IRC:115).</div>';
 
-  body.innerHTML=pills+kpi+
+  body.innerHTML=pills+kpi+fdbSurfCard(p)+
     '<div class="comp-row">'+profCard+histCard+'</div>'+
     '<div class="comp-row">'+donutCardH+distBarsCard+'</div>'+
-    fdbUnmappedCard(p)+dumbCard+fdbTempCard(p)+fdbMatrix(p,unit)+note;
+    fdbUnmappedCard(p)+dumbCard+fdbTempCard(v)+fdbMatrix(v,unit)+note;
 }

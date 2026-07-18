@@ -36,8 +36,9 @@ public class FwdDashboardController {
         this.periods = periods;
     }
 
-    /* One FWD test point, already joined to the road network. */
-    private record Pt(String district, String cls, Double d0, Double pav, Double air) {}
+    /* One FWD test point, already joined to the road network.
+       surf = FLEXIBLE / RIGID / UNKNOWN (see surfOf). */
+    private record Pt(String district, String cls, String surf, Double d0, Double pav, Double air) {}
 
     private static final String NUM = "'^-?[0-9]+(\\.[0-9]+)?$'";
 
@@ -45,6 +46,13 @@ public class FwdDashboardController {
         SELECT a.period_id AS pid,
                COALESCE(NULLIF(trim(r."District"),''), '(unmapped)')      AS district,
                COALESCE(NULLIF(upper(trim(r."Road_Class")),''), 'OTHER')  AS cls,
+               r."Cons_Type"  AS cons_type,
+               r."Surface_Ty" AS surf_type,
+               (SELECT e.value
+                  FROM jsonb_each_text(a.attrs) e
+                 WHERE regexp_replace(lower(e.key), '[^a-z0-9]', '', 'g')
+                       ~ '(pavement.*type|type.*pavement|construction.*type)'
+                 LIMIT 1) AS ptype,
                (SELECT (e.value)::double precision
                   FROM jsonb_each_text(a.attrs) e
                  WHERE regexp_replace(lower(e.key), '[^a-z0-9]', '', 'g') IN ('d0','do')
@@ -73,6 +81,7 @@ public class FwdDashboardController {
             if (pid == null) continue;
             byPeriod.computeIfAbsent(pid.intValue(), k -> new ArrayList<>()).add(new Pt(
                 (String) row.get("district"), (String) row.get("cls"),
+                surfOf((String) row.get("ptype"), (String) row.get("cons_type"), (String) row.get("surf_type")),
                 (Double) row.get("d0"), (Double) row.get("pav"), (Double) row.get("air")));
         }
 
@@ -91,23 +100,21 @@ public class FwdDashboardController {
             period.put("is_active", Boolean.TRUE.equals(p.get("is_active")));
             period.put("points", pts.size());
 
-            /* Bin edges are fixed per period so every histogram (overall and
-               per district) shares the same x axis and can be compared. */
-            double[] edges = binEdges(pts);
-            period.put("hist_edges", round3(edges));
-
-            period.putAll(scopeStats(pts, edges));
-
-            List<Map<String, Object>> dists = new ArrayList<>();
-            pts.stream().collect(Collectors.groupingBy(Pt::district, TreeMap::new, Collectors.toList()))
-               .forEach((district, dpts) -> {
-                   Map<String, Object> d = new LinkedHashMap<>();
-                   d.put("district", district);
-                   d.put("points", dpts.size());
-                   d.putAll(scopeStats(dpts, edges));
-                   dists.add(d);
-               });
-            period.put("districts", dists);
+            /* Rigid (CC / PQC) slabs deflect an order of magnitude less than
+               flexible (BT) pavement, so every figure is also computed per
+               pavement type — each variant gets its OWN bin edges and profile
+               scale, otherwise the rigid histogram is squashed against the
+               flexible range and both statistics are distorted. */
+            Map<String, Object> mix = new LinkedHashMap<>();
+            Map<String, Object> variants = new LinkedHashMap<>();
+            variants.put("all", variantStats(pts));
+            for (String sf : List.of("FLEXIBLE", "RIGID", "UNKNOWN")) {
+                List<Pt> sub = pts.stream().filter(x -> sf.equals(x.surf())).collect(Collectors.toList());
+                mix.put(sf.toLowerCase(), sub.size());
+                if (!sub.isEmpty()) variants.put(sf.toLowerCase(), variantStats(sub));
+            }
+            period.put("surface_mix", mix);
+            period.put("variants", variants);
 
             out.add(period);
             if (pid == activeId) defaultPeriod = Map.of("id", pid, "name", p.get("name"));
@@ -145,6 +152,47 @@ public class FwdDashboardController {
               AND (r."Section_La" IS NULL OR NULLIF(upper(trim(r."Road_Class")), '') IS NULL)
             ORDER BY a.section_label, a.start_chainage
             """, pid);
+    }
+
+    /* ---- full stats block for one point set: period-level figures plus the
+       district split — built for 'all' and for each pavement-type variant ---- */
+    private static Map<String, Object> variantStats(List<Pt> pts) {
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("points", pts.size());
+        /* Bin edges are fixed per variant so every histogram (overall and
+           per district) shares the same x axis and can be compared. */
+        double[] edges = binEdges(pts);
+        v.put("hist_edges", round3(edges));
+        v.putAll(scopeStats(pts, edges));
+        List<Map<String, Object>> dists = new ArrayList<>();
+        pts.stream().collect(Collectors.groupingBy(Pt::district, TreeMap::new, Collectors.toList()))
+           .forEach((district, dpts) -> {
+               Map<String, Object> d = new LinkedHashMap<>();
+               d.put("district", district);
+               d.put("points", dpts.size());
+               d.putAll(scopeStats(dpts, edges));
+               dists.add(d);
+           });
+        v.put("districts", dists);
+        return v;
+    }
+
+    /** FLEXIBLE / RIGID / UNKNOWN — from the FWD file's own pavement-type column
+     *  when present (fuzzy key match, like the temperatures), else the matched
+     *  road's construction type, else its surface type. Values are compared with
+     *  all non-letters stripped so BT / B.T. / "Bituminous", FLX / Flexible,
+     *  CC / C.C. / PQC / RCC / RGD / "Rigid" / "Concrete" all classify. */
+    private static String surfOf(String... vals) {
+        for (String v : vals) {
+            if (v == null) continue;
+            String n = v.toUpperCase().replaceAll("[^A-Z]", "");
+            if (n.isEmpty()) continue;
+            if (n.contains("RIG") || n.contains("CONC") || n.equals("RGD")
+                || n.equals("CC") || n.equals("PQC") || n.equals("RCC")) return "RIGID";
+            if (n.contains("FLEX") || n.contains("FLX") || n.equals("BT")
+                || n.contains("BITUM")) return "FLEXIBLE";
+        }
+        return "UNKNOWN";
     }
 
     /* ---- everything computed for one scope (whole period or one district) ---- */
