@@ -20,6 +20,84 @@ function ensureSegData(){
     return DATA;
   }).catch(()=>null);
 }
+/* ---- Survey Summary (inspector "Survey" tab) data helpers ----
+   Counts come from the SAME datasets the map layers use (ASSET_DATA via
+   loadAsset, condition segments via ensureSegData); the traffic count reads
+   /api/traffic/store directly because loadTraffic() re-fits the camera to all
+   stations, which must not happen while a road is highlighted. */
+var _sumReady=false,_sumLoading=null,_TRF_SUM=null;
+function ensureSummaryData(){
+  if(_sumReady)return Promise.resolve();
+  if(_sumLoading)return _sumLoading;
+  var jobs=[];
+  try{
+    if(typeof ASSETS!=='undefined'&&typeof loadAsset==='function'&&typeof ASSET_DATA!=='undefined'){
+      ['bridge','culvert','subgrade','bituminous_core','fwd'].forEach(function(t){
+        if(ASSET_DATA[t])return;
+        var a=null;for(var i=0;i<ASSETS.length;i++){if(ASSETS[i].type===t){a=ASSETS[i];break;}}
+        if(a)jobs.push(loadAsset(a));
+      });
+    }
+  }catch(e){}
+  if(_TRF_SUM==null){
+    jobs.push(new Promise(function(res){
+      var done=function(st){
+        var by={};(((st||{}).stations)||[]).forEach(function(rec){
+          var sec=String(rec.section||'').trim();if(!sec)return;
+          /* A/B station names (e.g. TVM_STN_021A/B) are one physical station */
+          var n=String(rec.name||'').trim().replace(/[AB]$/i,'').toUpperCase();
+          (by[sec]=by[sec]||{})[n||'?']=1;
+        });
+        _TRF_SUM=by;res();
+      };
+      try{
+        if(typeof trfFetchStore==='function')trfFetchStore(done);
+        else fetch('/api/traffic/store').then(function(r){return r.ok?r.json():null;}).then(done).catch(function(){done(null);});
+      }catch(e){done(null);}
+    }));
+  }
+  _sumLoading=Promise.all(jobs).then(function(){_sumReady=true;_sumLoading=null;})
+    .catch(function(){_sumReady=true;_sumLoading=null;});
+  return _sumLoading;
+}
+/* Per-lane NSV coverage from the condition segments: a lane counts for a
+   segment's length when it carries at least one recorded metric. Returns
+   {lanes:[[lane,km]...], laneKm, runKm} — runKm is the carriageway run. */
+function _nsvLaneKm(roadId){
+  var arr=(typeof segsByRoad!=='undefined')?(segsByRoad[roadId]||[]):[];
+  var per={},laneKm=0,runKm=0;
+  arr.forEach(function(f){
+    var p=(f&&f.properties)||{};
+    var fr=+p.from_ch,to=+p.to_ch;
+    var km=(isNaN(fr)||isNaN(to))?0:Math.abs(to-fr)/1000;
+    if(!(km>0))return;
+    runKm+=km;
+    var lv=p.lane_vals;if(typeof lv==='string'){try{lv=JSON.parse(lv);}catch(e){lv=null;}}
+    if(!lv||typeof lv!=='object')return;
+    Object.keys(lv).forEach(function(L){
+      var o=lv[L];if(!o)return;
+      var has=false;for(var k in o){if(o[k]!=null&&o[k]!==''){has=true;break;}}
+      if(!has)return;
+      per[L]=(per[L]||0)+km;laneKm+=km;
+    });
+  });
+  return {lanes:Object.keys(per).sort().map(function(L){return [L,per[L]];}),laneKm:laneKm,runKm:runKm};
+}
+/* Count features of one asset dataset on this section. null = still loading. */
+function _sumAssetCount(type,roadId){
+  if(typeof ASSET_DATA==='undefined'||!ASSET_DATA[type])return _sumReady?0:null;
+  var n=0,sec=String(roadId);
+  (ASSET_DATA[type].features||[]).forEach(function(f){
+    var p=(f&&f.properties)||{};
+    if(String(p.__sec||'').trim()===sec)n++;
+  });
+  return n;
+}
+function _sumTrafficCount(roadId){
+  if(_TRF_SUM==null)return _sumReady?0:null;
+  return Object.keys(_TRF_SUM[String(roadId).trim()]||{}).length;
+}
+
 /* Lookup decode (codes -> finalised words, from Lookup_sheet_Master_R2). */
 var DECODE={
  'Road Class':{SH:'State Highway',MDR:'Major District Road',ODR:'Other District Road',NH:'National Highway'},
@@ -91,6 +169,7 @@ function buildPopup(props,roadId,ch,lane){
      '<button class="kc-tab" onclick="klTab(this,\'tab-loc\')">Chainage</button>'+
      '<button class="kc-tab on" onclick="klTab(this,\'tab-cond\')">Condition</button>'+
      '<button class="kc-tab" onclick="klTab(this,\'tab-fwd\')">FWD</button>'+
+     '<button class="kc-tab" onclick="klTab(this,\'tab-sum\')">Survey</button>'+
      '</div><div class="kc-panes">';
 
   /* ---- Profile pane (road attributes, decoded) ---- */
@@ -194,6 +273,35 @@ function buildPopup(props,roadId,ch,lane){
   }
   H+='</div>';
 
+  /* ---- Survey Summary pane (lane-km of NSV + dataset counts on this section) ---- */
+  H+='<div class="kc-pane" id="tab-sum">';
+  var lk=_nsvLaneKm(roadId);
+  H+='<div class="kc-condhead">NSV survey &middot; lane km</div>';
+  if(lk.lanes.length){
+    H+='<div class="kc-kvs">';
+    lk.lanes.forEach(function(L){H+='<div class="kc-kv"><span class="k">Lane '+esc(L[0])+'</span><span class="v">'+L[1].toFixed(2)+' km</span></div>';});
+    H+='<div class="kc-kv"><span class="k"><b>Total lane km</b></span><span class="v"><b>'+lk.laneKm.toFixed(2)+' km</b></span></div>';
+    if(lk.runKm>0)H+='<div class="kc-kv"><span class="k">Surveyed length</span><span class="v">'+lk.runKm.toFixed(2)+' km</span></div>';
+    H+='</div>';
+  }else if(lk.runKm>0){
+    H+='<div class="kc-kvs"><div class="kc-kv"><span class="k">Surveyed length</span><span class="v">'+lk.runKm.toFixed(2)+' km</span></div></div>';
+  }else{
+    H+='<div class="kp-none">No NSV survey on this section.</div>';
+  }
+  var cnt=function(n){return n==null?'…':String(n);};
+  var sumRows=[
+    ['FWD test points',_sumAssetCount('fwd',roadId)],
+    ['Bridges',_sumAssetCount('bridge',roadId)],
+    ['Culverts',_sumAssetCount('culvert',roadId)],
+    ['Soil tests',_sumAssetCount('subgrade',roadId)],
+    ['Bituminous cores',_sumAssetCount('bituminous_core',roadId)],
+    ['Traffic stations',_sumTrafficCount(roadId)]
+  ];
+  H+='<div class="kc-condhead" style="margin-top:15px">Surveys on this section</div><div class="kc-kvs">';
+  sumRows.forEach(function(r){H+='<div class="kc-kv"><span class="k">'+r[0]+'</span><span class="v">'+cnt(r[1])+'</span></div>';});
+  H+='</div>';
+  H+='</div>';
+
   H+='</div>'; /* /kc-panes */
 
   /* ---- footer actions (always visible) ---- */
@@ -244,9 +352,13 @@ var _inspCtx=null;
 function openInspector(props,roadId,ch,lane){
   _inspCtx={props:props,roadId:roadId,ch:ch,lane:lane};
   showInspector(buildPopup(props,roadId,ch,lane),roadId);
+  var _rf=function(){if(_inspCtx&&_inspCtx.roadId===roadId)refreshInspectorData();};
   if(typeof ensureSegData==='function'){
-    try{ensureSegData().then(function(){if(_inspCtx&&_inspCtx.roadId===roadId)refreshInspectorData();});}catch(e){}
+    try{ensureSegData().then(_rf);}catch(e){}
   }
+  /* Survey tab: pull in any asset/traffic datasets not yet downloaded, then
+     swap the '…' placeholders for real counts in place. */
+  try{ensureSummaryData().then(_rf);}catch(e){}
 }
 function refreshInspectorData(){
   if(!_inspCtx)return;var body=document.getElementById('riBody'),panel=document.getElementById('roadInspector');
