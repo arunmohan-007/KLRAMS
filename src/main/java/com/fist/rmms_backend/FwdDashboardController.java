@@ -10,7 +10,10 @@ import java.util.stream.Collectors;
  * FWD Dashboard figures — per survey period (see {@link SurveyPeriodService}):
  * point counts, D0 deflection statistics (min / max / mean / percentiles),
  * the full lower-to-higher D0 profile and a binned histogram — everything
- * split by road class (SH / MDR / …) and by district.
+ * split by road class (SH / MDR / …) and by district. Also ranks individual
+ * road sections by their own mean D0 (see {@link #weakSections}), since the
+ * district/class rollups pool many different roads and aren't a substitute
+ * for a per-road design value.
  *
  * Pavement and air temperature are read from the FWD upload's kept attributes
  * (attrs jsonb) by fuzzy key match — any column whose normalised name contains
@@ -38,12 +41,13 @@ public class FwdDashboardController {
 
     /* One FWD test point, already joined to the road network.
        surf = FLEXIBLE / RIGID / UNKNOWN (see surfOf). */
-    private record Pt(String district, String cls, String surf, Double d0, Double pav, Double air) {}
+    private record Pt(String district, String cls, String surf, String section, Double d0, Double pav, Double air) {}
 
     private static final String NUM = "'^-?[0-9]+(\\.[0-9]+)?$'";
 
     private static final String SQL = """
         SELECT a.period_id AS pid,
+               a.section_label AS section,
                COALESCE(NULLIF(trim(r."District"),''), '(unmapped)')      AS district,
                COALESCE(NULLIF(upper(trim(r."Road_Class")),''), 'OTHER')  AS cls,
                r."Cons_Type"  AS cons_type,
@@ -82,6 +86,7 @@ public class FwdDashboardController {
             byPeriod.computeIfAbsent(pid.intValue(), k -> new ArrayList<>()).add(new Pt(
                 (String) row.get("district"), (String) row.get("cls"),
                 surfOf((String) row.get("ptype"), (String) row.get("cons_type"), (String) row.get("surf_type")),
+                (String) row.get("section"),
                 (Double) row.get("d0"), (Double) row.get("pav"), (Double) row.get("air")));
         }
 
@@ -164,6 +169,7 @@ public class FwdDashboardController {
         double[] edges = binEdges(pts);
         v.put("hist_edges", round3(edges));
         v.putAll(scopeStats(pts, edges));
+        v.put("weak_sections", weakSections(pts));
         List<Map<String, Object>> dists = new ArrayList<>();
         pts.stream().collect(Collectors.groupingBy(Pt::district, TreeMap::new, Collectors.toList()))
            .forEach((district, dpts) -> {
@@ -239,7 +245,40 @@ public class FwdDashboardController {
         m.put("mean", r3(Arrays.stream(v).average().orElse(0)));
         m.put("p50", r3(pct(v, 0.50)));
         m.put("p90", r3(pct(v, 0.90)));
+        /* Sorted, decimated D0 curve for this scope — lets the dashboard compute an
+           arbitrary "% of points above cutoff X" client-side without a round trip. */
+        m.put("curve", round3(decimate(v, PROFILE_MAX)));
         return m;
+    }
+
+    private static final int WEAK_SECTIONS_MAX = 15;
+    private static final int WEAK_SECTIONS_MIN_PTS = 3;
+
+    /** Individual road sections ranked by their OWN mean D0 (highest/weakest first).
+     *  Unlike the district/class rollups — which pool many different roads and make
+     *  a percentile meaningless for design — this lets a road be picked out for a
+     *  proper per-road IRC:115 evaluation. Sections need at least a few points so a
+     *  single noisy reading can't put a road at the top of the list. */
+    private static List<Map<String, Object>> weakSections(List<Pt> pts) {
+        Map<String, List<Pt>> bySection = pts.stream()
+            .filter(p -> p.section() != null && !p.section().isBlank() && p.d0() != null)
+            .collect(Collectors.groupingBy(Pt::section));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        bySection.forEach((section, spts) -> {
+            if (spts.size() < WEAK_SECTIONS_MIN_PTS) return;
+            double[] v = sortedD0(spts);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("section", section);
+            m.put("district", spts.get(0).district());
+            m.put("cls", spts.get(0).cls());
+            m.put("points", spts.size());
+            m.put("min", r3(v[0]));
+            m.put("mean", r3(Arrays.stream(v).average().orElse(0)));
+            m.put("max", r3(v[v.length - 1]));
+            rows.add(m);
+        });
+        rows.sort((a, b) -> Double.compare((Double) b.get("mean"), (Double) a.get("mean")));
+        return rows.size() > WEAK_SECTIONS_MAX ? rows.subList(0, WEAK_SECTIONS_MAX) : rows;
     }
 
     private static Map<String, Object> tempStats(List<Pt> pts) {

@@ -17,6 +17,7 @@ let fdbDistrict=null;    // selected district or null = all
 let fdbSurface='all';    // 'all' | 'flexible' | 'rigid' | 'unknown' pavement type
 let fdbLoading=false;
 let fdbUnmap={};         // period id -> /api/fwd-dashboard/unmapped rows
+let fdbCutoff=null;      // user-set "weak" D0 cutoff (same unit as displayed), null = not set
 
 const FDB_SURF_LBL={all:'All pavements',flexible:'Flexible (BT)',rigid:'Rigid (CC)',unknown:'Unclassified'};
 
@@ -63,6 +64,14 @@ function fdbPeriodObj(){
 function fdbSetPeriod(id){fdbPeriodId=id;fdbDistrict=null;fdbSurface='all';fdbPaint();}
 function fdbSetDistrict(name){fdbDistrict=(fdbDistrict===name)?null:name;fdbPaint();}
 function fdbSetSurface(s){fdbSurface=(fdbSurface===s)?'all':s;fdbDistrict=null;fdbPaint();}
+function fdbSetCutoff(v){const n=parseFloat(v);fdbCutoff=isNaN(n)?null:n;fdbPaint();}
+
+/* share of points above the user-set cutoff, read off the scope's sorted D0 curve */
+function fdbPctWeak(curve,cutoff){
+  if(!Array.isArray(curve)||!curve.length||cutoff==null||isNaN(cutoff))return null;
+  let i=0;while(i<curve.length&&curve[i]<=cutoff)i++;
+  return Math.round((1-i/curve.length)*1000)/10;
+}
 
 /* the selected pavement-type variant of the period (own stats, edges, districts) */
 function fdbVariant(p){return (p.variants&&(p.variants[fdbSurface]||p.variants.all))||p;}
@@ -263,9 +272,8 @@ function fdbSurfCard(p){
     return '<tr'+(fdbSurface===k?' class="svy-sel"':'')+' onclick="fdbSetSurface(\''+k+'\')" style="cursor:pointer">'+
       '<td><b>'+FDB_SURF_LBL[k]+'</b></td><td class="n"><b>'+fmtN(s.points||0)+'</b></td>'+
       (st?'<td class="n">'+fdbF(st.min,u)+'</td><td class="n"><b>'+fdbF(st.mean,u)+'</b></td>'+
-          '<td class="n">'+fdbF(st.p50,u)+'</td><td class="n">'+fdbF(st.p90,u)+'</td>'+
           '<td class="n">'+fdbF(st.max,u)+'</td><td class="n">'+u+'</td>'
-         :'<td class="n" colspan="6"><span class="z">no D0 values</span></td>')+'</tr>';
+         :'<td class="n" colspan="4"><span class="z">no D0 values</span></td>')+'</tr>';
   }).join('');
   return '<div class="dcard"><div class="dcard-head"><h3>Flexible vs rigid pavement</h3>'+
     '<span class="totchip">'+(fdbDistrict?escH(fdbDistrict):'all districts')+'</span></div>'+
@@ -273,7 +281,7 @@ function fdbSurfCard(p){
     'kept separate — each type has its own statistics, profile scale and histogram bins. Click a row (or use the pavement '+
     'chips above) to switch the whole dashboard to that type.</div>'+
     '<div class="amx-wrap"><table class="amx"><tr><th>Pavement</th><th class="n">Points</th><th class="n">D0 min</th>'+
-    '<th class="n">mean</th><th class="n">median</th><th class="n">90th</th><th class="n">max</th><th class="n">unit</th></tr>'+
+    '<th class="n">mean</th><th class="n">max</th><th class="n">unit</th></tr>'+
     rows+'</table></div></div>';
 }
 
@@ -355,6 +363,24 @@ function fdbDeleteOrphans(pid){
   }).catch(e=>alert('Delete failed: '+e.message));
 }
 
+/* ---- individual road sections ranked by their own mean D0 (network-wide) ---- */
+function fdbWeakSections(v,unit){
+  const rows=v.weak_sections||[];
+  if(!rows.length)return '';
+  const body=rows.map((r,i)=>'<tr><td class="n">'+(i+1)+'</td><td><b>'+escH(r.section)+'</b></td>'+
+    '<td>'+escH(r.district)+'</td><td>'+escH(fdbClsFull(r.cls))+'</td>'+
+    '<td class="n">'+fmtN(r.points)+'</td>'+
+    '<td class="n">'+fdbF(r.min,unit)+'</td><td class="n"><b>'+fdbF(r.mean,unit)+'</b></td>'+
+    '<td class="n">'+fdbF(r.max,unit)+'</td></tr>').join('');
+  return '<div class="dcard"><div class="dcard-head"><h3>Weakest road sections</h3>'+
+    '<span class="totchip">top '+rows.length+'</span></div>'+
+    '<div class="sub">Individual road sections ranked by their own mean D0 (weakest first, at least 3 FWD points each) — '+
+    'unlike the district/class figures above, which pool many different roads together, this ranks one road at a time. '+
+    'Use it to shortlist specific sections for a proper per-road IRC:115 evaluation.</div>'+
+    '<div class="amx-wrap"><table class="amx"><tr><th class="n">#</th><th>Section</th><th>District</th><th>Class</th>'+
+    '<th class="n">Points</th><th class="n">Min</th><th class="n">Mean</th><th class="n">Max</th></tr>'+body+'</table></div></div>';
+}
+
 /* ---- district × metrics matrix ---- */
 function fdbMatrix(p,unit){
   const dists=p.districts||[];
@@ -433,7 +459,11 @@ function fdbPaint(){
       :(surfLbl?surfLbl+' drops in '+pName:'Falling Weight Deflectometer drops in '+pName))+'</div></div>'+
     '<div class="kpi" style="--kc:#2a5d9c"><div class="kcap">Mean D0</div>'+
     '<div class="kv">'+(d0?fdbF(d0.mean,unit):'—')+'<span class="u">'+unit+'</span></div>'+
-    '<div class="kl">Median '+(d0?fdbF(d0.p50,unit):'—')+' · characteristic (90th) '+(d0?fdbF(d0.p90,unit):'—')+'</div></div>'+
+    '<div class="kl">Median '+(d0?fdbF(d0.p50,unit):'—')+' '+unit+' · weak (&gt; <input type="number" step="0.001" '+
+    'value="'+(fdbCutoff!=null?fdbCutoff:'')+'" placeholder="'+unit+'" style="width:56px" '+
+    'onclick="event.stopPropagation()" onchange="fdbSetCutoff(this.value)"> '+unit+'): '+
+    (function(){const pw=d0?fdbPctWeak(d0.curve,fdbCutoff):null;return pw!=null?'<b>'+pw+'%</b>':'set cutoff';})()+
+    '</div></div>'+
     '<div class="kpi" style="--kc:#15976a"><div class="kcap">D0 range</div>'+
     '<div class="kv">'+(d0?fdbF(d0.min,unit):'—')+'–'+(d0?fdbF(d0.max,unit):'—')+'<span class="u">'+unit+'</span></div>'+
     '<div class="kl">Lowest (strongest) to highest (weakest) deflection</div></div>'+
@@ -475,10 +505,14 @@ function fdbPaint(){
     'Road class and district come from the road network via each point’s section label; unmatched sections appear as <b>(unmapped)</b>. '+
     '<b>Flexible</b> (BT) and <b>rigid</b> (CC / PQC) pavements are reported separately — rigid slabs deflect far less, so mixing them would distort every statistic; '+
     'the pavement type comes from the FWD file’s pavement-type column when present, otherwise from the road network’s construction / surface type. '+
-    'The <b>characteristic deflection</b> shown is the 90th percentile. Pavement and air temperatures are read from the uploaded FWD file when present — D0 rises with pavement temperature, so readings are normally corrected to a standard temperature before overlay design (IRC:115).</div>';
+    'The <b>mean</b>/<b>median</b> shown at district, class and network level are pooled across many different roads — useful for monitoring, but not a substitute '+
+    'for a per-road <b>characteristic deflection</b> (IRC:115 defines this as the 90th percentile, i.e. mean + 1.28×SD, computed within one homogeneous section of a single road). '+
+    'Use the <b>weakest road sections</b> list to shortlist specific roads for that per-road evaluation. Pavement and air temperatures are read from the uploaded FWD file '+
+    'when present — D0 rises with pavement temperature, so readings should be corrected to a standard temperature before any overlay design; this dashboard does not apply that correction.</div>';
 
   body.innerHTML=pills+kpi+fdbSurfCard(p)+
     '<div class="comp-row">'+profCard+histCard+'</div>'+
     '<div class="comp-row">'+donutCardH+distBarsCard+'</div>'+
+    fdbWeakSections(v,unit)+
     fdbUnmappedCard(p)+dumbCard+fdbTempCard(v)+fdbMatrix(v,unit)+note;
 }
