@@ -116,6 +116,38 @@ public class DashboardController {
         return out;
     }
 
+    /* Raw road segments for one construction type, so staff can locate (and fix)
+       the exact Section labels behind a construction-type bucket — including the
+       blank/(unspecified) rows whose Cons_Type was not filled in on import.
+       type blank / null / "(unspecified)" -> rows with an empty Cons_Type;
+       otherwise rows whose Cons_Type matches. Length is the raw measured length
+       per segment (not corrected) because each Section label is edited on its own. */
+    @GetMapping("/cons-type-sections")
+    public List<Map<String, Object>> consTypeSections(
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String district) {
+        boolean blank = type == null || type.isBlank() || type.equalsIgnoreCase("(unspecified)");
+        List<Object> args = new ArrayList<>();
+        StringBuilder sql = new StringBuilder(
+            "SELECT \"Section_La\" AS section_la, \"Road_Name\" AS road_name, " +
+            "       \"Road_Class\" AS road_class, \"District\" AS district, " +
+            "       \"PWD_Sec\" AS pwd_sec, \"Cons_Type\" AS cons_type, " +
+            "       ROUND((\"Measrd_Len\"::double precision/1000)::numeric,3) AS km " +
+            "FROM roads WHERE ");
+        if (blank) {
+            sql.append("NULLIF(trim(\"Cons_Type\"),'') IS NULL");
+        } else {
+            sql.append("upper(trim(\"Cons_Type\")) = upper(trim(?))");
+            args.add(type);
+        }
+        if (district != null && !district.isBlank()) {
+            sql.append(" AND trim(\"District\") = ?");
+            args.add(district);
+        }
+        sql.append(" ORDER BY \"District\", \"Section_La\"");
+        return jdbc.queryForList(sql.toString(), args.toArray());
+    }
+
     /* SH count = distinct Road_Num (numbered SH) + distinct Road_Name among SH
        rows that carry no Road_Num (e.g. Section_La = KPWD/SH/<PWD-sec>/<seg> or
        KPWD/SH/Bypass/...) — those unnumbered stretches are grouped by Road_Name

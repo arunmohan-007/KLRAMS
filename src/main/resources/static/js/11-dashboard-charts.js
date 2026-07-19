@@ -34,8 +34,10 @@ function donutCard(title,sub,rows,opts){
   const legend=rows.map((r,i)=>{
     const col=(opts.colorFn||dColor)(r.label,i);const km=+r.km||0,pc=km/tot*100;
     const nm=opts.full?opts.full(r.label):r.label;
-    return `<div class="dleg"><span class="sw" style="background:${col}"></span>`+
-      `<span class="nm" title="${escH(nm)}">${escH(nm)}</span>`+
+    const clickable=!!opts.legendClick;
+    const click=clickable?` onclick="${opts.legendClick}('${qq(r.label)}')" title="${escH(nm)} — click to list sections"`:'';
+    return `<div class="dleg${clickable?' click':''}"${click}><span class="sw" style="background:${col}"></span>`+
+      `<span class="nm"${clickable?'':` title="${escH(nm)}"`}>${escH(nm)}</span>`+
       `<span class="vl">${fmtKm(km)}<span class="pc"> · ${pc.toFixed(0)}%</span></span></div>`;
   }).join('');
   return `<div class="dcard"><div class="dcard-head"><h3>${title}</h3><span class="totchip">${fmtKm(tot)} km</span></div>`+
@@ -168,19 +170,55 @@ function lrPaint(d){
   </div>`;
 }
 
-function shMdrDistrictTable(rows){
+/* ---- Construction-type section finder (click a type in the donut) ---- */
+let _consSecRows=[],_consSecQ='';
+function consSecClose(){const b=document.getElementById('consSecBack');if(b)b.remove();}
+function consSecPaint(){
+  const list=document.getElementById('consSecList'),cnt=document.getElementById('consSecCnt');
+  if(!list)return;
+  const q=_consSecQ.trim().toLowerCase();
+  const items=_consSecRows.filter(r=>!q||[r.section_la,r.road_name,r.district,r.pwd_sec].some(v=>String(v||'').toLowerCase().indexOf(q)>=0));
+  if(cnt)cnt.textContent=items.length+' of '+_consSecRows.length+' section'+(_consSecRows.length===1?'':'s');
+  list.innerHTML=items.length?items.map(r=>{
+    const meta=[r.road_name,r.district,r.pwd_sec].filter(Boolean).map(escH).join(' · ');
+    return `<div class="nvp-it csm-it"><span class="csm-l"><span class="csm-lbl" title="${escH(r.section_la||'')}">${escH(r.section_la||'(no section label)')}</span>`+
+      `<span class="csm-m" title="${escH(meta)}">${meta||'&mdash;'}</span></span>`+
+      `<span class="csm-km">${fmtKm(r.km)} km</span></div>`;
+  }).join(''):`<div class="nvp-empty">No sections${_consSecQ?' match “'+escH(_consSecQ)+'”':''}.</div>`;
+}
+function consShowSections(type){
+  consSecClose();_consSecRows=[];_consSecQ='';
+  const label=consLbl(type);
+  const scoped=(typeof ovScope!=='undefined'&&ovScope!=='state')?ovScope:null;
+  const back=document.createElement('div');back.className='csm-back';back.id='consSecBack';
+  back.innerHTML='<div class="nvp csm-panel">'
+    +'<div class="nvp-top"><div class="csm-title">Sections · <b>'+escH(label)+'</b>'+(scoped?' · '+escH(scoped):'')+'</div>'
+    +'<button type="button" class="nvp-clear csm-x">Close</button></div>'
+    +'<div class="nvp-top"><input type="text" class="nvp-q" placeholder="Search section label / road / district…" autocomplete="off"></div>'
+    +'<div class="nvp-list" id="consSecList"><div class="dash-loading">Loading sections…</div></div>'
+    +'<div class="nvp-cnt" id="consSecCnt"></div></div>';
+  document.body.appendChild(back);
+  back.addEventListener('mousedown',e=>{if(e.target===back)consSecClose();});
+  back.querySelector('.csm-x').onclick=consSecClose;
+  const q=back.querySelector('.nvp-q');q.oninput=e=>{_consSecQ=e.target.value;consSecPaint();};
+  fetch('/api/dashboard/cons-type-sections?type='+encodeURIComponent(type)+(scoped?'&district='+encodeURIComponent(scoped):''))
+    .then(r=>r.json())
+    .then(rows=>{_consSecRows=rows||[];consSecPaint();})
+    .catch(()=>{const l=document.getElementById('consSecList');if(l)l.innerHTML='<div class="nvp-empty">Could not load sections.</div>';});
+  setTimeout(()=>{try{q.focus();}catch(e){}},0);
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')consSecClose();});
+
+function shMdrDistrictTable(rows,shDistinct,mdrDistinct){
   rows=rows||[];
   if(!rows.length)return '';
-  const totSh=rows.reduce((s,r)=>s+(+r.sh_total_count||0),0);
-  const totMdr=rows.reduce((s,r)=>s+(+r.mdr_count||0),0);
-  let body=rows.map(r=>`<tr><td>${escH(r.district)}</td>`+
+  const body=rows.map(r=>`<tr><td>${escH(r.district)}</td>`+
     `<td class="n"><b>${r.sh_total_count||0}</b></td>`+
     `<td class="n">${r.sh_numbered_count||0}</td>`+
     `<td class="n">${r.sh_unnumbered_count||0}</td>`+
     `<td class="n"><b>${r.mdr_count||0}</b></td></tr>`).join('');
-  body+=`<tr class="amx-tot"><td><b>Total</b></td><td class="n"><b>${totSh}</b></td><td class="n">&mdash;</td><td class="n">&mdash;</td><td class="n"><b>${totMdr}</b></td></tr>`;
-  return `<div class="dcard"><div class="dcard-head"><h3>State Highways &amp; MDRs by district</h3><span class="totchip">${totSh} SH &middot; ${totMdr} MDR</span></div>`+
-    `<div class="sub">SH counted by distinct Road Number (unnumbered SH stretches grouped by Road Name instead); MDR counted by distinct Road Name. A road running through several districts counts once in each district it passes through, so district totals can exceed the state-wide count.</div>`+
+  return `<div class="dcard"><div class="dcard-head"><h3>State Highways &amp; MDRs by district</h3><span class="totchip">State-wide: ${shDistinct||0} SH &middot; ${mdrDistinct||0} MDR</span></div>`+
+    `<div class="sub">SH counted by distinct Road Number (unnumbered SH stretches grouped by Road Name instead); MDR counted by distinct Road Name. <b>State-wide distinct total: ${shDistinct||0} SH · ${mdrDistinct||0} MDR.</b> A road running through several districts is counted <b>once in each district it passes through</b>, so the per-district figures below deliberately have <b>no total row</b> — they do not add up to the state-wide distinct count.</div>`+
     `<div class="amx-wrap"><table class="amx"><thead><tr><th>District</th><th class="n">SH (total)</th><th class="n">SH (numbered)</th><th class="n">SH (by name)</th><th class="n">MDR</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
 }
 /* District-wise corrected length by construction type (pivot of the flat rows). */
@@ -204,10 +242,46 @@ function consTypeMatrix(flat,byCons){
     '<div class="sub">Corrected length (km) per construction type by district; dual carriageways averaged once. The <b>All districts</b> row is the state-wide total.</div>'+
     `<div class="amx-wrap"><table class="amx"><thead>${head}</thead><tbody>${body}</tbody></table></div></div>`;
 }
-let selDistrict=null;
+/* ---- Network Overview: State-wide vs per-district scope (FWD-style) ----
+   ovScope is 'state' (correct distinct/total figures) or a district name
+   (every card re-scoped to that district via /api/dashboard/district). */
+let ovScope='state';
+let distCache={};
+function ovLoadDistrict(name){
+  if(distCache[name]&&distCache[name]!=='loading')return;
+  distCache[name]='loading';
+  fetch('/api/dashboard/district?name='+encodeURIComponent(name)).then(r=>r.json()).then(d=>{
+    distCache[name]=d;if(ovScope===name)renderDashboard();
+  }).catch(()=>{distCache[name]={total_km:0,by_class:[],by_owner:[],by_pwd_sec:[],by_cons_type:[],sh_total_count:0,sh_numbered_count:0,sh_unnumbered_count:0,mdr_count:0};if(ovScope===name)renderDashboard();});
+}
+function ovSetScope(name){
+  ovScope=name;
+  if(name!=='state')ovLoadDistrict(name);
+  renderDashboard();
+  try{document.getElementById('dashBody').scrollTop=0;}catch(e){}
+}
+function ovScopeBar(districts){
+  const chip=(name,label)=>`<button type="button" class="svy-chip${ovScope===name?' on':''}" onclick="ovSetScope('${qq(name)}')">${escH(label)}</button>`;
+  return `<div class="svy-bar"><div class="svy-dists">`+
+    chip('state','State-wide')+
+    districts.slice().sort((a,b)=>a.localeCompare(b)).map(nm=>chip(nm,nm)).join('')+
+    `</div></div>`;
+}
 function renderDashboard(){
   const d=dashData;
   document.getElementById('dashScope').textContent='Network Overview';
+  const districts=(d.by_district||[]).map(r=>r.label);
+  const bar=ovScopeBar(districts);
+  let inner;
+  if(ovScope==='state'){inner=ovStateView(d);}
+  else{
+    const dd=distCache[ovScope];
+    inner=(!dd||dd==='loading')?`<div class="dash-loading">Loading ${escH(ovScope)}…</div>`:ovDistrictView(dd,d);
+  }
+  document.getElementById('dashBody').innerHTML=bar+inner;
+  if(ovScope==='state')lrEnsure();
+}
+function ovStateView(d){
   const cls=(d.by_class||[]).slice();
   const sh=(cls.find(c=>c.label==='SH')?.km||0),mdr=(cls.find(c=>c.label==='MDR')?.km||0);
   const ctot=cls.reduce((s,c)=>s+(+c.km||0),0)||1;
@@ -224,43 +298,38 @@ function renderDashboard(){
   const ownTot=(d.by_owner||[]).reduce((s,r)=>s+(+r.km||0),0);
   const owners=`<div class="dcard"><div class="dcard-head"><h3>Network by current owner</h3><span class="totchip">${fmtKm(ownTot)} km</span></div><div class="sub">Length under each owning agency, ranked</div>${rankedBars(d.by_owner,{full:l=>dec('Current_Ow',l)})}</div>`;
   const comp=`<div class="comp-row">${compClass}${owners}</div>`;
-  const distList=`<div class="dcard"><div class="dcard-head"><h3>Districts</h3><span class="totchip">${(d.by_district||[]).length} listed</span></div><div class="sub">Select a district to see its PWD sections &amp; owners</div>${rankedBars(d.by_district,{click:'selectDistrict',selName:selDistrict})}</div>`;
-  const detail=`<div id="distDetail">${districtDetailHtml()}</div>`;
-  const exp=`<div class="exp-row">${distList}${detail}</div>`;
-  const lr=longestSection();
-  const consDonut=donutCard('Network by construction type','Corrected length by pavement construction type',(d.by_cons_type||[]),{full:consLbl,colorFn:consCol});
+  const consDonut=donutCard('Network by construction type','Corrected length by pavement construction type — click a type to list its section labels',(d.by_cons_type||[]),{full:consLbl,colorFn:consCol,legendClick:'consShowSections'});
   const consMatrix=consTypeMatrix(d.cons_type_by_district,d.by_cons_type);
   const consRow=`<div class="comp-row">${consDonut}${consMatrix}</div>`;
-  const shMdrTable=shMdrDistrictTable(d.sh_mdr_by_district);
-  const note=`<div class="dash-note"><b>About these figures.</b> Lengths use the measured length of each road segment. A road is split into many segments wherever owner, PWD section, carriageway or lane type changes, so the dashboard reports <b>length only</b>, never road counts. <b>Dual carriageways</b> (Section labels …A / …B, Single_Du = Dual) are counted <b>once</b> using the <b>average</b> of the two measured lengths. Shapefile digital length is ${d.dig_km} km; corrected network length is ${d.total_km} km.</div>`;
-  document.getElementById('dashBody').innerHTML=kpi+comp+consRow+lr+exp+shMdrTable+note;
-  lrEnsure();
+  const lr=longestSection();
+  const distList=`<div class="dcard"><div class="dcard-head"><h3>Districts by network length</h3><span class="totchip">${(d.by_district||[]).length} districts</span></div><div class="sub">Corrected length per district — click a district to open its District-wide view</div>${rankedBars(d.by_district,{click:'ovSetScope'})}</div>`;
+  const shMdrTable=shMdrDistrictTable(d.sh_mdr_by_district,d.sh_total_count,d.mdr_count);
+  const note=`<div class="dash-note"><b>About these figures.</b> Lengths use the measured length of each road segment; <b>dual carriageways</b> (Section labels …A / …B, Single_Du = Dual) are counted <b>once</b> using the <b>average</b> of the two measured lengths. <b>Road counts</b> (SH / MDR) are distinct-road counts — SH by Road Number, MDR by Road Name. Shapefile digital length is ${d.dig_km} km; corrected network length is ${d.total_km} km. Use the <b>State-wide / district</b> chips above to focus every card on one district.</div>`;
+  return kpi+comp+consRow+lr+distList+shMdrTable+note;
 }
-let distCache={};
-function districtDetailHtml(){
-  const mapIco='<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#9fb4c8" stroke-width="1.5" stroke-linejoin="round"><path d="M9 3 3 5v16l6-2 6 2 6-2V3l-6 2-6-2Z"/><path d="M9 3v16M15 5v16"/></svg>';
-  if(!selDistrict) return `<div class="detail-empty"><div class="empty-ico">${mapIco}</div><div>Select a district from the list to see its <b>PWD-section</b> and <b>owner</b> breakdown.</div></div>`;
-  const dd=distCache[selDistrict];
-  if(dd==='loading') return `<div class="detail-card"><div class="dash-loading">Loading ${escH(selDistrict)}…</div></div>`;
-  if(!dd) return `<div class="detail-card"><div class="dash-loading">No data for ${escH(selDistrict)}.</div></div>`;
-  return `<div class="detail-card">
-    <div class="detail-head"><div><div class="detail-eyebrow">District</div><div class="detail-name">${escH(selDistrict)}</div></div>
-      <div class="detail-total">${fmtKm(dd.total_km)}<span class="u">km</span></div></div>
-    <div class="detail-sub">SH &amp; MDR count</div>
-    <div class="sub" style="margin:0 0 10px">State Highways: <b>${dd.sh_total_count||0}</b> (${dd.sh_numbered_count||0} by Road Number${dd.sh_unnumbered_count?' + '+dd.sh_unnumbered_count+' by Road Name':''}) &nbsp;&middot;&nbsp; Major District Roads: <b>${dd.mdr_count||0}</b></div>
-    <div class="detail-sub">Construction type</div>${rankedBars(dd.by_cons_type,{full:consLbl,colorFn:consCol})}
-    <div class="detail-sub">PWD sections</div>${rankedBars(dd.by_pwd_sec,{})}
-    <div class="detail-sub">Current owner</div>${rankedBars(dd.by_owner,{full:l=>dec('Current_Ow',l)})}
+function ovDistrictView(dd,d){
+  const name=ovScope;
+  const cls=(dd.by_class||[]).slice();
+  const sh=(cls.find(c=>c.label==='SH')?.km||0),mdr=(cls.find(c=>c.label==='MDR')?.km||0);
+  const ctot=cls.reduce((s,c)=>s+(+c.km||0),0)||1;
+  const spark=cls.map((c,i)=>`<i style="width:${((+c.km||0)/ctot*100).toFixed(1)}%;background:${dColor(c.label,i)}"></i>`).join('');
+  const stateTot=+d.total_km||0,pct=stateTot?(dd.total_km/stateTot*100):0;
+  const kpi=`<div class="kpi-row">
+    <div class="kpi feature"><div class="ringmark"></div><div class="kcap">${escH(name)} network</div><div class="kv">${fmtKm(dd.total_km)}<span class="u">km</span></div><div class="kl">${pct.toFixed(1)}% of the state network · corrected length</div><div class="spark">${spark}</div></div>
+    <div class="kpi" style="--kc:#15976a"><div class="kcap">State Highway</div><div class="kv">${fmtKm(sh)}<span class="u">km</span></div><div class="kl">SH length in ${escH(name)}</div></div>
+    <div class="kpi" style="--kc:#2a5d9c"><div class="kcap">Major District Road</div><div class="kv">${fmtKm(mdr)}<span class="u">km</span></div><div class="kl">MDR length in ${escH(name)}</div></div>
+    <div class="kpi" style="--kc:#c9762a"><div class="kcap">State Highways</div><div class="kv">${dd.sh_total_count||0}<span class="u">nos.</span></div><div class="kl">Roads present here${dd.sh_unnumbered_count?' · incl. '+dd.sh_unnumbered_count+' by name':''} — a road spanning districts also counts elsewhere</div></div>
+    <div class="kpi" style="--kc:#6b4e9e"><div class="kcap">Major District Roads</div><div class="kv">${dd.mdr_count||0}<span class="u">nos.</span></div><div class="kl">Distinct Road Names present here</div></div>
   </div>`;
-}
-function selectDistrict(name){
-  selDistrict=name;
-  if(distCache[name]&&distCache[name]!=='loading'){renderDashboard();return;}
-  distCache[name]='loading';renderDashboard();
-  fetch('/api/dashboard/district?name='+encodeURIComponent(name)).then(r=>r.json()).then(d=>{
-    distCache[name]=d;
-    if(selDistrict===name)renderDashboard();
-  }).catch(e=>{distCache[name]={total_km:0,by_pwd_sec:[],by_owner:[]};if(selDistrict===name)renderDashboard();});
+  const compClass=donutCard('Network by road class',`Share of length by classification — ${escH(name)}`,cls,{full:l=>CLASS_SHORT[l]||dec('Road_Class',l)});
+  const consDonut=donutCard('Network by construction type',`Corrected length by construction type — click a type to list ${escH(name)} sections`,(dd.by_cons_type||[]),{full:consLbl,colorFn:consCol,legendClick:'consShowSections'});
+  const comp=`<div class="comp-row">${compClass}${consDonut}</div>`;
+  const ownTot=(dd.by_owner||[]).reduce((s,r)=>s+(+r.km||0),0);
+  const owners=`<div class="dcard"><div class="dcard-head"><h3>Network by current owner</h3><span class="totchip">${fmtKm(ownTot)} km</span></div><div class="sub">Length under each owning agency in ${escH(name)}, ranked</div>${rankedBars(dd.by_owner,{full:l=>dec('Current_Ow',l)})}</div>`;
+  const pwd=`<div class="dcard"><div class="dcard-head"><h3>PWD sections</h3><span class="totchip">${(dd.by_pwd_sec||[]).length} sections</span></div><div class="sub">Length by PWD maintenance section in ${escH(name)}</div>${rankedBars(dd.by_pwd_sec,{})}</div>`;
+  const exp=`<div class="comp-row">${owners}${pwd}</div>`;
+  const note=`<div class="dash-note"><b>${escH(name)} — district view.</b> Every card above is scoped to ${escH(name)} using corrected length (dual carriageways averaged once). <b>Road counts</b> (SH / MDR) count distinct roads <b>present in this district</b>; a State Highway that runs through several districts is counted here and in every other district it passes through, so district counts do not add up to the state-wide distinct totals. Switch back with the <b>State-wide</b> chip above.</div>`;
+  return kpi+comp+exp+note;
 }
 function openPane(id){
   if(id==='dashboard'){document.getElementById('fpanes').classList.add('hidden');document.querySelectorAll('#iconrail .railbtn').forEach(b=>b.classList.toggle('active',b.dataset.pane==='dashboard'));return;}

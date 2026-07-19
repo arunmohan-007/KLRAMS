@@ -707,6 +707,11 @@ select option:disabled{color:var(--k-faint)!important}
 .dleg .nm{color:var(--k-text)!important}
 .dleg .vl{color:#fff!important}
 .dleg .vl .pc{color:var(--k-muted)!important}
+.dleg.click:hover{background:rgba(255,255,255,.04)!important}
+.csm-title{color:#fff!important}
+.csm-l .csm-lbl{color:#fff!important}
+.csm-l .csm-m{color:var(--k-muted)!important}
+.csm-km{color:#fff!important}
 
 /* dashboard hub tiles */
 .dash-hub-tile:hover{box-shadow:0 16px 32px -8px var(--tcglow),0 4px 14px rgba(0,0,0,.45)!important;border-color:var(--tc)!important}
