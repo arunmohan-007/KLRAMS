@@ -49,6 +49,7 @@ public class DashboardController {
         "         ELSE MAX(\"Measrd_Len\"::double precision) END AS corr_len, " +
         "    MAX(\"District\")   AS district, " +
         "    MAX(\"Road_Class\") AS road_class, " +
+        "    MAX(\"Cons_Type\")  AS cons_type, " +
         "    MAX(\"PWD_Sec\")    AS pwd_sec, " +
         /* Owner names are entered inconsistently (e.g. "KRFB — PMU" vs "KRFB PMU"):
            collapse any run of dashes/em-dashes to a single space and squeeze
@@ -80,10 +81,19 @@ public class DashboardController {
         out.put("raw_km", rawKm);
         out.put("dig_km", digKm != null ? digKm : rawKm);
 
-        out.put("by_class",    group("road_class"));
-        out.put("by_district", group("district"));
-        out.put("by_pwd_sec",  group("pwd_sec"));
-        out.put("by_owner",    group("current_ow"));
+        out.put("by_class",     group("road_class"));
+        out.put("by_district",  group("district"));
+        out.put("by_pwd_sec",   group("pwd_sec"));
+        out.put("by_owner",     group("current_ow"));
+        out.put("by_cons_type", group("cons_type"));
+
+        /* Corrected length by construction type per district (flat rows, pivoted
+           client-side into the district-wise construction-type matrix). */
+        out.put("cons_type_by_district", jdbc.queryForList(CORR +
+            "SELECT COALESCE(NULLIF(district,''),'(unspecified)') AS district, " +
+            "       COALESCE(NULLIF(cons_type,''),'(unspecified)') AS cons_type, " +
+            "       ROUND(SUM(corr_len)::numeric/1000,2) AS km " +
+            "FROM corr GROUP BY 1,2 ORDER BY 1,2"));
 
         out.putAll(shMdrCounts(null));
         out.put("sh_mdr_by_district", shMdrByDistrict());
@@ -98,9 +108,10 @@ public class DashboardController {
         out.put("total_km", jdbc.queryForObject(CORR +
             "SELECT ROUND(SUM(corr_len)::numeric/1000,2) FROM corr WHERE district = ?",
             Double.class, name));
-        out.put("by_class",   groupWhere("road_class", "district", name));
-        out.put("by_pwd_sec", groupWhere("pwd_sec",    "district", name));
-        out.put("by_owner",   groupWhere("current_ow", "district", name));
+        out.put("by_class",     groupWhere("road_class", "district", name));
+        out.put("by_pwd_sec",   groupWhere("pwd_sec",    "district", name));
+        out.put("by_owner",     groupWhere("current_ow", "district", name));
+        out.put("by_cons_type", groupWhere("cons_type",  "district", name));
         out.putAll(shMdrCounts(name));
         return out;
     }

@@ -8,6 +8,11 @@
 const DPAL=['#15976a','#2a5d9c','#d4a02e','#6b4e9e','#3f9aa3','#c2603f','#5a7d3c','#a8557e','#3b7d8c','#8a93a6'];
 const CLASS_COL={SH:'#15976a',MDR:'#2a5d9c',ODR:'#d4a02e',NH:'#c2603f'};
 const CLASS_SHORT={SH:'State Highway',MDR:'Major Dist. Road',ODR:'Other Dist. Road',NH:'National Highway'};
+/* Construction type: user-facing labels (RGD shown as "Cement Concrete") and colours. */
+const CONS_LBL={FLX:'Flexible',RGD:'Cement Concrete',PVB:'Paver Block',CMP:'Composite',WBM:'WBM',GRV:'Gravel',ERT:'Earthen'};
+const CONS_COL={FLX:'#2a5d9c',RGD:'#c2603f',PVB:'#6b4e9e',CMP:'#3f9aa3',WBM:'#d4a02e',GRV:'#5a7d3c',ERT:'#a8557e'};
+function consLbl(l){return CONS_LBL[l]||dec('Cons_Type',l);}
+function consCol(l,i){return CONS_COL[l]||DPAL[i%DPAL.length];}
 function dColor(label,i){return CLASS_COL[label]||DPAL[i%DPAL.length];}
 function escH(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function qq(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
@@ -178,6 +183,27 @@ function shMdrDistrictTable(rows){
     `<div class="sub">SH counted by distinct Road Number (unnumbered SH stretches grouped by Road Name instead); MDR counted by distinct Road Name. A road running through several districts counts once in each district it passes through, so district totals can exceed the state-wide count.</div>`+
     `<div class="amx-wrap"><table class="amx"><thead><tr><th>District</th><th class="n">SH (total)</th><th class="n">SH (numbered)</th><th class="n">SH (by name)</th><th class="n">MDR</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
 }
+/* District-wise corrected length by construction type (pivot of the flat rows). */
+function consTypeMatrix(flat,byCons){
+  flat=flat||[];byCons=byCons||[];
+  const cols=byCons.map(c=>c.label);            // column order = state-wide, largest first
+  if(!cols.length)return '';
+  const cell={};const distSet=[];
+  flat.forEach(r=>{const d=r.district;if(!(d in cell)){cell[d]={};distSet.push(d);}cell[d][r.cons_type]=+r.km||0;});
+  distSet.sort();
+  const colTot={};cols.forEach(c=>colTot[c]=0);let grand=0;
+  let head='<tr><th>District</th>'+cols.map((c,i)=>`<th class="n"><span class="amx-dot" style="background:${consCol(c,i)}"></span>${escH(consLbl(c))}</th>`).join('')+'<th class="n">Total</th></tr>';
+  let body=distSet.map(d=>{
+    let rt=0;const tds=cols.map(c=>{const v=(cell[d]&&cell[d][c])||0;colTot[c]+=v;rt+=v;return `<td class="n">${v?fmtKm(v):'<span class="z">·</span>'}</td>`;}).join('');
+    grand+=rt;
+    return `<tr><td>${escH(d)}</td>${tds}<td class="n"><b>${fmtKm(rt)}</b></td></tr>`;
+  }).join('');
+  body+='<tr class="amx-tot"><td><b>All districts</b></td>'+cols.map(c=>`<td class="n"><b>${fmtKm(colTot[c])}</b></td>`).join('')+`<td class="n"><b>${fmtKm(grand)}</b></td></tr>`;
+  return '<div class="dcard"><div class="dcard-head"><h3>Length by construction type &middot; district-wise</h3>'+
+    `<span class="totchip">${fmtKm(grand)} km</span></div>`+
+    '<div class="sub">Corrected length (km) per construction type by district; dual carriageways averaged once. The <b>All districts</b> row is the state-wide total.</div>'+
+    `<div class="amx-wrap"><table class="amx"><thead>${head}</thead><tbody>${body}</tbody></table></div></div>`;
+}
 let selDistrict=null;
 function renderDashboard(){
   const d=dashData;
@@ -202,9 +228,12 @@ function renderDashboard(){
   const detail=`<div id="distDetail">${districtDetailHtml()}</div>`;
   const exp=`<div class="exp-row">${distList}${detail}</div>`;
   const lr=longestSection();
+  const consDonut=donutCard('Network by construction type','Corrected length by pavement construction type',(d.by_cons_type||[]),{full:consLbl,colorFn:consCol});
+  const consMatrix=consTypeMatrix(d.cons_type_by_district,d.by_cons_type);
+  const consRow=`<div class="comp-row">${consDonut}${consMatrix}</div>`;
   const shMdrTable=shMdrDistrictTable(d.sh_mdr_by_district);
   const note=`<div class="dash-note"><b>About these figures.</b> Lengths use the measured length of each road segment. A road is split into many segments wherever owner, PWD section, carriageway or lane type changes, so the dashboard reports <b>length only</b>, never road counts. <b>Dual carriageways</b> (Section labels …A / …B, Single_Du = Dual) are counted <b>once</b> using the <b>average</b> of the two measured lengths. Shapefile digital length is ${d.dig_km} km; corrected network length is ${d.total_km} km.</div>`;
-  document.getElementById('dashBody').innerHTML=kpi+comp+lr+exp+shMdrTable+note;
+  document.getElementById('dashBody').innerHTML=kpi+comp+consRow+lr+exp+shMdrTable+note;
   lrEnsure();
 }
 let distCache={};
@@ -219,6 +248,7 @@ function districtDetailHtml(){
       <div class="detail-total">${fmtKm(dd.total_km)}<span class="u">km</span></div></div>
     <div class="detail-sub">SH &amp; MDR count</div>
     <div class="sub" style="margin:0 0 10px">State Highways: <b>${dd.sh_total_count||0}</b> (${dd.sh_numbered_count||0} by Road Number${dd.sh_unnumbered_count?' + '+dd.sh_unnumbered_count+' by Road Name':''}) &nbsp;&middot;&nbsp; Major District Roads: <b>${dd.mdr_count||0}</b></div>
+    <div class="detail-sub">Construction type</div>${rankedBars(dd.by_cons_type,{full:consLbl,colorFn:consCol})}
     <div class="detail-sub">PWD sections</div>${rankedBars(dd.by_pwd_sec,{})}
     <div class="detail-sub">Current owner</div>${rankedBars(dd.by_owner,{full:l=>dec('Current_Ow',l)})}
   </div>`;
