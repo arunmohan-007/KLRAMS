@@ -163,6 +163,21 @@ function lrPaint(d){
   </div>`;
 }
 
+function shMdrDistrictTable(rows){
+  rows=rows||[];
+  if(!rows.length)return '';
+  const totSh=rows.reduce((s,r)=>s+(+r.sh_total_count||0),0);
+  const totMdr=rows.reduce((s,r)=>s+(+r.mdr_count||0),0);
+  let body=rows.map(r=>`<tr><td>${escH(r.district)}</td>`+
+    `<td class="n"><b>${r.sh_total_count||0}</b></td>`+
+    `<td class="n">${r.sh_numbered_count||0}</td>`+
+    `<td class="n">${r.sh_unnumbered_count||0}</td>`+
+    `<td class="n"><b>${r.mdr_count||0}</b></td></tr>`).join('');
+  body+=`<tr class="amx-tot"><td><b>Total</b></td><td class="n"><b>${totSh}</b></td><td class="n">&mdash;</td><td class="n">&mdash;</td><td class="n"><b>${totMdr}</b></td></tr>`;
+  return `<div class="dcard"><div class="dcard-head"><h3>State Highways &amp; MDRs by district</h3><span class="totchip">${totSh} SH &middot; ${totMdr} MDR</span></div>`+
+    `<div class="sub">SH counted by distinct Road Number (unnumbered SH stretches grouped by Road Name instead); MDR counted by distinct Road Name. A road running through several districts counts once in each district it passes through, so district totals can exceed the state-wide count.</div>`+
+    `<div class="amx-wrap"><table class="amx"><thead><tr><th>District</th><th class="n">SH (total)</th><th class="n">SH (numbered)</th><th class="n">SH (by name)</th><th class="n">MDR</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+}
 let selDistrict=null;
 function renderDashboard(){
   const d=dashData;
@@ -176,6 +191,8 @@ function renderDashboard(){
     <div class="kpi" style="--kc:#8a93a6"><div class="kcap">As-drawn length</div><div class="kv">${fmtKm(d.raw_km)}<span class="u">km</span></div><div class="kl">Before dual-carriageway correction</div></div>
     <div class="kpi" style="--kc:#15976a"><div class="kcap">State Highway</div><div class="kv">${fmtKm(sh)}<span class="u">km</span></div><div class="kl">SH network length</div></div>
     <div class="kpi" style="--kc:#2a5d9c"><div class="kcap">Major District Road</div><div class="kv">${fmtKm(mdr)}<span class="u">km</span></div><div class="kl">MDR network length</div></div>
+    <div class="kpi" style="--kc:#c9762a"><div class="kcap">State Highways</div><div class="kv">${d.sh_total_count||0}<span class="u">nos.</span></div><div class="kl">${d.sh_numbered_count||0} by Road Number${d.sh_unnumbered_count?' + '+d.sh_unnumbered_count+' by Road Name (no Road Number)':''}</div></div>
+    <div class="kpi" style="--kc:#6b4e9e"><div class="kcap">Major District Roads</div><div class="kv">${d.mdr_count||0}<span class="u">nos.</span></div><div class="kl">By distinct Road Name</div></div>
   </div>`;
   const compClass=donutCard('Network by road class','Share of total length by classification',cls,{full:l=>CLASS_SHORT[l]||dec('Road_Class',l)});
   const ownTot=(d.by_owner||[]).reduce((s,r)=>s+(+r.km||0),0);
@@ -185,8 +202,9 @@ function renderDashboard(){
   const detail=`<div id="distDetail">${districtDetailHtml()}</div>`;
   const exp=`<div class="exp-row">${distList}${detail}</div>`;
   const lr=longestSection();
+  const shMdrTable=shMdrDistrictTable(d.sh_mdr_by_district);
   const note=`<div class="dash-note"><b>About these figures.</b> Lengths use the measured length of each road segment. A road is split into many segments wherever owner, PWD section, carriageway or lane type changes, so the dashboard reports <b>length only</b>, never road counts. <b>Dual carriageways</b> (Section labels …A / …B, Single_Du = Dual) are counted <b>once</b> using the <b>average</b> of the two measured lengths. Shapefile digital length is ${d.dig_km} km; corrected network length is ${d.total_km} km.</div>`;
-  document.getElementById('dashBody').innerHTML=kpi+comp+lr+exp+note;
+  document.getElementById('dashBody').innerHTML=kpi+comp+lr+exp+shMdrTable+note;
   lrEnsure();
 }
 let distCache={};
@@ -199,6 +217,8 @@ function districtDetailHtml(){
   return `<div class="detail-card">
     <div class="detail-head"><div><div class="detail-eyebrow">District</div><div class="detail-name">${escH(selDistrict)}</div></div>
       <div class="detail-total">${fmtKm(dd.total_km)}<span class="u">km</span></div></div>
+    <div class="detail-sub">SH &amp; MDR count</div>
+    <div class="sub" style="margin:0 0 10px">State Highways: <b>${dd.sh_total_count||0}</b> (${dd.sh_numbered_count||0} by Road Number${dd.sh_unnumbered_count?' + '+dd.sh_unnumbered_count+' by Road Name':''}) &nbsp;&middot;&nbsp; Major District Roads: <b>${dd.mdr_count||0}</b></div>
     <div class="detail-sub">PWD sections</div>${rankedBars(dd.by_pwd_sec,{})}
     <div class="detail-sub">Current owner</div>${rankedBars(dd.by_owner,{full:l=>dec('Current_Ow',l)})}
   </div>`;

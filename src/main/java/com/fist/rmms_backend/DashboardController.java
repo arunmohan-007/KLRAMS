@@ -84,6 +84,9 @@ public class DashboardController {
         out.put("by_district", group("district"));
         out.put("by_pwd_sec",  group("pwd_sec"));
         out.put("by_owner",    group("current_ow"));
+
+        out.putAll(shMdrCounts(null));
+        out.put("sh_mdr_by_district", shMdrByDistrict());
         return out;
     }
 
@@ -98,6 +101,82 @@ public class DashboardController {
         out.put("by_class",   groupWhere("road_class", "district", name));
         out.put("by_pwd_sec", groupWhere("pwd_sec",    "district", name));
         out.put("by_owner",   groupWhere("current_ow", "district", name));
+        out.putAll(shMdrCounts(name));
+        return out;
+    }
+
+    /* SH count = distinct Road_Num (numbered SH) + distinct Road_Name among SH
+       rows that carry no Road_Num (e.g. Section_La = KPWD/SH/<PWD-sec>/<seg> or
+       KPWD/SH/Bypass/...) — those unnumbered stretches are grouped by Road_Name
+       instead so repeat segments of the same named road count once.
+       MDR count = distinct Road_Name among MDR-class rows.
+       district == null gives the state-wide figure; otherwise scoped to one district. */
+    private Map<String, Object> shMdrCounts(String district) {
+        boolean scoped = district != null;
+        Object[] args = scoped ? new Object[]{district} : new Object[0];
+        String distCond = scoped ? " AND trim(\"District\") = ?" : "";
+
+        Map<String, Object> sh = jdbc.queryForMap(
+            "SELECT COUNT(DISTINCT \"Road_Num\") AS numbered, " +
+            "       COUNT(DISTINCT CASE WHEN \"Road_Num\" IS NULL " +
+            "             THEN NULLIF(trim(\"Road_Name\"),'') END) AS unnumbered " +
+            "FROM roads WHERE upper(trim(\"Road_Class\"))='SH'" + distCond, args);
+        long numbered = ((Number) sh.get("numbered")).longValue();
+        long unnumbered = ((Number) sh.get("unnumbered")).longValue();
+
+        Long mdrCount = jdbc.queryForObject(
+            "SELECT COUNT(DISTINCT NULLIF(trim(\"Road_Name\"),'')) FROM roads " +
+            "WHERE upper(trim(\"Road_Class\"))='MDR'" + distCond, Long.class, args);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("sh_numbered_count",   numbered);
+        out.put("sh_unnumbered_count", unnumbered);
+        out.put("sh_total_count",      numbered + unnumbered);
+        out.put("mdr_count",           mdrCount);
+        return out;
+    }
+
+    /* Per-district breakdown of the same SH/MDR counts, for the district list view. */
+    private List<Map<String, Object>> shMdrByDistrict() {
+        List<Map<String, Object>> shRows = jdbc.queryForList(
+            "SELECT COALESCE(NULLIF(trim(\"District\"),''),'(unspecified)') AS district, " +
+            "       COUNT(DISTINCT \"Road_Num\") AS sh_numbered, " +
+            "       COUNT(DISTINCT CASE WHEN \"Road_Num\" IS NULL " +
+            "             THEN NULLIF(trim(\"Road_Name\"),'') END) AS sh_unnumbered " +
+            "FROM roads WHERE upper(trim(\"Road_Class\"))='SH' GROUP BY 1");
+        List<Map<String, Object>> mdrRows = jdbc.queryForList(
+            "SELECT COALESCE(NULLIF(trim(\"District\"),''),'(unspecified)') AS district, " +
+            "       COUNT(DISTINCT NULLIF(trim(\"Road_Name\"),'')) AS mdr_count " +
+            "FROM roads WHERE upper(trim(\"Road_Class\"))='MDR' GROUP BY 1");
+
+        Map<String, Map<String, Object>> merged = new LinkedHashMap<>();
+        for (Map<String, Object> r : shRows) {
+            String d = (String) r.get("district");
+            long numbered = ((Number) r.get("sh_numbered")).longValue();
+            long unnumbered = ((Number) r.get("sh_unnumbered")).longValue();
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("district", d);
+            row.put("sh_numbered_count", numbered);
+            row.put("sh_unnumbered_count", unnumbered);
+            row.put("sh_total_count", numbered + unnumbered);
+            row.put("mdr_count", 0L);
+            merged.put(d, row);
+        }
+        for (Map<String, Object> r : mdrRows) {
+            String d = (String) r.get("district");
+            Map<String, Object> row = merged.computeIfAbsent(d, k -> {
+                Map<String, Object> nr = new LinkedHashMap<>();
+                nr.put("district", d);
+                nr.put("sh_numbered_count", 0L);
+                nr.put("sh_unnumbered_count", 0L);
+                nr.put("sh_total_count", 0L);
+                nr.put("mdr_count", 0L);
+                return nr;
+            });
+            row.put("mdr_count", r.get("mdr_count"));
+        }
+        List<Map<String, Object>> out = new ArrayList<>(merged.values());
+        out.sort(Comparator.comparing(a -> (String) a.get("district")));
         return out;
     }
 
