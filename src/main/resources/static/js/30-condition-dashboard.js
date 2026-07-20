@@ -168,7 +168,54 @@ function cdPaint(){
   const heading='<div class="cd-scope">Showing <b>'+escH(cdData.param_label)+'</b> · '+cdBasisLabel()+' · '+scopeLbl+
     (noData?' — <span style="color:#c2603f">no scored stretches in this scope</span>':'')+'</div>';
 
-  body.innerHTML=cdControls()+heading+kpi+'<div class="comp-row">'+surfCard+classCard+'</div>'+matrix+note;
+  body.innerHTML=cdControls()+heading+kpi+'<div class="comp-row">'+surfCard+classCard+'</div>'+cdTopSection()+matrix+note;
+}
+
+/* ---- Top 10 SH / Top 5 MDR by area-weighted parameter value ---- */
+let cdTop=null, cdTopKey=null, cdTopLoadingKey=null;
+function cdScopeKey(){return cdParam+'|'+cdBasis+'|'+cdPeriodId+'|'+(cdDistrict||'');}
+function cdFetchTop(key){
+  if(cdTopLoadingKey===key)return;
+  cdTopLoadingKey=key;
+  const qs='param='+encodeURIComponent(cdParam)+'&basis='+cdBasis+(cdPeriodId?('&period_id='+cdPeriodId):'')+
+    (cdDistrict?('&district='+encodeURIComponent(cdDistrict)):'');
+  fetch('/api/condition-dashboard/top-roads?'+qs).then(r=>{
+    if(!r.ok)throw new Error('HTTP '+r.status);return r.json();
+  }).then(d=>{cdTopLoadingKey=null;cdTop=d;cdTopKey=key;if(dashTabCur==='cond'&&cdView==='summary')cdPaint();})
+   .catch(e=>{cdTopLoadingKey=null;cdTop={sh:[],mdr:[],error:e.message};cdTopKey=key;if(dashTabCur==='cond'&&cdView==='summary')cdPaint();});
+}
+function cdTopSection(){
+  const key=cdScopeKey();
+  if(cdTopKey!==key){
+    cdFetchTop(key);
+    return '<div class="dcard"><div class="dcard-head"><h3>Worst-ranked roads</h3></div>'+
+      '<div class="dash-loading" style="padding:22px">Ranking roads…</div></div>';
+  }
+  const unit=cdUnit();
+  return '<div class="comp-row">'+
+    cdTopCard('Top 10 State Highways','sh',(cdTop&&cdTop.sh)||[],unit)+
+    cdTopCard('Top 5 Major District Roads','mdr',(cdTop&&cdTop.mdr)||[],unit)+'</div>';
+}
+function cdTopCard(title,cls,rows,unit){
+  const lbl=escH(cdData.param_label);
+  let body='';
+  if(!rows.length){body='<tr><td colspan="5"><span class="z">No ranked roads in this scope.</span></td></tr>';}
+  else rows.forEach((r,i)=>{
+    const nm=(cls==='sh'&&r.road_num)
+      ? '<b>'+escH(r.road_num)+'</b> · '+escH(r.road_names||'')
+      : escH(r.road_names||r.road_key||'(unnamed)');
+    body+='<tr><td class="n cd-rank">'+(i+1)+'</td>'+
+      '<td>'+nm+'<div class="cd-top-sub">'+escH(r.districts||'')+'</div></td>'+
+      '<td class="n"><b>'+cdFmt(r.value)+'</b></td>'+
+      '<td class="n">'+fmtKm(r.lane_km||0)+'</td>'+
+      '<td class="n">'+fmtN(r.segments||0)+'</td></tr>';
+  });
+  return '<div class="dcard"><div class="dcard-head"><h3>'+escH(title)+'</h3>'+
+    '<span class="totchip">'+lbl+' · area-wtd</span></div>'+
+    '<div class="sub">Highest area-weighted '+lbl+' ('+escH(unit)+'), '+cdBasisLabel().toLowerCase()+' — '+
+    (cdDistrict?escH(cdDistrict):'state-wide')+'. SH ranked by road number (else name), MDR by name.</div>'+
+    '<div class="amx-wrap"><table class="amx"><tr><th class="n">#</th><th>Road</th>'+
+    '<th class="n">'+lbl+'</th><th class="n">Lane km</th><th class="n">Stretches</th></tr>'+body+'</table></div></div>';
 }
 
 /* one Low/High/Mean breakdown table (by surface or by class) for the current scope */

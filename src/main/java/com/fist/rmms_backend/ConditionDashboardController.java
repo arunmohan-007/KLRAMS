@@ -60,6 +60,13 @@ public class ConditionDashboardController {
     private static final String ROAD_CLASS =
         "CASE upper(trim(r.\"Road_Class\")) " +
         "  WHEN 'SH' THEN 'SH' WHEN 'MDR' THEN 'MDR' ELSE 'Other' END";
+    /* Carriageway width in metres from the Pavement_W band code (1-5), matching
+       10-pci-report.js PVMT_W_M; 7 m default when the code is absent. Used to
+       area-weight (area = stretch length × width) the top-roads ranking. */
+    private static final String WIDTH_M =
+        "CASE trim(r.\"Pavement_W\"::text) " +
+        "  WHEN '1' THEN 4.5 WHEN '2' THEN 6.25 WHEN '3' THEN 8.5 " +
+        "  WHEN '4' THEN 11.5 WHEN '5' THEN 14 ELSE 7 END";
 
     private static final List<String> SURFACES = List.of("Flexible", "Cement Concrete", "Paver Block", "Other");
     private static final List<String> CLASSES  = List.of("SH", "MDR", "Other");
@@ -231,6 +238,79 @@ public class ConditionDashboardController {
         res.put("rows", rows);
         return res;
     }
+
+    /**
+     * The worst-ranked individual roads for the selected parameter — Top N SH
+     * and Top N MDR by the road's <b>area-weighted average</b> condition value
+     * (area = stretch length × carriageway width from the Pavement_W band, so a
+     * wide/long stretch pulls the road average more than a short narrow one).
+     *
+     * SH roads are grouped by <b>Road Number</b>, falling back to Road Name when
+     * a stretch carries no number (matches the SH counting rule in
+     * {@link DashboardController}); MDR roads are grouped by Road Name. Ranked
+     * highest value first (higher = worse condition for every parameter). Honours
+     * the current district scope when a district is passed.
+     */
+    @GetMapping("/top-roads")
+    public Map<String, Object> topRoads(
+            @RequestParam(defaultValue = "iri") String param,
+            @RequestParam(defaultValue = "avg") String basis,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) Integer period_id,
+            @RequestParam(defaultValue = "10") int sh,
+            @RequestParam(defaultValue = "5") int mdr) {
+
+        String vcol = valueColumn(param, basis);
+        int pid = periods.resolve(period_id);
+
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("param", param);
+        res.put("param_label", PARAMS.get(param)[0]);
+        res.put("param_unit", PARAMS.get(param)[1]);
+        res.put("basis", "worst".equalsIgnoreCase(basis) ? "worst" : "avg");
+        res.put("sh", topFor("SH", vcol, pid, district, clamp(sh)));
+        res.put("mdr", topFor("MDR", vcol, pid, district, clamp(mdr)));
+        return res;
+    }
+
+    private List<Map<String, Object>> topFor(String cls, String vcol, int pid, String district, int limit) {
+        // Road_Num is a numeric column, so cast to text before trimming.
+        String roadKey = "SH".equals(cls)
+            ? "COALESCE(NULLIF(trim(r.\"Road_Num\"::text),''), NULLIF(trim(r.\"Road_Name\"),''))"
+            : "NULLIF(trim(r.\"Road_Name\"),'')";
+
+        List<Object> args = new ArrayList<>();
+        StringBuilder where = new StringBuilder(
+            "cs.period_id = ? AND cs." + vcol + " IS NOT NULL AND cs.end_chainage > cs.start_chainage " +
+            "AND upper(trim(r.\"Road_Class\")) = ? AND " + roadKey + " IS NOT NULL");
+        args.add(pid);
+        args.add(cls);
+        if (district != null && !district.isBlank() && !"(unmapped)".equals(district)) {
+            where.append(" AND trim(r.\"District\") = ?");
+            args.add(district.trim());
+        } else if ("(unmapped)".equals(district)) {
+            where.append(" AND NULLIF(trim(r.\"District\"),'') IS NULL");
+        }
+        args.add(limit);
+
+        return jdbc.queryForList(
+            "SELECT " + roadKey + " AS road_key, " +
+            "       MAX(NULLIF(trim(r.\"Road_Num\"::text),'')) AS road_num, " +
+            "       string_agg(DISTINCT NULLIF(trim(r.\"Road_Name\"),''), ' · ') AS road_names, " +
+            "       string_agg(DISTINCT NULLIF(trim(r.\"District\"),''), ', ') AS districts, " +
+            "       ROUND((SUM(cs." + vcol + " * (cs.end_chainage - cs.start_chainage) * (" + WIDTH_M + ")) / " +
+            "              NULLIF(SUM((cs.end_chainage - cs.start_chainage) * (" + WIDTH_M + ")), 0))::numeric, 2) AS value, " +
+            "       ROUND(MAX(cs." + vcol + ")::numeric, 2) AS peak, " +
+            "       ROUND((SUM((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) / 1000.0)::numeric, 1) AS lane_km, " +
+            "       COUNT(*) AS segments " +
+            "FROM condition_segments cs JOIN roads r ON r.\"Section_La\" = cs.section_label " +
+            "WHERE " + where + " " +
+            "GROUP BY " + roadKey + " " +
+            "ORDER BY value DESC NULLS LAST, lane_km DESC LIMIT ?",
+            args.toArray());
+    }
+
+    private static int clamp(int n) { return Math.max(1, Math.min(n, 50)); }
 
     /* ---- helpers ---- */
 

@@ -964,6 +964,8 @@ select option:disabled{color:var(--k-faint)!important}
 .cd-form input,.cd-form select{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;color:var(--k-text)!important;box-shadow:none!important}
 .cd-form input::placeholder{color:var(--k-faint)!important}
 .cd-form input:focus,.cd-form select:focus{border-color:var(--k-accent)!important}
+.cd-top-sub{color:var(--k-faint)!important}
+.cd-rank{color:var(--k-muted)!important}
 
 /* ---------- misc surface tweaks ---------- */
 .locpin{filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}

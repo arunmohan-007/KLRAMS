@@ -348,6 +348,8 @@
   .cd-run{font:inherit;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,#0e7a54,#15976a);border:0;border-radius:10px;padding:9px 20px;cursor:pointer;box-shadow:0 3px 12px rgba(21,151,106,.3);transition:filter .14s}
   .cd-run:hover{filter:brightness(1.06)}
   .cd-seglist th,.cd-seglist td{white-space:nowrap}
+  .cd-top-sub{font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+  .cd-rank{font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums}
   @media(max-width:1200px){.cd-kpis{grid-template-columns:1fr 1fr 1fr}}
   @media(max-width:680px){.cd-kpis{grid-template-columns:1fr}.cd-views{margin-left:0}}
 
