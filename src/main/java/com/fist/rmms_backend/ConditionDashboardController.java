@@ -62,11 +62,16 @@ public class ConditionDashboardController {
         "  WHEN 'SH' THEN 'SH' WHEN 'MDR' THEN 'MDR' ELSE 'Other' END";
     /* Carriageway width in metres from the Pavement_W band code (1-5), matching
        10-pci-report.js PVMT_W_M; 7 m default when the code is absent. Used to
-       area-weight (area = stretch length × width) the top-roads ranking. */
+       area-weight (area = stretch length × width) the top-roads ranking.
+       Dual-carriageway correction: a dual road is drawn as TWO centrelines (A/B)
+       but Pavement_W describes the ENTIRE road (e.g. a 4-lane dual carries code 5
+       on both halves), so each A/B line gets HALF the banded width — otherwise
+       the road's area is counted twice. */
     private static final String WIDTH_M =
-        "CASE trim(r.\"Pavement_W\"::text) " +
-        "  WHEN '1' THEN 4.5 WHEN '2' THEN 6.25 WHEN '3' THEN 8.5 " +
-        "  WHEN '4' THEN 11.5 WHEN '5' THEN 14 ELSE 7 END";
+        "(CASE trim(r.\"Pavement_W\"::text) " +
+        "   WHEN '1' THEN 4.5 WHEN '2' THEN 6.25 WHEN '3' THEN 8.5 " +
+        "   WHEN '4' THEN 11.5 WHEN '5' THEN 14 ELSE 7 END) " +
+        " * (CASE WHEN lower(trim(r.\"Single_Du\")) = 'dual' THEN 0.5 ELSE 1 END)";
 
     private static final List<String> SURFACES = List.of("Flexible", "Cement Concrete", "Paver Block", "Other");
     private static final List<String> CLASSES  = List.of("SH", "MDR", "Other");
