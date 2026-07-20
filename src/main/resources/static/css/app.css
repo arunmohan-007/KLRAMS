@@ -601,3 +601,71 @@ body:not(.vclick-on) #dock{transform:translateY(100%)!important;pointer-events:n
    AND a real survey video has been loaded (#dock.loaded). Any leftover
    .open with no loaded video stays hidden. */
 body:not(.vclick-on) #dock,#dock:not(.loaded){transform:translateY(100%)!important;pointer-events:none}
+
+/* ============================================================
+   Build 171 — per-layer export (29-export.js).
+   .lexp   — the little download button injected on each layer row.
+   .kexp   — the floating export menu (glass card + format tiles).
+   These elements only ever render on map.html (always dark via
+   klrams-dark.css), so they are styled dark-first right here.
+   ============================================================ */
+.lexp{flex:0 0 auto;margin-left:auto;margin-right:9px;width:25px;height:25px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:8px;border:1px solid rgba(120,160,215,.22);background:rgba(120,160,215,.07);color:#8fa1b8;cursor:pointer;padding:0;
+  opacity:.62;transition:all .18s cubic-bezier(.3,.9,.4,1)}
+.lexp svg{width:13px;height:13px;transition:transform .18s ease}
+.switch:hover .lexp{opacity:1}
+.lexp:hover{color:#04121c;background:linear-gradient(135deg,#00d4ff,#00ff88);border-color:transparent;
+  box-shadow:0 4px 16px rgba(0,212,255,.4),0 0 0 3px rgba(0,212,255,.12);transform:translateY(-1px)}
+.lexp:hover svg{transform:translateY(1px)}
+.lexp:active{transform:translateY(0) scale(.92)}
+
+.kexp{position:fixed;z-index:99999;width:272px;border-radius:16px;overflow:hidden;
+  background:linear-gradient(165deg,rgba(28,38,54,.97),rgba(16,23,34,.97));
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(120,160,215,.24);
+  box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(0,212,255,.05),inset 0 1px 0 rgba(255,255,255,.07);
+  font-family:var(--sans);animation:kexpIn .22s cubic-bezier(.21,1.02,.55,1)}
+@keyframes kexpIn{from{opacity:0;transform:translateY(10px) scale(.94)}to{opacity:1;transform:none}}
+.kexp-hd{display:flex;align-items:center;gap:10px;padding:13px 14px 12px;
+  border-bottom:1px solid rgba(120,160,215,.14);
+  background:linear-gradient(180deg,rgba(0,212,255,.08),transparent)}
+.kexp-dot{flex:0 0 auto;width:11px;height:11px;border-radius:50%;background:var(--c,#00d4ff);
+  box-shadow:0 0 10px var(--c,#00d4ff),0 0 0 3px rgba(255,255,255,.07)}
+.kexp-tt{flex:1;min-width:0}
+.kexp-tt b{display:block;font-size:13.5px;font-weight:800;color:#eef4fb;letter-spacing:.2px}
+.kexp-sub{display:block;font-size:10.8px;color:#93a5bd;margin-top:2px}
+.kexp-warn{color:#ffb38a}
+.kexp-x{flex:0 0 auto;width:24px;height:24px;border-radius:8px;border:0;background:transparent;color:#7c8da6;
+  font-size:17px;line-height:1;cursor:pointer;transition:all .15s ease}
+.kexp-x:hover{background:rgba(255,255,255,.09);color:#fff}
+.kexp-param{display:flex;align-items:center;gap:9px;padding:10px 14px 0}
+.kexp-pl{font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#7c8da6}
+.kexp-param select{flex:1;min-width:0;font-size:12px;padding:6px 8px;border-radius:8px}
+.kexp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 14px}
+.kexp-f{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px 8px;cursor:pointer;
+  border-radius:12px;border:1px solid rgba(120,160,215,.15);background:rgba(255,255,255,.03);
+  transition:all .16s cubic-bezier(.3,.9,.4,1)}
+.kexp-f:hover{transform:translateY(-2px);border-color:rgba(0,212,255,.55);background:rgba(0,212,255,.06);
+  box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 0 3px rgba(0,212,255,.08)}
+.kexp-f:active{transform:translateY(0) scale(.96)}
+.kexp-f.off{opacity:.35;pointer-events:none}
+.kexp-fi{position:relative;width:31px;height:31px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 3px 8px rgba(0,0,0,.3)}
+.kexp-fi svg{width:16px;height:16px}
+.f-shp .kexp-fi{background:linear-gradient(135deg,#60a5fa,#1d4ed8)}
+.f-geojson .kexp-fi{background:linear-gradient(135deg,#2dd4bf,#0f766e)}
+.f-kml .kexp-fi{background:linear-gradient(135deg,#4ade80,#15803d)}
+.f-kmz .kexp-fi{background:linear-gradient(135deg,#c084fc,#7e22ce)}
+.f-csv .kexp-fi{background:linear-gradient(135deg,#fbbf24,#d97706)}
+.kexp-fn{font-size:10.5px;font-weight:800;color:#e6edf6;letter-spacing:.2px}
+.kexp-fd{font-size:9px;color:#7c8da6;letter-spacing:.2px}
+.kexp-f.busy{pointer-events:none}
+.kexp-f.busy .kexp-fi svg{opacity:0}
+.kexp-f.busy .kexp-fi::after{content:"";position:absolute;width:13px;height:13px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:kexpSpin .65s linear infinite}
+@keyframes kexpSpin{to{transform:rotate(360deg)}}
+.kexp-f.done{border-color:rgba(0,255,136,.75);box-shadow:0 0 0 3px rgba(0,255,136,.14)}
+.kexp-f.done .kexp-fi{background:linear-gradient(135deg,#00ff88,#0d7a51)}
+.kexp-note{display:flex;align-items:flex-start;gap:7px;padding:10px 14px 12px;font-size:10.3px;line-height:1.45;color:#8b9db6;
+  border-top:1px solid rgba(120,160,215,.1);background:rgba(0,0,0,.14)}
+.kexp-note svg{flex:0 0 auto;width:11px;height:11px;margin-top:1px;color:#00d4ff}
