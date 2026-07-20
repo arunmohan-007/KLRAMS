@@ -28,8 +28,8 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
-  <link rel="stylesheet" href="css/app.css?v=128">
-  <link rel="stylesheet" href="css/klrams-dark.css?v=13">
+  <link rel="stylesheet" href="css/app.css?v=129">
+  <link rel="stylesheet" href="css/klrams-dark.css?v=14">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
     .cond-metric-row{display:flex;align-items:center;gap:8px;margin:0 0 12px 24px;padding:0}
@@ -302,6 +302,12 @@
         <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><path d="M12 3v7"/><path d="M9 7l3 3 3-3"/><rect x="8" y="12" width="8" height="3" rx="1"/><path d="M3 20c3-3.5 6-5 9-5s6 1.5 9 5"/></svg></span>
         <h3>FWD Deflection</h3>
         <div class="sub">Falling Weight Deflectometer — points, D0 lower-to-higher by SH/MDR and district, pavement &amp; air temperatures.</div>
+        <span class="dash-hub-arrow">&rarr;</span>
+      </button>
+      <button type="button" class="dash-hub-tile dcard" style="--tc:#b8543d;--tcbg:rgba(184,84,61,.13);--tcglow:rgba(184,84,61,.28)" onclick="dashTab('cond')">
+        <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 5-7 4 5"/><path d="M3 20h18"/></svg></span>
+        <h3>Condition Data</h3>
+        <div class="sub">Road-condition parameters (IRI, cracks, potholes…) — state-wide &amp; district-wise Low / High / Mean by surface type and SH/MDR, with a threshold segment list.</div>
         <span class="dash-hub-arrow">&rarr;</span>
       </button>
     </div>
@@ -972,7 +978,7 @@
   <script src="js/06-assets.js?v=168"></script>
   <script src="js/07-data-loaders.js?v=163"></script>
   <script src="js/08-condition-popup-nsv.js?v=163"></script>
-  <script src="js/09-dashboard-core.js?v=121"></script>
+  <script src="js/09-dashboard-core.js?v=122"></script>
   <script src="js/10-pci-report.js?v=118"></script>
   <script src="js/11-dashboard-charts.js?v=123"></script>
   <script src="js/12-nsv-video.js?v=167"></script>
@@ -992,6 +998,7 @@
   <script src="js/26-layers-collapse.js?v=2"></script>
   <script src="js/27-survey-dashboard.js?v=5"></script>
   <script src="js/28-fwd-dashboard.js?v=5"></script>
+  <script src="js/30-condition-dashboard.js?v=1"></script>
   <script src="js/29-export.js?v=1"></script>
   <script src="js/launcher.js?v=161"></script>
   <style id="dock-guard">

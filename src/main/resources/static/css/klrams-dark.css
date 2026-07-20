@@ -952,6 +952,19 @@ select option:disabled{color:var(--k-faint)!important}
 .fdb-empty b{color:var(--k-text)!important}
 .fdb-chart circle[stroke="#fff"]{stroke:var(--k-elev)!important}
 
+/* condition dashboard (tab: Condition Data) */
+.cd-toggle{background:var(--k-elev)!important;border:1px solid var(--k-line)!important}
+.cd-tg{color:var(--k-muted)!important}
+.cd-tg:hover{color:var(--k-text)!important}
+.cd-tg.on{background:var(--k-elev2)!important;color:var(--k-text)!important;box-shadow:none!important}
+.cd-scope{color:var(--k-muted)!important}
+.cd-scope b{color:var(--k-text)!important}
+.cd-empty td{color:var(--k-faint)!important}
+.cd-form label{color:var(--k-muted)!important}
+.cd-form input,.cd-form select{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;color:var(--k-text)!important;box-shadow:none!important}
+.cd-form input::placeholder{color:var(--k-faint)!important}
+.cd-form input:focus,.cd-form select:focus{border-color:var(--k-accent)!important}
+
 /* ---------- misc surface tweaks ---------- */
 .locpin{filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}
 .kl-open{box-shadow:none!important}
