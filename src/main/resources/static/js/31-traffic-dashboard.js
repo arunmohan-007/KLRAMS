@@ -127,16 +127,15 @@ function tdbPaint(){
   }
 
   /* ---- KPIs ---- */
-  const adtSum=stns.reduce((s,x)=>s+(+x.adt||0),0);
   const busiest=stns.slice().sort((a,b)=>(+b.adt||0)-(+a.adt||0))[0]||null;
+  const maxAdt=busiest?(+busiest.adt||0):0;
   const prof=tdbProfile(stns);
   let peakH=-1,peakV=0;prof.forEach((v,i)=>{if(v>peakV){peakV=v;peakH=i;}});
   const peakT=peakH>=0?(pad2(peakH)+':00–'+pad2((peakH+1)%24)+':00'):'—';
 
   const kpi='<div class="kpi-row svy-kpis">'+
     tdbKpi('feature','#d4a02e','Count Stations',fmtN(stns.length),scopeLbl+' · '+pName,true)+
-    tdbKpi('','#15976a','Total Daily Traffic',fmtN(adtSum),'Σ ADT across stations (veh/day)')+
-    tdbKpi('','#2a5d9c','Busiest Station',busiest?fmtN(busiest.adt):'—',busiest?escH(busiest.name)+' · '+escH(busiest.road||''):'No counts')+
+    tdbKpi('','#2a5d9c','Max ADT',fmtN(maxAdt),busiest?(scopeLbl+' · '+escH(busiest.name)+' · '+escH(busiest.road||'')):'No counts')+
     tdbKpi('','#c2603f','Network Peak Hour',peakT,peakV?(fmtN(peakV)+' veh/hr on the busiest hour'):'—')+
     '</div>';
 
@@ -182,11 +181,12 @@ function tdbPaint(){
   if(!tdbDistrict&&dists.length>1){
     const drows=dists.map(d=>{
       const ds=(p.stations||[]).filter(x=>x.district===d.district);
-      return {label:d.district,n:ds.reduce((s,x)=>s+(+x.adt||0),0)};
+      const mx=ds.reduce((m,x)=>Math.max(m,+x.adt||0),0);
+      return {label:d.district,n:mx};
     });
-    distCard='<div class="dcard"><div class="dcard-head"><h3>Total daily traffic by district</h3>'+
-      '<span class="totchip">'+fmtN(adtSum)+' veh/day</span></div>'+
-      '<div class="sub">Σ ADT of all count stations per district in '+pName+' — click a district chip above to focus</div>'+
+    distCard='<div class="dcard"><div class="dcard-head"><h3>Max ADT by district</h3>'+
+      '<span class="totchip">'+dists.length+' district'+(dists.length===1?'':'s')+'</span></div>'+
+      '<div class="sub">Highest station ADT in each district in '+pName+' — click a district chip above to focus</div>'+
       cBars(drows,{colorFn:(l,i)=>tdbCol(i)})+'</div>';
   }
 
