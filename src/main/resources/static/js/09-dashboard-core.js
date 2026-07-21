@@ -33,6 +33,7 @@ function setDashTab(which){
   else if(which==='culv'){if(sc)sc.textContent='Culvert Dashboard';if(sb)sb.textContent='Culverts by district and road class — total count and distribution.';}
   else if(which==='brid'){if(sc)sc.textContent='Bridge Dashboard';if(sb)sb.textContent='Bridges by district and road class — count, total length and distribution.';}
   else if(which==='survey'){if(sc)sc.textContent='Survey Dashboard';if(sb)sb.textContent='Year-wise field survey volumes — NSV lane-km, FWD points, traffic stations, soil tests and bituminous cores, with district-wise breakdown.';}
+  else if(which==='traffic'){if(sc)sc.textContent='Traffic Dashboard';if(sb)sb.textContent='Classified traffic-count stations — state-wide & district-wise top stations by ADT, vehicle-class mix and the 24-hour peak-hour profile.';}
   else if(which==='fwd'){if(sc)sc.textContent='FWD Dashboard';if(sb)sb.textContent='Falling Weight Deflectometer — test points, D0 deflection lower-to-higher by SH/MDR and district, pavement & air temperature min/max/mean.';}
   else if(which==='cond'){if(sc)sc.textContent='Condition Dashboard';if(sb)sb.textContent='Road-condition parameters — state-wide & district-wise Low / High / Mean by surface type (Flexible / Cement Concrete / Paver Block) and road class (SH / MDR), with a threshold segment list.';}
   else{if(sc)sc.textContent='Road Network Overview';if(sb)sb.textContent='Kerala PWD — network length, classification and ownership at a glance.';}
@@ -48,6 +49,7 @@ function dashTab(which){
   else if(which==='culv'){renderAssetDash('culvert');}
   else if(which==='brid'){renderAssetDash('brid');}
   else if(which==='survey'){renderSurveyDash();}
+  else if(which==='traffic'){renderTrafficDash();}
   else if(which==='fwd'){renderFwdDash();}
   else if(which==='cond'){renderCondDash();}
   else{
