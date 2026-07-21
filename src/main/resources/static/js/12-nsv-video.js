@@ -369,8 +369,11 @@ function chainDataHTML(c,ch){
   var ke=(window.KL&&KL.atExact&&cur)?KL.atExact(cur.road,ch):{}; /* FWD/point layers, range-matched */
   for(k in ke){if(o[k]==null||o[k]==='')o[k]=ke[k];}
   var pick=function(keys){for(var i=0;i<keys.length;i++){if(o[keys[i]]!=null&&o[keys[i]]!=='')return o[keys[i]];}return null;};
+  var _fr=(window.FWD&&FWD.at&&cur)?FWD.at(cur.road,ch):null;   /* FWD range record: d0 (µm) + pavement/air temp (°C, v2 surveys) */
   var rows=[
-    ['FWD D0', (function(){var r=(window.FWD&&FWD.at&&cur)?FWD.at(cur.road,ch):null;return (r&&r.d0!=null)?String(r.d0):null;})(), ' µm'],
+    ['FWD D0', (_fr&&_fr.d0!=null)?String(_fr.d0):null, ' µm'],
+    ['Pavement temp', (_fr&&_fr.pt!=null)?_fr.pt:null, ' °C'],
+    ['Air temp', (_fr&&_fr.at!=null)?_fr.at:null, ' °C'],
     ['Traffic location', pick(['traffic_loc','traffic_location','aadt_loc','traffic_pt','aadt']), ''],
     ['Soil sub-grade', pick(['soil_subgrade','subgrade','cbr','soil_pt']), ''],
     ['Bituminous core', pick(['bit_core','bituminous_core','core_thk','bt_thk','core_pt']), '']
@@ -384,7 +387,7 @@ function condMatrixHTML(c,ch){
   if(!c)return '<div class="vh-cap">Condition</div><div class="vh-nod">No survey at this chainage.</div>';
   var lv=null;try{lv=(typeof c.lane_vals==='string')?JSON.parse(c.lane_vals):c.lane_vals;}catch(e){}
   var lanes=lv?Object.keys(lv).sort():[];
-  var mets=[['iri','IRI'],['crack','Crack'],['rutting','Rut'],['ravelling','Ravel']].filter(function(m){return c['avg_'+m[0]]!=null||c[m[0]]!=null;});
+  var mets=[['iri','IRI'],['crack','Crack'],['pothole','Pothole'],['rutting','Rut'],['texture','Texture'],['patch_work','Patch'],['ravelling','Ravel']].filter(function(m){return c['avg_'+m[0]]!=null||c[m[0]]!=null;});
   var col=function(mk,x){return (x!=null&&typeof PMAP!=='undefined'&&PMAP[mk]&&typeof rating==='function')?rating(mk,x):'';};
   var H='<div class="vh-cap">Condition &middot; at '+Math.round(ch).toLocaleString()+' m</div><table class="vh-tbl"><tr><th></th>';
   if(lanes.length)lanes.forEach(function(L){H+='<th>'+L+'</th>';});
