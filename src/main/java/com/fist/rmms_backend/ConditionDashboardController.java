@@ -263,7 +263,9 @@ public class ConditionDashboardController {
             @RequestParam(required = false) String district,
             @RequestParam(required = false) Integer period_id,
             @RequestParam(defaultValue = "10") int sh,
-            @RequestParam(defaultValue = "5") int mdr) {
+            @RequestParam(defaultValue = "5") int mdr,
+            @RequestParam(defaultValue = "5") int sh_sec,
+            @RequestParam(defaultValue = "5") int mdr_sec) {
 
         String vcol = valueColumn(param, basis);
         int pid = periods.resolve(period_id);
@@ -273,8 +275,12 @@ public class ConditionDashboardController {
         res.put("param_label", PARAMS.get(param)[0]);
         res.put("param_unit", PARAMS.get(param)[1]);
         res.put("basis", "worst".equalsIgnoreCase(basis) ? "worst" : "avg");
+        // Road-wise: one row per road (grouped by road number / name).
         res.put("sh", topFor("SH", vcol, pid, district, clamp(sh)));
         res.put("mdr", topFor("MDR", vcol, pid, district, clamp(mdr)));
+        // Section-wise: one row per individual section label (finer granularity).
+        res.put("sh_sections", topSectionsFor("SH", vcol, pid, district, clamp(sh_sec)));
+        res.put("mdr_sections", topSectionsFor("MDR", vcol, pid, district, clamp(mdr_sec)));
         return res;
     }
 
@@ -311,6 +317,46 @@ public class ConditionDashboardController {
             "FROM condition_segments cs JOIN roads r ON r.\"Section_La\" = cs.section_label " +
             "WHERE " + where + " " +
             "GROUP BY " + roadKey + " " +
+            "ORDER BY value DESC NULLS LAST, lane_km DESC LIMIT ?",
+            args.toArray());
+    }
+
+    /**
+     * The worst-ranked individual <b>section labels</b> for the selected class,
+     * finer-grained than {@link #topFor} which rolls a whole road into one row.
+     * Each row is one {@code Section_La}; the value is its length-weighted average
+     * condition value (width is constant within a section, so length-weighting is
+     * equivalent to area-weighting here). Ranked highest value first.
+     */
+    private List<Map<String, Object>> topSectionsFor(String cls, String vcol, int pid, String district, int limit) {
+        List<Object> args = new ArrayList<>();
+        StringBuilder where = new StringBuilder(
+            "cs.period_id = ? AND cs." + vcol + " IS NOT NULL AND cs.end_chainage > cs.start_chainage " +
+            "AND upper(trim(r.\"Road_Class\")) = ?");
+        args.add(pid);
+        args.add(cls);
+        if (district != null && !district.isBlank() && !"(unmapped)".equals(district)) {
+            where.append(" AND trim(r.\"District\") = ?");
+            args.add(district.trim());
+        } else if ("(unmapped)".equals(district)) {
+            where.append(" AND NULLIF(trim(r.\"District\"),'') IS NULL");
+        }
+        args.add(limit);
+
+        return jdbc.queryForList(
+            "SELECT cs.section_label AS section_label, " +
+            "       MAX(NULLIF(trim(r.\"Road_Num\"::text),'')) AS road_num, " +
+            "       MAX(NULLIF(trim(r.\"Road_Name\"),'')) AS road_name, " +
+            "       MAX(NULLIF(trim(r.\"District\"),'')) AS district, " +
+            "       ROUND((SUM(cs." + vcol + " * (cs.end_chainage - cs.start_chainage)) / " +
+            "              NULLIF(SUM(cs.end_chainage - cs.start_chainage), 0))::numeric, 2) AS value, " +
+            "       ROUND(MAX(cs." + vcol + ")::numeric, 2) AS peak, " +
+            "       MIN(cs.start_chainage) AS from_ch, MAX(cs.end_chainage) AS to_ch, " +
+            "       ROUND((SUM((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) / 1000.0)::numeric, 1) AS lane_km, " +
+            "       COUNT(*) AS segments " +
+            "FROM condition_segments cs JOIN roads r ON r.\"Section_La\" = cs.section_label " +
+            "WHERE " + where + " " +
+            "GROUP BY cs.section_label " +
             "ORDER BY value DESC NULLS LAST, lane_km DESC LIMIT ?",
             args.toArray());
     }

@@ -184,17 +184,145 @@ function cdFetchTop(key){
   }).then(d=>{cdTopLoadingKey=null;cdTop=d;cdTopKey=key;if(dashTabCur==='cond'&&cdView==='summary')cdPaint();})
    .catch(e=>{cdTopLoadingKey=null;cdTop={sh:[],mdr:[],error:e.message};cdTopKey=key;if(dashTabCur==='cond'&&cdView==='summary')cdPaint();});
 }
+const CD_SUBHEAD='font-size:11.5px;font-weight:700;color:var(--muted);margin:4px 0 9px;text-transform:uppercase;letter-spacing:.4px';
+function cdTopHead(){
+  return '<div class="dcard-head" style="margin-bottom:10px">'+
+    '<h3>Priority sections for intervention</h3>'+
+    '<div class="cd-toggle" style="border-radius:9px">'+
+      '<button type="button" class="cd-tg" onclick="cdExportPriority(\'pdf\')" title="Open a printable report — use Save as PDF">PDF</button>'+
+      '<button type="button" class="cd-tg" onclick="cdExportPriority(\'excel\')" title="Download as a spreadsheet (opens in Excel)">Excel</button>'+
+    '</div></div>';
+}
 function cdTopSection(){
   const key=cdScopeKey();
   if(cdTopKey!==key){
     cdFetchTop(key);
-    return '<div class="dcard"><div class="dcard-head"><h3>Worst-ranked roads</h3></div>'+
-      '<div class="dash-loading" style="padding:22px">Ranking roads…</div></div>';
+    return '<div class="cd-priority">'+cdTopHead()+
+      '<div class="dcard"><div class="dash-loading" style="padding:22px">Ranking roads…</div></div></div>';
   }
   const unit=cdUnit();
-  return '<div class="comp-row">'+
-    cdTopCard('Top 10 State Highways','sh',(cdTop&&cdTop.sh)||[],unit)+
-    cdTopCard('Top 5 Major District Roads','mdr',(cdTop&&cdTop.mdr)||[],unit)+'</div>';
+  const t=cdTop||{};
+  return '<div class="cd-priority">'+cdTopHead()+
+    '<div style="'+CD_SUBHEAD+'">Road-wise — whole-road area-weighted average</div>'+
+    '<div class="comp-row">'+
+      cdTopCard('Top 10 State Highways','sh',t.sh||[],unit)+
+      cdTopCard('Top 5 Major District Roads','mdr',t.mdr||[],unit)+'</div>'+
+    '<div style="'+CD_SUBHEAD+'">Section-wise — individual section labels</div>'+
+    '<div class="comp-row">'+
+      cdTopSecCard('Top 5 State Highway sections','sh',t.sh_sections||[],unit)+
+      cdTopSecCard('Top 5 Major District Road sections','mdr',t.mdr_sections||[],unit)+'</div>'+
+    '</div>';
+}
+function cdKm(m){return ((+m||0)/1000).toFixed(3);}
+function cdTopSecCard(title,cls,rows,unit){
+  const lbl=escH(cdData.param_label);
+  let body='';
+  if(!rows.length){body='<tr><td colspan="5"><span class="z">No ranked sections in this scope.</span></td></tr>';}
+  else rows.forEach((r,i)=>{
+    const nm=(cls==='sh'&&r.road_num)
+      ? '<b>'+escH(r.road_num)+'</b> · '+escH(r.road_name||'')
+      : escH(r.road_name||'(unnamed)');
+    body+='<tr><td class="n cd-rank">'+(i+1)+'</td>'+
+      '<td>'+nm+'<div class="cd-top-sub">'+escH(r.section_label||'')+(r.district?(' · '+escH(r.district)):'')+'</div></td>'+
+      '<td class="n"><b>'+cdFmt(r.value)+'</b></td>'+
+      '<td class="n">'+cdKm(r.from_ch)+'–'+cdKm(r.to_ch)+'</td>'+
+      '<td class="n">'+fmtKm(r.lane_km||0)+'</td></tr>';
+  });
+  return '<div class="dcard"><div class="dcard-head"><h3>'+escH(title)+'</h3>'+
+    '<span class="totchip">'+lbl+' · length-wtd</span></div>'+
+    '<div class="sub">Highest length-weighted '+lbl+' ('+escH(unit)+') by individual section — '+
+    (cdDistrict?escH(cdDistrict):'state-wide')+'.</div>'+
+    '<div class="amx-wrap"><table class="amx"><tr><th class="n">#</th><th>Road / Section</th>'+
+    '<th class="n">'+lbl+'</th><th class="n">Chainage (km)</th><th class="n">Lane km</th></tr>'+body+'</table></div></div>';
+}
+
+/* ---- PDF / Excel export of the priority-for-intervention lists ---- */
+function cdExpSave(name,blob){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+}
+function cdExpMeta(){
+  const p=cdPeriodObj();const d=new Date();const z=n=>(n<10?'0':'')+n;
+  return {label:(cdData&&cdData.param_label)||'',unit:(cdData&&cdData.param_unit)||'',
+    basis:cdBasisLabel(),scope:cdDistrict||'State-wide',period:(p&&p.name)||'',
+    date:z(d.getDate())+'-'+z(d.getMonth()+1)+'-'+d.getFullYear(),
+    stamp:''+d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())};
+}
+function cdExpTables(){
+  const t=cdTop||{};const lbl=(cdData&&cdData.param_label)||'Value';
+  const num=v=>(v==null||v==='')?'':(+v).toFixed(2);
+  const lk=v=>(v==null||v==='')?'':(+v).toFixed(1);
+  const roadRows=arr=>(arr||[]).map((r,i)=>[i+1,r.road_num||'',r.road_names||r.road_name||'',r.districts||r.district||'',num(r.value),lk(r.lane_km),r.segments||0]);
+  const secRows=arr=>(arr||[]).map((r,i)=>[i+1,r.road_num||'',r.road_name||'',r.section_label||'',r.district||'',cdKm(r.from_ch)+'–'+cdKm(r.to_ch),num(r.value),lk(r.lane_km),r.segments||0]);
+  const roadHead=['#','Road No','Road name','District(s)',lbl,'Lane km','Stretches'];
+  const secHead=['#','Road No','Road name','Section label','District','Chainage (km)',lbl,'Lane km','Stretches'];
+  return [
+    {title:'Top 10 State Highways — road-wise',head:roadHead,rows:roadRows(t.sh)},
+    {title:'Top 5 Major District Roads — road-wise',head:roadHead,rows:roadRows(t.mdr)},
+    {title:'Top 5 State Highway sections',head:secHead,rows:secRows(t.sh_sections)},
+    {title:'Top 5 Major District Road sections',head:secHead,rows:secRows(t.mdr_sections)}
+  ];
+}
+function cdExpNumCol(h){return h==='#'||h==='Lane km'||h==='Stretches'||h==='Chainage (km)'||h===((cdData&&cdData.param_label)||' ');}
+function cdExpSlug(meta){return String(meta.scope+'_'+meta.label).replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'');}
+function cdExportPriority(fmt){
+  if(!cdTop||cdTopKey!==cdScopeKey()){alert('The ranking is still loading — please try again in a moment.');return;}
+  const meta=cdExpMeta(),tables=cdExpTables();
+  if(fmt==='excel')cdExportCsv(meta,tables);else cdExportPdf(meta,tables);
+}
+function cdExportCsv(meta,tables){
+  const esc=v=>{const s=String(v==null?'':v);return /[",\n\r]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s;};
+  const L=[];
+  L.push(esc('KLRAMS — Priority sections for intervention'));
+  L.push(esc('Parameter')+','+esc(meta.label+(meta.unit?(' ('+meta.unit+')'):'')));
+  L.push(esc('Basis')+','+esc(meta.basis));
+  L.push(esc('Scope')+','+esc(meta.scope));
+  L.push(esc('Survey period')+','+esc(meta.period));
+  L.push(esc('Generated')+','+esc(meta.date));
+  L.push('');
+  tables.forEach(t=>{
+    L.push(esc(t.title));
+    L.push(t.head.map(esc).join(','));
+    if(!t.rows.length)L.push(esc('No data in this scope.'));
+    t.rows.forEach(r=>L.push(r.map(esc).join(',')));
+    L.push('');
+  });
+  cdExpSave('KLRAMS_priority_'+cdExpSlug(meta)+'_'+meta.stamp+'.csv',
+    new Blob(['﻿'+L.join('\r\n')],{type:'text/csv;charset=utf-8'}));
+}
+function cdExportPdf(meta,tables){
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let h='<!doctype html><html><head><meta charset="UTF-8"><title>KLRAMS — Priority sections</title><style>'+
+    'body{font:13px/1.4 Arial,Helvetica,sans-serif;color:#1a2430;margin:26px}'+
+    'h1{font-size:17px;margin:0 0 4px}'+
+    '.meta{font-size:12px;color:#555;margin:0 0 16px}.meta b{color:#1a2430}'+
+    'h2{font-size:13.5px;margin:18px 0 6px;color:#0f5a3f}'+
+    'table{border-collapse:collapse;width:100%;margin-bottom:6px}'+
+    'th,td{border:1px solid #ccd3dc;padding:5px 8px;text-align:left;font-size:11.5px}'+
+    'th{background:#eef4f1;font-weight:700}'+
+    'td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}'+
+    'tr:nth-child(even) td{background:#fafbfc}'+
+    '.pf{margin:16px 0 0;font-size:10.5px;color:#777}'+
+    '@media print{body{margin:12mm}}'+
+    '</style></head><body>';
+  h+='<h1>Priority sections for intervention</h1>';
+  h+='<div class="meta"><b>'+esc(meta.label)+(meta.unit?(' ('+esc(meta.unit)+')'):'')+'</b> · '+
+     esc(meta.basis)+' · '+esc(meta.scope)+' · Survey period '+esc(meta.period)+' · Generated '+esc(meta.date)+'</div>';
+  tables.forEach(t=>{
+    h+='<h2>'+esc(t.title)+'</h2><table><tr>'+
+      t.head.map(c=>'<th'+(cdExpNumCol(c)?' class="n"':'')+'>'+esc(c)+'</th>').join('')+'</tr>';
+    if(!t.rows.length)h+='<tr><td colspan="'+t.head.length+'">No data in this scope.</td></tr>';
+    t.rows.forEach(r=>{h+='<tr>'+r.map((c,i)=>'<td'+(cdExpNumCol(t.head[i])?' class="n"':'')+'>'+esc(c)+'</td>').join('')+'</tr>';});
+    h+='</table>';
+  });
+  h+='<div class="pf">Kerala Road Asset Management System (KLRAMS) · Public Works Department, Government of Kerala</div>';
+  h+='</body></html>';
+  const w=window.open('','_blank');
+  if(!w){alert('Please allow pop-ups for this site to generate the PDF report.');return;}
+  w.document.open();w.document.write(h);w.document.close();w.focus();
+  setTimeout(()=>{try{w.print();}catch(e){}},350);
 }
 function cdTopCard(title,cls,rows,unit){
   const lbl=escH(cdData.param_label);
