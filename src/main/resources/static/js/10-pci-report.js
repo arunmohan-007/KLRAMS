@@ -50,7 +50,7 @@ function pciReportData(basis){
     const district=(rp.District!=null&&String(rp.District).trim()!=='')?String(rp.District):'Unassigned';
     const ee=segEnds(f);const fr=+p.from_ch||0,to=+p.to_ch||0;
     let sct=sections[road];
-    if(!sct)sct=sections[road]={label:road,name:(rp.name||rp.Road_Name||''),num:(rp.Road_Num||''),pwd:pwd,district:district,len:0,w:0,wlen:0,area:0,dsum:{},dwt:{},minCh:Infinity,maxCh:-Infinity,slat:null,slng:null,elat:null,elng:null};
+    if(!sct)sct=sections[road]={label:road,name:(rp.name||rp.Road_Name||''),num:(rp.Road_Num||''),pwd:pwd,district:district,rclass:(rp.Road_Class!=null?String(rp.Road_Class).trim().toUpperCase():''),len:0,w:0,wlen:0,area:0,dsum:{},dwt:{},minCh:Infinity,maxCh:-Infinity,slat:null,slng:null,elat:null,elng:null};
     sct.len+=L;sct.area+=area;
     if(basis==='worst'){sct.w+=wpci*L;sct.wlen+=L;}
     else{PCI_PARAMS.forEach(pp=>{const v=rep[pp.key];if(v!=null&&v!==''){sct.dsum[pp.key]=(sct.dsum[pp.key]||0)+(+v)*L;sct.dwt[pp.key]=(sct.dwt[pp.key]||0)+L;}});}
@@ -223,6 +223,75 @@ function printPciReport(){
    ============================================================ */
 let pciaBasis='avg';
 function setPciaBasis(b){pciaBasis=b;renderPciAnalysisNow();}
+/* Lowest-PCI ROADS by class (SH / MDR), statewide and district-wise.
+   Grouping mirrors ConditionDashboardController.topRoads():
+     • SH  -> group by Road Number, falling back to Road Name when a section
+              carries no number;
+     • MDR -> group by Road Name.
+   A road's PCI is the area-weighted average of its sections' PCIs (area =
+   section length x carriageway width), the same aggregation the report uses to
+   roll sections up into district / PWD-section averages. */
+function pciRoadKey(s,cls){
+  const num=(s.num!=null?String(s.num).trim():'');
+  const nm=(s.name!=null?String(s.name).trim():'');
+  return (cls==='SH')?(num||nm):nm;
+}
+function pciRoadsFor(secs,cls){
+  const g={};
+  secs.forEach(function(s){
+    if(s.rclass!==cls||s.pci==null||!s.area)return;
+    const key=pciRoadKey(s,cls);if(!key)return;
+    let r=g[key];if(!r)r=g[key]={key:key,num:'',name:'',dset:{},w:0,area:0,len:0,nsec:0};
+    r.w+=s.pci*s.area;r.area+=s.area;r.len+=s.len;r.nsec++;
+    const num=(s.num!=null?String(s.num).trim():'');if(num&&!r.num)r.num=num;
+    const nm=(s.name!=null?String(s.name).trim():'');if(nm&&!r.name)r.name=nm;
+    if(s.district)r.dset[s.district]=(r.dset[s.district]||0)+s.area;
+  });
+  return Object.values(g).map(function(r){
+    r.pci=r.area?r.w/r.area:null;r.band=r.pci!=null?pciBand(r.pci):null;
+    r.district=Object.keys(r.dset).sort().join(', ');
+    return r;
+  });
+}
+function pciLowestRoads(secs,cls,n){return pciRoadsFor(secs,cls).filter(function(r){return r.pci!=null;}).sort(function(a,b){return a.pci-b.pci;}).slice(0,n);}
+function pciLowTable(list,cls,showDist){
+  if(!list||!list.length)return '<div class="sub" style="padding:6px 2px">No '+cls+' roads in scope.</div>';
+  const nh=(cls==='SH')?'<th>Road No.</th>':'';
+  const dh=showDist?'<th>District</th>':'';
+  const rows=list.map(function(r,i){
+    const chip=r.band?'<span class="pci-chip" style="background:'+r.band.color+'">'+r.band.label+'</span>':'–';
+    const nc=(cls==='SH')?'<td class="mono">'+escH(r.num||'–')+'</td>':'';
+    const dc=showDist?'<td>'+escH(r.district||'–')+'</td>':'';
+    return '<tr><td class="num">'+(i+1)+'</td>'+nc+'<td>'+escH(r.name||'—')+'</td>'+dc+'<td class="num">'+r.nsec+'</td><td class="num">'+(r.len/1000).toFixed(2)+'</td><td class="num">'+r.pci.toFixed(1)+'</td><td>'+chip+'</td></tr>';
+  }).join('');
+  return '<div style="overflow-x:auto"><table class="rpt-table"><thead><tr><th class="num">#</th>'+nh+'<th>Road Name</th>'+dh+'<th class="num">Sections</th><th class="num">Length (km)</th><th class="num">PCI</th><th>Class</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function pciLowestBlock(secs){
+  const shLow=pciLowestRoads(secs,'SH',5),mdrLow=pciLowestRoads(secs,'MDR',5);
+  let html='<div class="dash-eyebrow" style="margin:18px 0 8px">Lowest-PCI roads &mdash; statewide</div>'+
+    '<div class="comp-row">'+
+      '<div class="dcard"><div class="dcard-head"><h3>State Highways</h3><span class="totchip">SH &middot; lowest 5</span></div>'+
+        '<div class="sub">5 lowest area-weighted-PCI SH roads across Kerala &middot; grouped by road number</div>'+pciLowTable(shLow,'SH',true)+'</div>'+
+      '<div class="dcard"><div class="dcard-head"><h3>Major District Roads</h3><span class="totchip">MDR &middot; lowest 5</span></div>'+
+        '<div class="sub">5 lowest area-weighted-PCI MDR roads across Kerala &middot; grouped by road name</div>'+pciLowTable(mdrLow,'MDR',true)+'</div>'+
+    '</div>';
+  /* district-wise: each district's 5 worst SH + 5 worst MDR roads (a road that
+     spans districts is grouped within each district it touches). */
+  const byDist={};secs.forEach(function(s){if(s.rclass!=='SH'&&s.rclass!=='MDR')return;const k=s.district||'Unassigned';(byDist[k]=byDist[k]||[]).push(s);});
+  const dkeys=Object.keys(byDist).sort();
+  if(dkeys.length){
+    html+='<div class="dash-eyebrow" style="margin:18px 0 8px">Lowest-PCI roads &mdash; district-wise</div>';
+    dkeys.forEach(function(dk){
+      const shD=pciLowestRoads(byDist[dk],'SH',5),mdrD=pciLowestRoads(byDist[dk],'MDR',5);
+      const nSH=pciRoadsFor(byDist[dk],'SH').length,nMDR=pciRoadsFor(byDist[dk],'MDR').length;
+      html+='<div class="dcard" style="margin-bottom:12px"><div class="dcard-head"><h3>'+escH(dk)+'</h3><span class="totchip">'+nSH+' SH &middot; '+nMDR+' MDR roads</span></div>'+
+        '<div class="sub" style="margin:8px 0 4px;font-weight:600">State Highways &mdash; lowest 5</div>'+pciLowTable(shD,'SH',false)+
+        '<div class="sub" style="margin:12px 0 4px;font-weight:600">Major District Roads &mdash; lowest 5</div>'+pciLowTable(mdrD,'MDR',false)+
+        '</div>';
+    });
+  }
+  return html;
+}
 function pciAnalysisData(basis){
   /* pick up any edited weights, like the report does */
   PCI_PARAMS.forEach(pp=>{const el=document.getElementById('w_'+pp.key);if(el)PCI_W[pp.key]=+el.value||0;});
@@ -290,5 +359,7 @@ function renderPciAnalysisNow(){
       stackBar(d.byClass[cls],ct)+'</div>';
   });
   html+='<div class="dash-eyebrow" style="margin:18px 0 8px">PCI rating by road class</div><div class="comp-row">'+(cards||'<div class="sub">No class data.</div>')+'</div>';
+  /* Lowest-PCI SH/MDR sections — statewide + district-wise (section-level, area-weighted). */
+  try{const secData=pciReportData(basis).sections;if(secData&&secData.length)html+=pciLowestBlock(secData);}catch(e){}
   body.innerHTML=html;
 }
