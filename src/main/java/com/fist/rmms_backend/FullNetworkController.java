@@ -183,7 +183,8 @@ public class FullNetworkController {
             r.put("total", total);
             return r;
         } catch (Exception e) {
-            throw new RuntimeException("Upload failed: " + e.getMessage(), e);
+            // Keep the cause for the server log; don't echo the raw driver message to the client.
+            throw new RuntimeException("Upload failed", e);
         }
     }
 

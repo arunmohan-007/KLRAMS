@@ -29,7 +29,7 @@ public class SegmentController {
             result.put("segments", n);
         } catch (Exception e) {
             result.put("status", "error");
-            result.put("message", String.valueOf(e.getMessage()));
+            result.put("message", ApiErrors.safe("segment build", e));
         }
         return result;
     }

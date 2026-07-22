@@ -322,7 +322,7 @@ public class ImportTemplateController {
             return r;
         } catch (Exception ex) {
             r.put("status", "error");
-            r.put("message", "Could not read the file: " + ex.getMessage());
+            r.put("message", ApiErrors.safe("template validation", ex));
             return r;
         }
     }
@@ -380,8 +380,13 @@ public class ImportTemplateController {
     }
 
     private static String csv(String v) {
-        if (v == null) return "";
-        return v.contains(",") || v.contains("\"") || v.contains("\n")
+        if (v == null || v.isEmpty()) return "";
+        // Neutralise spreadsheet formula injection: a cell beginning with = + - @
+        // (or a leading tab/CR) is evaluated as a formula by Excel/Sheets. Prefix
+        // such values with a single quote so they render as literal text.
+        char c0 = v.charAt(0);
+        if (c0 == '=' || c0 == '+' || c0 == '-' || c0 == '@' || c0 == '\t' || c0 == '\r') v = "'" + v;
+        return v.contains(",") || v.contains("\"") || v.contains("\n") || v.contains("\r")
             ? "\"" + v.replace("\"", "\"\"") + "\"" : v;
     }
 

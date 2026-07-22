@@ -112,13 +112,26 @@ public class LoginAuditService {
 
     /* ---------------- helpers ---------------- */
 
-    /** Best-effort real client IP, honouring a reverse proxy's X-Forwarded-For. */
+    /** Best-effort real client IP, honouring a reverse proxy's X-Forwarded-For.
+     *
+     *  SECURITY: we trust only the LAST hop in X-Forwarded-For — the address our
+     *  own reverse proxy actually saw and appended (nginx sets
+     *  {@code X-Forwarded-For = "<client-supplied...>, $remote_addr"}). The
+     *  earlier, left-hand entries are copied verbatim from whatever the client
+     *  sent and are fully forgeable. Keying the login lockout / audit log on the
+     *  leftmost value (as this used to) let an attacker send a different
+     *  X-Forwarded-For on every request and never trip the 5-strike lockout, and
+     *  let them stamp any IP into the login_events audit trail. Taking the
+     *  right-most token closes both, because the client cannot influence what the
+     *  trusted proxy appends. With no proxy present, X-Forwarded-For is absent and
+     *  we fall back to the real socket address. */
     static String clientIp(HttpServletRequest req){
         if(req == null) return null;
         String xff = req.getHeader("X-Forwarded-For");
         if(xff != null && !xff.isBlank()){
-            int comma = xff.indexOf(',');            // first hop is the original client
-            return (comma > 0 ? xff.substring(0, comma) : xff).trim();
+            int comma = xff.lastIndexOf(',');        // last hop = what our proxy saw
+            String last = (comma >= 0 ? xff.substring(comma + 1) : xff).trim();
+            if(!last.isEmpty()) return last;
         }
         String real = req.getHeader("X-Real-IP");
         if(real != null && !real.isBlank()) return real.trim();

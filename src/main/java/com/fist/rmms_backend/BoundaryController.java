@@ -38,7 +38,7 @@ public class BoundaryController {
             r.put("status", "ok");
         } catch (Exception e) {
             r.put("status", "error");
-            r.put("message", String.valueOf(e.getMessage()));
+            r.put("message", ApiErrors.safe("boundary save", e));
         }
         return r;
     }
@@ -54,7 +54,7 @@ public class BoundaryController {
             r.put("removed", n);
         } catch (Exception e) {
             r.put("status", "error");
-            r.put("message", String.valueOf(e.getMessage()));
+            r.put("message", ApiErrors.safe("boundary delete", e));
         }
         return r;
     }

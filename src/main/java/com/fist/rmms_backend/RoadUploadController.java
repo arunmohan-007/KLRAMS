@@ -191,9 +191,9 @@ public class RoadUploadController {
             roadController.refresh();
             return r;
         } catch (Exception e) {
-            // surface the real cause to the Data Console instead of a blank 500
-            Throwable root = e; while (root.getCause() != null && root.getCause() != root) root = root.getCause();
-            return err(r, "Upload failed: " + (root.getMessage() != null ? root.getMessage() : root.toString()));
+            // Log the real cause server-side; return a safe message (raw driver
+            // text can expose SQL / schema detail).
+            return err(r, ApiErrors.safe("road upload", e));
         }
     }
 

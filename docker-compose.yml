@@ -33,9 +33,13 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}      # consumed by ${DB_PASSWORD} in application.properties
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}      # bootstrap super-admin password
+      COOKIE_SECURE: "true"                  # HTTPS-only session cookie (served via nginx TLS)
       JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
     ports:
-      - "8090:8090"                          # nginx proxies to this
+      # Bind to loopback only: nginx (on the host) proxies to it. Publishing on
+      # 0.0.0.0 would expose the app directly on the public interface, bypassing
+      # the TLS termination and letting clients forge X-Forwarded-For.
+      - "127.0.0.1:8090:8090"
     volumes:
       - klrams-data:/opt/klrams/data         # persists uploaded videos & data across rebuilds
 

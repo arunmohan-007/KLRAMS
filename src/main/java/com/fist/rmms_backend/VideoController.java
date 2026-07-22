@@ -29,7 +29,7 @@ public class VideoController {
             r.put("stored", n);
         } catch (Exception e) {
             r.put("status", "error");
-            r.put("message", String.valueOf(e.getMessage()));
+            r.put("message", ApiErrors.safe("video zip upload", e));
         }
         return r;
     }
@@ -43,7 +43,7 @@ public class VideoController {
             r.put("uploaded", service.uploadedBytes(name));
         } catch (Exception e) {
             r.put("status", "error");
-            r.put("message", String.valueOf(e.getMessage()));
+            r.put("message", ApiErrors.safe("video upload status", e));
             r.put("uploaded", 0);
         }
         return r;
@@ -64,7 +64,7 @@ public class VideoController {
         } catch (Exception e) {
             Map<String, Object> r = new HashMap<>();
             r.put("status", "error");
-            r.put("message", String.valueOf(e.getMessage()));
+            r.put("message", ApiErrors.safe("video chunk upload", e));
             return r;
         }
     }
@@ -85,7 +85,7 @@ public class VideoController {
             r.put("entries", n);
         } catch (Exception e) {
             r.put("status", "error");
-            r.put("message", String.valueOf(e.getMessage()));
+            r.put("message", ApiErrors.safe("video catalog import", e));
         }
         return r;
     }

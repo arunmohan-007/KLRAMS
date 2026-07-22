@@ -221,7 +221,8 @@ public class AssetController {
             r.put("unmatched_section_label", unmatched);
             return r;
         } catch (Exception ex) {
-            throw new RuntimeException("Asset upload failed: " + ex.getMessage(), ex);
+            // Keep the cause for the server log; don't echo the raw driver message to the client.
+            throw new RuntimeException("Asset upload failed", ex);
         }
     }
 

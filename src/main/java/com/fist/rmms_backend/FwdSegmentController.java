@@ -33,7 +33,7 @@ public class FwdSegmentController {
             result.put("segments", n);
         } catch (Exception e) {
             result.put("status", "error");
-            result.put("message", String.valueOf(e.getMessage()));
+            result.put("message", ApiErrors.safe("fwd segment import", e));
         }
         return result;
     }

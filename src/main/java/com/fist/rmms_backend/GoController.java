@@ -30,6 +30,13 @@ import java.util.*;
 @RequestMapping("/api/go")
 public class GoController {
 
+    /** Content types we are willing to render inline in the browser. Anything
+     *  else — notably text/html, image/svg+xml or any script type an uploader
+     *  might smuggle in — is served as an opaque download so it can never run as
+     *  active content on this (public, government) origin. */
+    private static final Set<String> INLINE_SAFE = Set.of(
+            "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "text/plain");
+
     private final JdbcTemplate jdbc;
     public GoController(JdbcTemplate jdbc){ this.jdbc = jdbc; }
 
@@ -66,7 +73,7 @@ public class GoController {
         try {
             jdbc.update("INSERT INTO go_folders(name) VALUES (?) ON CONFLICT (name) DO NOTHING", name);
             r.put("ok", true); r.put("name", name);
-        } catch(Exception e){ r.put("ok", false); r.put("error", e.getMessage()); }
+        } catch(Exception e){ r.put("ok", false); r.put("error", ApiErrors.safe("go add folder", e)); }
         return r;
     }
 
@@ -118,7 +125,7 @@ public class GoController {
                     goName.trim(), goNumber, folder, file.getOriginalFilename(),
                     file.getContentType(), file.getSize(), file.getBytes());
             r.put("ok", true);
-        } catch(Exception e){ r.put("ok", false); r.put("error", e.getMessage()); }
+        } catch(Exception e){ r.put("ok", false); r.put("error", ApiErrors.safe("go upload", e)); }
         return r;
     }
 
@@ -129,13 +136,25 @@ public class GoController {
         if(rows.isEmpty()) return ResponseEntity.notFound().build();
         Map<String,Object> m = rows.get(0);
         byte[] data = (byte[]) m.get("data");
-        String ct = (String) m.get("content_type");
-        if(ct == null || ct.isEmpty()) ct = "application/octet-stream";
+
+        // Normalise the stored (uploader-supplied) content type: lower-case and
+        // drop any ";charset=..." parameters before matching the allowlist.
+        String stored = (String) m.get("content_type");
+        String ct = stored == null ? "" : stored.trim().toLowerCase(Locale.ROOT);
+        int semi = ct.indexOf(';');
+        if(semi >= 0) ct = ct.substring(0, semi).trim();
+
         String fn = (String) m.get("orig_name");
         if(fn == null || fn.isEmpty()) fn = "GO-" + id;
+        fn = fn.replaceAll("[\"\\r\\n]", "");   // no quote / CRLF header break-out
+
+        boolean inlineSafe = INLINE_SAFE.contains(ct);
+        String outType     = inlineSafe ? ct : "application/octet-stream";
+        String disposition = (inlineSafe ? "inline" : "attachment") + "; filename=\"" + fn + "\"";
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_TYPE, ct)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fn.replace("\"", "") + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, outType)
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
+                .header("X-Content-Type-Options", "nosniff")
                 .body(data);
     }
 

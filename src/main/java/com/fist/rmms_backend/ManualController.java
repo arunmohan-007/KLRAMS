@@ -84,7 +84,7 @@ public class ManualController {
                         "size_bytes=EXCLUDED.size_bytes, data=EXCLUDED.data, uploaded_at=now()",
                     name, ct, file.getSize(), file.getBytes());
             r.put("ok", true); r.put("name", name);
-        } catch(Exception e){ r.put("ok", false); r.put("error", e.getMessage()); }
+        } catch(Exception e){ r.put("ok", false); r.put("error", ApiErrors.safe("manual image upload", e)); }
         return r;
     }
 

@@ -11,6 +11,7 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
@@ -72,11 +73,14 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, LoginAuditService audit,
-                                           LoginAttemptService attempts) throws Exception {
+                                           LoginAttemptService attempts, UserService users) throws Exception {
         http
             .csrf(c -> c.disable())
             // Reject POST /login from a locked-out IP before the password is checked.
             .addFilterBefore(new LoginAttemptFilter(attempts), UsernamePasswordAuthenticationFilter.class)
+            // After authorization: block a "must change password" account from every
+            // /api/** call except /api/me and /api/account/** until it changes it.
+            .addFilterAfter(new MustChangePasswordFilter(users), AuthorizationFilter.class)
             .authorizeHttpRequests(a -> a
                 // public pages + assets (login page needs its JS/CSS to load)
                 .requestMatchers("/welcome.html", "/login.html", "/login", "/favicon.ico",

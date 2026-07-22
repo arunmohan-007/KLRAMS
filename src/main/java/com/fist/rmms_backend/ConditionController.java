@@ -62,7 +62,7 @@ public class ConditionController {
             result.put("inserted", n);
         } catch (Exception e) {
             result.put("status", "error");
-            result.put("message", String.valueOf(e.getMessage()));
+            result.put("message", ApiErrors.safe("condition import", e));
         }
         return result;
     }

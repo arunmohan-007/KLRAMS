@@ -62,7 +62,7 @@ public class UploadLogController {
             r.put("status", "ok");
         } catch (Exception e) {
             r.put("status", "error");
-            r.put("message", String.valueOf(e.getMessage()));
+            r.put("message", ApiErrors.safe("upload log read", e));
         }
         return r;
     }
