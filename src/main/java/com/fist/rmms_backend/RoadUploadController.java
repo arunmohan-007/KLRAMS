@@ -115,8 +115,15 @@ public class RoadUploadController {
                     if (v.asText().length() > cap) widen.add(k);
                 }
             }
-            for (String k : widen)
+            for (String k : widen) {
+                // Defence in depth: this DDL interpolates the column name, so refuse
+                // anything that isn't a real roads column or that carries a double
+                // quote (the only breakout char inside a quoted identifier). Keys
+                // here already come from information_schema, so this never rejects
+                // legitimate uploads — it just closes the interpolation off entirely.
+                if (!colType.containsKey(k) || k.indexOf('"') >= 0) continue;
                 jdbc.execute("ALTER TABLE roads ALTER COLUMN \"" + k + "\" TYPE text");
+            }
             if (!widen.isEmpty()) r.put("widened_columns", new ArrayList<>(widen));
 
             int replaced = 0, inserted = 0, updated = 0;

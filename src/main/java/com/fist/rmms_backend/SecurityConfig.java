@@ -11,6 +11,7 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * KLRAMS / KHRI security — role-based access control.
@@ -29,8 +30,11 @@ import org.springframework.security.web.SecurityFilterChain;
  *    - GET /api/go/folders, /api/go/docs, /api/go/file/**, /api/site/content
  *
  *  Everything else needs a login; writes are gated by role (see the matchers
- *  below). CSRF is disabled for the pilot so the existing upload fetch() calls
- *  work unchanged; enable it before public hosting.
+ *  below). Token-based CSRF is disabled because the static frontend (~30 JS
+ *  modules of raw fetch()/XHR calls plus a plain form-POST login) has no place
+ *  to carry a token. CSRF is instead defended at the cookie layer: the session
+ *  cookie is SameSite=Strict (see application.properties), so a cross-site page
+ *  cannot make an authenticated browser send state-changing requests.
  */
 @Configuration
 public class SecurityConfig {
@@ -67,9 +71,12 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, LoginAuditService audit) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, LoginAuditService audit,
+                                           LoginAttemptService attempts) throws Exception {
         http
             .csrf(c -> c.disable())
+            // Reject POST /login from a locked-out IP before the password is checked.
+            .addFilterBefore(new LoginAttemptFilter(attempts), UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(a -> a
                 // public pages + assets (login page needs its JS/CSS to load)
                 .requestMatchers("/welcome.html", "/login.html", "/login", "/favicon.ico",
@@ -106,11 +113,18 @@ public class SecurityConfig {
                 // Record the sign-in (IP, user-agent, session) then land on the portal,
                 // preserving the previous "always redirect to /home.html" behaviour.
                 .successHandler((req, res, auth) -> {
+                    attempts.loginSucceeded(LoginAuditService.clientIp(req));
                     audit.recordLogin(auth.getName(), req,
                             req.getSession(false) != null ? req.getSession().getId() : null);
                     res.sendRedirect(req.getContextPath() + "/home.html");
                 })
-                .failureUrl("/login.html?error")
+                // Count the failure per IP; if it trips the lockout, say so.
+                .failureHandler((req, res, ex) -> {
+                    String ip = LoginAuditService.clientIp(req);
+                    attempts.loginFailed(ip);
+                    res.sendRedirect(req.getContextPath()
+                            + (attempts.isBlocked(ip) ? "/login.html?locked" : "/login.html?error"));
+                })
                 .permitAll())
             .logout(l -> l
                 .logoutUrl("/logout")

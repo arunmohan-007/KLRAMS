@@ -135,7 +135,11 @@
 <script src="/js/three.min.js"></script>
 <script src="/js/road-login.js"></script>
 <script>
-  if (new URLSearchParams(location.search).has('error')) document.getElementById('err').classList.add('show');
+  (function(){
+    var q = new URLSearchParams(location.search), err = document.getElementById('err');
+    if (q.has('locked')) { err.textContent = 'Too many failed sign-in attempts from this connection. Please wait about 15 minutes and try again.'; err.classList.add('show'); }
+    else if (q.has('error')) err.classList.add('show');
+  })();
   document.getElementById('forgot').addEventListener('click', function(){ document.getElementById('resetNote').classList.toggle('show'); });
   function pad(n){return (n<10?'0':'')+n;}
   function tick(){
