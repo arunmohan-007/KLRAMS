@@ -274,12 +274,6 @@
         <div class="sub">Kerala PWD — network length, classification and ownership at a glance.</div>
         <span class="dash-hub-arrow">&rarr;</span>
       </button>
-      <button type="button" class="dash-hub-tile dcard" style="--tc:#2a5d9c;--tcbg:rgba(42,93,156,.13);--tcglow:rgba(42,93,156,.28)" onclick="dashTab('pcia')">
-        <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="4" height="10" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><rect x="16" y="13" width="4" height="7" rx="1"/></svg></span>
-        <h3>PCI Analysis</h3>
-        <div class="sub">IRC:82-2023 Pavement Condition Index — share of network length by rating, and rating split by road class.</div>
-        <span class="dash-hub-arrow">&rarr;</span>
-      </button>
       <button type="button" class="dash-hub-tile dcard" style="--tc:#6b4e9e;--tcbg:rgba(107,78,158,.13);--tcglow:rgba(107,78,158,.28)" onclick="dashTab('culv')">
         <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><path d="M4 17a8 8 0 0 1 16 0"/><path d="M4 17v3h16v-3"/><path d="M4 17h16"/></svg></span>
         <h3>Culverts</h3>
@@ -327,15 +321,10 @@
       <div>
         <div class="dash-eyebrow">Pavement Condition Index</div>
         <h1 class="dash-h1">PCI &mdash; IRC:82-2023</h1>
-        <div class="dash-h1-sub">Set the six distress weightages and generate the index, or open the detailed report. The map is hidden while you work here.</div>
+        <div class="dash-h1-sub">Set the six distress weightages and generate the index. The map is hidden while you work here.</div>
       </div>
       <button class="dash-close" onclick="closePciScreen()" title="Back to map">&times;</button>
     </div>
-    <div class="dash-tabs">
-      <button class="dash-tab on" id="pciTabW" onclick="pciScreenTab('weights')">Weightages</button>
-      <button class="dash-tab" id="pciTabR" onclick="pciScreenTab('report')">PCI Report</button>
-    </div>
-
     <div id="pciViewWeights">
       <div class="pci-cols">
         <div class="pci-card">
@@ -357,9 +346,6 @@
       </div>
     </div>
 
-    <div id="pciViewReport" style="display:none">
-      <div id="pciScreenReport"><div class="dash-loading">Loading PCI report&hellip;</div></div>
-    </div>
   </div>
 </div>
 
@@ -984,7 +970,7 @@
   <script src="js/06-assets.js?v=168"></script>
   <script src="js/07-data-loaders.js?v=163"></script>
   <script src="js/08-condition-popup-nsv.js?v=163"></script>
-  <script src="js/09-dashboard-core.js?v=122"></script>
+  <script src="js/09-dashboard-core.js?v=123"></script>
   <script src="js/10-pci-report.js?v=122"></script>
   <script src="js/11-dashboard-charts.js?v=123"></script>
   <script src="js/12-nsv-video.js?v=168"></script>
@@ -994,7 +980,7 @@
   <script src="js/16-traffic.js?v=169"></script>
   <script src="js/17-measure.js?v=117"></script>
   <script src="js/18-filters.js?v=117"></script>
-  <script src="js/19-asset-register.js?v=117"></script>
+  <script src="js/19-asset-register.js?v=118"></script>
   <script src="js/20-asset-dashboard.js?v=117"></script>
   <script src="js/21-report-hub.js?v=118"></script>
   <script src="js/22-road-merged.js?v=117"></script>

@@ -212,16 +212,11 @@ function openPciScreen(tab){
 }
 function closePciScreen(){ const s=document.getElementById('pciScreen'); if(s)s.classList.remove('open'); window.PCI_RPT_TARGET='dashBody'; }
 function pciScreenTab(t){
-  const bW=document.getElementById('pciTabW'), bR=document.getElementById('pciTabR');
-  if(bW)bW.classList.toggle('on',t==='weights');
-  if(bR)bR.classList.toggle('on',t==='report');
-  const vW=document.getElementById('pciViewWeights'), vR=document.getElementById('pciViewReport');
-  if(vW)vW.style.display=(t==='weights')?'':'none';
-  if(vR)vR.style.display=(t==='report')?'':'none';
-  if(t==='report'){ window.PCI_RPT_TARGET='pciScreenReport'; dashTabCur='pci'; renderPciReport(); }
-  else { window.PCI_RPT_TARGET='dashBody'; if(typeof renderPciWeights==='function')renderPciWeights(); }
+  const vW=document.getElementById('pciViewWeights');
+  if(vW)vW.style.display='';
+  window.PCI_RPT_TARGET='dashBody';
+  if(typeof renderPciWeights==='function')renderPciWeights();
 }
-function openPciReport(){ openPciScreen('report'); }
 
 /* ---- full-screen Road Condition Data screen (map hidden) ---- */
 function openCondScreen(){

@@ -28,9 +28,7 @@ function loadDashboard(){
 function setDashTab(which){
   dashTabCur=which;
   const sc=document.getElementById('dashScope'),sb=document.getElementById('dashSub');
-  if(which==='pcia'){if(sc)sc.textContent='PCI Analysis';if(sb)sb.textContent='IRC:82-2023 Pavement Condition Index · share of network length by rating, and rating split by road class.';}
-  else if(which==='pci'){if(sc)sc.textContent='PCI Report';if(sb)sb.textContent='IRC:82-2023 Pavement Condition Index · PWD-section-wise — Section Label, Road Name and PCI class.';}
-  else if(which==='culv'){if(sc)sc.textContent='Culvert Dashboard';if(sb)sb.textContent='Culverts by district and road class — total count and distribution.';}
+  if(which==='culv'){if(sc)sc.textContent='Culvert Dashboard';if(sb)sb.textContent='Culverts by district and road class — total count and distribution.';}
   else if(which==='brid'){if(sc)sc.textContent='Bridge Dashboard';if(sb)sb.textContent='Bridges by district and road class — count, total length and distribution.';}
   else if(which==='survey'){if(sc)sc.textContent='Survey Dashboard';if(sb)sb.textContent='Year-wise field survey volumes — NSV lane-km, FWD points, traffic stations, soil tests and bituminous cores, with district-wise breakdown.';}
   else if(which==='traffic'){if(sc)sc.textContent='Traffic Dashboard';if(sb)sb.textContent='Classified traffic-count stations — state-wide & district-wise top stations by ADT, vehicle-class mix and the 24-hour peak-hour profile.';}
@@ -44,9 +42,7 @@ function dashTab(which){
   document.getElementById('dashBody').style.display='';
   const cb=document.getElementById('dashCloseBtn');if(cb)cb.title='Back to dashboards';
   setDashTab(which);
-  if(which==='pci'){renderPciReport();}
-  else if(which==='pcia'){renderPciAnalysis();}
-  else if(which==='culv'){renderAssetDash('culvert');}
+  if(which==='culv'){renderAssetDash('culvert');}
   else if(which==='brid'){renderAssetDash('brid');}
   else if(which==='survey'){renderSurveyDash();}
   else if(which==='traffic'){renderTrafficDash();}
