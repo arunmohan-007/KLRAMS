@@ -27,6 +27,7 @@ public class SegmentService {
        are built per request. Cleared on buildSegments(). */
     private volatile String cachedGeoJson;
     private volatile Integer cachedPeriodId;
+    private volatile String cachedEtag;
 
     public SegmentService(JdbcTemplate jdbc, SurveyPeriodService periods) {
         this.jdbc = jdbc;
@@ -95,26 +96,35 @@ public class SegmentService {
 
         Long n = jdbc.queryForObject("SELECT count(*) FROM condition_segments", Long.class);
         cachedGeoJson = null;   // segments changed -> next /geojson rebuilds the cache
+        cachedEtag = null;
         return n == null ? 0 : n.intValue();
     }
 
-    /** GeoJSON of one survey period's segments (null = active period). */
-    public String segmentsGeoJson(Integer requestedPeriodId) {
+    /** GeoJSON of one survey period's segments (null = active period), paired with
+     *  a content ETag so the controller can answer conditional requests. */
+    public GeoJsonResponse.Payload segmentsPayload(Integer requestedPeriodId) {
         int pid = periods.resolve(requestedPeriodId);
-        String body = cachedGeoJson;
-        Integer cachedPid = cachedPeriodId;
-        if (body != null && cachedPid != null && cachedPid == pid) return body;
+        if (cachedGeoJson != null && cachedEtag != null && cachedPeriodId != null && cachedPeriodId == pid)
+            return new GeoJsonResponse.Payload(cachedGeoJson, cachedEtag);
         synchronized (this) {
-            if (cachedGeoJson != null && cachedPeriodId != null && cachedPeriodId == pid) return cachedGeoJson;
-            body = buildGeoJson(pid);
+            if (cachedGeoJson != null && cachedEtag != null && cachedPeriodId != null && cachedPeriodId == pid)
+                return new GeoJsonResponse.Payload(cachedGeoJson, cachedEtag);
+            String body = buildGeoJson(pid);
+            String etag = GeoJsonResponse.contentTag(body);
             // Keep the active period resident: it serves every map open. A stale
             // cache from a previous active period is simply replaced.
             if (pid == periods.activePeriodId()) {
                 cachedGeoJson = body;
                 cachedPeriodId = pid;
+                cachedEtag = etag;
             }
-            return body;
+            return new GeoJsonResponse.Payload(body, etag);
         }
+    }
+
+    /** GeoJSON of one survey period's segments (null = active period). */
+    public String segmentsGeoJson(Integer requestedPeriodId) {
+        return segmentsPayload(requestedPeriodId).body();
     }
 
     public String segmentsGeoJson() {

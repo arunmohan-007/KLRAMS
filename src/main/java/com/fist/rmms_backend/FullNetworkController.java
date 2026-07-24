@@ -40,6 +40,7 @@ public class FullNetworkController {
     private final JdbcTemplate jdbc;
     private final ObjectMapper om = new ObjectMapper();
     private volatile String cachedGeojson;
+    private volatile String cachedEtag;
 
     // upsert key: try Road_id first (the dataset's unique id), then road number, then name
     private static final String[] KEY_FIELDS = {"Road_id","Road_ID","ROAD_ID","RoadId","road_id","ROAD_id"};
@@ -70,24 +71,28 @@ public class FullNetworkController {
     public void warm() {
         if (cachedGeojson == null) {
             synchronized (this) {
-                if (cachedGeojson == null) cachedGeojson = build();
+                if (cachedGeojson == null) {
+                    cachedGeojson = build();
+                    cachedEtag = GeoJsonResponse.contentTag(cachedGeojson);
+                }
             }
         }
     }
 
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> geojson() {
-        String body = cachedGeojson;
-        if (body == null) {
+    public ResponseEntity<String> geojson(@RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        String body = cachedGeojson, tag = cachedEtag;
+        if (body == null || tag == null) {
             synchronized (this) {
-                if (cachedGeojson == null) cachedGeojson = build();
+                if (cachedGeojson == null) {
+                    cachedGeojson = build();
+                    cachedEtag = GeoJsonResponse.contentTag(cachedGeojson);
+                }
                 body = cachedGeojson;
+                tag = cachedEtag;
             }
         }
-        return ResponseEntity.ok()
-                .cacheControl(CacheControl.noCache())
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body);
+        return GeoJsonResponse.conditional(body, tag, ifNoneMatch);
     }
 
     private String build() {
@@ -172,7 +177,7 @@ public class FullNetworkController {
                 if (exists) updated++; else inserted++;
             }
 
-            synchronized (this) { cachedGeojson = null; } // rebuild on next read
+            synchronized (this) { cachedGeojson = null; cachedEtag = null; } // rebuild on next read
 
             Long total = jdbc.queryForObject("SELECT count(*) FROM full_road_network", Long.class);
             r.put("status", "ok");

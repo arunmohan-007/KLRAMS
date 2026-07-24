@@ -2,6 +2,7 @@ package com.fist.rmms_backend;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -276,8 +277,10 @@ public class AssetController {
     }
 
     @GetMapping(value = "/{type}/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
-    public String geojson(@PathVariable String type,
-                          @RequestParam(value = "period_id", required = false) Integer periodId) {
+    public ResponseEntity<String> geojson(@PathVariable String type,
+                          @RequestParam(value = "period_id", required = false) Integer periodId,
+                          @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        String body;
         try {
             ensure();
             String base = """
@@ -296,13 +299,18 @@ public class AssetController {
             // Survey streams are filtered to one period (default: the active one);
             // inventory types (bridge, culvert, furniture) ignore the parameter.
             if (SURVEY_TYPES.contains(t)) {
-                return jdbc.queryForObject(base + " AND period_id = ?",
+                body = jdbc.queryForObject(base + " AND period_id = ?",
                         String.class, t, periods.resolve(periodId));
+            } else {
+                body = jdbc.queryForObject(base, String.class, t);
             }
-            return jdbc.queryForObject(base, String.class, t);
         } catch (Exception e) {
-            return "{\"type\":\"FeatureCollection\",\"features\":[]}";
+            body = "{\"type\":\"FeatureCollection\",\"features\":[]}";
         }
+        if (body == null) body = "{\"type\":\"FeatureCollection\",\"features\":[]}";
+        // Assets aren't cached in memory, but a content ETag still lets a repeat
+        // map open skip the re-download when the data is unchanged (304).
+        return GeoJsonResponse.conditional(body, GeoJsonResponse.contentTag(body), ifNoneMatch);
     }
 
     /** How many signature columns of a stream appear in the (normalised) header.

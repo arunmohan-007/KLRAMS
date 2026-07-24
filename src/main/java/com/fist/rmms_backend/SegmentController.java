@@ -37,14 +37,15 @@ public class SegmentController {
     /** Serve the segments as GeoJSON for the map.
      *  Defaults to the active survey period; ?period_id= selects another. */
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> geojson(@RequestParam(value = "period_id", required = false) Integer periodId) {
-        // no-cache: the browser must revalidate every load, so freshly built
-        // segments show up on a normal reload (no hard-refresh / restart needed).
-        // The body is still served from the in-memory cache, so this is cheap.
-        return ResponseEntity.ok()
-                .cacheControl(CacheControl.noCache())
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(service.segmentsGeoJson(periodId));
+    public ResponseEntity<String> geojson(@RequestParam(value = "period_id", required = false) Integer periodId,
+                                          @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        // no-cache + ETag: the browser must revalidate every load, so freshly
+        // built segments show up on a normal reload (no hard-refresh / restart
+        // needed). The body is served from the in-memory cache, and when it is
+        // unchanged the ETag turns the revalidation into an empty 304 — no
+        // multi-MB re-download on a repeat map open.
+        GeoJsonResponse.Payload p = service.segmentsPayload(periodId);
+        return GeoJsonResponse.conditional(p.body(), p.etag(), ifNoneMatch);
     }
 
     @GetMapping("/count")

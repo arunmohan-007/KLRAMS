@@ -24,6 +24,7 @@ public class RoadController {
 
     private final JdbcTemplate jdbc;
     private volatile String cachedGeojson;
+    private volatile String cachedEtag;
 
     public RoadController(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
@@ -33,29 +34,32 @@ public class RoadController {
     public void warm() {
         if (cachedGeojson == null) {
             synchronized (this) {
-                if (cachedGeojson == null) cachedGeojson = buildGeojson();
+                if (cachedGeojson == null) {
+                    cachedGeojson = buildGeojson();
+                    cachedEtag = GeoJsonResponse.contentTag(cachedGeojson);
+                }
             }
         }
     }
 
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> geojson() {
-        String body = cachedGeojson;
-        if (body == null) {
+    public ResponseEntity<String> geojson(@RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        String body = cachedGeojson, tag = cachedEtag;
+        if (body == null || tag == null) {
             synchronized (this) {
                 if (cachedGeojson == null) {
                     cachedGeojson = buildGeojson();
+                    cachedEtag = GeoJsonResponse.contentTag(cachedGeojson);
                 }
                 body = cachedGeojson;
+                tag = cachedEtag;
             }
         }
-        // no-cache: browser revalidates each load, so newly uploaded roads show on
-        // a normal reload once the in-memory cache is refreshed (see /geojson/refresh,
-        // which the console now calls automatically after an upload).
-        return ResponseEntity.ok()
-                .cacheControl(CacheControl.noCache())
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body);
+        // no-cache + ETag: the browser revalidates each load, so newly uploaded
+        // roads show on a normal reload once the cache is refreshed (see
+        // /geojson/refresh, called automatically after an upload); when the data
+        // is unchanged the ETag turns that revalidation into an empty 304.
+        return GeoJsonResponse.conditional(body, tag, ifNoneMatch);
     }
 
     /** Clears the cache so the next request rebuilds from the DB. Call after uploading roads. */
@@ -63,6 +67,7 @@ public class RoadController {
     public String refresh() {
         synchronized (this) {
             cachedGeojson = null;
+            cachedEtag = null;
         }
         return "{\"ok\":true,\"message\":\"road geojson cache cleared\"}";
     }

@@ -26,6 +26,7 @@ public class FwdSegmentService {
        periods are built per request); cleared on every build. */
     private volatile String cachedGeoJson;
     private volatile Integer cachedPeriodId;
+    private volatile String cachedEtag;
 
     public FwdSegmentService(JdbcTemplate jdbc, SurveyPeriodService periods) {
         this.jdbc = jdbc;
@@ -77,24 +78,33 @@ public class FwdSegmentService {
 
         Long n = jdbc.queryForObject("SELECT count(*) FROM fwd_segments", Long.class);
         cachedGeoJson = null;   // segments changed -> next /geojson rebuilds the cache
+        cachedEtag = null;
         return n == null ? 0 : n.intValue();
+    }
+
+    /** GeoJSON of one survey period's FWD segments (null = active period), paired
+     *  with a content ETag so the controller can answer conditional requests. */
+    public GeoJsonResponse.Payload segmentsPayload(Integer requestedPeriodId) {
+        int pid = periods.resolve(requestedPeriodId);
+        if (cachedGeoJson != null && cachedEtag != null && cachedPeriodId != null && cachedPeriodId == pid)
+            return new GeoJsonResponse.Payload(cachedGeoJson, cachedEtag);
+        synchronized (this) {
+            if (cachedGeoJson != null && cachedEtag != null && cachedPeriodId != null && cachedPeriodId == pid)
+                return new GeoJsonResponse.Payload(cachedGeoJson, cachedEtag);
+            String body = buildGeoJson(pid);
+            String etag = GeoJsonResponse.contentTag(body);
+            if (pid == periods.activePeriodId()) {
+                cachedGeoJson = body;
+                cachedPeriodId = pid;
+                cachedEtag = etag;
+            }
+            return new GeoJsonResponse.Payload(body, etag);
+        }
     }
 
     /** GeoJSON of one survey period's FWD segments (null = active period). */
     public String segmentsGeoJson(Integer requestedPeriodId) {
-        int pid = periods.resolve(requestedPeriodId);
-        String body = cachedGeoJson;
-        Integer cachedPid = cachedPeriodId;
-        if (body != null && cachedPid != null && cachedPid == pid) return body;
-        synchronized (this) {
-            if (cachedGeoJson != null && cachedPeriodId != null && cachedPeriodId == pid) return cachedGeoJson;
-            body = buildGeoJson(pid);
-            if (pid == periods.activePeriodId()) {
-                cachedGeoJson = body;
-                cachedPeriodId = pid;
-            }
-            return body;
-        }
+        return segmentsPayload(requestedPeriodId).body();
     }
 
     public String segmentsGeoJson() {
