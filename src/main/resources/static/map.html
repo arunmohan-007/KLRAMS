@@ -1483,6 +1483,31 @@ html body #fpanes.hidden{display:none!important}
   .vidhud .vh-iri{font-size:17px!important;padding:8px 12px!important;min-width:0!important}
   .vidhud .vh-roadname{font-size:16px!important;bottom:14px!important;padding:5px 16px!important;max-width:70vw!important}
   .vidhud .vh-attrs,.vidhud .vh-chain{display:none!important}
+  /* ------- Full-screen module overlays on phones -------
+     Dashboard, Report Hub, PCI / Condition / Register / NSV report screens
+     and Climate all reserve 74px on the left for the desktop icon rail.
+     On phones the rail floats bottom-right, so reclaim that space and trim
+     the generous desktop padding and type sizes. */
+  #dashboard,#pciScreen,#condScreen,#regScreen,#nsvScreen,#reportHub,#climate{inset:0!important}
+  /* clear the floating icon rail (bottom-right) with generous bottom padding */
+  .dash-inner{max-width:100%!important;padding:16px 14px calc(92px + env(safe-area-inset-bottom))!important}
+  .dash-head{gap:12px!important;margin-bottom:16px!important}
+  .dash-eyebrow{font-size:10px!important;letter-spacing:1px!important}
+  .dash-h1{font-size:21px!important}
+  .dash-h1-sub{font-size:12px!important;max-width:100%!important}
+  /* keep the close button reachable while the long content scrolls */
+  .dash-close{position:sticky!important;top:2px!important;z-index:5!important}
+  /* module hub: one card per row so the descriptions aren't cramped */
+  .dash-hub{grid-template-columns:1fr!important;gap:12px!important}
+  .dash-hub-tile{padding:18px 42px 18px 18px!important}
+  /* tab strips (Report Hub has 7) scroll sideways instead of overflowing */
+  .dash-tabs{display:flex!important;flex-wrap:nowrap!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .dash-tabs::-webkit-scrollbar{display:none}
+  .dash-tab{flex:0 0 auto!important;white-space:nowrap!important;padding:8px 13px!important}
+  /* let the tall register/report table use the full sheet height and tighten cells */
+  .reg-tablewrap{max-height:none!important}
+  .reg-table th,.reg-table td{padding:6px 8px!important}
+  .rpt-table th,.rpt-table td{padding:8px 11px!important}
 }
 @media (max-height:480px){
   .vidhud .vh-left,.vidhud .vh-right{top:48px!important}
