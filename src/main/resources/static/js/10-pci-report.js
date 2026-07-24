@@ -203,8 +203,8 @@ function printPciReport(){
     '@page{size:A4 landscape;margin:12mm}';
   const doc='<!doctype html><html><head><meta charset="utf-8"><title>KLRAMS PCI Report</title><style>'+css+'</style></head><body>'+
     '<div class="brand"><div><div class="t">KLRAMS \u2014 Pavement Condition Index Report</div><div class="s">Kerala Road Asset Management System \u00b7 Kerala PWD \u00b7 '+grpWord+'</div></div>'+
-    '<div class="r">Generated '+escH(dt)+'<br>Method: IRC:82-2023 PCI &middot; area-weighted</div></div>'+
-    '<div class="kpi"><div><div class="v">'+(avg!=null?avg.toFixed(1):'\u2013')+(ab?' <span class="chip" style="background:'+ab.color+'">'+ab.label+'</span>':'')+'</div><div class="s" style="font-size:11px;color:#5b6b80">Network average PCI (area-weighted)</div></div></div>'+
+    '<div class="r">Generated '+escH(dt)+'<br>Method: IRC:82-2023 PCI</div></div>'+
+    '<div class="kpi"><div><div class="v">'+(avg!=null?avg.toFixed(1):'\u2013')+(ab?' <span class="chip" style="background:'+ab.color+'">'+ab.label+'</span>':'')+'</div><div class="s" style="font-size:11px;color:#5b6b80">Network average PCI</div></div></div>'+
     '<div class="meta"><b>Coverage:</b> '+sections.length+' road sections \u00b7 '+Object.keys(groups).length+' '+((mode==='district')?'districts':'PWD sections')+' \u00b7 '+(tot/1000).toFixed(1)+' km scored.<br><b>Class distribution:</b> '+dist+'<br><b>Weightages (IRC:82-2023 Table 5.4):</b> '+wrow+'</div>'+
     body+
     '<div class="foot"><span>KLRAMS \u00b7 Fist Innovations Pvt. Ltd.</span><span>PCI per IRC:82-2023 \u2014 for maintenance planning</span></div>'+
@@ -271,9 +271,9 @@ function pciLowestBlock(secs){
   let html='<div class="dash-eyebrow" style="margin:18px 0 8px">Lowest-PCI roads &mdash; statewide</div>'+
     '<div class="comp-row">'+
       '<div class="dcard"><div class="dcard-head"><h3>State Highways</h3><span class="totchip">SH &middot; lowest 5</span></div>'+
-        '<div class="sub">5 lowest area-weighted-PCI SH roads across Kerala &middot; grouped by road number</div>'+pciLowTable(shLow,'SH',true)+'</div>'+
+        '<div class="sub">5 lowest-PCI SH roads across Kerala &middot; grouped by road number</div>'+pciLowTable(shLow,'SH',true)+'</div>'+
       '<div class="dcard"><div class="dcard-head"><h3>Major District Roads</h3><span class="totchip">MDR &middot; lowest 5</span></div>'+
-        '<div class="sub">5 lowest area-weighted-PCI MDR roads across Kerala &middot; grouped by road name</div>'+pciLowTable(mdrLow,'MDR',true)+'</div>'+
+        '<div class="sub">5 lowest-PCI MDR roads across Kerala &middot; grouped by road name</div>'+pciLowTable(mdrLow,'MDR',true)+'</div>'+
     '</div>';
   /* district-wise: each district's 5 worst SH + 5 worst MDR roads (a road that
      spans districts is grouped within each district it touches). */
@@ -341,7 +341,7 @@ function renderPciAnalysisNow(){
   const hero='<div class="dcard pcia-hero">'+
     '<div class="dcard-head"><h3>Network condition</h3>'+(ab?'<span class="pci-chip" style="background:'+ab.color+'">'+ab.label+'</span>':'')+'</div>'+
     '<div class="pcia-big">'+(avg!=null?avg.toFixed(1):'\u2013')+'<span class="u">avg PCI</span></div>'+
-    '<div class="sub">'+pciBasisLabel(basis)+' &middot; area-weighted &middot; '+(d.tot/1000).toFixed(1)+' km surveyed</div>'+
+    '<div class="sub">'+pciBasisLabel(basis)+' &middot; '+(d.tot/1000).toFixed(1)+' km surveyed</div>'+
     '<div class="pcia-stats">'+
       '<div class="ps"><div class="ps-k">Surveyed</div><div class="ps-v">'+(d.tot/1000).toFixed(1)+'<small>km</small></div></div>'+
       '<div class="ps"><div class="ps-k">Rating bands</div><div class="ps-v">'+bands+'</div></div>'+

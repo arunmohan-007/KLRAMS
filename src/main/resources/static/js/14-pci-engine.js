@@ -92,7 +92,7 @@ function resetPciWeights(){Object.assign(PCI_W,PCI_W_DEFAULT);renderPciWeights()
 function renderPciLegend(){const el=document.getElementById('pciLegend');if(!el)return;el.innerHTML=PCI_BANDS.map(b=>`<div class="lg"><span class="bar" style="background:${b.color}"></span> ${b.label} <span class="rng">${b.min}\u2013${b.hi}</span></div>`).join('')+'<div class="lg"><span class="bar" style="background:#b9c2cc"></span> No data <span class="rng"></span></div>';}
 function renderPciSummary(d){const el=document.getElementById('pciSummary');if(!el)return;if(!d||(d.avg==null&&d.worst==null)){el.innerHTML='';return;}
   function rw(lab,v){if(v==null)return '<div class="rec" style="margin-top:5px">'+lab+': \u2013</div>';const b=pciBand(v);return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px"><span class="big" style="font-size:22px">'+v.toFixed(1)+'</span><span class="band" style="margin-left:0;background:'+b.color+'">'+b.label+'</span><span class="rec" style="margin:0">'+lab+'</span></div>';}
-  el.innerHTML='<div class="pci-summary"><div class="eyebrow" style="margin:0 0 2px">Network average PCI (area-weighted)</div>'+rw('Composite',d.avg)+rw('Worst-Lane',d.worst)+'<div class="rec" style="margin-top:7px">'+(d.nA||0)+' of '+(d.total||0)+' segments scored</div></div>';}
+  el.innerHTML='<div class="pci-summary"><div class="eyebrow" style="margin:0 0 2px">Network average PCI</div>'+rw('Composite',d.avg)+rw('Worst-Lane',d.worst)+'<div class="rec" style="margin-top:7px">'+(d.nA||0)+' of '+(d.total||0)+' segments scored</div></div>';}
 function pciPopup(lngLat,props,basis){
   basis=basis||'avg';const prop=(basis==='worst')?'pci_worst':'pci_avg';
   const v=+props[prop];const b=(v>=0)?pciBand(v):null;
