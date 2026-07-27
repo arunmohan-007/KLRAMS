@@ -23,21 +23,32 @@ import java.security.MessageDigest;
 final class GeoJsonResponse {
     private GeoJsonResponse() {}
 
-    /** A quoted ETag derived from the body content, so identical data yields the
-     *  same tag across rebuilds and restarts (the browser keeps getting 304s),
-     *  while any change flips it — a stale 304 is therefore impossible. */
+    /** A WEAK, quoted ETag derived from the body content, so identical data yields
+     *  the same tag across rebuilds and restarts (the browser keeps getting 304s),
+     *  while any change flips it — a stale 304 is therefore impossible.
+     *
+     *  The {@code W/} prefix is not cosmetic. Tomcat refuses to gzip a response
+     *  carrying a STRONG ETag, because compressing would break the byte-for-byte
+     *  guarantee a strong validator promises. When these tags were strong, adding
+     *  them silently turned compression OFF for the largest payloads in the app —
+     *  roads and condition segments were served raw (measured 3.9 MB and 4.4 MB)
+     *  where gzip takes them to 1.0 MB and 0.8 MB. A weak validator is the correct
+     *  one here anyway: If-None-Match is defined to use weak comparison, and we
+     *  only ever claim the content is semantically unchanged, never byte-identical
+     *  across encodings. matches() strips the prefix on both sides, so tags cached
+     *  by clients from the strong-ETag build still revalidate to a 304. */
     static String contentTag(String body) {
-        if (body == null) return "\"0\"";
+        if (body == null) return "W/\"0\"";
         try {
             byte[] h = MessageDigest.getInstance("SHA-256").digest(body.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(26).append('"');
+            StringBuilder sb = new StringBuilder(28).append("W/\"");
             for (int i = 0; i < 12; i++) {           // 96 bits -> 24 hex chars, ample
                 sb.append(Character.forDigit((h[i] >> 4) & 0xf, 16));
                 sb.append(Character.forDigit(h[i] & 0xf, 16));
             }
             return sb.append('"').toString();
         } catch (Exception e) {
-            return "\"" + Integer.toHexString(body.hashCode()) + "\"";
+            return "W/\"" + Integer.toHexString(body.hashCode()) + "\"";
         }
     }
 
