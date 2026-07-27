@@ -1,27 +1,27 @@
 package com.fist.rmms_backend;
 
-import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
+/**
+ * Avg IRI (2 km · worst lane) — build the 2 km IRI roll-up and serve it,
+ * mirroring {@link FwdSegmentController} for FWD deflection.
+ */
 @RestController
-@RequestMapping("/api/segments")
-public class SegmentController {
+@RequestMapping("/api/iri-2km")
+public class IriSegmentController {
 
-    private final SegmentService service;
-    private final IriSegmentService iri2km;
+    private final IriSegmentService service;
 
-    public SegmentController(SegmentService service, IriSegmentService iri2km) {
+    public IriSegmentController(IriSegmentService service) {
         this.service = service;
-        this.iri2km = iri2km;
     }
 
-    /** Build (or rebuild) the linearly-referenced coloured segments. */
+    /** Build (or rebuild) the 2 km IRI bins from the uploaded condition survey. */
     @PostMapping("/build")
     public Map<String, Object> build() {
         Map<String, Object> result = new HashMap<>();
@@ -29,31 +29,18 @@ public class SegmentController {
             int n = service.buildSegments();
             result.put("status", "ok");
             result.put("segments", n);
-            // The 2 km IRI roll-up reads the same condition rows, so rebuild it
-            // here too — it can never go stale behind the segments. A failure
-            // there is reported but does not fail the segment build.
-            try {
-                result.put("iri_2km", iri2km.buildSegments());
-            } catch (Exception e) {
-                result.put("iri_2km_error", ApiErrors.safe("2 km IRI build", e));
-            }
         } catch (Exception e) {
             result.put("status", "error");
-            result.put("message", ApiErrors.safe("segment build", e));
+            result.put("message", ApiErrors.safe("2 km IRI build", e));
         }
         return result;
     }
 
-    /** Serve the segments as GeoJSON for the map.
+    /** Serve the 2 km IRI bins as GeoJSON for the map.
      *  Defaults to the active survey period; ?period_id= selects another. */
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> geojson(@RequestParam(value = "period_id", required = false) Integer periodId,
                                           @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
-        // no-cache + ETag: the browser must revalidate every load, so freshly
-        // built segments show up on a normal reload (no hard-refresh / restart
-        // needed). The body is served from the in-memory cache, and when it is
-        // unchanged the ETag turns the revalidation into an empty 304 — no
-        // multi-MB re-download on a repeat map open.
         GeoJsonResponse.Payload p = service.segmentsPayload(periodId);
         return GeoJsonResponse.conditional(p.body(), p.etag(), ifNoneMatch);
     }

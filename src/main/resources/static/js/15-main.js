@@ -51,7 +51,13 @@ map.on('load',()=>{
         const v=document.getElementById('video'),dk=document.getElementById('dock');
         if(dk&&dk.classList.contains('open')&&v&&v.src&&!v.paused&&!v.ended)return setTimeout(chk,4000);
       }catch(e){}res();})();});
-      const _afterSegs=()=>{_videoIdle().then(_preloadFwd).then(_videoIdle,_videoIdle).then(_preloadPci,_preloadPci);};
+      /* The 2 km IRI roll-up is a small payload (one line per 2 km, not per
+         100 m row), so it goes last and costs almost nothing — the layer is
+         created hidden and the toggle just flips visibility. */
+      const _preloadIri2km=()=>{setTimeout(()=>{try{
+        if(typeof loadIri2km==='function'&&!map.getLayer('iri2km'))loadIri2km(true);
+      }catch(e){}},900);};
+      const _afterSegs=()=>{_videoIdle().then(_preloadFwd).then(_videoIdle,_videoIdle).then(_preloadPci,_preloadPci).then(_preloadIri2km,_preloadIri2km);};
       if(typeof loadSegments==='function'&&!map.getSource('segs')){
         setTimeout(()=>{try{loadSegments().then(_afterSegs,_afterSegs);}catch(e){}},1500);
       }else{

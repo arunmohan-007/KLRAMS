@@ -44,6 +44,7 @@ Core tables created on startup:
 - `roads` — Road network centrelines (LineString/MultiLineString geometry)
 - `condition` — Raw condition survey data (IRI, crack, pothole, etc.)
 - `condition_segments` — Materialized view with linear-referenced condition segments
+- `iri_2km_segments` — IRI rolled up into 2 km bins per section: length-weighted average for lanes CL1 and CR1, plus the worse of the two (`IriSegmentService`, rebuilt with the condition segments)
 - `road_assets` — Bridges, culverts, road furniture (POINT/LINE via linear reference)
 - `road_video` — NSV video catalog (videos stored on disk at `${app.video-dir}`)
 - `traffic_stations`, `traffic_counts` — Traffic survey data persistence
@@ -93,7 +94,8 @@ Large GeoJSON responses (roads, segments, assets) are built once and cached in m
 
 - **Public (no login):** `welcome.html`, `login.html`, `/img/**`, `/js/**`, `/css/**`, GET `/api/go/**`, GET `/api/site/content`
 - **Authenticated (staff):** Everything else — GIS viewer, internal portal, Data Console, all uploads/edits
-- CSRF is disabled for the pilot (see `SecurityConfig.java`)
+- Token-based CSRF is disabled (the static frontend has no place to carry a token); CSRF is defended instead by a `SameSite=Strict` session cookie (`application.properties`)
+- Sign-in is rate-limited: 5 failed attempts per client IP triggers a 15-minute lockout (`LoginAttemptService` + `LoginAttemptFilter`)
 
 ## Configuration
 

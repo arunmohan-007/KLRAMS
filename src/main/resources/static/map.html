@@ -103,6 +103,8 @@
       <div class="cond-metric-row" id="condMetricRow"><span class="cond-metric-ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16M8 16l3-4 3 3 5-7"/></svg></span><select id="condMetricHome" class="cond-metric-sel" title="Choose which condition parameter colours the map"></select></div>
       <div class="switch"><span class="lname"><span class="ldot" style="background:#7b1fa2"></span>FWD (D0)</span><input type="checkbox" id="showFwd"></div>
       <div id="fwdLegend" class="fwd-legend" style="display:none"></div>
+      <div class="switch"><span class="lname"><span class="ldot" style="background:#c2410c"></span>Avg IRI <span class="r2-hint">2 km &middot; worst lane</span></span><input type="checkbox" id="showIri2km"></div>
+      <div id="iri2kmLegend" class="fwd-legend" style="display:none"></div>
     </div>
     <div class="grp-title">Administrative boundary</div>
     <div class="grp">
@@ -976,7 +978,7 @@
   <script src="js/12-nsv-video.js?v=168"></script>
   <script src="js/13-search.js?v=117"></script>
   <script src="js/14-pci-engine.js?v=171"></script>
-  <script src="js/15-main.js?v=121"></script>
+  <script src="js/15-main.js?v=122"></script>
   <script src="js/16-traffic.js?v=169"></script>
   <script src="js/17-measure.js?v=117"></script>
   <script src="js/18-filters.js?v=117"></script>
@@ -993,6 +995,7 @@
   <script src="js/31-traffic-dashboard.js?v=3"></script>
   <script src="js/30-condition-dashboard.js?v=3"></script>
   <script src="js/29-export.js?v=1"></script>
+  <script src="js/32-iri-2km.js?v=1"></script>
   <script src="js/launcher.js?v=161"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page
@@ -1565,6 +1568,7 @@ html body #fpanes.hidden{display:none!important}
       showRoads2:{layers:['roadnet2','roadnet2-casing','fullnet','fullnet-casing','roads2','roads2-line'],color:'#3a4ad6'},
       showCond:{layers:['seg-CC','seg-CL1','seg-CL2','seg-CR1','seg-CR2'],color:'#2ba66a',grad:1},
       showFwd:{layers:['as-fwd','as-fwd-pt','as-fwd-icon'],color:'#7b1fa2'},
+      showIri2km:{layers:['iri2km'],color:'#c2410c',grad:1},
       showDist:{layers:['district-fill','district-casing','district-line','district-label'],color:'#0e2038'},
       showCons:{layers:['cons-fill','cons-line','cons-label'],color:'#0d7a51'},
       showBridge:{layers:['as-bridge','as-bridge-icon'],color:'#8a5cb8'},

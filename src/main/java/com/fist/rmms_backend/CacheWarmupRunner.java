@@ -23,13 +23,16 @@ public class CacheWarmupRunner implements ApplicationRunner {
     private final RoadController roads;
     private final SegmentService segments;
     private final FwdSegmentService fwdSegments;
+    private final IriSegmentService iriSegments;
     private final FullNetworkController fullNetwork;
 
     public CacheWarmupRunner(RoadController roads, SegmentService segments,
-                              FwdSegmentService fwdSegments, FullNetworkController fullNetwork) {
+                              FwdSegmentService fwdSegments, IriSegmentService iriSegments,
+                              FullNetworkController fullNetwork) {
         this.roads = roads;
         this.segments = segments;
         this.fwdSegments = fwdSegments;
+        this.iriSegments = iriSegments;
         this.fullNetwork = fullNetwork;
     }
 
@@ -45,6 +48,7 @@ public class CacheWarmupRunner implements ApplicationRunner {
         try { roads.warm(); } catch (Exception e) { log.warn("Road cache warm-up failed", e); }
         try { segments.segmentsGeoJson(); } catch (Exception e) { log.warn("Condition segment cache warm-up failed", e); }
         try { fwdSegments.segmentsGeoJson(); } catch (Exception e) { log.warn("FWD segment cache warm-up failed", e); }
+        try { iriSegments.segmentsGeoJson(); } catch (Exception e) { log.warn("2 km IRI cache warm-up failed", e); }
         try { fullNetwork.warm(); } catch (Exception e) { log.warn("Full network cache warm-up failed", e); }
         log.info("Map caches warmed in {} ms", System.currentTimeMillis() - start);
     }
