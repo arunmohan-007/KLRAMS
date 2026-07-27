@@ -451,6 +451,15 @@
   .pop td{padding:5px 13px;font-size:12px;border-bottom:1px solid #f0f2f5;vertical-align:top}
   .pop td.k{color:var(--muted);white-space:normal;max-width:120px;line-height:1.3}
   .pop td.v{text-align:right;font-family:var(--mono);color:var(--text);font-variant-numeric:tabular-nums;word-break:break-word;max-width:150px}
+  /* Avg IRI (2 km) popup — headline value, band chip, notes. Colours live here
+     (and are overridden in klrams-dark.css) rather than inline on the elements,
+     which is what made them unreadable on the dark popup card. */
+  .pop.iri-pop .iri-big{padding:10px 13px 0;font-size:22px;font-weight:700;color:var(--ink);line-height:1.15;font-variant-numeric:tabular-nums}
+  .pop.iri-pop .iri-unit{font-size:12px;font-weight:500;color:var(--muted)}
+  .pop.iri-pop .iri-band{display:inline-block;margin-left:6px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;vertical-align:2px}
+  .pop.iri-pop .iri-note{padding:3px 13px 9px;font-size:11.5px;color:var(--muted);line-height:1.4}
+  .pop.iri-pop .iri-worst{color:#c2410c;font-weight:700;white-space:nowrap}
+  .pop.iri-pop .iri-foot{padding:7px 13px 9px;font-size:10.5px;color:var(--muted);border-top:1px solid #f0f2f5}
   .pop .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;vertical-align:middle}
   .pop .pgrid-t{padding:7px 13px 3px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#94a3b5}
   .pop .pgrid{display:grid;grid-template-columns:1fr 1fr;gap:3px 14px;padding:1px 13px 11px}

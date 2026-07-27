@@ -12,12 +12,17 @@ import org.springframework.transaction.annotation.Transactional;
  * (iri_2km_segments), mirroring {@link SegmentService} / {@link FwdSegmentService}.
  *
  * Per 2 km bin it stores:
- *   - avg_iri_cl1 / avg_iri_cr1 — LENGTH-WEIGHTED average IRI of lane CL1 / CR1
- *     (a 200 m row counts twice as much as a 100 m row)
- *   - worst_iri / worst_lane    — the worse (higher) of those two lane averages
- *     and which lane it came from; this is what colours the map layer
- * Only CL1 and CR1 are considered — the two main running lanes of the
- * carriageway. Rows on other cross-section positions (CC, CL2, CR2) are ignored.
+ *   - lane_avgs (jsonb) — LENGTH-WEIGHTED average IRI for EVERY cross-section
+ *     position the section carries (a 200 m row counts twice as much as a 100 m
+ *     one), keyed by XSP: CC / CL1 / CL2 / CR1 / CR2
+ *   - worst_iri / worst_lane — the highest of those lane averages and which lane
+ *     it came from; this is what colours the map layer
+ *
+ * Which lanes exist varies by section, exactly as in {@link SegmentService}: a
+ * single carriageway may be surveyed as CC alone or as CL1 + CR1, while a dual
+ * is drawn as two centrelines whose Section_La differ by a trailing A/B, each
+ * carrying only its own side (…A → CL1/CL2, …B → CR1/CR2). So the worst lane is
+ * taken over whatever the section actually has, never a fixed pair.
  *
  * Binning: bin = floor(start_chainage / 2000), i.e. 0-2000, 2000-4000, … from the
  * section's own chainage origin. A survey row is assigned to the bin its START
@@ -56,7 +61,7 @@ public class IriSegmentService {
             CREATE TABLE iri_2km_segments AS
             WITH src AS (
                 SELECT section_label, period_id,
-                    upper(btrim(xsp)) AS lane,
+                    COALESCE(NULLIF(upper(btrim(xsp)), ''), 'CC') AS lane,
                     start_chainage, end_chainage, iri,
                     floor(start_chainage / %d.0)::int AS bin
                 FROM condition
@@ -64,53 +69,50 @@ public class IriSegmentService {
                   AND start_chainage IS NOT NULL
                   AND end_chainage   IS NOT NULL
                   AND end_chainage > start_chainage
-                  AND upper(btrim(xsp)) IN ('CL1','CR1')
+            ),
+            per_lane AS (
+                SELECT section_label, period_id, bin, lane,
+                    ROUND((SUM(iri * (end_chainage - start_chainage))
+                         / NULLIF(SUM(end_chainage - start_chainage), 0)
+                          )::numeric, 2)::double precision AS avg_iri,
+                    MIN(start_chainage) AS from_ch,
+                    MAX(end_chainage)   AS to_ch,
+                    SUM(end_chainage - start_chainage) AS lane_len,
+                    COUNT(*)::int AS n_rows
+                FROM src
+                GROUP BY section_label, period_id, bin, lane
             ),
             binned AS (
                 SELECT section_label, period_id, bin,
-                    MIN(start_chainage) AS from_ch,
-                    MAX(end_chainage)   AS to_ch,
-                    SUM(end_chainage - start_chainage) AS surveyed_len,
-                    ROUND((SUM(iri * (end_chainage - start_chainage)) FILTER (WHERE lane = 'CL1')
-                         / NULLIF(SUM(end_chainage - start_chainage) FILTER (WHERE lane = 'CL1'), 0)
-                          )::numeric, 2)::double precision AS avg_iri_cl1,
-                    ROUND((SUM(iri * (end_chainage - start_chainage)) FILTER (WHERE lane = 'CR1')
-                         / NULLIF(SUM(end_chainage - start_chainage) FILTER (WHERE lane = 'CR1'), 0)
-                          )::numeric, 2)::double precision AS avg_iri_cr1,
-                    COUNT(*) FILTER (WHERE lane = 'CL1')::int AS n_cl1,
-                    COUNT(*) FILTER (WHERE lane = 'CR1')::int AS n_cr1
-                FROM src
+                    MIN(from_ch) AS from_ch,
+                    MAX(to_ch)   AS to_ch,
+                    SUM(lane_len) AS surveyed_len,
+                    SUM(n_rows)::int AS n_rows,
+                    COUNT(*)::int AS lane_count,
+                    string_agg(lane, ',' ORDER BY lane) AS lane_list,
+                    jsonb_object_agg(lane, avg_iri) AS lane_avgs,
+                    MAX(avg_iri) AS worst_iri,
+                    -- highest lane average wins; ties settle on lane name so the
+                    -- popup and the colouring always name the same lane
+                    (array_agg(lane ORDER BY avg_iri DESC NULLS LAST, lane))[1] AS worst_lane
+                FROM per_lane
                 GROUP BY section_label, period_id, bin
             ),
-            worst AS (
-                SELECT b.*,
-                    -- GREATEST ignores NULLs in PostgreSQL, so a bin surveyed on
-                    -- one lane only still reports that lane as the worst.
-                    GREATEST(avg_iri_cl1, avg_iri_cr1) AS worst_iri,
-                    CASE
-                        WHEN avg_iri_cl1 IS NULL AND avg_iri_cr1 IS NULL THEN NULL
-                        WHEN avg_iri_cr1 IS NULL THEN 'CL1'
-                        WHEN avg_iri_cl1 IS NULL THEN 'CR1'
-                        WHEN avg_iri_cl1 >= avg_iri_cr1 THEN 'CL1'
-                        ELSE 'CR1'
-                    END AS worst_lane
-                FROM binned b
-            ),
             joined AS (
-                SELECT w.*, ST_LineMerge(r.geom) AS road_geom,
+                SELECT b.*, ST_LineMerge(r.geom) AS road_geom,
                     COALESCE(
                         NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
                         NULLIF(r."Measrd_Len"::double precision, 0),
                         ST_Length(r.geom::geography)) AS measured_len
-                FROM worst w
-                JOIN roads r ON r."Section_La" = w.section_label
+                FROM binned b
+                JOIN roads r ON r."Section_La" = b.section_label
                 WHERE r.geom IS NOT NULL
                   AND ST_GeometryType(ST_LineMerge(r.geom)) = 'ST_LineString'
             )
             SELECT
                 section_label, period_id, bin,
                 from_ch AS start_chainage, to_ch AS end_chainage, surveyed_len,
-                avg_iri_cl1, avg_iri_cr1, worst_iri, worst_lane, n_cl1, n_cr1,
+                lane_avgs, lane_list, lane_count, n_rows, worst_iri, worst_lane,
                 ST_LineSubstring(road_geom,
                     GREATEST(LEAST(from_ch / measured_len, 1.0), 0.0),
                     GREATEST(LEAST(to_ch   / measured_len, 1.0), 0.0)) AS geom
@@ -170,9 +172,9 @@ public class IriSegmentService {
                         'properties', json_build_object(
                             'road', section_label, 'from_ch', start_chainage,
                             'to_ch', end_chainage, 'bin', bin,
-                            'avg_iri_cl1', avg_iri_cl1, 'avg_iri_cr1', avg_iri_cr1,
+                            'lane_avgs', lane_avgs, 'lane_list', lane_list,
+                            'lane_count', lane_count, 'n_rows', n_rows,
                             'worst_iri', worst_iri, 'worst_lane', worst_lane,
-                            'n_cl1', n_cl1, 'n_cr1', n_cr1,
                             'surveyed_len', ROUND(surveyed_len::numeric, 0))
                     )), '[]'::json))::text
                 FROM iri_2km_segments WHERE period_id = ?

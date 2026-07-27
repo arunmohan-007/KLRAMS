@@ -959,10 +959,10 @@ const PANELS={
     +'<div class="out" id="oBuild"></div>'
     +'<p class="hint">This also rebuilds the <b>Avg IRI (2 km)</b> bins, so the two never drift apart.</p>',
   'iri-2km-build':'<div class="ip-title">Build Avg IRI (2 km · worst lane)</div>'
-    +'<p class="ip-sub">Roll the condition survey&rsquo;s IRI up into fixed 2 km bins per road section, storing the length-weighted average for lane <code>CL1</code> and lane <code>CR1</code> and the worse of the two. Stored in the <code>iri_2km_segments</code> table and shown as the <b>Avg IRI</b> layer in the viewer.</p>'
+    +'<p class="ip-sub">Roll the condition survey&rsquo;s IRI up into fixed 2 km bins per road section, storing the length-weighted average for every lane the section carries (<code>CC</code>, <code>CL1</code>, <code>CL2</code>, <code>CR1</code>, <code>CR2</code>) and the worst of them. Stored in the <code>iri_2km_segments</code> table and shown as the <b>Avg IRI</b> layer in the viewer.</p>'
     +'<button class="btn" onclick="buildIri2km()">Build Avg IRI 2 km</button>'
     +'<div class="out" id="oIriBuild"></div>'
-    +'<p class="hint">Bins run 0&ndash;2 km, 2&ndash;4 km&hellip; from each section&rsquo;s chainage origin; a survey row is counted in the bin its <b>start</b> chainage falls in. Only <code>CL1</code> and <code>CR1</code> rows are used — CC, CL2 and CR2 are ignored. Build segments runs this automatically.</p>',
+    +'<p class="hint">Bins run 0&ndash;2 km, 2&ndash;4 km&hellip; from each section&rsquo;s chainage origin; a survey row is counted in the bin its <b>start</b> chainage falls in. Which lanes exist varies by section — some are surveyed as <code>CC</code> alone, and a dual carriageway&rsquo;s two centrelines each carry only their own side (&hellip;A &rarr; CL1/CL2, &hellip;B &rarr; CR1/CR2). Build segments runs this automatically.</p>',
   'vid-zip':'<div class="ip-title">Survey video files</div>'
     +'<p class="ip-sub">Select the NSV video files and upload them directly. Each file is sent to the server in small chunks with a live progress bar and its own status, so a dropped connection only re-sends the unfinished chunk — never the whole batch. If a file fails, the others keep going; press <b>Retry</b>, or just re-select the same files later to resume from where it stopped.</p>'
     +'<div class="ip-field"><label class="ip-label">Video files (MP4, MOV, AVI, MKV…)</label><input type="file" id="vidFiles" accept="video/*,.mp4,.mov,.avi,.mkv,.m4v" multiple onchange="vidQueueAdd(this.files)"></div>'

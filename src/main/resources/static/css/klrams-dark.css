@@ -591,6 +591,12 @@ select option:disabled{color:var(--k-faint)!important}
 .pop td{border-bottom:1px solid var(--k-line)!important}
 .pop td.k{color:var(--k-muted)!important}
 .pop td.v{color:var(--k-text)!important}
+/* Avg IRI (2 km) popup — the light-theme ink/muted greys are unreadable on the
+   dark card, so restate the headline, notes and worst-lane marker. */
+.pop.iri-pop .iri-big{color:#fff!important}
+.pop.iri-pop .iri-unit,.pop.iri-pop .iri-note,.pop.iri-pop .iri-foot{color:var(--k-muted)!important}
+.pop.iri-pop .iri-foot{border-top:1px solid var(--k-line)!important}
+.pop.iri-pop .iri-worst{color:#fb923c!important}
 .pop .pgrid-t{color:var(--k-faint)!important}
 .pop .pg-k{color:var(--k-muted)!important}
 .pop .pg-v{color:var(--k-text)!important}

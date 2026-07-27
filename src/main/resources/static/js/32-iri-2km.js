@@ -7,15 +7,19 @@
    (IriSegmentService) rolls the raw IRI up into fixed 2 km bins per road
    section and stores the result in the iri_2km_segments table:
 
-     • avg_iri_cl1 / avg_iri_cr1 — length-weighted average IRI of lane CL1 / CR1
-       inside the bin (a 200 m row counts twice as much as a 100 m row)
-     • worst_iri / worst_lane    — the worse (higher) of those two lane averages,
-       and which lane it came from
+     • lane_avgs — length-weighted average IRI inside the bin for EVERY lane the
+       section carries (CC / CL1 / CL2 / CR1 / CR2; a 200 m row counts twice as
+       much as a 100 m one)
+     • worst_iri / worst_lane — the highest of those lane averages, and which
+       lane it came from. Which lanes exist varies by section: some are surveyed
+       as CC alone, and a dual carriageway's two centrelines each carry only
+       their own side (…A → CL1/CL2, …B → CR1/CR2).
 
    This module fetches /api/iri-2km/geojson and draws ONE line per 2 km bin,
    coloured by worst_iri against the same Good/Fair/Poor IRI thresholds the
    condition layer uses (IRC:82-2023 — Good < 2.55, Poor > 3.30 m/km, editable
-   under Road Condition). Clicking a bin shows both lane averages side by side.
+   under Road Condition). Clicking a bin lists every lane's average, worst
+   marked.
 
    Loaded as an ordered classic script from map.html; all modules share one
    global scope, so load order is preserved exactly.
@@ -61,7 +65,7 @@
               [(typeof FAIR!=='undefined')?FAIR:'#FFC400','Fair',band(t.fair)+' – '+band(t.poor)],
               [(typeof POOR!=='undefined')?POOR:'#da4b43','Poor','&gt; '+band(t.poor)]];
     el.innerHTML='<div class="fl-hd"><span class="fl-t">Avg IRI · 2 km</span><span class="fl-u">m/km</span></div>'+
-      '<div class="fl-sub">Worst of lanes CL1 / CR1</div>'+
+      '<div class="fl-sub">Worst lane of the section</div>'+
       rows.map(function(r){
         return '<div class="fl-r"><span class="sw" style="background:'+r[0]+'"></span>'+
                '<span class="fl-l">'+r[1]+'</span><span class="fl-v">'+r[2]+'</span></div>';
@@ -74,30 +78,51 @@
   }
   function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
+  /* Cross-section order as it sits on the ground, left to right — the same
+     order the condition layer draws its lanes in (LANE_SLOTS, 07-data-loaders).
+     Anything unrecognised is listed after these, alphabetically. */
+  var LANE_ORDER=['CL2','CL1','CC','CR1','CR2'];
+  function laneRank(x){var i=LANE_ORDER.indexOf(x);return i<0?LANE_ORDER.length:i;}
+
+  /* lane_avgs arrives as a jsonb object, but MapLibre stringifies nested feature
+     properties, so accept either form. */
+  function laneAvgs(p){
+    var la=p.lane_avgs;
+    if(typeof la==='string'){try{la=JSON.parse(la);}catch(e){la=null;}}
+    return (la&&typeof la==='object')?la:{};
+  }
+
   function popup(lngLat,p){
     var worst=+p.worst_iri;
     var t=thresholds();
-    var band=isNaN(worst)?null:(worst<t.fair?{l:'Good',c:(typeof GOOD!=='undefined')?GOOD:'#2ba66a'}
-                               :(worst<t.poor?{l:'Fair',c:(typeof FAIR!=='undefined')?FAIR:'#FFC400'}
-                                             :{l:'Poor',c:(typeof POOR!=='undefined')?POOR:'#da4b43'}));
+    /* tc = chip text colour: the Fair band is a light amber, so white on it is
+       unreadable — that one gets dark text. */
+    var band=isNaN(worst)?null:(worst<t.fair?{l:'Good',c:(typeof GOOD!=='undefined')?GOOD:'#2ba66a',tc:'#fff'}
+                               :(worst<t.poor?{l:'Fair',c:(typeof FAIR!=='undefined')?FAIR:'#FFC400',tc:'#3a2b00'}
+                                             :{l:'Poor',c:(typeof POOR!=='undefined')?POOR:'#da4b43',tc:'#fff'}));
     var wl=p.worst_lane||'';
-    function laneRow(lane,val,n){
+    var la=laneAvgs(p);
+    var lanes=Object.keys(la).sort(function(a,b){var d=laneRank(a)-laneRank(b);return d||(a<b?-1:1);});
+    var rows=lanes.map(function(lane){
       var isWorst=(wl===lane);
-      return '<tr><td class="k">'+lane+(isWorst?' <b style="color:#c2410c">▲ worst</b>':'')+'</td>'+
-             '<td class="v">'+num(val)+' m/km'+(n?' <span style="color:#8193ac">('+n+' rows)</span>':'')+'</td></tr>';
-    }
+      return '<tr><td class="k">'+esc(lane)+(isWorst?' <span class="iri-worst">▲ worst</span>':'')+'</td>'+
+             '<td class="v">'+num(la[lane])+' m/km</td></tr>';
+    }).join('');
     var head=band
-      ? '<div style="font-size:22px;font-weight:700;color:#0e2038">'+worst.toFixed(2)+
-        '<span style="font-size:12px;color:#64718a;font-weight:500"> m/km</span> '+
-        '<span style="background:'+band.c+';color:#fff;font-size:11px;font-weight:700;border-radius:20px;padding:2px 9px;margin-left:4px">'+band.l+'</span></div>'+
-        '<div style="font-size:11.5px;color:#64718a;margin:3px 0 8px">Worst-lane average over this 2 km'+(wl?(' · lane '+wl):'')+'</div>'
-      : '<div style="color:#64718a">No IRI recorded on CL1 / CR1 in this 2 km</div>';
+      ? '<div class="iri-big">'+worst.toFixed(2)+'<span class="iri-unit"> m/km</span>'+
+        '<span class="iri-band" style="background:'+band.c+';color:'+band.tc+'">'+band.l+'</span></div>'+
+        '<div class="iri-note">Worst-lane average over this 2 km'+(wl?(' · lane '+esc(wl)):'')+'</div>'
+      : '<div class="iri-note">No IRI recorded in this 2 km</div>';
     var from=+p.from_ch,to=+p.to_ch;
     var range=(isNaN(from)||isNaN(to))?'':((from/1000).toFixed(2)+' – '+(to/1000).toFixed(2)+' km');
-    var cover=(p.surveyed_len!=null&&p.surveyed_len!=='')?('<div style="font-size:10.5px;color:#64718a;margin-top:6px;border-top:1px solid #eef1f5;padding-top:5px">Surveyed length in this bin: <b>'+num(p.surveyed_len,0)+' m</b> (both lanes)</div>'):'';
+    var foot=(p.surveyed_len!=null&&p.surveyed_len!=='')
+      ? '<div class="iri-foot">Surveyed: <b>'+num(p.surveyed_len,0)+' m</b> over '+
+        (lanes.length===1?'1 lane':(lanes.length+' lanes'))+
+        (p.n_rows?(' · '+p.n_rows+' survey rows'):'')+'</div>'
+      : '';
     new maplibregl.Popup({maxWidth:'300px'}).setLngLat(lngLat)
-      .setHTML('<div class="pop"><div class="sec">Avg IRI (2 km) · '+esc(p.road||'')+(range?(' · '+range):'')+'</div>'+
-               head+'<table>'+laneRow('CL1',p.avg_iri_cl1,p.n_cl1)+laneRow('CR1',p.avg_iri_cr1,p.n_cr1)+'</table>'+cover+'</div>')
+      .setHTML('<div class="pop iri-pop"><div class="sec">Avg IRI (2 km) · '+esc(p.road||'')+(range?(' · '+range):'')+'</div>'+
+               head+'<table>'+rows+'</table>'+foot+'</div>')
       .addTo(map);
   }
 
