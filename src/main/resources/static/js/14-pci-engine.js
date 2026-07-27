@@ -1,6 +1,13 @@
 /* ============================================================
-   KLRAMS viewer · 14-pci-engine.js   (build 75)
+   KLRAMS viewer · 14-pci-engine.js   (build 171)
    IRC:82-2023 PCI engine: per-parameter indices, editable weights, rating bands, PCI map layers and popup.
+
+   BUILD 171 — PCI is now STORED. SegmentService computes both PCIs with the
+   default weights once per upload and ships them as pci_def_avg / pci_def_worst.
+   segPCI() returns those directly while the weights are untouched, and only
+   computes in the browser once a weight is edited (that view is temporary and
+   never written back). The maths below therefore still has to match the Java
+   port in PciCalculator.java exactly.
 
    BUILD 75 CORRECTNESS FIX — lane aggregation order.
    PCI is a NON-LINEAR function of the distresses, so the order of
@@ -60,10 +67,26 @@ function pciRepr(props,basis){
   return {dist:pciAggDist(props,basis),lane:(props.xsp_list||'')};
 }
 
+/* Are the weights still the IRC:82-2023 defaults? Only then may we use the PCI
+   the backend stored at Build Segments time (pci_def_avg / pci_def_worst). */
+function pciWeightsAtDefault(){return PCI_PARAMS.every(pp=>Math.abs((+PCI_W[pp.key]||0)-PCI_W_DEFAULT[pp.key])<1e-9);}
+
 /* segPCI — the single source of truth used by generatePCI AND 10-pci-report.js.
    basis 'avg'  -> Composite PCI (area-weighted distress average across lanes)
-   basis 'worst'-> Worst-Lane PCI (min of per-lane PCIs) */
+   basis 'worst'-> Worst-Lane PCI (min of per-lane PCIs)
+
+   BUILD 171 — stored PCI. At the default weights the value is read straight off
+   the segment (SegmentService.storeDefaultPci computed it once, at upload time),
+   so a 33k-segment map costs no scoring work at all. Editing a weight makes the
+   stored number wrong for that view, so we fall through to the full in-browser
+   computation for as long as the weights are off their defaults. Segments from a
+   database built before this feature carry no stored value and also fall through,
+   so nothing depends on the columns being populated. */
 function segPCI(props,basis){
+  if(pciWeightsAtDefault()){
+    const s=props[(basis==='worst')?'pci_def_worst':'pci_def_avg'];
+    if(s!=null&&s!=='')return +s;
+  }
   const lanes=pciLanePcis(props);
   if(lanes.length){
     if(basis==='worst')return Math.min.apply(null,lanes.map(x=>x.pci));

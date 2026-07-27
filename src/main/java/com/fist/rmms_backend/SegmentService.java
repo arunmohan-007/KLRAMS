@@ -1,8 +1,16 @@
 package com.fist.rmms_backend;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Linear referencing for condition data.
@@ -94,10 +102,98 @@ public class SegmentService {
         jdbc.execute("CREATE INDEX condition_segments_geom_idx ON condition_segments USING GIST (geom)");
         jdbc.execute("CREATE INDEX condition_segments_period_idx ON condition_segments (period_id)");
 
+        storeDefaultPci();
+
         Long n = jdbc.queryForObject("SELECT count(*) FROM condition_segments", Long.class);
         cachedGeoJson = null;   // segments changed -> next /geojson rebuilds the cache
         cachedEtag = null;
         return n == null ? 0 : n.intValue();
+    }
+
+    /**
+     * Computes the IRC:82-2023 PCI for every segment with the DEFAULT weights and
+     * stores it in condition_segments (pci_def_avg = Composite, pci_def_worst =
+     * Worst-Lane), so the viewer no longer has to score 30k+ segments in the
+     * browser on every map open. The browser still recomputes on the fly — and
+     * ignores these columns — while the user has the weights off their defaults.
+     *
+     * Runs inside buildSegments(), i.e. once per upload, not per request.
+     */
+    private void storeDefaultPci() {
+        ensurePciColumns();
+
+        final ObjectMapper json = new ObjectMapper();
+        final String sql = "UPDATE condition_segments SET pci_def_avg = ?, pci_def_worst = ? WHERE seg_id = ?";
+        final List<Object[]> batch = new ArrayList<>();
+
+        jdbc.query(
+            "SELECT seg_id, lane_vals, iri, crack, pothole, rutting, patch_work, ravelling, " +
+            "       avg_iri, avg_crack, avg_pothole, avg_rutting, avg_patch_work, avg_ravelling " +
+            "FROM condition_segments",
+            (RowCallbackHandler) rs -> {
+                Map<String, Map<String, Double>> lanes = parseLaneVals(json, rs.getString("lane_vals"));
+                // Segment-level fallback when a stretch has no lane breakdown:
+                // worst -> the MAX columns, composite -> the avg_* columns.
+                Map<String, Double> worstFallback = new LinkedHashMap<>();
+                Map<String, Double> avgFallback = new LinkedHashMap<>();
+                for (String key : PciCalculator.WEIGHTS.keySet()) {
+                    Double max = dbl(rs.getObject(key));
+                    Double avg = dbl(rs.getObject("avg_" + key));
+                    if (max != null) worstFallback.put(key, max);
+                    Double composite = (avg != null) ? avg : max;
+                    if (composite != null) avgFallback.put(key, composite);
+                }
+
+                batch.add(new Object[]{
+                    PciCalculator.round2(PciCalculator.segPci(lanes, avgFallback, false)),
+                    PciCalculator.round2(PciCalculator.segPci(lanes, worstFallback, true)),
+                    rs.getInt("seg_id")
+                });
+                if (batch.size() >= 1000) {
+                    jdbc.batchUpdate(sql, batch);
+                    batch.clear();
+                }
+            });
+        if (!batch.isEmpty()) jdbc.batchUpdate(sql, batch);
+    }
+
+    /**
+     * Adds the stored-PCI columns when they are missing. Databases whose segments
+     * were built before this feature still carry the old table, and buildGeoJson()
+     * selects both columns — so this runs there too, leaving the values NULL until
+     * the next Build Segments (the viewer then falls back to computing in-browser).
+     */
+    private void ensurePciColumns() {
+        Boolean exists = jdbc.queryForObject(
+            "SELECT to_regclass('condition_segments') IS NOT NULL", Boolean.class);
+        if (!Boolean.TRUE.equals(exists)) return;
+        jdbc.execute("ALTER TABLE condition_segments " +
+                     "ADD COLUMN IF NOT EXISTS pci_def_avg double precision, " +
+                     "ADD COLUMN IF NOT EXISTS pci_def_worst double precision");
+    }
+
+    /** lane_vals jsonb -> { laneName: { param: value } }, keeping only PCI parameters. */
+    private static Map<String, Map<String, Double>> parseLaneVals(ObjectMapper json, String raw) {
+        Map<String, Map<String, Double>> lanes = new LinkedHashMap<>();
+        if (raw == null || raw.isBlank()) return lanes;
+        try {
+            JsonNode root = json.readTree(raw);
+            root.fields().forEachRemaining(lane -> {
+                Map<String, Double> dist = new LinkedHashMap<>();
+                for (String key : PciCalculator.WEIGHTS.keySet()) {
+                    JsonNode v = lane.getValue().get(key);
+                    if (v != null && v.isNumber()) dist.put(key, v.doubleValue());
+                }
+                lanes.put(lane.getKey(), dist);
+            });
+        } catch (Exception e) {
+            return new LinkedHashMap<>();   // malformed lane_vals -> segment-level fallback
+        }
+        return lanes;
+    }
+
+    private static Double dbl(Object o) {
+        return (o instanceof Number n) ? n.doubleValue() : null;
     }
 
     /** GeoJSON of one survey period's segments (null = active period), paired with
@@ -132,6 +228,7 @@ public class SegmentService {
     }
 
     private String buildGeoJson(int periodId) {
+        ensurePciColumns();
         // ST_AsGeoJSON(geom, 6): 6-decimal coordinates (~0.1 m) cut the payload size
         // substantially versus the 9-decimal default, with no visible loss for roads.
         String sql = """
@@ -146,7 +243,8 @@ public class SegmentService {
                         'avg_iri', avg_iri, 'avg_crack', avg_crack, 'avg_pothole', avg_pothole,
                         'avg_rutting', avg_rutting, 'avg_texture', avg_texture,
                         'avg_patch_work', avg_patch_work, 'avg_ravelling', avg_ravelling,
-                        'lane_count', lane_count, 'xsp_list', xsp_list, 'lane_vals', lane_vals)
+                        'lane_count', lane_count, 'xsp_list', xsp_list, 'lane_vals', lane_vals,
+                        'pci_def_avg', pci_def_avg, 'pci_def_worst', pci_def_worst)
                 )), '[]'::json))::text
             FROM condition_segments WHERE period_id = ?
             """;
