@@ -18,8 +18,95 @@ function fetchJsonRetry(url,tries){
   }
   return attempt(tries||3);
 }
-let _roadsInflight=null;
-function loadRoads(noFit){if(_roadsInflight)return _roadsInflight;/* Build 122 — post-resolution guard: the in-flight de-dupe below only covers CONCURRENT callers. Once the first fetch RESOLVES, _roadsInflight resets to null, so a later unconditional caller (e.g. 13-search.js loadRoads(true), asset modules) re-downloaded the full ~6MB roads GeoJSON even though map.getSource('roadnet') already held it. Skip the refetch when the source is already present. */if(map.getSource('roadnet'))return Promise.resolve();/* Build 121 — in-flight de-dupe: on slow networks the /api/roads/geojson fetch stays open for many seconds, and the map.getSource('roadnet') guard only closes AFTER it resolves. Concurrent callers therefore started a second identical ~6MB download. Share the running promise instead. */var _p=fetchJsonRetry('/api/roads/geojson',3).then(gj=>{if(!gj||!gj.features)return;gj.features.forEach(f=>{ROADS[f.properties.road]=f;});buildAttrMeta(gj);renderNetLegend(null);if(map.getSource('roadnet'))map.getSource('roadnet').setData(gj);else{map.addSource('roadnet',{type:'geojson',data:gj});map.addLayer({id:'roadnet-casing',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#0b1322','line-width':netCasingWidth()}});map.addLayer({id:'roadnet',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netColor(),'line-width':netWidth()}});map.addLayer({id:'roadnet-hit',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#000000','line-opacity':0.01,'line-width':['interpolate',['linear'],['zoom'],8,12,12,16,16,24]}});map.on('click','roadnet-hit',e=>{const _t=map.queryRenderedFeatures(e.point)[0];if(_t&&/^(as-|pci|trafficstn)/.test(_t.layer.id))return;if(e.features.length){let _lane=null;try{const _cl=CONDLAYERS.filter(id=>map.getLayer(id));if(_cl.length){const _lf=map.queryRenderedFeatures(e.point,{layers:_cl});if(_lf&&_lf.length){const _m=/^seg-(.+)$/.exec(_lf[0].layer.id);if(_m)_lane=_m[1];}}}catch(_e){}onPick(e.features[0].properties.road,e.lngLat,_lane);}});map.on('mouseenter','roadnet-hit',()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave','roadnet-hit',()=>map.getCanvas().style.cursor='');}/* build 120 — match the styled survey lines to the Road-network toggle (so preloading roads on startup does NOT force them visible), but keep the invisible hit layer ALWAYS clickable for Video-on-click. */{const _sr=document.getElementById('showRoads');const _vv=(_sr&&_sr.checked)?'visible':'none';if(map.getLayer('roadnet'))map.setLayoutProperty('roadnet','visibility',_vv);if(map.getLayer('roadnet-casing'))map.setLayoutProperty('roadnet-casing','visibility',_vv);if(map.getLayer('roadnet-hit'))map.setLayoutProperty('roadnet-hit','visibility','visible');}const b=new maplibregl.LngLatBounds();gj.features.forEach(f=>{const g=f.geometry;if(!g)return;const w=a=>{if(typeof a[0]==='number')b.extend(a);else a.forEach(w);};if(g.coordinates)w(g.coordinates);});if(!noFit&&!b.isEmpty())map.fitBounds(b,{padding:50});}).catch(err=>{const st=document.getElementById('status');if(st)st.textContent='Road network failed to load ('+err.message+'). Toggle the layer off/on to retry.';});_roadsInflight=_p;_p.then(function(){_roadsInflight=null;},function(){_roadsInflight=null;});return _p;}
+/* Build 172 — road-network load recovery.
+   The old guard treated map.getSource('roadnet') as "the network is loaded", but
+   a successful load adds a source AND three layers. Anything that threw between
+   the two (style not finished loading, a paint expression the validator rejects,
+   a connection reset after the source was created) left the source present and
+   the layers missing — and because every later loadRoads() short-circuited on
+   that source, the road network could never reappear for the rest of the
+   session. That is the "sometimes doesn't load, and then won't reload" bug.
+   Three changes: the ready-check tests the LAYER, a failed attempt tears down
+   whatever half-built state it left so the next one starts clean, and the
+   failure message carries a real Retry button instead of telling the user to
+   toggle the layer off and on. */
+let _roadsInflight=null,_roadsWired=false;
+function roadsReady(){return !!(map.getSource('roadnet')&&map.getLayer('roadnet'));}
+/* Drop a half-built network so a retry rebuilds from scratch. Layers first —
+   MapLibre refuses to remove a source that still has layers on it. */
+function teardownRoads(){
+  ['roadnet-hit','roadnet','roadnet-casing'].forEach(function(id){try{if(map.getLayer(id))map.removeLayer(id);}catch(e){}});
+  try{if(map.getSource('roadnet'))map.removeSource('roadnet');}catch(e){}
+}
+function roadsStatus(msg,retry){
+  const st=document.getElementById('status');if(!st)return;
+  st.textContent=msg;
+  if(!retry)return;
+  const b=document.createElement('button');
+  b.type='button';b.textContent='Retry';
+  b.style.cssText='margin-left:8px;padding:1px 9px;font:inherit;font-size:11px;cursor:pointer;border:1px solid currentColor;border-radius:10px;background:transparent;color:inherit';
+  b.onclick=function(){roadsStatus('Loading road network…',false);loadRoads(true);};
+  st.appendChild(b);
+}
+/* Registered once and kept across teardown/rebuild: MapLibre keys delegated
+   listeners by layer id, so re-adding 'roadnet-hit' reuses them. Re-registering
+   on every rebuild would fire onPick twice per click. */
+function wireRoadHandlers(){
+  if(_roadsWired)return;_roadsWired=true;
+  map.on('click','roadnet-hit',e=>{const _t=map.queryRenderedFeatures(e.point)[0];if(_t&&/^(as-|pci|trafficstn)/.test(_t.layer.id))return;if(e.features.length){let _lane=null;try{const _cl=CONDLAYERS.filter(id=>map.getLayer(id));if(_cl.length){const _lf=map.queryRenderedFeatures(e.point,{layers:_cl});if(_lf&&_lf.length){const _m=/^seg-(.+)$/.exec(_lf[0].layer.id);if(_m)_lane=_m[1];}}}catch(_e){}onPick(e.features[0].properties.road,e.lngLat,_lane);}});
+  map.on('mouseenter','roadnet-hit',()=>map.getCanvas().style.cursor='pointer');
+  map.on('mouseleave','roadnet-hit',()=>map.getCanvas().style.cursor='');
+}
+function renderRoads(gj,noFit){
+  gj.features.forEach(f=>{ROADS[f.properties.road]=f;});
+  buildAttrMeta(gj);
+  renderNetLegend(null);
+  if(map.getSource('roadnet')&&map.getLayer('roadnet')){
+    map.getSource('roadnet').setData(gj);
+  }else{
+    /* A source left over from a half-built attempt would make addSource throw
+       ("There is already a source with this ID"), so clear before rebuilding. */
+    teardownRoads();
+    map.addSource('roadnet',{type:'geojson',data:gj});
+    map.addLayer({id:'roadnet-casing',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#0b1322','line-width':netCasingWidth()}});
+    map.addLayer({id:'roadnet',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netColor(),'line-width':netWidth()}});
+    map.addLayer({id:'roadnet-hit',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#000000','line-opacity':0.01,'line-width':['interpolate',['linear'],['zoom'],8,12,12,16,16,24]}});
+    wireRoadHandlers();
+  }
+  /* build 120 — match the styled survey lines to the Road-network toggle (so
+     preloading roads on startup does NOT force them visible), but keep the
+     invisible hit layer ALWAYS clickable for Video-on-click. */
+  {const _sr=document.getElementById('showRoads');const _vv=(_sr&&_sr.checked)?'visible':'none';if(map.getLayer('roadnet'))map.setLayoutProperty('roadnet','visibility',_vv);if(map.getLayer('roadnet-casing'))map.setLayoutProperty('roadnet-casing','visibility',_vv);if(map.getLayer('roadnet-hit'))map.setLayoutProperty('roadnet-hit','visibility','visible');}
+  const b=new maplibregl.LngLatBounds();
+  gj.features.forEach(f=>{const g=f.geometry;if(!g)return;const w=a=>{if(typeof a[0]==='number')b.extend(a);else a.forEach(w);};if(g.coordinates)w(g.coordinates);});
+  if(!noFit&&!b.isEmpty())map.fitBounds(b,{padding:50});
+}
+function loadRoads(noFit){
+  /* Build 121 — in-flight de-dupe: on slow networks the /api/roads/geojson fetch
+     stays open for many seconds and the ready-check below only closes AFTER it
+     resolves, so concurrent callers each started their own ~6MB download.
+     Share the running promise instead. */
+  if(_roadsInflight)return _roadsInflight;
+  /* Build 122 — post-resolution guard: the in-flight de-dupe only covers
+     CONCURRENT callers. Once the first fetch RESOLVES, _roadsInflight resets to
+     null, so a later unconditional caller (13-search.js loadRoads(true), the
+     asset modules) re-downloaded the full roads GeoJSON even though the map
+     already held it. Build 172 checks the layer rather than just the source, so
+     a half-built network is rebuilt instead of being mistaken for a good one. */
+  if(roadsReady())return Promise.resolve();
+  var _p=fetchJsonRetry('/api/roads/geojson',3).then(gj=>{
+    if(!gj||!gj.features)throw new Error('malformed response');
+    if(!gj.features.length){roadsStatus('No road network uploaded yet.',false);return;}
+    renderRoads(gj,noFit);
+  }).catch(err=>{
+    /* Leave nothing half-built behind, or the retry would short-circuit. */
+    teardownRoads();
+    roadsStatus('Road network failed to load ('+err.message+').',true);
+  });
+  _roadsInflight=_p;
+  _p.then(function(){_roadsInflight=null;},function(){_roadsInflight=null;});
+  return _p;
+}
 const LANE_SLOTS=[{x:'CC',off:0},{x:'CL1',off:-1},{x:'CL2',off:-2},{x:'CR1',off:1},{x:'CR2',off:2}];
 const CONDLAYERS=LANE_SLOTS.map(s=>'seg-'+s.x);
 const CONDWIDTH=['interpolate',['linear'],['zoom'],10,2.6,16,6.5];
@@ -30,7 +117,7 @@ function addCondLayers(){if(map.getLayer('seg-CC'))return;/* create the lane lay
    preload (toggle off) never flashes the condition colours on before syncLazyVis runs. */
 const _cv=((document.getElementById('showCond')||{}).checked)?'visible':'none';LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;map.addLayer({id:id,type:'line',source:'segs',filter:condLaneFilter(s.x),layout:{'line-cap':'round','visibility':_cv},paint:{'line-color':laneColorExpr(s.x),'line-width':CONDWIDTH,'line-offset':laneOffset(s.off)}});map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='');});}
 let _segsInflight=null;
-function loadSegments(){if(_segsInflight)return _segsInflight;const _needRoads=!map.getSource('roadnet');var _sp=Promise.resolve(_needRoads?loadRoads(true):null).then(()=>{document.getElementById('status').textContent='Loading segments…';return fetchJsonRetry('/api/segments/geojson',3).then(gj=>{if(!gj||!gj.features||!gj.features.length){document.getElementById('status').textContent='No condition segments yet. Build them in the data console.';return;}DATA=gj;segsByRoad={};gj.features.forEach(f=>{const r=f.properties.road;(segsByRoad[r]=segsByRoad[r]||[]).push(f);let lv=f.properties.lane_vals;if(typeof lv==='string'){try{lv=JSON.parse(lv);}catch(e){lv=null;}}if(lv&&typeof lv==='object'){Object.keys(lv).forEach(xsp=>{f.properties['L_'+xsp]=1;const o=lv[xsp]||{};Object.keys(o).forEach(k=>{if(o[k]!=null)f.properties[xsp+'_'+k]=o[k];});});}});if(map.getSource('segs'))map.getSource('segs').setData(gj);else{/* tolerance:0 disables GeoJSON simplification — the default (0.375) collapses short condition segments to zero length at low zoom, so they only appeared once you zoomed in to ~10km. Keep every segment rendered at all zooms. */map.addSource('segs',{type:'geojson',data:gj,tolerance:0});addCondLayers();}applyColors();applyFilter();if(typeof updateNetScopeCard==='function')updateNetScopeCard();document.getElementById('status').textContent='✓ '+gj.features.length+' condition segments loaded.';});}).then(()=>{if(typeof syncLazyVis==='function')syncLazyVis();}).catch(e=>{document.getElementById('status').textContent='Error: '+e.message;});_segsInflight=_sp;_sp.then(function(){_segsInflight=null;},function(){_segsInflight=null;});return _sp;}
+function loadSegments(){if(_segsInflight)return _segsInflight;const _needRoads=!roadsReady();var _sp=Promise.resolve(_needRoads?loadRoads(true):null).then(()=>{document.getElementById('status').textContent='Loading segments…';return fetchJsonRetry('/api/segments/geojson',3).then(gj=>{if(!gj||!gj.features||!gj.features.length){document.getElementById('status').textContent='No condition segments yet. Build them in the data console.';return;}DATA=gj;segsByRoad={};gj.features.forEach(f=>{const r=f.properties.road;(segsByRoad[r]=segsByRoad[r]||[]).push(f);let lv=f.properties.lane_vals;if(typeof lv==='string'){try{lv=JSON.parse(lv);}catch(e){lv=null;}}if(lv&&typeof lv==='object'){Object.keys(lv).forEach(xsp=>{f.properties['L_'+xsp]=1;const o=lv[xsp]||{};Object.keys(o).forEach(k=>{if(o[k]!=null)f.properties[xsp+'_'+k]=o[k];});});}});if(map.getSource('segs'))map.getSource('segs').setData(gj);else{/* tolerance:0 disables GeoJSON simplification — the default (0.375) collapses short condition segments to zero length at low zoom, so they only appeared once you zoomed in to ~10km. Keep every segment rendered at all zooms. */map.addSource('segs',{type:'geojson',data:gj,tolerance:0});addCondLayers();}applyColors();applyFilter();if(typeof updateNetScopeCard==='function')updateNetScopeCard();document.getElementById('status').textContent='✓ '+gj.features.length+' condition segments loaded.';});}).then(()=>{if(typeof syncLazyVis==='function')syncLazyVis();}).catch(e=>{document.getElementById('status').textContent='Error: '+e.message;});_segsInflight=_sp;_sp.then(function(){_segsInflight=null;},function(){_segsInflight=null;});return _sp;}
 /* The "Play footage" button only renders when CATALOG[roadId] exists, so this
    fetch has to be reliable:
    - cache:'no-store' — some browsers heuristically cached this GET, so after a
