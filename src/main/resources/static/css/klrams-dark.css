@@ -622,6 +622,16 @@ select option:disabled{color:var(--k-faint)!important}
 .klpop details.trf-allcls[open]>summary::before{content:"– "}
 .fwd-legend{background:var(--k-elev)!important;border:1px solid var(--k-line)!important}
 .fwd-legend .fl-t{color:var(--k-accent)!important}
+.fwd-legend .fl-u{
+  color:var(--k-accent)!important;
+  background:rgba(45,212,191,.10)!important;
+  border:1px solid rgba(45,212,191,.28)!important;
+}
+.fwd-legend .fl-sub{color:var(--k-muted)!important}
+/* app.css paints the legend rows #3a4658 (dark navy on a light card), which on
+   the dark card was all but unreadable — it dimmed the FWD legend too. */
+.fwd-legend .fl-r{color:var(--k-text)!important}
+.fwd-legend .fl-r .fl-v{color:var(--k-text)!important}
 
 /* ---------- net-scope card (filter status) ---------- */
 #netScopeCard{

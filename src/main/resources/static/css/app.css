@@ -156,6 +156,11 @@
      header / icon / chevron visuals live in css/klrams-dark.css
      (see js/26-layers-collapse.js) */
   #pane-layers .grp-title.grp-toggle{cursor:pointer;user-select:none}
+  /* The expanded height is driven from js/26-layers-collapse.js: it sets the
+     group's real scrollHeight to animate, then releases the cap to none while
+     the group stays open. The 340px below is only the pre-JS fallback — as a
+     fixed cap it clipped any group whose content grew past it (a section with
+     two legends and its opacity cards open runs well over 600px). */
   #pane-layers .grp{overflow:hidden;max-height:340px;transition:max-height .3s cubic-bezier(.4,0,.2,1),opacity .22s ease,padding .3s ease,margin .3s ease,border-width .3s ease}
   #pane-layers .grp.grp-collapsed{max-height:0!important;opacity:0;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important;border-top-width:0!important;border-bottom-width:0!important;pointer-events:none}
   .fpane .hr{height:1px;background:var(--hair);margin:16px 0}
@@ -462,6 +467,15 @@
   .fwd-legend .fl-t{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#7b5aa6;margin-bottom:5px;font-weight:600}
   .fwd-legend .fl-r{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#3a4658;padding:1.5px 0}
   .fwd-legend .fl-r .sw{width:20px;height:6px;border-radius:3px;flex:none}
+  /* header row: short title on the left, unit chip on the right, so a long
+     legend title (e.g. the 2 km IRI one) never wraps into three lines */
+  .fwd-legend .fl-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .fwd-legend .fl-hd .fl-t{margin-bottom:0}
+  .fwd-legend .fl-u{flex:none;font-size:9.5px;font-weight:700;letter-spacing:.3px;white-space:nowrap;color:#7b5aa6;background:#f1e9fa;border:1px solid #e4d8f3;border-radius:20px;padding:1px 7px}
+  .fwd-legend .fl-sub{font-size:10.5px;color:#8193ac;margin:2px 0 7px;line-height:1.35}
+  /* band rows: label left, numeric range right-aligned on tabular figures */
+  .fwd-legend .fl-r .fl-l{flex:1;min-width:0}
+  .fwd-legend .fl-r .fl-v{flex:none;font-size:11px;font-weight:700;color:#42526b;font-variant-numeric:tabular-nums;white-space:nowrap}
   /* search */
   #search{position:absolute;top:14px;left:402px;z-index:5;width:360px;max-width:calc(100% - 420px)}
   #search input{width:100%;padding:10px 13px;border:1px solid var(--hair);border-radius:10px;font-size:13.5px;font-family:var(--sans);box-shadow:var(--shadow);background:#fff;color:var(--text)}

@@ -31,8 +31,34 @@
     return ICONS.road;
   }
 
-  function setState(title, body, collapsed){
-    body.classList.toggle('grp-collapsed', collapsed);
+  /* Height handling. app.css carries a fixed max-height on .grp purely so the
+     open/close can animate, but as a hard cap it CLIPPED any group taller than
+     it — the "Road condition data & FWD" section, with the FWD and 2 km IRI
+     legends plus the per-layer opacity cards, runs well past it and lost its
+     bottom rows. So: animate from the group's real scrollHeight, then release
+     the cap to none while it stays open, and put a concrete height back just
+     before collapsing so that direction animates too. Content that grows while
+     the group is open (a legend rendering, an opacity card expanding) is then
+     never cut off. */
+  function setState(title, body, collapsed, animate){
+    if(collapsed){
+      if(animate){
+        body.style.maxHeight = body.scrollHeight + 'px';
+        void body.offsetHeight;                  /* reflow: gives the transition a start value */
+      }
+      body.classList.add('grp-collapsed');       /* the class rule (max-height:0!important) wins */
+      body.style.maxHeight = '';
+    }else{
+      body.classList.remove('grp-collapsed');
+      body.style.maxHeight = body.scrollHeight + 'px';
+      var release = function(e){
+        if(e && e.propertyName && e.propertyName !== 'max-height') return;
+        body.style.maxHeight = 'none';
+        body.removeEventListener('transitionend', release);
+      };
+      body.addEventListener('transitionend', release);
+      setTimeout(release, 420);                  /* fallback if transitionend never fires */
+    }
     title.classList.toggle('is-collapsed', collapsed);
     title.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   }
@@ -72,7 +98,7 @@
 
       function toggle(){
         var collapsed = !body.classList.contains('grp-collapsed');
-        setState(title, body, collapsed);
+        setState(title, body, collapsed, true);
       }
 
       title.addEventListener('click', toggle);

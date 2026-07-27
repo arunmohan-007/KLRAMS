@@ -50,14 +50,22 @@
             ['step',['to-number',['get','worst_iri']],good,t.fair,fair,t.poor,poor]];
   }
 
+  /* Thresholds are user-editable, so print them on a fixed 2 decimals — the
+     ranges then line up as a column under font-variant-numeric:tabular-nums. */
+  function band(v){var n=+v;return isNaN(n)?'–':n.toFixed(2);}
+
   function renderLegend(){
     var el=document.getElementById('iri2kmLegend');if(!el)return;
     var t=thresholds();
-    var rows=[[(typeof GOOD!=='undefined')?GOOD:'#2ba66a','Good &lt; '+t.fair],
-              [(typeof FAIR!=='undefined')?FAIR:'#FFC400','Fair '+t.fair+' – '+t.poor],
-              [(typeof POOR!=='undefined')?POOR:'#da4b43','Poor &gt; '+t.poor]];
-    el.innerHTML='<div class="fl-t">Avg IRI per 2 km — worst of CL1 / CR1 (m/km)</div>'+
-      rows.map(function(r){return '<div class="fl-r"><span class="sw" style="background:'+r[0]+'"></span>'+r[1]+'</div>';}).join('');
+    var rows=[[(typeof GOOD!=='undefined')?GOOD:'#2ba66a','Good','&lt; '+band(t.fair)],
+              [(typeof FAIR!=='undefined')?FAIR:'#FFC400','Fair',band(t.fair)+' – '+band(t.poor)],
+              [(typeof POOR!=='undefined')?POOR:'#da4b43','Poor','&gt; '+band(t.poor)]];
+    el.innerHTML='<div class="fl-hd"><span class="fl-t">Avg IRI · 2 km</span><span class="fl-u">m/km</span></div>'+
+      '<div class="fl-sub">Worst of lanes CL1 / CR1</div>'+
+      rows.map(function(r){
+        return '<div class="fl-r"><span class="sw" style="background:'+r[0]+'"></span>'+
+               '<span class="fl-l">'+r[1]+'</span><span class="fl-v">'+r[2]+'</span></div>';
+      }).join('');
   }
 
   function num(v,d){
