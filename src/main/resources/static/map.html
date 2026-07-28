@@ -246,6 +246,24 @@
       </div>
     </details>
 
+    <details class="flt-sec" id="fsecIri">
+      <summary>Avg IRI &middot; 2 km</summary>
+      <div class="flt-lock">The <b>Avg IRI (2 km)</b> layer is off. <button class="btn ghost" onclick="enableLayer('showIri2km')">Turn on layer</button></div>
+      <div class="flt-body">
+        <div class="eyebrow">Worst-lane IRI range (m/km)</div>
+        <div class="row2"><input id="iriMin" type="number" step="0.1" class="full" placeholder="min"><input id="iriMax" type="number" step="0.1" class="full" placeholder="max"></div>
+        <div class="eyebrow" style="margin-top:11px">Worst lane</div>
+        <select id="iriLane" class="full">
+          <option value="">Any lane</option>
+          <option value="CL2">CL2</option><option value="CL1">CL1</option><option value="CC">CC</option>
+          <option value="CR1">CR1</option><option value="CR2">CR2</option>
+        </select>
+        <div class="row2"><button class="btn ghost" onclick="applyIri2kmFilter()">Apply</button><button class="btn ghost" onclick="clearIri2kmFilter()">Clear</button></div>
+        <div class="statusline" id="iriMatchInfo"></div>
+        <div class="note" style="margin:0">Shows 2 km bins whose worst-lane average IRI falls in the range. <b>Worst lane</b> narrows that to bins where a particular lane is the worst one.</div>
+      </div>
+    </details>
+
     <details class="flt-sec" id="fsecPci">
       <summary>PCI &middot; both layers</summary>
       <div class="flt-lock">No <b>PCI</b> layer is on. <button class="btn ghost" onclick="enableLayer('showPciAvg')">Turn on layer</button></div>
@@ -981,7 +999,7 @@
   <script src="js/15-main.js?v=122"></script>
   <script src="js/16-traffic.js?v=169"></script>
   <script src="js/17-measure.js?v=117"></script>
-  <script src="js/18-filters.js?v=117"></script>
+  <script src="js/18-filters.js?v=118"></script>
   <script src="js/19-asset-register.js?v=118"></script>
   <script src="js/20-asset-dashboard.js?v=117"></script>
   <script src="js/21-report-hub.js?v=118"></script>
@@ -995,7 +1013,7 @@
   <script src="js/31-traffic-dashboard.js?v=3"></script>
   <script src="js/30-condition-dashboard.js?v=3"></script>
   <script src="js/29-export.js?v=1"></script>
-  <script src="js/32-iri-2km.js?v=3"></script>
+  <script src="js/32-iri-2km.js?v=4"></script>
   <script src="js/launcher.js?v=161"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page

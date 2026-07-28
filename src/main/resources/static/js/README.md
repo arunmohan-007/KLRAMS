@@ -20,7 +20,7 @@ The viewer logic was previously one inline script in `map.html`. It is now split
 | 14 | `js/14-pci-engine.js` | IRC:82-2023 PCI engine: per-parameter indices, editable weights, rating bands, PCI map layers and popup. |
 | 15 | `js/15-main.js` | Application bootstrap — wires the search once the map style has loaded. |
 | 16 | `js/16-traffic.js` | Traffic stations: load from the Data Console store, place by chainage, popup with ADT / PHT / direction. |
-| 32 | `js/32-iri-2km.js` | Avg IRI (2 km · worst lane) layer — 2 km IRI roll-up from `/api/iri-2km/geojson`, coloured by the worst lane average in each bin, with a per-bin popup listing every lane the section carries. |
+| 32 | `js/32-iri-2km.js` | Avg IRI (2 km · worst lane) layer — 2 km IRI roll-up from `/api/iri-2km/geojson`, coloured by the worst lane average in each bin, with a per-bin popup listing every lane the section carries, plus its Filters-folder section (IRI range + worst lane). |
 | 29 | `js/29-export.js` | Per-layer export (Shapefile zip / GeoJSON / KML / KMZ / CSV) honouring the active filters; includes the in-browser ZIP/SHP/DBF/KML writers and the export menu UI. |
 
 Styling lives in `css/app.css`. The HTML shell and all on-screen markup remain in `map.html`.

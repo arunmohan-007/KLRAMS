@@ -4,7 +4,8 @@
    PCI (value range, both layers), Traffic (min ADT) — plus the
    layer-off lock handling shared by every filter section.
    (Network and Road-Condition filters keep their original logic
-   in 03/05; their controls are simply relocated into the folder.)
+   in 03/05, and the Avg IRI 2 km filter lives with its layer in
+   32-iri-2km.js; their controls are simply relocated into the folder.)
    ============================================================ */
 
 /* ---------- FWD: filter by D0 deflection (microns) ---------- */
@@ -76,7 +77,7 @@ function enableLayer(id){
 }
 function refreshFilterLocks(){
   [['fsecNet','showRoads'],['fsecCond','showCond'],['fsecTrf','showTraffic'],
-   ['fsecFwd','showFwd'],['fsecPci',null]].forEach(([sec,layer])=>{
+   ['fsecFwd','showFwd'],['fsecIri','showIri2km'],['fsecPci',null]].forEach(([sec,layer])=>{
     const s=document.getElementById(sec); if(!s) return;
     const on = (sec==='fsecPci') ? (fLayerOn('showPciAvg')||fLayerOn('showPciWorst')) : fLayerOn(layer);
     s.classList.toggle('locked', !on);
@@ -84,7 +85,7 @@ function refreshFilterLocks(){
 }
 (function(){
   if(typeof map==='undefined') return;
-  ['showRoads','showCond','showTraffic','showFwd','showPciAvg','showPciWorst'].forEach(id=>{
+  ['showRoads','showCond','showTraffic','showFwd','showIri2km','showPciAvg','showPciWorst'].forEach(id=>{
     const e=document.getElementById(id);
     if(e) e.addEventListener('change',()=>setTimeout(refreshFilterLocks,40));
   });

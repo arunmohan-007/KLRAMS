@@ -19,7 +19,9 @@
    coloured by worst_iri against the same Good/Fair/Poor IRI thresholds the
    condition layer uses (IRC:82-2023 — Good < 2.55, Poor > 3.30 m/km, editable
    under Road Condition). Clicking a bin lists every lane's average, worst
-   marked.
+   marked. The module also owns this layer's section of the Filters folder
+   (worst-lane IRI range + which lane is the worst); the shared layer-off lock
+   handling stays in 18-filters.js.
 
    Loaded as an ordered classic script from map.html; all modules share one
    global scope, so load order is preserved exactly.
@@ -126,7 +128,7 @@
       .addTo(map);
   }
 
-  var _inflight=null, _loaded=false;
+  var _inflight=null, _loaded=false, _data=null;
 
   function vis(){var t=document.getElementById(TOGGLE);return (t&&t.checked)?'visible':'none';}
 
@@ -150,7 +152,66 @@
       map.setPaintProperty(LAYER,'line-color',colorExpr());
       map.setLayoutProperty(LAYER,'visibility',vis());
     }
+    /* A filter set before the layer existed (the Filters folder is reachable
+       while the layer is still preloading) has to be re-applied to the new
+       layer, or it would silently show everything. */
+    applyIri2kmFilter(true);
   }
+
+  /* ---------- filter: worst-lane IRI range + which lane is the worst ----------
+     Mirrors the FWD / PCI sections of the Filters folder (18-filters.js). */
+  function filterInputs(){
+    var mn=parseFloat((document.getElementById('iriMin')||{}).value);
+    var mx=parseFloat((document.getElementById('iriMax')||{}).value);
+    var lane=((document.getElementById('iriLane')||{}).value||'').trim();
+    return {mn:mn,mx:mx,lane:lane,
+            any:(!isNaN(mn)||!isNaN(mx)||!!lane)};
+  }
+
+  function matchCount(f){
+    var el=document.getElementById('iriMatchInfo');if(!el)return;
+    if(!_data||!_data.features){el.textContent='';return;}
+    if(!f.any){el.textContent='';return;}
+    var n=0;
+    _data.features.forEach(function(ft){
+      var p=ft.properties||{},v=+p.worst_iri;
+      if(isNaN(v))return;
+      if(!isNaN(f.mn)&&v<f.mn)return;
+      if(!isNaN(f.mx)&&v>f.mx)return;
+      if(f.lane&&p.worst_lane!==f.lane)return;
+      n++;
+    });
+    el.textContent=n+' of '+_data.features.length+' bins match';
+  }
+
+  /* quiet=true is the internal re-apply after a (re)load — it must not report
+     "layer not loaded" when nothing is filtered. */
+  function applyIri2kmFilter(quiet){
+    var f=filterInputs();
+    if(!map.getLayer(LAYER)){
+      if(!quiet&&f.any){
+        var st=document.getElementById('status');
+        if(st)st.textContent='Avg IRI layer is still loading — the filter applies as soon as it is on the map.';
+      }
+      return;
+    }
+    var conds=['all'];
+    if(!isNaN(f.mn))conds.push(['>=',['to-number',['get','worst_iri']],f.mn]);
+    if(!isNaN(f.mx))conds.push(['<=',['to-number',['get','worst_iri']],f.mx]);
+    if(f.lane)conds.push(['==',['get','worst_lane'],f.lane]);
+    map.setFilter(LAYER, conds.length>1?conds:null);
+    matchCount(f);
+  }
+
+  function clearIri2kmFilter(){
+    ['iriMin','iriMax'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+    var l=document.getElementById('iriLane');if(l)l.value='';
+    if(map.getLayer(LAYER))map.setFilter(LAYER,null);
+    var el=document.getElementById('iriMatchInfo');if(el)el.textContent='';
+  }
+
+  window.applyIri2kmFilter=applyIri2kmFilter;
+  window.clearIri2kmFilter=clearIri2kmFilter;
 
   /* Load once and cache; silent=true is the background preload from 15-main.js
      (layer created hidden, toggling is then an instant visibility flip). */
@@ -167,6 +228,7 @@
         if(!silent&&st)st.textContent='No 2 km IRI data yet — build it in the Data Console (Condition Data → Build Avg IRI 2 km).';
         return;
       }
+      _data=gj;              /* kept for the filter's match count */
       addLayer(gj);
       _loaded=true;
       renderLegend();
