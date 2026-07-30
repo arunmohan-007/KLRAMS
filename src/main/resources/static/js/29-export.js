@@ -1,5 +1,5 @@
 /* ============================================================
-   KLRAMS viewer · 29-export.js   (build 171)
+   KLRAMS viewer · 29-export.js   (build 172)
    Per-layer data export — Shapefile (zip), GeoJSON, KML, KMZ, CSV.
 
    Every layer row in the Layers panel gets an export button that
@@ -16,6 +16,16 @@
    beyond the normal layer loaders, so it works even on the slow
    office links. The file includes a minimal ZIP (store), Shapefile
    (.shp/.shx/.dbf/.prj/.cpg) and KML writer — no new libraries.
+
+   Shapefile column names: the DBF format hard-limits field names to
+   10 characters, so long names cannot be written in full (CSV /
+   GeoJSON / KML keep them intact). Instead of blindly chopping at
+   10 chars ("Total_vehicles" -> "TOTAL_VEHI") the writer abbreviates
+   word by word — dictionary, then filler words, then vowels, then
+   the separators — so the result stays readable ("TOT_VEH"), and the
+   zip carries the full names in two sidecars: a QGIS style file
+   (.qml) that shows them as field aliases, and a plain
+   <layer>_field_names.csv lookup table.
    ============================================================ */
 (function(){
 'use strict';
@@ -53,11 +63,146 @@ function zipStore(entries){
   return out;
 }
 
+/* ================= DBF field names (10-char limit) =================
+   dBASE III fields are a fixed 11-byte name slot, so 10 characters is
+   the hard ceiling every GIS enforces — there is no long-name variant
+   of the format. What we can control is HOW the name is shortened.
+   shortField() squeezes a name down in escalating steps and only
+   mutilates it when nothing gentler fits:
+     1. exact alias for a name this app generates itself
+     2. per-word dictionary (VEHICLES -> VEH, CHAINAGE -> CH …)
+     3. drop filler words (Year_of_Construction -> YR_CONSTR)
+     4. drop the underscores  (2_lane_width -> F2LANEWD)
+     5. drop interior vowels, longest word first (LANE -> LAN -> LN)
+     6. when the name carries a measurement, drop the words around it
+        (Percentage_IS_Sieve_4.75mm -> PCT_4P75MM)
+     7. trim the longest word a character at a time
+   Anything holding a digit is protected throughout — in a sieve or
+   layer-thickness column the number IS the column, so it survives
+   while the wording around it gives way. Decimal points become "P"
+   (0.075mm -> 0P075MM) because DBF names allow only A-Z, 0-9 and _.
+   The full name is never lost: it travels in the .qml aliases and the
+   _field_names.csv lookup written next to the .shp.                */
+var DBF_ALIAS={           /* names this app builds — hand-picked shortenings */
+  'PCI_composite':'PCI_COMP','PCI_worst_lane':'PCI_WORST','ADT_veh_per_day':'ADT_PER_DY',
+  'Total_vehicles':'TOT_VEH','Survey_days':'SRVY_DAYS','Chainage_m':'CHAINAGE_M',
+  'From_ch_m':'FROM_CH_M','WKT_geometry':'WKT_GEOM','D0_microns':'D0_MICRON',
+  'Road_Name':'ROAD_NAME','Section_La':'SECTION_LA','Measrd_Len':'MEASRD_LEN',
+  /* geotechnical upload columns (the fixed schema in ASSET_UNITS_SCHEMA) */
+  'Observed Thickness of Wearing Course mm':'THK_WEAR',
+  'Observed Thickness of Binder Course mm':'THK_BINDER',
+  'Total Observed bituminous layers thickness mm':'THK_TOTBIT',
+  'Bulk Density of Wearing Course gmcc':'DENS_WEAR',
+  'Bulk Density of Binder Course gmcc':'DENS_BNDR',
+  'Sub Grade Soil Type':'SUBGR_SOIL','Sub Grade CBR':'SUBGR_CBR'
+};
+var DBF_WORD={            /* generic + road-sector vocabulary */
+  ADMINISTRATIVE:'ADMIN',ARTICULATED:'ARTIC',AVERAGE:'AVG',AXLE:'AXL',BEARING:'BRG',
+  BICYCLE:'CYCLE',BINDER:'BNDR',BITUMINOUS:'BITU',BRIDGE:'BRDG',CARRIAGEWAY:'CWAY',
+  CATEGORY:'CAT',CHAINAGE:'CH',CLASSIFICATION:'CLASS',COMMERCIAL:'COMM',COMPACTION:'CMPCT',
+  COMPOSITE:'COMP',CONDITION:'COND',CONSTITUENCY:'CONSTY',CONSTRUCTION:'CONSTR',
+  CONTENT:'CONT',COORDINATE:'COORD',COUNT:'CNT',COURSE:'CRS',CRACKING:'CRK',CRACK:'CRK',
+  CULVERT:'CLVT',DEFLECTION:'DEFL',DENSITY:'DENS',DEPARTMENT:'DEPT',DESCRIPTION:'DESC',
+  DIRECTION:'DIR',DISTRICT:'DIST',DRAINAGE:'DRAIN',ELEVATION:'ELEV',EXISTING:'EXIST',
+  FURNITURE:'FURN',GEOMETRY:'GEOM',GOVERNMENT:'GOVT',GRADATION:'GRAD',HEAVY:'HVY',
+  HIGHWAY:'HWY',IDENTIFIER:'ID',INFORMATION:'INFO',INSPECTION:'INSP',INVENTORY:'INV',
+  KILOMETER:'KM',KILOMETRE:'KM',LATITUDE:'LAT',LAYERS:'LYR',LAYER:'LYR',LENGTH:'LEN',
+  LIGHT:'LGT',LIMIT:'LMT',LIQUID:'LIQ',LOCATION:'LOC',LONGITUDE:'LON',MAINTENANCE:'MAINT',
+  MATERIAL:'MATL',MAXIMUM:'MAX',MEASURED:'MEASD',MEDIUM:'MED',MINIMUM:'MIN',
+  MOISTURE:'MOIST',MOTORISED:'MTR',MOTORIZED:'MTR',NUMBER:'NO',OBSERVED:'OBSD',
+  OPTIMUM:'OPT',PASSENGER:'PSGR',PASSING:'PASS',PATCH:'PTCH',PAVEMENT:'PAVT',
+  PERCENTAGE:'PCT',PERCENT:'PCT',PLASTICITY:'PLAS',PLASTIC:'PLAS',POTHOLE:'PHOLE',
+  PROPERTY:'PROP',QUANTITY:'QTY',RATING:'RTG',RAVELLING:'RAVEL',REFERENCE:'REF',
+  ROUGHNESS:'ROUGH',RUTTING:'RUT',SAMPLE:'SMPL',SECTION:'SEC',SHOULDER:'SHLDR',
+  SOAKED:'SOAK',STATION:'STN',STRUCTURE:'STRUC',SUBGRADE:'SUBGR',SURFACE:'SURF',
+  SURVEY:'SRVY',TEXTURE:'TEXT',THICKNESS:'THK',TOTAL:'TOT',TRACTOR:'TRCTR',TRAFFIC:'TRF',
+  TRAILER:'TRLR',TRUCK:'TRK',VEHICLES:'VEH',VEHICLE:'VEH',VOLUME:'VOL',WEARING:'WEAR',
+  WHEELER:'WHLR',WIDTH:'WD',WORK:'WRK',WORST:'WRST',YEAR:'YR'
+};
+var DBF_FILLER={OF:1,THE:1,AND:1,FOR:1,IN:1,ON:1,AT:1,TO:1,A:1,AN:1,BY:1,WITH:1,PER:1};
+function shortField(key,max){
+  max=max||10;
+  var raw=String(key).toUpperCase()
+    .replace(/(\d)[.,](\d)/g,'$1P$2')                  /* 4.75mm -> 4P75MM, keeps the value legible */
+    .replace(/[^A-Z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  if(!raw)raw='FIELD';
+  if(/^\d/.test(raw))raw='F_'+raw;
+  if(raw.length<=max)return raw;
+  var w=raw.split('_').filter(Boolean).map(function(x){return DBF_WORD[x]||x;});
+  var num=function(x){return /\d/.test(x);};            /* measurements are never mangled */
+  var uf=function(){var a=w.join('_');return a.length<=max?a:null;};   /* words kept apart */
+  var tf=function(){var b=w.join('');return b.length<=max?b:null;};    /* run together */
+  var out=uf();if(out)return out;
+  for(var i=w.length-1;i>=0&&w.length>1;i--){           /* filler words carry no meaning */
+    if(DBF_FILLER[w[i]]){w.splice(i,1);out=uf();if(out)return out;}
+  }
+  out=tf();if(out)return out;
+  var guard=0;
+  while(guard++<400){                                   /* interior vowels, longest word first */
+    var bi=-1,bl=3;                                     /* leave 1-3 char words (codes, lanes) alone */
+    for(var j=0;j<w.length;j++)if(w[j].length>bl&&!num(w[j])&&/[AEIOU]/.test(w[j].slice(1))){bl=w[j].length;bi=j;}
+    if(bi<0)break;
+    var s=w[bi],p=-1;
+    for(var k=s.length-1;k>=1;k--)if('AEIOU'.indexOf(s.charAt(k))>=0){p=k;break;}
+    w[bi]=s.slice(0,p)+s.slice(p+1);
+    out=uf()||tf();if(out)return out;
+  }
+  if(w.some(num)){
+    /* A measurement column: "Percentage_IS_Sieve_4.75mm" is really "% at
+       4.75 mm", so the sieve size and the leading subject are what must
+       survive. Shed the qualifiers between them from the right rather
+       than grinding every word down to consonants. */
+    for(var q=w.length-1;q>0;q--){
+      if(num(w[q]))continue;
+      w.splice(q,1);out=uf();if(out)return out;
+    }
+    out=tf();if(out)return out;
+  }
+  guard=0;
+  while(guard++<400){                                   /* last resort: shave the longest word */
+    var li=-1;
+    for(var m=0;m<w.length;m++)if(!num(w[m])&&(li<0||w[m].length>w[li].length))li=m;
+    if(li<0)for(var m2=0;m2<w.length;m2++)if(li<0||w[m2].length>w[li].length)li=m2;
+    if(w[li].length<=1)break;
+    w[li]=w[li].slice(0,-1);
+    out=uf()||tf();if(out)return out;
+  }
+  return w.join('').slice(0,max).replace(/_+$/,'')||'FIELD';
+}
+function nameFields(fields){
+  var used={};
+  fields.forEach(function(f){
+    var n=DBF_ALIAS[f.key]||shortField(f.key,10);
+    if(n.length>10)n=shortField(n,10);
+    var base=n,i=2;
+    while(used[n]){var sfx=String(i++);n=base.slice(0,10-sfx.length)+sfx;}
+    used[n]=1;f.name=n;
+  });
+  return fields;
+}
+/* Sidecars that carry the full names alongside the truncated ones. */
+function fieldMapCsv(fields){
+  var esc=function(v){var s=String(v==null?'':v);return /[",\n\r]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s;};
+  var out=['Shapefile_column,Full_name,Type,Width,Decimals'];
+  fields.forEach(function(f){
+    out.push([f.name,f.key,(f.type==='N'?'Number':'Text'),f.w,f.d].map(esc).join(','));
+  });
+  return '﻿'+out.join('\r\n')+'\r\n';
+}
+function qmlAliases(fields){
+  var out=['<!DOCTYPE qgis PUBLIC \'http://mrcc.com/qgis.dtd\' \'SYSTEM\'>','<qgis version="3.28.0">','  <aliases>'];
+  fields.forEach(function(f,i){
+    out.push('    <alias index="'+i+'" field="'+xmlEsc(f.name)+'" name="'+xmlEsc(f.key)+'"/>');
+  });
+  out.push('  </aliases>','</qgis>');
+  return out.join('\n')+'\n';
+}
+
 /* ================= DBF writer (attribute table) ================= */
-function dbfBuild(rows){
+function dbfFields(rows){
   var cols=[],seen={};
   rows.forEach(function(r){Object.keys(r).forEach(function(k){if(!seen[k]){seen[k]=1;cols.push(k);}});});
-  if(!cols.length){cols=['ID'];rows=rows.map(function(_,i){return {ID:String(i+1)};});}
+  if(!cols.length)cols=['ID'];
   var fields=cols.map(function(k){
     var maxW=1,numeric=true,dec=0,maxInt=1;
     rows.forEach(function(r){
@@ -69,14 +214,10 @@ function dbfBuild(rows){
     if(numeric&&nw<=18)return {key:k,type:'N',w:nw,d:dec};
     return {key:k,type:'C',w:Math.min(254,maxW),d:0};
   });
-  var used={};
-  fields.forEach(function(f){
-    var n=f.key.toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,10);
-    if(!n||/^\d/.test(n))n=('F'+n).slice(0,10);
-    var base=n,i=2;
-    while(used[n]){var sfx='_'+(i++);n=base.slice(0,10-sfx.length)+sfx;}
-    used[n]=1;f.name=n;
-  });
+  return nameFields(fields);
+}
+function dbfBuild(rows,fields){
+  fields=fields||dbfFields(rows);
   var hdr=32+32*fields.length+1;
   var rec=1;fields.forEach(function(f){rec+=f.w;});
   var buf=new Uint8Array(hdr+rec*rows.length+1),dv=new DataView(buf.buffer),d=new Date();
@@ -99,7 +240,11 @@ function dbfBuild(rows){
         if(s.length>f.w)s=s.slice(0,f.w);
         for(var j2=0;j2<s.length;j2++)buf[fo+f.w-s.length+j2]=s.charCodeAt(j2);
       }else{
-        var by=ENC.encode(s);if(by.length>f.w)by=by.slice(0,f.w);
+        var by=ENC.encode(s);
+        if(by.length>f.w){                              /* never cut mid-UTF-8-sequence */
+          var end=f.w;while(end>0&&(by[end]&0xC0)===0x80)end--;
+          by=by.slice(0,end);
+        }
         buf.set(by,fo);
       }
       fo+=f.w;
@@ -197,9 +342,15 @@ function shapefileZip(base,feats,rowFor){
   });
   var entries=[];
   function addSet(nm,built,rows){
+    var flds=dbfFields(rows);
     entries.push({name:nm+'.shp',data:built.shp},{name:nm+'.shx',data:built.shx},
-      {name:nm+'.dbf',data:dbfBuild(rows)},{name:nm+'.prj',data:ENC.encode(PRJ_WGS84)},
+      {name:nm+'.dbf',data:dbfBuild(rows,flds)},{name:nm+'.prj',data:ENC.encode(PRJ_WGS84)},
       {name:nm+'.cpg',data:ENC.encode('UTF-8')});
+    /* Only worth shipping the name sidecars when something actually got shortened. */
+    if(flds.some(function(f){return f.name.toLowerCase()!==String(f.key).toLowerCase();})){
+      entries.push({name:nm+'.qml',data:ENC.encode(qmlAliases(flds))},
+        {name:nm+'_field_names.csv',data:ENC.encode(fieldMapCsv(flds))});
+    }
   }
   if(pts.length&&lns.length){addSet(base+'_points',shpPointsBuild(pts),ptRows);addSet(base+'_lines',shpLinesBuild(lns),lnRows);}
   else if(pts.length)addSet(base,shpPointsBuild(pts),ptRows);
@@ -455,6 +606,7 @@ function doExport(key,fmt,param){
 /* ================= export menu UI ================= */
 var FORMATS=[
   {id:'shp',name:'Shapefile',desc:'ArcGIS · QGIS',
+   hint:'DBF columns are capped at 10 characters, so long names are abbreviated (Total_vehicles → TOT_VEH). The zip carries the full names in <layer>_field_names.csv, and QGIS shows them automatically from the .qml. Use CSV or GeoJSON if you need untouched column names.',
    icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg>'},
   {id:'geojson',name:'GeoJSON',desc:'Web GIS',
    icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4c-2 0-3 1-3 3v2c0 1.5-1 2.5-2 3 1 .5 2 1.5 2 3v2c0 2 1 3 3 3"/><path d="M16 4c2 0 3 1 3 3v2c0 1.5 1 2.5 2 3-1 .5-2 1.5-2 3v2c0 2-1 3-3 3"/></svg>'},
@@ -508,7 +660,7 @@ function openExpMenu(key,anchor){
     +'</div>'
     +paramRow
     +'<div class="kexp-grid">'
-      +FORMATS.map(function(f){return '<button type="button" class="kexp-f off f-'+f.id+'" data-fmt="'+f.id+'"><span class="kexp-fi">'+f.icon+'</span><span class="kexp-fn">'+f.name+'</span><span class="kexp-fd">'+f.desc+'</span></button>';}).join('')
+      +FORMATS.map(function(f){return '<button type="button" class="kexp-f off f-'+f.id+'" data-fmt="'+f.id+'"'+(f.hint?(' title="'+xmlEsc(f.hint)+'"'):'')+'><span class="kexp-fi">'+f.icon+'</span><span class="kexp-fn">'+f.name+'</span><span class="kexp-fd">'+f.desc+'</span></button>';}).join('')
     +'</div>'
     +'<div class="kexp-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Exports exactly what the map shows &mdash; active filters are applied.</span></div>';
   document.body.appendChild(m);
