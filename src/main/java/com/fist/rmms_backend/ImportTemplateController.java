@@ -13,7 +13,10 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Import templates — one per dataset, defining the mapping between the KLRAMS
@@ -86,6 +89,38 @@ public class ImportTemplateController {
             )""");
         jdbc.execute("CREATE INDEX IF NOT EXISTS itc_template_idx ON import_template_columns(template_id)");
         seedDefaults();
+        fixDateExamples();
+    }
+
+    /**
+     * Templates seeded before the dd-mmm-yyyy standard carry examples in the old
+     * numeric formats (traffic_counts DATE was 15/04/2026). Those examples feed the
+     * sample-CSV download, so leaving them in place hands surveyors a file that the
+     * validator now rejects. Rewrite any date example that fails isDate().
+     */
+    private void fixDateExamples() {
+        for (Map<String, Object> c : jdbc.queryForList(
+                "SELECT id, example FROM import_template_columns WHERE data_type = 'date'")) {
+            String ex = str(c.get("example"));
+            if (ex != null && isDate(ex)) continue;
+            jdbc.update("UPDATE import_template_columns SET example = ? WHERE id = ?",
+                        toStdDate(ex), c.get("id"));
+        }
+    }
+
+    /** Best-effort rewrite of a legacy example into dd-mmm-yyyy; falls back to a canonical one. */
+    private static String toStdDate(String v) {
+        Matcher m = Pattern.compile("^(\\d{1,2})[/\\-.](\\d{1,2})[/\\-.](\\d{4})$")
+                           .matcher(v == null ? "" : v.trim());
+        if (m.matches()) {
+            int mo = Integer.parseInt(m.group(2));
+            if (mo >= 1 && mo <= 12) {
+                String mon = MONTHS.get(mo - 1);
+                return String.format("%02d-%s%s-%s", Integer.parseInt(m.group(1)),
+                    mon.substring(0, 1).toUpperCase(), mon.substring(1), m.group(3));
+            }
+        }
+        return "15-Apr-2020";
     }
 
     /* ============================== CRUD ============================== */
@@ -294,7 +329,7 @@ public class ImportTemplateController {
                     } else if ("number".equals(type) && !isNumber(v)) {
                         problem = "not a number";
                     } else if ("date".equals(type) && !isDate(v)) {
-                        problem = "not a recognised date (use dd/mm/yyyy, yyyy-mm-dd or 15-Apr-2020)";
+                        problem = "wrong date format — use " + DATE_FORMAT_HINT;
                     }
                     if (problem != null) {
                         totalErrors++;
@@ -373,10 +408,33 @@ public class ImportTemplateController {
         catch (Exception e) { return false; }
     }
 
-    private static boolean isDate(String v) {
-        return v.matches("\\d{1,2}[/\\-.]\\d{1,2}[/\\-.]\\d{4}.*")      // dd/mm/yyyy
-            || v.matches("\\d{4}[/\\-.]\\d{1,2}[/\\-.]\\d{1,2}.*")      // yyyy-mm-dd
-            || v.matches("(?i)\\d{1,2}[\\- ][a-z]{3,9}[\\- ]\\d{4}");   // 15-Apr-2020
+    /**
+     * KLRAMS standard date format — dd-mmm-yyyy (15-Apr-2020) and nothing else.
+     *
+     * Numeric formats used to be accepted too, but they are ambiguous across the
+     * agencies that submit data: 05/04/2026 reads as either 5 April or 4 May, and
+     * a 2-digit year (05-04-26) is unreadable altogether. A mis-read date silently
+     * collapses a multi-day survey into one day and inflates every per-day figure
+     * derived from it, so files are now rejected at upload rather than guessed at.
+     */
+    static final String DATE_FORMAT_HINT = "dd-mmm-yyyy (e.g. 15-Apr-2020)";
+    private static final Pattern DATE_STD =
+        Pattern.compile("(?i)^(\\d{2})-(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)-(\\d{4})$");
+    private static final List<String> MONTHS =
+        List.of("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec");
+
+    static boolean isDate(String v) {
+        Matcher m = DATE_STD.matcher(v == null ? "" : v.trim());
+        if (!m.matches()) return false;
+        // the pattern allows 00-31 in any month; reject days the calendar does not have
+        try {
+            LocalDate.of(Integer.parseInt(m.group(3)),
+                         MONTHS.indexOf(m.group(2).toLowerCase()) + 1,
+                         Integer.parseInt(m.group(1)));
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static String csv(String v) {
@@ -523,7 +581,7 @@ public class ImportTemplateController {
 
         seed("traffic_counts", List.of(
             new Col("STATION_NAME", "text", null, true, "TVM_STN_021"),
-            new Col("DATE", "date", null, true, "15/04/2026"),
+            new Col("DATE", "date", null, true, "15-Apr-2026"),
             new Col("TIME", "text", null, true, "08:00"),
             new Col("DIRECTION", "text", null, false, "Up"),
             new Col("Car", "number", "Count", false, "42"),

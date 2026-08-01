@@ -113,6 +113,10 @@ public class AssetController {
             // before any other processing (never bypassed by force).
             Map<String, Object> wrongType = validateGeoHeader(type, data);
             if (wrongType != null) return wrongType;
+            // Date-format guard: every date column must use the KLRAMS standard
+            // dd-mmm-yyyy (also never bypassed by force).
+            Map<String, Object> badDates = validateDates(data);
+            if (badDates != null) return badDates;
             // Re-upload guard: a section in this file may already have rows of this
             // type (same period for survey streams). Importing would silently replace
             // them, so when force=false nothing is written — the response lists the
@@ -351,6 +355,56 @@ public class AssetController {
             + " data — none of its columns match (expected e.g. " + GEO_EXPECT.get(type) + ")."
             + (looksLike != null ? " It looks like " + looksLike + " data — use that importer instead." : "")
             + " Nothing was imported.");
+        return r;
+    }
+
+    /** Is this a date column? Matched on whole words so "Updated"/"Validated" don't qualify. */
+    private static boolean isDateColumn(String header) {
+        for (String t : header.toLowerCase().split("[^a-z]+"))
+            if (t.equals("date") || t.equals("dates")) return true;
+        return false;
+    }
+
+    /**
+     * null when every date cell uses the KLRAMS standard dd-mmm-yyyy; otherwise an
+     * error response naming the offending column and values. Dates arrive here as
+     * free-text attrs, so nothing downstream would flag a wrongly-formatted one —
+     * and a date nobody can parse is worse than a missing one, because 05/04/2026
+     * reads as 5 April or 4 May depending on who exported the file. Blank cells are
+     * allowed: the date is optional on these streams.
+     */
+    private Map<String, Object> validateDates(byte[] data) throws Exception {
+        BufferedReader br = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(data), StandardCharsets.UTF_8));
+        String header = br.readLine();
+        if (header == null) return null;
+        String[] cols = parse(header);
+        List<Integer> dateCols = new ArrayList<>();
+        for (int i = 0; i < cols.length; i++)
+            if (isDateColumn(cols[i].replace("﻿", "").trim())) dateCols.add(i);
+        if (dateCols.isEmpty()) return null;
+
+        int bad = 0, row = 1;
+        String badCol = null;
+        List<String> samples = new ArrayList<>();
+        String line;
+        while ((line = br.readLine()) != null) {
+            row++;
+            if (line.trim().isEmpty()) continue;
+            String[] c = parse(line);
+            for (int i : dateCols) {
+                String v = i < c.length ? c[i].trim() : "";
+                if (v.isEmpty() || ImportTemplateController.isDate(v)) continue;
+                bad++;
+                if (badCol == null) badCol = cols[i].replace("﻿", "").trim();
+                if (samples.size() < 5 && !samples.contains(v)) samples.add("“" + v + "” (row " + row + ")");
+            }
+        }
+        if (bad == 0) return null;
+        Map<String, Object> r = new HashMap<>();
+        r.put("status", "error");
+        r.put("message", bad + " value(s) in the \"" + badCol + "\" column are not in the required date format "
+            + ImportTemplateController.DATE_FORMAT_HINT + ": " + String.join(", ", samples)
+            + ". Re-export that column in that format. Nothing was imported.");
         return r;
     }
 

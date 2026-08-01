@@ -8,6 +8,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Traffic Dashboard figures — per survey period, state-wide and district-wise,
@@ -144,8 +146,8 @@ public class TrafficDashboardController {
                 bc.fieldNames().forEachRemaining(k -> byClass.merge(k, num(bc.get(k)), Double::sum));
 
             String dmin = txt(c.get("dateMin")), dmax = txt(c.get("dateMax"));
-            if (dmin != null && (dateMin == null || dmin.compareTo(dateMin) < 0)) dateMin = dmin;
-            if (dmax != null && (dateMax == null || dmax.compareTo(dateMax) > 0)) dateMax = dmax;
+            if (dmin != null && (dateMin == null || before(dmin, dateMin))) dateMin = dmin;
+            if (dmax != null && (dateMax == null || before(dateMax, dmax))) dateMax = dmax;
         }
 
         Map<String, Object> toMap() {
@@ -201,6 +203,38 @@ public class TrafficDashboardController {
     }
 
     private static String pad(int n) { return (n < 10 ? "0" : "") + n; }
+
+    /**
+     * Is display date {@code a} earlier than {@code b}? These are the stored survey
+     * dates of the two carriageways of an A/B station, written by the Data Console.
+     * New imports are dd-mmm-yyyy; counts stored before that standard are dd/mm/yyyy,
+     * and neither sorts correctly as a plain string, so both are parsed to a day
+     * number first. Unparseable values sort last so a good date always wins.
+     */
+    private static boolean before(String a, String b) {
+        long x = dayKey(a), y = dayKey(b);
+        return x < y;
+    }
+
+    private static final List<String> MON =
+        List.of("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec");
+
+    /** yyyymmdd for dd-mmm-yyyy or the legacy dd/mm/yyyy; Long.MAX_VALUE if unreadable. */
+    private static long dayKey(String s) {
+        if (s == null) return Long.MAX_VALUE;
+        String v = s.trim();
+        Matcher m = Pattern.compile("(?i)^(\\d{1,2})-([a-z]{3})-(\\d{4})$").matcher(v);
+        if (m.matches()) {
+            int mo = MON.indexOf(m.group(2).toLowerCase());
+            if (mo >= 0) return key(Integer.parseInt(m.group(3)), mo + 1, Integer.parseInt(m.group(1)));
+        }
+        m = Pattern.compile("^(\\d{1,2})[/\\-.](\\d{1,2})[/\\-.](\\d{4})$").matcher(v);
+        if (m.matches())
+            return key(Integer.parseInt(m.group(3)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(1)));
+        return Long.MAX_VALUE;
+    }
+
+    private static long key(int y, int m, int d) { return y * 10000L + m * 100L + d; }
 
     private static String rangeLabel(Map<String, Object> p) {
         Object s = p.get("start_date"), e = p.get("end_date");
