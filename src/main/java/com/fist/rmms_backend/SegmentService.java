@@ -231,12 +231,23 @@ public class SegmentService {
         ensurePciColumns();
         // ST_AsGeoJSON(geom, 6): 6-decimal coordinates (~0.1 m) cut the payload size
         // substantially versus the 9-decimal default, with no visible loss for roads.
-        String sql = """
+        //
+        // Flat lane fields (CC_iri … L_CR2) are merged as jsonb rather than more
+        // json_build_object arguments: that function caps at 100 args, and the
+        // existing bag plus 40 flat pairs would overflow. jsonb_strip_nulls keeps
+        // the flat bag aligned with 07-data-loaders.js (which only writes a key
+        // when the value is present) without touching nulls in the base properties
+        // such as unset pci_def_*. lane_vals stays — the PCI engine still reads it.
+        // Derived here so an old database needs no migration and no Build Segments
+        // rerun.
+        String sql =
+            """
             SELECT json_build_object('type','FeatureCollection','features',
                 COALESCE(json_agg(json_build_object(
                     'type','Feature',
                     'geometry', ST_AsGeoJSON(geom, 6)::json,
                     'properties', json_build_object(
+                        'seg_id', seg_id,
                         'road', section_label, 'from_ch', start_chainage, 'to_ch', end_chainage,
                         'iri', iri, 'crack', crack, 'pothole', pothole, 'rutting', rutting,
                         'texture', texture, 'patch_work', patch_work, 'ravelling', ravelling,
@@ -244,9 +255,14 @@ public class SegmentService {
                         'avg_rutting', avg_rutting, 'avg_texture', avg_texture,
                         'avg_patch_work', avg_patch_work, 'avg_ravelling', avg_ravelling,
                         'lane_count', lane_count, 'xsp_list', xsp_list, 'lane_vals', lane_vals,
-                        'pci_def_avg', pci_def_avg, 'pci_def_worst', pci_def_worst)
+                        'pci_def_avg', pci_def_avg, 'pci_def_worst', pci_def_worst)::jsonb
+                        || jsonb_strip_nulls(
+            """
+            + SegmentLaneColumns.flatJsonbObject("s")
+            + """
+                        )
                 )), '[]'::json))::text
-            FROM condition_segments WHERE period_id = ?
+            FROM condition_segments s WHERE period_id = ?
             """;
         return jdbc.queryForObject(sql, String.class, periodId);
     }
