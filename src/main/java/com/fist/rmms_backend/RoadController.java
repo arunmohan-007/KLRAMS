@@ -72,6 +72,51 @@ public class RoadController {
         return "{\"ok\":true,\"message\":\"road geojson cache cleared\"}";
     }
 
+    /**
+     * ONE road's full, unclipped geometry — for NSV, and only for NSV.
+     *
+     * <p>{@code 12-nsv-video.js} runs {@code turf.nearestPointOnLine} over the entire road
+     * LineString to convert a video-frame click into a chainage. A vector tile carries only the
+     * geometry clipped to that tile's boundary, so feeding tile-sourced geometry into that same
+     * calculation would silently miscompute chainage near every tile edge. This endpoint is the
+     * escape hatch: the map's condition/road RENDERING can come from tiles, while NSV fetches the
+     * one road it is actually playing, in full, on demand.
+     *
+     * <p>Deliberately uncached and uncompressed-by-cache — one road is a few KB, nowhere near the
+     * multi-MB payloads {@link GeoJsonResponse}'s ETag machinery exists for, and NSV needs this
+     * exactly once per road selected, not on every frame.
+     *
+     * <p>{@code section} is a query parameter, not a {@code /roads/{id}/geojson} path segment,
+     * because a section label is not a safe path segment: labels look like
+     * {@code KPWD/MDR/501010103/17} — a literal {@code /} in the value — and Tomcat rejects an
+     * encoded slash in a path segment by default. A query parameter has no such restriction; the
+     * value is bound, never concatenated into SQL either way.
+     */
+    @GetMapping(value = "/one/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> oneRoadGeojson(@RequestParam("section") String sectionLabel) {
+        String sql = """
+            SELECT json_build_object(
+                'type','FeatureCollection',
+                'features', COALESCE(json_agg(
+                    json_build_object(
+                        'type','Feature',
+                        'geometry', ST_AsGeoJSON(r.geom, 6)::json,
+                        'properties', (to_jsonb(r) - 'geom')
+                            || jsonb_build_object(
+                                 'road', r."Section_La",
+                                 'name', r."Road_Name",
+                                 'len',  r."Measrd_Len"
+                               )
+                    )
+                ), '[]'::json)
+            )::text
+            FROM roads r
+            WHERE r.geom IS NOT NULL AND r."Section_La" = ?
+            """;
+        String body = jdbc.queryForObject(sql, String.class, sectionLabel);
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body);
+    }
+
     private String buildGeojson() {
         String sql = """
             SELECT json_build_object(
