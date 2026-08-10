@@ -64,7 +64,7 @@ function ensureBoundary(type){
 function loadBoundaries(){return Promise.all([ensureBoundary('district'),ensureBoundary('constituency')]);}
 
 /* ---- linear referencing: from/to chainage -> stretch along road centreline ---- */
-function ensureRoads(){if(ROADS&&Object.keys(ROADS).length)return Promise.resolve();return fetch('/api/roads/geojson').then(r=>r.json()).then(gj=>{((gj&&gj.features)||[]).forEach(f=>{if(f&&f.properties&&f.properties.road!=null)ROADS[f.properties.road]=f;});}).catch(()=>{});}
+function ensureRoads(){return ensureFullRoadsGeojson().then(()=>{});}
 const ROAD_KEYS=['road','label','sectionla','section','sectionlabel','roadid','roadno','roadnumber','roadname','secid'];
 const FROM_KEYS=['fromch','fromchainage','startch','startchainage','chainagefrom','chfrom','frch','fromm','startm','from','start'];
 const TO_KEYS=['toch','tochainage','endch','endchainage','chainageto','chto','tch','tom','endm','to','end'];

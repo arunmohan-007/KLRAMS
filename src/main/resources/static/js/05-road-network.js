@@ -58,9 +58,32 @@ function buildAttrMeta(gj){
     const valuesByFreq=[...distinct.keys()].sort((a,b)=>(distinct.get(b)-distinct.get(a))||a.localeCompare(b));
     ATTRS[k]={numeric:numeric&&min!==Infinity,min,max,values:[...distinct.keys()].sort(),valuesByFreq};
   });
+  populateColorBySelect();
+}
+function populateColorBySelect(){
   const sel=document.getElementById('netColorBy');
   sel.innerHTML='<option value="__class__">Default (SH / MDR)</option>';
   Object.keys(ATTRS).sort().forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k+(ATTRS[k].numeric?' (numeric)':'');sel.appendChild(o);});
+}
+/* Tile-mode twin of buildAttrMeta(gj): same ATTRS shape, but asked of
+   /api/roads/attrs + /api/roads/attr-meta instead of scanned out of a
+   downloaded FeatureCollection. Only worth doing because a MapLibre `match`
+   expression has to have every category and its colour baked in before the
+   first tile is even requested -- a paint expression can't compute "what
+   values exist" from data it hasn't rendered yet, so this is the one
+   question about the network a tile itself can never answer.
+   /api/roads/attrs already excludes id/geom and never contains the
+   road/name/len aliases (those aren't real columns), so no SKIP_ATTRS
+   filtering is needed here the way buildAttrMeta needs it against raw
+   feature properties. */
+function buildAttrMetaFromServer(){
+  return fetch('/api/roads/attrs').then(r=>r.json()).then(list=>{
+    ATTRS={};
+    return Promise.all(list.map(a=>
+      fetch('/api/roads/attr-meta?attr='+encodeURIComponent(a.attr))
+        .then(r=>r.json()).then(meta=>{ATTRS[a.attr]=meta;})
+    ));
+  }).then(populateColorBySelect);
 }
 function netColorByExpr(attr){
   const m=ATTRS[attr];

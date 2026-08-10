@@ -81,6 +81,55 @@ function renderRoads(gj,noFit){
   gj.features.forEach(f=>{const g=f.geometry;if(!g)return;const w=a=>{if(typeof a[0]==='number')b.extend(a);else a.forEach(w);};if(g.coordinates)w(g.coordinates);});
   if(!noFit&&!b.isEmpty())map.fitBounds(b,{padding:50});
 }
+/* The road network's ROAD_TILE_LAYER inside the MVT, as RoadTileService names it.
+   Every layer bound to the vector 'roadnet' source must declare it, or MapLibre
+   silently renders nothing at all -- no error, no warning, just a blank layer. */
+const ROAD_TILE_LAYER='roads';
+/* Build the vector-tile roadnet source + its three layers, with none of the
+   ~4 MB GeoJSON fetch loadRoads() otherwise needs: the tile source only ever
+   asks for the current viewport, and the whole-network questions (search,
+   the attribute filter, the asset register) are answered by RoadsIndex
+   instead, which is 43x lighter because it carries no geometry at all. */
+function ensureRoadSource(){
+  if(roadsReady())return Promise.resolve();
+  teardownRoads();
+  map.addSource('roadnet',{type:'vector',
+    tiles:[location.origin+'/api/roads/tiles/{z}/{x}/{y}.mvt'],
+    minzoom:0,maxzoom:16});
+  const mk=(id,extra)=>Object.assign({id:id,type:'line',source:'roadnet','source-layer':ROAD_TILE_LAYER},extra);
+  map.addLayer(mk('roadnet-casing',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#0b1322','line-width':netCasingWidth()}}));
+  map.addLayer(mk('roadnet',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netColor(),'line-width':netWidth()}}));
+  map.addLayer(mk('roadnet-hit',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#000000','line-opacity':0.01,'line-width':['interpolate',['linear'],['zoom'],8,12,12,16,16,24]}}));
+  wireRoadHandlers();
+  /* Same rule as the GeoJSON path: preloading roads must not force them
+     visible, but the invisible hit layer stays clickable always. */
+  {const _sr=document.getElementById('showRoads');const _vv=(_sr&&_sr.checked)?'visible':'none';
+   map.setLayoutProperty('roadnet','visibility',_vv);
+   map.setLayoutProperty('roadnet-casing','visibility',_vv);
+   map.setLayoutProperty('roadnet-hit','visibility','visible');}
+  return Promise.resolve();
+}
+/* Line-referenced assets (bridges, line furniture) and chainage-placed
+   traffic stations both need REAL geometry for whichever roads they
+   reference -- not one road (NSV's need), not metadata (search/filter/
+   register's need). That requirement is untouched by the tile flip and
+   costs exactly what it always has; this exists only so ensureRoads()
+   (04-geo-helpers-boundaries.js) and trfEnsureRoads() (16-traffic.js)
+   share ONE fetch instead of each bypassing loadRoads()'s TILES_ON gate
+   and re-requesting the full network directly. In GeoJSON mode, if the
+   normal preload already populated ROADS, this is a no-op -- identical to
+   today. In tile mode it still has to fetch the full network once, the
+   same cost this already carried before any of this migration existed. */
+let _fullRoadsPromise=null;
+function ensureFullRoadsGeojson(){
+  if(!TILES_ON&&Object.keys(ROADS).length)return Promise.resolve();
+  if(_fullRoadsPromise)return _fullRoadsPromise;
+  _fullRoadsPromise=fetchJsonRetry('/api/roads/geojson',3).then(gj=>{
+    ((gj&&gj.features)||[]).forEach(f=>{if(f&&f.properties&&f.properties.road!=null)ROADS[f.properties.road]=f;});
+    return gj;
+  }).catch(()=>null);
+  return _fullRoadsPromise;
+}
 function loadRoads(noFit){
   /* Build 121 — in-flight de-dupe: on slow networks the /api/roads/geojson fetch
      stays open for many seconds and the ready-check below only closes AFTER it
@@ -94,6 +143,22 @@ function loadRoads(noFit){
      already held it. Build 172 checks the layer rather than just the source, so
      a half-built network is rebuilt instead of being mistaken for a good one. */
   if(roadsReady())return Promise.resolve();
+  if(TILES_ON){
+    /* Every caller of loadRoads() -- search, the asset modules, 15-main.js's
+       preload -- gets tile mode for free from here; none of them need to know
+       which mode is active. */
+    var _tp=Promise.all([
+      ensureRoadSource(),
+      RoadsIndex.ensure(),
+      (typeof buildAttrMetaFromServer==='function')?buildAttrMetaFromServer():Promise.resolve()
+    ]).then(()=>{if(typeof renderNetLegend==='function')renderNetLegend(null);}).catch(err=>{
+      teardownRoads();
+      roadsStatus('Road network failed to load ('+err.message+').',true);
+    });
+    _roadsInflight=_tp;
+    _tp.then(function(){_roadsInflight=null;},function(){_roadsInflight=null;});
+    return _tp;
+  }
   var _p=fetchJsonRetry('/api/roads/geojson',3).then(gj=>{
     if(!gj||!gj.features)throw new Error('malformed response');
     if(!gj.features.length){roadsStatus('No road network uploaded yet.',false);return;}
