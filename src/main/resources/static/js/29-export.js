@@ -475,14 +475,14 @@ function assetEntry(type,label,color,toggle){
 function pciEntry(prop,label,toggle,color){
   return {label:label,color:color,toggle:toggle,
     ensure:function(){
-      if(typeof DATA!=='undefined'&&DATA&&DATA.features&&DATA.features.length&&DATA.features[0].properties.pci_avg!==undefined)return Promise.resolve();
-      var p=(typeof DATA!=='undefined'&&DATA&&DATA.features)?Promise.resolve():loadSegments();
+      if(Segs.hasPci())return Promise.resolve();
+      var p=Segs.ensure();
       return p.then(function(){
-        if(typeof generatePCI==='function'&&typeof DATA!=='undefined'&&DATA&&DATA.features&&DATA.features.length&&DATA.features[0].properties.pci_avg===undefined)generatePCI(true);
+        if(typeof generatePCI==='function'&&Segs.loaded()&&!Segs.hasPci())generatePCI(true);
       });
     },
     collect:function(){
-      var all=(typeof DATA!=='undefined'&&DATA&&DATA.features)||[];
+      var all=Segs.all();
       var mn=parseFloat((document.getElementById('pciMin')||{}).value),mx=parseFloat((document.getElementById('pciMax')||{}).value);
       var fs=all.filter(function(f){
         var p=f.properties||{},v=+p[prop];
@@ -504,9 +504,9 @@ var EXP={
       return {feats:fs,total:all.length,filtered:!!window.NET_SCOPE};
     }},
   cond:{label:'Road condition data',color:'#2ba66a',toggle:'showCond',hasParam:true,
-    ensure:function(){return (typeof DATA!=='undefined'&&DATA&&DATA.features)?Promise.resolve():loadSegments();},
+    ensure:function(){return Segs.ensure();},
     collect:function(param){
-      var all=(typeof DATA!=='undefined'&&DATA&&DATA.features)||[];
+      var all=Segs.all();
       var m=(typeof matchingFeatures==='function')?matchingFeatures():null;
       var fs=m||all,condF=!!m;
       if(window.NET_SCOPE)fs=fs.filter(function(f){return inScope((f.properties||{}).road);});

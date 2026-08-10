@@ -39,7 +39,7 @@ map.on('load',()=>{
           .then(()=>{try{if(window.FWD&&FWD.load)return FWD.load();}catch(e){}});
       }catch(e){return Promise.resolve();}};
       const _preloadPci=()=>{setTimeout(()=>{try{
-        if(typeof generatePCI==='function'&&typeof DATA!=='undefined'&&DATA&&!map.getLayer('pci-avg'))generatePCI(true);
+        if(typeof generatePCI==='function'&&Segs.collection()&&!map.getLayer('pci-avg'))generatePCI(true);
       }catch(e){}},300);};
       /* Build 170 — if the user jumps straight into NSV footage, hold the
          remaining background steps while the video is actually PLAYING: the FWD
