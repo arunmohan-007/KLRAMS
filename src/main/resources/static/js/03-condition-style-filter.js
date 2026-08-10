@@ -28,9 +28,32 @@ function renderFilters(){const box=document.getElementById('filters');box.innerH
 function activeRows(){return filters.filter(f=>f.val!==''&&!isNaN(+f.val));}
 function filterExpr(){const r=activeRows();if(!r.length)return null;return [mode==='all'?'all':'any',...r.map(f=>['all',['!=',['coalesce',['get',f.param],-1],-1],[OPS[f.op],['get',f.param],+f.val]])];}
 let _condFitT=null;
-function matchingFeatures(){const rows=activeRows();if(!DATA||!rows.length)return null;return DATA.features.filter(ft=>{const p=ft.properties;const t=rows.map(f=>{const raw=p[f.param];if(raw==null)return false;const v=+raw;switch(f.op){case'>':return v>+f.val;case'>=':return v>=+f.val;case'<':return v<+f.val;case'<=':return v<=+f.val;case'=':return v==+f.val;}});return mode==='all'?t.every(Boolean):t.some(Boolean);});}
-function matchCount(){if(!DATA)return;const rows=activeRows();const fts=matchingFeatures();const n=fts?fts.length:DATA.features.length;document.getElementById('matchInfo').textContent=rows.length?(n+' of '+DATA.features.length+' segments match'):'';}
-function applyFilter(){const ex=filterExpr();LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;if(!map.getLayer(id))return;const base=condLaneFilter(s.x);map.setFilter(id,ex?['all',base,ex]:base);});matchCount();if(_condFitT)clearTimeout(_condFitT);const _fts=matchingFeatures();if(_fts&&_fts.length)_condFitT=setTimeout(()=>fitFeaturesBounds(_fts),550);}
+function matchingFeatures(){return Segs.matching(activeRows(),mode);}
+function matchCount(){if(!Segs.collection())return;const rows=activeRows();const fts=matchingFeatures();const total=Segs.count();const n=fts?fts.length:total;document.getElementById('matchInfo').textContent=rows.length?(n+' of '+total+' segments match'):'';}
+/* Tile mode has no segments array to count or to fit bounds around, so both
+   come from /api/segments/match instead — the same two numbers, derived by SQL
+   over the whole network rather than by scanning a download.
+
+   The sequence guard matters more here than it looks: typing in a threshold box
+   fires on every keystroke, so several requests are in flight at once and they
+   can finish out of order. Without it the label settles on whichever response
+   happens to land last, which is not necessarily the newest filter. */
+let _matchSeq=0;
+function refreshMatchStatsRemote(){
+  const info=document.getElementById('matchInfo');
+  const rows=activeRows();
+  if(_condFitT)clearTimeout(_condFitT);
+  if(!rows.length){if(info)info.textContent='';return;}
+  const seq=++_matchSeq;
+  Segs.matchStats(rows,mode).then(function(s){
+    if(seq!==_matchSeq)return;                 /* a newer filter superseded this */
+    if(info)info.textContent=s.count+' of '+s.total+' segments match';
+    if(s.bbox&&s.count)_condFitT=setTimeout(function(){
+      try{map.fitBounds([[s.bbox[0],s.bbox[1]],[s.bbox[2],s.bbox[3]]],{padding:60});}catch(e){}
+    },550);
+  }).catch(function(){if(seq===_matchSeq&&info)info.textContent='';});
+}
+function applyFilter(){const ex=filterExpr();LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;if(!map.getLayer(id))return;const base=condLaneFilter(s.x);map.setFilter(id,ex?['all',base,ex]:base);});if(TILES_ON){refreshMatchStatsRemote();return;}matchCount();if(_condFitT)clearTimeout(_condFitT);const _fts=matchingFeatures();if(_fts&&_fts.length)_condFitT=setTimeout(()=>fitFeaturesBounds(_fts),550);}
 cb.addEventListener('change',()=>{loadThreshDefaults();applyColors();syncCondMetricUI();});
 ['fair','poor'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{applyColors();updateBandKey();}));
 document.getElementById('showRoads').addEventListener('change',e=>{if(e.target.checked&&typeof ensureSegData==='function')ensureSegData();/* Build 172 — roadsReady() (not just the source) so toggling the layer can

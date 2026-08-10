@@ -40,16 +40,30 @@ final class GeoJsonResponse {
     static String contentTag(String body) {
         if (body == null) return "W/\"0\"";
         try {
-            byte[] h = MessageDigest.getInstance("SHA-256").digest(body.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(28).append("W/\"");
-            for (int i = 0; i < 12; i++) {           // 96 bits -> 24 hex chars, ample
-                sb.append(Character.forDigit((h[i] >> 4) & 0xf, 16));
-                sb.append(Character.forDigit(h[i] & 0xf, 16));
-            }
-            return sb.append('"').toString();
+            return tagOf(MessageDigest.getInstance("SHA-256").digest(body.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception e) {
             return "W/\"" + Integer.toHexString(body.hashCode()) + "\"";
         }
+    }
+
+    /** The same tag for a binary body — vector tiles, which are protobuf rather than text.
+     *  Weak for the same reason: a strong validator would cost these responses their gzip. */
+    static String contentTag(byte[] body) {
+        if (body == null) return "W/\"0\"";
+        try {
+            return tagOf(MessageDigest.getInstance("SHA-256").digest(body));
+        } catch (Exception e) {
+            return "W/\"" + Integer.toHexString(java.util.Arrays.hashCode(body)) + "\"";
+        }
+    }
+
+    private static String tagOf(byte[] hash) {
+        StringBuilder sb = new StringBuilder(28).append("W/\"");
+        for (int i = 0; i < 12; i++) {           // 96 bits -> 24 hex chars, ample
+            sb.append(Character.forDigit((hash[i] >> 4) & 0xf, 16));
+            sb.append(Character.forDigit(hash[i] & 0xf, 16));
+        }
+        return sb.append('"').toString();
     }
 
     /** True if the client's If-None-Match satisfies our tag — tolerant of the

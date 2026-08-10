@@ -17,7 +17,7 @@ function regAssetId(p){ var v=pickProp(p,ID_KEYS); return (v!=null&&v!=='')?Stri
 function regNum(v){ return (v!=null&&v!=='')?(isNaN(+v)?v:+v):null; }
 function roadProps(sec){ return (ROADS[sec]&&ROADS[sec].properties)||{}; }
 function regCount(gj){ const m={};((gj&&gj.features)||[]).forEach(f=>{const k=regSectionKey(f.properties||{});if(k)m[k]=(m[k]||0)+1;});return m; }
-function regChainExtent(sec){ let mn=Infinity,mx=-Infinity; if(typeof DATA!=='undefined'&&DATA&&DATA.features){DATA.features.forEach(f=>{const p=f.properties;if(String(p.road)!==String(sec))return;const a=+p.from_ch,b=+p.to_ch;if(!isNaN(a))mn=Math.min(mn,a);if(!isNaN(b))mx=Math.max(mx,b);});} return (mn!==Infinity)?[Math.round(mn),Math.round(mx)]:[null,null]; }
+function regChainExtent(sec){ return Segs.chainExtent(sec); }
 
 /* ---- build row sets ---- */
 function buildRoadRows(){

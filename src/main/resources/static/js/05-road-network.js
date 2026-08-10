@@ -291,7 +291,7 @@ function ensureScopeDatasets(){
   if(_nscLoadKicked)return;_nscLoadKicked=true;
   const wanted={bridge:1,culvert:1,fwd:1,subgrade:1,bituminous_core:1}; /* only the datasets the card shows */
   try{if(typeof ASSETS!=='undefined'&&typeof loadAsset==='function')ASSETS.forEach(a=>{if(wanted[a.type]&&(typeof ASSET_DATA==='undefined'||!ASSET_DATA[a.type]))loadAsset(a);});}catch(e){}
-  try{if((typeof DATA==='undefined'||!DATA||!DATA.features)&&typeof loadSegments==='function')loadSegments();}catch(e){}
+  try{if(!Segs.collection())Segs.ensure();}catch(e){}
   try{if(typeof TRAFFIC_LOADED!=='undefined'&&!TRAFFIC_LOADED&&typeof loadTraffic==='function')loadTraffic();}catch(e){}
 }
 function _nscCountIn(feats,prop){let n=0;(feats||[]).forEach(f=>{const p=(f&&f.properties)||{};if(window.NET_SCOPE.has(String(p[prop]!=null?p[prop]:'')))n++;});return n;}
@@ -380,9 +380,8 @@ function renderNetScopeCard(list,rows){
      corridor "Length" tile, this is NOT averaged across a dual carriageway's
      A/B pair — each carriageway is surveyed separately and both legitimately
      contribute their own lane-km here. */
-  if(typeof DATA!=='undefined'&&DATA&&DATA.features){
-    let condM=0;
-    DATA.features.forEach(f=>{const p=(f&&f.properties)||{};if(!window.NET_SCOPE.has(String(p.road!=null?p.road:'')))return;const lanes=Math.max(1,num(p.lane_count)||1);condM+=Math.max(0,num(p.to_ch)-num(p.from_ch))*lanes;});
+  if(Segs.collection()){
+    const condM=Segs.scopedLaneMetres(window.NET_SCOPE);
     tiles.push(['#2ba66a',(condM/1000).toFixed(1),'Condition data available (lane km)']);
   }
   const AD=(typeof ASSET_DATA!=='undefined')?ASSET_DATA:{};

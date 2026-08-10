@@ -32,7 +32,11 @@ function clearFwdFilter(){
 function applyPciFilter(){
   const mn=parseFloat(document.getElementById('pciMin').value);
   const mx=parseFloat(document.getElementById('pciMax').value);
-  [['pci-avg','pci_avg'],['pci-worst','pci_worst']].forEach(([id,prop])=>{
+  /* Property name follows the render mode: the tile carries pci_def_*, the
+     GeoJSON path stamps pci_*. Filtering on the wrong one silently matches
+     nothing, which reads as "no segments in that PCI range" rather than as a
+     bug. */
+  [['pci-avg',pciProp('avg')],['pci-worst',pciProp('worst')]].forEach(([id,prop])=>{
     if(!map.getLayer(id)) return;
     const conds=['all',['!=',['get',prop],-1]];
     if(!isNaN(mn)) conds.push(['>=',['get',prop],mn]);

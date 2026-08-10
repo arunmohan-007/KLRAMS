@@ -7,6 +7,7 @@ The viewer logic was previously one inline script in `map.html`. It is now split
 | 01 | `js/01-config.js` | Constants, shapefile decode tables, road-detail fields, and shared application state. |
 | 02 | `js/02-map-core.js` | MapLibre map creation, navigation/scale controls, and the base-map switcher. |
 | 02b | `js/02b-layer-registry.js` | One declared home for every map layer: source, owning toggle, lazy loader, and draw order. Currently **inert** — it describes layers and exposes an API, but every layer is still created and toggled by the module that owns it. |
+| 02c | `js/02c-segment-data.js` | The one way to ask a question about the condition segments. Backed by the global `DATA` today; exists so the whole-network reads (PCI report, export, match count, network scope) can later be answered by server-side aggregates instead of a full download. |
 | 03 | `js/03-condition-style-filter.js` | Condition layer: colour-by parameter, Good/Fair/Poor thresholds, attribute filters and display mode. |
 | 04 | `js/04-geo-helpers-boundaries.js` | Shared geometry/name helpers and the administrative boundary layers (district, constituency). |
 | 05 | `js/05-road-network.js` | Road-network attribute metadata with colour-by and filter-by controls. |

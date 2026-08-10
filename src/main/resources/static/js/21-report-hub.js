@@ -146,8 +146,8 @@ function rhEnsure(set){
       }
       /* Reuse GeoJSON the map viewer already downloaded (condition segments are
          a multi-MB payload) instead of fetching the same thing a second time. */
-      if(set.kind==='segments'&&typeof DATA!=='undefined'&&DATA&&DATA.features&&DATA.features.length){
-        const rows=rhBuildRows(DATA);rhCache[set.key]=rows;return rows;
+      if(set.kind==='segments'&&Segs.loaded()){
+        const rows=rhBuildRows(Segs.collection());rhCache[set.key]=rows;return rows;
       }
       if(set.kind==='asset'&&typeof ASSET_DATA!=='undefined'&&ASSET_DATA[set.type]&&ASSET_DATA[set.type].features&&ASSET_DATA[set.type].features.length){
         const rows=rhBuildRows(ASSET_DATA[set.type]);rhCache[set.key]=rows;return rows;

@@ -95,7 +95,7 @@
     document.getElementById('nsvBody').innerHTML='<div class="dash-loading">Loading survey footage catalogue…</div>';
     var needRoads=(typeof ROADS==='undefined'||!ROADS||!Object.keys(ROADS).length);
     var needCat=(typeof CATALOG==='undefined'||!Object.keys(CATALOG||{}).length);
-    var needSegs=(typeof DATA==='undefined'||!DATA||!DATA.features);   /* gap length needs condition segments */
+    var needSegs=!Segs.collection();   /* gap length needs condition segments */
     Promise.resolve()
       .then(function(){return (needRoads&&typeof loadRoads==='function')?loadRoads(true):null;})
       .then(function(){return (needCat&&typeof loadCatalog==='function')?loadCatalog():null;})

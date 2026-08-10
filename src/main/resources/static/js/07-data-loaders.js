@@ -109,6 +109,10 @@ function loadRoads(noFit){
 }
 const LANE_SLOTS=[{x:'CC',off:0},{x:'CL1',off:-1},{x:'CL2',off:-2},{x:'CR1',off:1},{x:'CR2',off:2}];
 const CONDLAYERS=LANE_SLOTS.map(s=>'seg-'+s.x);
+/* The layer name inside the MVT, as SegmentTileService names it. Every layer
+   bound to a vector source must declare it or MapLibre silently renders
+   nothing — no error, no warning, just a blank map. */
+const SEG_TILE_LAYER='segments';
 const CONDWIDTH=['interpolate',['linear'],['zoom'],10,2.6,16,6.5];
 function condLaneFilter(x){return ['==',['coalesce',['get','L_'+x],0],1];}
 function laneOffset(off){return ['interpolate',['linear'],['zoom'],10,off*2.4,16,off*6];}
@@ -116,9 +120,28 @@ function laneColorExpr(xsp){const p=cb.value,fair=+document.getElementById('fair
 function addCondLayers(){if(map.getLayer('seg-CC'))return;/* create the lane layers already matching the showCond toggle, so a background
    preload (toggle off) never flashes the condition colours on before
    KLLayers.syncLazyLayers() runs. */
-const _cv=((document.getElementById('showCond')||{}).checked)?'visible':'none';LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;map.addLayer({id:id,type:'line',source:'segs',filter:condLaneFilter(s.x),layout:{'line-cap':'round','visibility':_cv},paint:{'line-color':laneColorExpr(s.x),'line-width':CONDWIDTH,'line-offset':laneOffset(s.off)}});map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='');});}
+const _cv=((document.getElementById('showCond')||{}).checked)?'visible':'none';LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;const _l={id:id,type:'line',source:'segs',filter:condLaneFilter(s.x),layout:{'line-cap':'round','visibility':_cv},paint:{'line-color':laneColorExpr(s.x),'line-width':CONDWIDTH,'line-offset':laneOffset(s.off)}};if(TILES_ON)_l['source-layer']=SEG_TILE_LAYER;map.addLayer(_l);map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='');});}
+/* Create the `segs` source and its lane layers.
+
+   In tile mode this runs WITHOUT any download: the source is a tile template
+   and MapLibre fetches only what the viewport needs, so the map is usable
+   before a single segment row has been transferred. That is the whole point of
+   the exercise — the GeoJSON path had to have the entire network in hand first.
+
+   promoteId lifts seg_id to the feature id so a future per-segment
+   setFeatureState (custom PCI weights) has something stable to key on; without
+   it MapLibre assigns its own ids per tile and they do not survive a re-fetch. */
+function ensureSegSource(){
+  if(map.getSource('segs'))return true;
+  if(!TILES_ON)return false;                      /* GeoJSON mode builds it in loadSegments */
+  map.addSource('segs',{type:'vector',promoteId:'seg_id',
+    tiles:[location.origin+'/api/segments/tiles/{z}/{x}/{y}.mvt'],
+    minzoom:0,maxzoom:16});
+  addCondLayers();
+  return true;
+}
 let _segsInflight=null;
-function loadSegments(){if(_segsInflight)return _segsInflight;const _needRoads=!roadsReady();var _sp=Promise.resolve(_needRoads?loadRoads(true):null).then(()=>{document.getElementById('status').textContent='Loading segments…';return fetchJsonRetry('/api/segments/geojson',3).then(gj=>{if(!gj||!gj.features||!gj.features.length){document.getElementById('status').textContent='No condition segments yet. Build them in the data console.';return;}DATA=gj;segsByRoad={};gj.features.forEach(f=>{const r=f.properties.road;(segsByRoad[r]=segsByRoad[r]||[]).push(f);let lv=f.properties.lane_vals;if(typeof lv==='string'){try{lv=JSON.parse(lv);}catch(e){lv=null;}}if(lv&&typeof lv==='object'){Object.keys(lv).forEach(xsp=>{f.properties['L_'+xsp]=1;const o=lv[xsp]||{};Object.keys(o).forEach(k=>{if(o[k]!=null)f.properties[xsp+'_'+k]=o[k];});});}});if(map.getSource('segs'))map.getSource('segs').setData(gj);else{/* tolerance:0 disables GeoJSON simplification — the default (0.375) collapses short condition segments to zero length at low zoom, so they only appeared once you zoomed in to ~10km. Keep every segment rendered at all zooms. */map.addSource('segs',{type:'geojson',data:gj,tolerance:0});addCondLayers();}applyColors();applyFilter();if(typeof updateNetScopeCard==='function')updateNetScopeCard();document.getElementById('status').textContent='✓ '+gj.features.length+' condition segments loaded.';});}).then(()=>{if(typeof KLLayers!=='undefined')KLLayers.syncLazyLayers();}).catch(e=>{document.getElementById('status').textContent='Error: '+e.message;});_segsInflight=_sp;_sp.then(function(){_segsInflight=null;},function(){_segsInflight=null;});return _sp;}
+function loadSegments(){if(_segsInflight)return _segsInflight;const _needRoads=!roadsReady();var _sp=Promise.resolve(_needRoads?loadRoads(true):null).then(()=>{document.getElementById('status').textContent='Loading segments…';return fetchJsonRetry('/api/segments/geojson',3).then(gj=>{if(!gj||!gj.features||!gj.features.length){document.getElementById('status').textContent='No condition segments yet. Build them in the data console.';return;}DATA=gj;segsByRoad={};gj.features.forEach(f=>{const r=f.properties.road;(segsByRoad[r]=segsByRoad[r]||[]).push(f);let lv=f.properties.lane_vals;if(typeof lv==='string'){try{lv=JSON.parse(lv);}catch(e){lv=null;}}if(lv&&typeof lv==='object'){Object.keys(lv).forEach(xsp=>{f.properties['L_'+xsp]=1;const o=lv[xsp]||{};Object.keys(o).forEach(k=>{if(o[k]!=null)f.properties[xsp+'_'+k]=o[k];});});}});if(TILES_ON){ensureSegSource();}else if(map.getSource('segs'))map.getSource('segs').setData(gj);else{/* tolerance:0 disables GeoJSON simplification — the default (0.375) collapses short condition segments to zero length at low zoom, so they only appeared once you zoomed in to ~10km. Keep every segment rendered at all zooms. */map.addSource('segs',{type:'geojson',data:gj,tolerance:0});addCondLayers();}applyColors();applyFilter();if(typeof updateNetScopeCard==='function')updateNetScopeCard();document.getElementById('status').textContent='✓ '+gj.features.length+' condition segments loaded.';});}).then(()=>{if(typeof KLLayers!=='undefined')KLLayers.syncLazyLayers();}).catch(e=>{document.getElementById('status').textContent='Error: '+e.message;});_segsInflight=_sp;_sp.then(function(){_segsInflight=null;},function(){_segsInflight=null;});return _sp;}
 /* The "Play footage" button only renders when CATALOG[roadId] exists, so this
    fetch has to be reliable:
    - cache:'no-store' — some browsers heuristically cached this GET, so after a
