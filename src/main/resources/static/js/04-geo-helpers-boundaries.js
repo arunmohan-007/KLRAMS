@@ -5,15 +5,36 @@
    share one global scope, so load order is preserved exactly.
    ============================================================ */
 function lineOf(feature){const g=feature.geometry;let c=g.type==='MultiLineString'?g.coordinates.flat():g.coordinates;return turf.lineString(c);}
-const CLS={SH:'#8a4d1f',MDR:'#3b6fa0',NH:'#c0392b',ODR:'#7a93ae'};
-function netColor(){const c=['match',['get','Road_Class']];Object.entries(CLS).forEach(([k,v])=>c.push(k,v));c.push('#7a93ae');return c;}
+/* Road-class palette. NH/SH/MDR carry the visual weight in that order (red >
+   amber > azure), ODR recedes into a neutral grey-blue so minor roads don't
+   compete with major ones for attention — the kind of deliberate hierarchy an
+   enterprise basemap uses instead of a flat, same-weight palette. */
+const CLS={NH:'#c0392b',SH:'#d9760c',MDR:'#1868c4',ODR:'#7d8ea3'};
+function netColor(){const c=['match',['get','Road_Class']];Object.entries(CLS).forEach(([k,v])=>c.push(k,v));c.push('#7d8ea3');return c;}
+function pavementWidthExpr(){return ['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];}
 /* Build: the zoom-9 multiplier used to be 0.06, which renders a ~1px-wide
    pavement (Pavement_W '1' = 4.5) at roughly 0.27px — invisible against the
    basemap when zoomed out to view the whole state. Raised to 0.25 so the
-   coloured road-class line stays visible (~1.1px+) at a statewide zoom,
-   while the higher-zoom stops (12/15/18, already wide) are untouched. */
-function netWidth(){const pw=['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];return ['interpolate',['exponential',1.4],['zoom'],9,['*',pw,0.25],12,['*',pw,0.4],15,['*',pw,1.7],18,['*',pw,6]];}
-function netCasingWidth(){const pw=['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];const pad=2.8;return ['interpolate',['exponential',1.4],['zoom'],9,['+',['*',pw,0.06],pad],12,['+',['*',pw,0.4],pad],15,['+',['*',pw,1.7],pad],18,['+',['*',pw,6],pad]];}
+   coloured road-class line stays visible (~1.1px+) at a statewide zoom, but
+   only the FILL was fixed — the casing kept its own 0.06 at the same zoom
+   stop, so from z9 up to about z11 the near-black casing rendered noticeably
+   WIDER than the colour it was meant to outline: at Pavement_W '4' (default),
+   fill sat around 1.75px while casing sat around 3.2px, and MapLibre draws
+   the casing UNDER the fill. Every road on the network read as a solid dark
+   line with the colour barely visible at its edges — exactly what "style is
+   bad" was seeing, at any zoom wide enough to view more than a few roads at
+   once. */
+function netWidthExpr(){const pw=pavementWidthExpr();return ['interpolate',['exponential',1.4],['zoom'],9,['*',pw,0.22],12,['*',pw,0.38],15,['*',pw,1.55],18,['*',pw,5.5]];}
+function netWidth(){return netWidthExpr();}
+/* Casing is defined as a constant PROPORTION of the fill (here 32% wider)
+   rather than its own independent interpolate curve. That is the actual fix,
+   not just retuning one number: two curves built from separately-chosen
+   per-stop constants will always drift apart at some zoom or pavement width,
+   the way 0.06-vs-0.25 did. A single multiplier on the fill expression keeps
+   casing reading as a thin outline at every zoom and every road, by
+   construction, instead of by coincidence at the stops someone remembered to
+   check. */
+function netCasingWidth(){return ['*',netWidthExpr(),1.32];}
 const NAME_KEYS=['NAME','Name','name','DISTRICT','District','district','AC_NAME','LAC_NAME','CONSTITUEN','Constituency','LABEL'];
 function featName(p){for(const k of NAME_KEYS)if(p&&p[k]!=null&&p[k]!=='')return String(p[k]);return '';}
 function nameExpr(){const e=['coalesce'];NAME_KEYS.forEach(k=>e.push(['get',k]));e.push('');return e;}
