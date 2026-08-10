@@ -23,9 +23,17 @@ public class AssetTileController {
     private static final String MVT = "application/vnd.mapbox-vector-tile";
 
     private final AssetTileService tiles;
+    private final FwdTileService fwdTiles;
 
-    public AssetTileController(AssetTileService tiles) {
+    public AssetTileController(AssetTileService tiles, FwdTileService fwdTiles) {
         this.tiles = tiles;
+        this.fwdTiles = fwdTiles;
+    }
+
+    /** Every type this endpoint serves. FWD is included but answered by {@link FwdTileService},
+     *  which cuts its stretch in SQL rather than reading the stored start-chainage point. */
+    private static boolean tileable(String type) {
+        return AssetTileService.TILED_TYPES.contains(type) || "fwd".equals(type);
     }
 
     /**
@@ -40,8 +48,10 @@ public class AssetTileController {
     public Map<String, Object> tileInfo(@PathVariable String type,
                                         @RequestParam(value = "period_id", required = false) Integer periodId) {
         String t = type.toLowerCase();
-        boolean tiled = AssetTileService.TILED_TYPES.contains(t);
-        return Map.of("tiled", tiled, "stretch", tiled && tiles.hasRangeRows(t, periodId));
+        // FWD's ranges are cut server-side, so it is never a "stretch" fallback despite being one.
+        boolean tiled = tileable(t);
+        boolean stretch = tiled && !"fwd".equals(t) && tiles.hasRangeRows(t, periodId);
+        return Map.of("tiled", tiled, "stretch", stretch);
     }
 
     /**
@@ -58,16 +68,17 @@ public class AssetTileController {
                                         @RequestParam(value = "period_id", required = false) Integer periodId,
                                         @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         String t = type.toLowerCase();
-        if (!AssetTileService.TILED_TYPES.contains(t)) return ResponseEntity.notFound().build();
+        if (!tileable(t)) return ResponseEntity.notFound().build();
 
+        boolean isFwd = "fwd".equals(t);
         TileCoordinate coord;
         try {
-            coord = TileCoordinate.of(z, x, y, tiles.maxZoom());
+            coord = TileCoordinate.of(z, x, y, isFwd ? fwdTiles.maxZoom() : tiles.maxZoom());
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
 
-        byte[] body = tiles.tile(coord, t, periodId);
+        byte[] body = isFwd ? fwdTiles.tile(coord, periodId) : tiles.tile(coord, t, periodId);
         if (body == null) return ResponseEntity.noContent().build();
 
         String tag = GeoJsonResponse.contentTag(body);
