@@ -11,17 +11,10 @@ const map=new maplibregl.Map({container:'map',style:{version:8,glyphs:'https://d
   light:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'],tileSize:256,attribution:'© CARTO'},
   dark:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],tileSize:256,attribution:'© CARTO'}},
  layers:[
-  /* Light (CARTO Positron) is the default base, not Streets (OSM): OSM's raster
-     tiles bake in their own bold, dark road rendering, which competed directly
-     with the KLRAMS road-class colours drawn on top of it — every road looked
-     "black" underneath, regardless of how the roadnet/roadnet-casing paint was
-     tuned, because that black was the BASEMAP's own roads, not ours. Light is
-     a deliberately muted grey/pastel canvas built for exactly this — putting
-     an operational data layer on top without it having to fight for contrast. */
-  {id:'osm',type:'raster',source:'osm',layout:{visibility:'none'}},
+  {id:'osm',type:'raster',source:'osm'},
   {id:'sat',type:'raster',source:'sat',layout:{visibility:'none'}},
   {id:'topo',type:'raster',source:'topo',layout:{visibility:'none'}},
-  {id:'light',type:'raster',source:'light'},
+  {id:'light',type:'raster',source:'light',layout:{visibility:'none'}},
   {id:'dark',type:'raster',source:'dark',layout:{visibility:'none'}}]},center:[76.95,8.52],zoom:9});
 map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
 const BASEMAPS=['osm','sat','topo','light','dark'];
