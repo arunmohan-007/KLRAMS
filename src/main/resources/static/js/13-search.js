@@ -81,11 +81,13 @@ function locFitAll(){
   if(!locMarkers.length)return;
   if(locMarkers.length===1){
     const ll=locMarkers[0].getLngLat();
-    map.flyTo({center:[ll.lng,ll.lat],zoom:Math.max(map.getZoom(),15),duration:700});
+    const z=map.getZoom();
+    map.flyTo({center:[ll.lng,ll.lat],zoom:(Number.isFinite(z)?Math.max(z,16):16),duration:700});
     return;
   }
   const b=new maplibregl.LngLatBounds();
   locMarkers.forEach(m=>b.extend(m.getLngLat()));
+  if(b.isEmpty())return;
   map.fitBounds(b,{padding:80,maxZoom:16,duration:800});
 }
 function placeLocation(lon,lat,label){
@@ -106,7 +108,32 @@ function placeLocation(lon,lat,label){
   const c=document.getElementById('locClear');if(c)c.classList.add('show');
   locFitAll();
 }
-function parseLatLng(q){const m=String(q).trim().match(/^([+-]?\d{1,3}(?:\.\d+)?)\s*[,\s]\s*([+-]?\d{1,3}(?:\.\d+)?)$/);if(!m)return null;let a=parseFloat(m[1]),b=parseFloat(m[2]),lat,lng;if(Math.abs(a)<=90&&Math.abs(b)<=180){lat=a;lng=b;}else if(Math.abs(b)<=90&&Math.abs(a)<=180){lat=b;lng=a;}else return null;if(Math.abs(lat)>90||Math.abs(lng)>180)return null;return {lat:lat,lng:lng};}
+function parseLatLng(q){
+  /* Tolerate copy-paste quirks: NBSP, thin space, Arabic comma, "lat, lon" labels. */
+  let s=String(q==null?'':q).trim()
+    .replace(/[\u00a0\u2000-\u200b\u202f\u205f]/g,' ')
+    .replace(/[;；،]/g,',')
+    .replace(/^\s*(?:lat(?:itude)?|lon(?:gitude)?|lng)\s*[:=]?\s*/i,'')
+    .replace(/\s+/g,' ');
+  const m=s.match(/^([+-]?\d{1,3}(?:\.\d+)?)\s*[, ]\s*([+-]?\d{1,3}(?:\.\d+)?)\s*$/);
+  if(!m)return null;
+  const a=parseFloat(m[1]),b=parseFloat(m[2]);
+  if(!isFinite(a)||!isFinite(b))return null;
+  let lat,lng;
+  /* Kerala lon is ~74–78 (all ≤90), so "|x|>90 ⇒ longitude" cannot tell
+     76.9, 8.5 apart from 8.5, 76.9. Prefer a Kerala-shaped pair in either
+     order; otherwise fall back to the hint's lat, lon convention. */
+  const kLat=v=>v>=7&&v<=14,kLng=v=>v>=74&&v<=79;
+  if(kLat(a)&&kLng(b)){lat=a;lng=b;}
+  else if(kLng(a)&&kLat(b)){lng=a;lat=b;}
+  else if(Math.abs(a)>90&&Math.abs(b)<=90){lng=a;lat=b;}
+  else if(Math.abs(b)>90&&Math.abs(a)<=90){lat=a;lng=b;}
+  else if(Math.abs(a)<=90&&Math.abs(b)<=180){lat=a;lng=b;}
+  else if(Math.abs(b)<=90&&Math.abs(a)<=180){lat=b;lng=a;}
+  else return null;
+  if(Math.abs(lat)>90||Math.abs(lng)>180)return null;
+  return {lat:lat,lng:lng};
+}
 function setupLocationSearch(){
   const inp=document.getElementById('locInput'),box=document.getElementById('locResults'),clr=document.getElementById('locClear');
   if(!inp)return;
@@ -120,11 +147,18 @@ function setupLocationSearch(){
   const pinSvg='<span class="pin"><svg width="13" height="16" viewBox="0 0 13 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6.5 1C3.6 1 1 3.4 1 6.4 1 10.5 6.5 15 6.5 15S12 10.5 12 6.4C12 3.4 9.4 1 6.5 1Z"/><circle cx="6.5" cy="6.2" r="1.7" fill="currentColor" stroke="none"/></svg></span>';
   function gotoCoord(ll){
     box.classList.remove('show');inp.value=ll.lat.toFixed(6)+', '+ll.lng.toFixed(6);clr.classList.add('show');
-    /* placeLocation flies / fits; don't double-fly here or a second pin would
-       yank the camera off the first before fitBounds runs. */
     placeLocation(ll.lng,ll.lat,'Lat '+ll.lat.toFixed(6)+', Lng '+ll.lng.toFixed(6));
   }
-  function renderCoord(ll){items=[{__coord:ll}];active=0;const cross='<span class="pin"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg></span>';box.innerHTML='<div class="lit active" data-i="0">'+cross+'<div><div class="nm">Go to '+ll.lat.toFixed(6)+', '+ll.lng.toFixed(6)+'</div><div class="meta">Latitude, longitude</div></div><span class="tp">coordinate</span></div>';box.classList.add('show');box.querySelectorAll('.lit').forEach(el=>el.onclick=()=>choose(items[+el.dataset.i]));}
+  function renderCoord(ll){
+    /* Bump seq so any in-flight Photon response from a partial typed number
+       (e.g. "8.5241" before the comma) cannot overwrite this coordinate row. */
+    seq++;
+    items=[{__coord:ll}];active=0;
+    const cross='<span class="pin"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg></span>';
+    box.innerHTML='<div class="lit active" data-i="0">'+cross+'<div><div class="nm">Go to '+ll.lat.toFixed(6)+', '+ll.lng.toFixed(6)+'</div><div class="meta">Latitude, longitude</div></div><span class="tp">coordinate</span></div>';
+    box.classList.add('show');
+    box.querySelectorAll('.lit').forEach(el=>el.onclick=()=>choose(items[+el.dataset.i]));
+  }
   function render(list){
     items=list;active=-1;
     if(!list.length){box.innerHTML='<div class="lnone">No matching place.</div>';box.classList.add('show');return;}
@@ -163,10 +197,17 @@ function setupLocationSearch(){
     t=setTimeout(()=>run(q),350);
   });
   inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){
+      /* Prefer a live parse of the input so Enter still jumps when a stale
+         Photon reply wiped the coordinate row, or the dropdown was dismissed. */
+      const ll=parseLatLng(inp.value);
+      if(ll){e.preventDefault();choose({__coord:ll});return;}
+      const els=box.querySelectorAll('.lit');if(!els.length)return;
+      e.preventDefault();choose(items[active<0?0:active]);return;
+    }
     const els=box.querySelectorAll('.lit');if(!els.length)return;
     if(e.key==='ArrowDown'){active=Math.min(active+1,els.length-1);e.preventDefault();}
     else if(e.key==='ArrowUp'){active=Math.max(active-1,0);e.preventDefault();}
-    else if(e.key==='Enter'){choose(items[active<0?0:active]);return;}
     else return;
     els.forEach((el,i)=>el.classList.toggle('active',i===active));
   });

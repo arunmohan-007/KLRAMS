@@ -155,31 +155,57 @@ const ICON_SVGS={
  'ic-furnp':'<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13" fill="#3b6fa0" stroke="#fff" stroke-width="2.4"/><path d="M15 7l7 11H8z" fill="#fff"/><rect x="14" y="18" width="2" height="6" fill="#fff"/></svg>',
  'ic-furnl':'<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="1" y="1" width="30" height="30" rx="7" fill="#0fa3a3" stroke="#fff" stroke-width="2"/><path d="M6 13h20M6 19h20" stroke="#fff" stroke-width="2.6"/><path d="M9 13v6M16 13v6M23 13v6" stroke="#fff" stroke-width="2"/></svg>'};
 function loadIcon(name){return new Promise(res=>{if(map.hasImage(name))return res();const img=new Image(40,40);img.onload=()=>{if(!map.hasImage(name))map.addImage(name,img,{pixelRatio:2});res();};img.onerror=()=>res();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(ICON_SVGS[name]);});}
-function addAssetLayer(a,gj,asLine){
-  if(map.getSource(a.layer)){map.getSource(a.layer).setData(gj);return;}
-  map.addSource(a.layer,{type:'geojson',data:gj});
+/* The layer name inside the asset MVT, as AssetTileService names it. FWD is deliberately not
+   in this set — see AssetTileService's class doc for why it stays on the GeoJSON path. */
+const ASSET_TILE_LAYER='assets';
+const ASSET_TILED_TYPES=new Set(['bridge','furniture_line','culvert','furniture_point','subgrade','bituminous_core','pavement_crust']);
+/* A tile feature's properties carry attrs_json (one JSON-text blob, since asset attrs have no
+   fixed schema) instead of the flattened keys the GeoJSON endpoint emits. Reshape it back into
+   the same {road, from_ch, to_ch, ...attrs} shape assetPopup() already expects, so every click
+   handler below can read properties the same way regardless of which mode built the layer.
+   GeoJSON-mode features have no attrs_json and pass through untouched. */
+function assetProps(raw){
+  if(!raw||raw.attrs_json==null)return raw;
+  const p={road:raw.road,from_ch:raw.from_ch,to_ch:raw.to_ch};
+  try{Object.assign(p,JSON.parse(raw.attrs_json));}catch(e){}
+  return p;
+}
+/* `tileMode` is decided by the CALLER (loadAsset, via assetTileInfo) and passed in rather
+   than recomputed here. Recomputing it would get a `stretch` type wrong: it is a tiled type
+   whose data still has to come from GeoJSON, so this would build an empty vector source and
+   draw nothing. One decision, made once, in the place that has the server's answer. */
+function addAssetLayer(a,gj,asLine,tileMode){
+  if(map.getSource(a.layer)){if(!tileMode&&gj)map.getSource(a.layer).setData(gj);return;}
+  if(tileMode){
+    map.addSource(a.layer,{type:'vector',
+      tiles:[location.origin+'/api/assets/'+a.type+'/tiles/{z}/{x}/{y}.mvt'],
+      minzoom:0,maxzoom:16});
+  }else{
+    map.addSource(a.layer,{type:'geojson',data:gj});
+  }
+  const mk=(id,extra)=>{const l=Object.assign({id:id,source:a.layer},extra);if(tileMode)l['source-layer']=ASSET_TILE_LAYER;return l;};
   const icon=a.type==='bridge'?'ic-bridge':a.type==='culvert'?'ic-culvert':a.type==='furniture_line'?'ic-furnl':a.type==='subgrade'?'ic-soil':a.type==='bituminous_core'?'ic-core':a.type==='pavement_crust'?'ic-crust':a.type==='fwd'?'ic-fwd':'ic-furnp';
   const t=document.getElementById(a.toggle);
   if(a.type==='fwd'){
     const col=fwdD0ColorExpr();
-    map.addLayer({id:a.layer,type:'line',source:a.layer,layout:{'line-cap':'round'},paint:{'line-color':col,'line-width':['interpolate',['linear'],['zoom'],10,3.6,16,7.5]}});
-    map.addLayer({id:a.layer+'-pt',type:'circle',source:a.layer,filter:['==',['geometry-type'],'Point'],paint:{'circle-color':col,'circle-radius':['interpolate',['linear'],['zoom'],10,3.2,16,6],'circle-stroke-color':'#ffffff','circle-stroke-width':1.2}});
-    map.addLayer({id:a.layer+'-icon',type:'symbol',source:a.layer,layout:{'symbol-placement':'line-center','text-field':['case',['has','__d0'],['concat','(',['to-string',['get','__d0']],')'],''],'text-size':['interpolate',['linear'],['zoom'],10,9.5,16,12.5],'text-allow-overlap':true},paint:{'text-color':'#2b1840','text-halo-color':'#ffffff','text-halo-width':1.7}});
-    [a.layer,a.layer+'-pt',a.layer+'-icon'].forEach(id=>{map.on('click',id,e=>{if(e.features.length)assetPopup(e.lngLat,e.features[0].properties,a.label,a.type);});map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='');if(t)map.setLayoutProperty(id,'visibility',t.checked?'visible':'none');});
+    map.addLayer(mk(a.layer,{type:'line',layout:{'line-cap':'round'},paint:{'line-color':col,'line-width':['interpolate',['linear'],['zoom'],10,3.6,16,7.5]}}));
+    map.addLayer(mk(a.layer+'-pt',{type:'circle',filter:['==',['geometry-type'],'Point'],paint:{'circle-color':col,'circle-radius':['interpolate',['linear'],['zoom'],10,3.2,16,6],'circle-stroke-color':'#ffffff','circle-stroke-width':1.2}}));
+    map.addLayer(mk(a.layer+'-icon',{type:'symbol',layout:{'symbol-placement':'line-center','text-field':['case',['has','__d0'],['concat','(',['to-string',['get','__d0']],')'],''],'text-size':['interpolate',['linear'],['zoom'],10,9.5,16,12.5],'text-allow-overlap':true},paint:{'text-color':'#2b1840','text-halo-color':'#ffffff','text-halo-width':1.7}}));
+    [a.layer,a.layer+'-pt',a.layer+'-icon'].forEach(id=>{map.on('click',id,e=>{if(e.features.length)assetPopup(e.lngLat,assetProps(e.features[0].properties),a.label,a.type);});map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='');if(t)map.setLayoutProperty(id,'visibility',t.checked?'visible':'none');});
     renderFwdLegend();const lg=document.getElementById('fwdLegend');if(lg&&t)lg.style.display=t.checked?'block':'none';
     return;
   }
   if(a.kind==='line'||asLine){
     const lw=a.width||5;
-    map.addLayer({id:a.layer,type:'line',source:a.layer,layout:{'line-cap':'round'},paint:{'line-color':a.color,'line-width':['interpolate',['linear'],['zoom'],10,lw*0.6,16,lw*1.6]}});
-    map.on('click',a.layer,e=>{if(e.features.length)assetPopup(e.lngLat,e.features[0].properties,a.label,a.type);});
+    map.addLayer(mk(a.layer,{type:'line',layout:{'line-cap':'round'},paint:{'line-color':a.color,'line-width':['interpolate',['linear'],['zoom'],10,lw*0.6,16,lw*1.6]}}));
+    map.on('click',a.layer,e=>{if(e.features.length)assetPopup(e.lngLat,assetProps(e.features[0].properties),a.label,a.type);});
     map.on('mouseenter',a.layer,()=>map.getCanvas().style.cursor='pointer');
     map.on('mouseleave',a.layer,()=>map.getCanvas().style.cursor='');
     if(t)map.setLayoutProperty(a.layer,'visibility',t.checked?'visible':'none');
-    loadIcon(icon).then(()=>{if(map.getLayer(a.layer+'-icon'))return;const lo={'symbol-placement':'line-center','icon-image':icon,'icon-size':['interpolate',['linear'],['zoom'],10,0.55,16,1.0],'icon-allow-overlap':true},pt={};if(a.type==='fwd'){lo['text-field']=['case',['has','__d0'],['concat','(',['to-string',['get','__d0']],')'],''];lo['text-size']=['interpolate',['linear'],['zoom'],10,9.5,16,12.5];lo['text-offset']=[0,1.2];lo['text-anchor']='top';lo['text-allow-overlap']=true;pt['text-color']='#7b1fa2';pt['text-halo-color']='#ffffff';pt['text-halo-width']=1.5;}map.addLayer({id:a.layer+'-icon',type:'symbol',source:a.layer,layout:lo,paint:pt});const t2=document.getElementById(a.toggle);if(t2&&!t2.checked)map.setLayoutProperty(a.layer+'-icon','visibility','none');});
+    loadIcon(icon).then(()=>{if(map.getLayer(a.layer+'-icon'))return;const lo={'symbol-placement':'line-center','icon-image':icon,'icon-size':['interpolate',['linear'],['zoom'],10,0.55,16,1.0],'icon-allow-overlap':true},pt={};if(a.type==='fwd'){lo['text-field']=['case',['has','__d0'],['concat','(',['to-string',['get','__d0']],')'],''];lo['text-size']=['interpolate',['linear'],['zoom'],10,9.5,16,12.5];lo['text-offset']=[0,1.2];lo['text-anchor']='top';lo['text-allow-overlap']=true;pt['text-color']='#7b1fa2';pt['text-halo-color']='#ffffff';pt['text-halo-width']=1.5;}map.addLayer(mk(a.layer+'-icon',{type:'symbol',layout:lo,paint:pt}));const t2=document.getElementById(a.toggle);if(t2&&!t2.checked)map.setLayoutProperty(a.layer+'-icon','visibility','none');});
   }else{
-    loadIcon(icon).then(()=>{map.addLayer({id:a.layer,type:'symbol',source:a.layer,layout:{'icon-image':icon,'icon-size':['interpolate',['linear'],['zoom'],10,0.5,16,1.0],'icon-allow-overlap':true}});
-      map.on('click',a.layer,e=>{if(e.features.length)assetPopup(e.lngLat,e.features[0].properties,a.label,a.type);});
+    loadIcon(icon).then(()=>{map.addLayer(mk(a.layer,{type:'symbol',layout:{'icon-image':icon,'icon-size':['interpolate',['linear'],['zoom'],10,0.5,16,1.0],'icon-allow-overlap':true}}));
+      map.on('click',a.layer,e=>{if(e.features.length)assetPopup(e.lngLat,assetProps(e.features[0].properties),a.label,a.type);});
       map.on('mouseenter',a.layer,()=>map.getCanvas().style.cursor='pointer');
       map.on('mouseleave',a.layer,()=>map.getCanvas().style.cursor='');
       if(t)map.setLayoutProperty(a.layer,'visibility',t.checked?'visible':'none');});
@@ -197,20 +223,72 @@ function fwdGeojsonFetch(force){
   }
   return window._fwdGeoP;
 }
+/* Download one asset type's WHOLE-NETWORK GeoJSON and publish it as ASSET_DATA.
+   This is the analysis need, not the rendering one, and the distinction is the whole
+   point of the tile migration (see the header of 02c-segment-data.js, which makes the
+   same split for condition segments):
+
+     RENDERING — the as-* map layers. Only ever needs what is on screen, so in tile
+                 mode this download must NOT happen, or the viewer would fetch tiles
+                 AND the full payload and end up strictly worse than before.
+     ANALYSIS  — the network-scope card's counts (05-road-network.js), the road
+                 popup's Survey tab (08-condition-popup-nsv.js), the Report Hub's
+                 tables (21-report-hub.js) and Shapefile/KML export (29-export.js).
+                 Every one of those asks about the whole network, and export needs
+                 real geometry, so none of them can be served by a tile.
+
+   Those four therefore call THIS, lazily, and only when the user actually opens the
+   feature that needs it — so the cost is paid on use rather than on every map open.
+   De-duped per type: the scope card and the Survey tab routinely ask at once. */
+const _assetDataP={};
+function loadAssetData(a){
+  if(ASSET_DATA[a.type])return Promise.resolve(ASSET_DATA[a.type]);
+  if(_assetDataP[a.type])return _assetDataP[a.type];
+  const p=(a.type==='fwd'?fwdGeojsonFetch():fetch('/api/assets/'+a.type+'/geojson').then(r=>r.json())).then(gj=>{
+    if(!gj||!gj.features||!gj.features.length)return null;
+    const asLine=(a.type==='fwd')||((a.kind==='point')&&isStretchData(gj));
+    const go=()=>{if(asLine)linRefFeatures(gj);if(a.type==='fwd'){const sc=fwdScale(gj);gj.features.forEach(f=>{const v=fwdD0(f.properties);if(v!=null&&v!=='')f.properties.__d0=Math.round(+v*sc);f.properties.__dscale=sc;});}
+      /* Build 163 — resolve each feature's section label into __sec so the
+         network-scope filter can match assets regardless of CSV column names */
+      gj.features.forEach(f=>{const v=pickProp(f.properties,ROAD_KEYS);if(v!=null&&v!=='')f.properties.__sec=String(v);});
+      ASSET_DATA[a.type]=gj;
+      if(typeof updateNetScopeCard==='function')updateNetScopeCard();
+      return gj;};
+    return asLine?ensureRoads().then(go):go();
+  }).catch(()=>null);
+  _assetDataP[a.type]=p;
+  p.then(gj=>{if(!gj)_assetDataP[a.type]=null;},()=>{_assetDataP[a.type]=null;});
+  return p;
+}
+/* Can this type be drawn from tiles right now? `stretch` types cannot — their stored
+   geometry is a point at the start chainage while the map draws a re-derived stretch
+   (see AssetTileService.hasRangeRows), so they fall back to the GeoJSON path and keep
+   rendering exactly what they render today. Cached per type; a failure answers "no",
+   which is always safe because it just means the existing path is used. */
+const _assetTileInfo={};
+function assetTileInfo(a){
+  if(!TILES_ON||!ASSET_TILED_TYPES.has(a.type))return Promise.resolve(false);
+  if(_assetTileInfo[a.type])return _assetTileInfo[a.type];
+  const p=fetch('/api/assets/'+a.type+'/tile-info',{credentials:'same-origin'})
+    .then(r=>r.ok?r.json():null)
+    .then(j=>!!(j&&j.tiled&&!j.stretch))
+    .catch(()=>false);
+  _assetTileInfo[a.type]=p;
+  return p;
+}
+/* Build one asset type's MAP LAYER. In tile mode that costs no download at all — the
+   source is a tile template and MapLibre asks only for the current viewport. */
 function loadAsset(a){
-    return (a.type==='fwd'?fwdGeojsonFetch():fetch('/api/assets/'+a.type+'/geojson').then(r=>r.json())).then(gj=>{
-      if(!gj||!gj.features||!gj.features.length)return;
-      const asLine=(a.type==='fwd')||((a.kind==='point')&&isStretchData(gj));
-      const go=()=>{if(asLine)linRefFeatures(gj);if(a.type==='fwd'){const sc=fwdScale(gj);gj.features.forEach(f=>{const v=fwdD0(f.properties);if(v!=null&&v!=='')f.properties.__d0=Math.round(+v*sc);f.properties.__dscale=sc;});}
-        /* Build 163 — resolve each feature's section label into __sec so the
-           network-scope filter can match assets regardless of CSV column names */
-        gj.features.forEach(f=>{const v=pickProp(f.properties,ROAD_KEYS);if(v!=null&&v!=='')f.properties.__sec=String(v);});
-        ASSET_DATA[a.type]=gj;
-        addAssetLayer(a,gj,asLine);
-        if(typeof updateNetScopeCard==='function')updateNetScopeCard();};
-      if(asLine)return ensureRoads().then(go);
-      go();
-    }).catch(()=>{});
+  return assetTileInfo(a).then(useTiles=>{
+    if(useTiles){
+      addAssetLayer(a,null,false,true);
+      return;
+    }
+    return loadAssetData(a).then(gj=>{
+      if(!gj)return;
+      addAssetLayer(a,gj,(a.type==='fwd')||((a.kind==='point')&&isStretchData(gj)),false);
+    });
+  }).catch(()=>{});
 }
 function loadAssets(){return Promise.all(ASSETS.map(loadAsset));}
 ASSETS.forEach(a=>{
