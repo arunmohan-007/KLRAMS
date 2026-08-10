@@ -24,17 +24,25 @@ function pavementWidthExpr(){return ['match',['to-string',['get','Pavement_W']],
    line with the colour barely visible at its edges — exactly what "style is
    bad" was seeing, at any zoom wide enough to view more than a few roads at
    once. */
-function netWidthExpr(){const pw=pavementWidthExpr();return ['interpolate',['exponential',1.4],['zoom'],9,['*',pw,0.22],12,['*',pw,0.38],15,['*',pw,1.55],18,['*',pw,5.5]];}
+/* One stop table drives both curves, so the ratio between them is exact by
+   construction — see the comment above. It is NOT applied as a runtime
+   ['*', fillExpr, 1.32] on top of the fill expression: MapLibre's style spec
+   requires ["zoom"] to be used ONLY as the direct, top-level input to
+   interpolate/step. Wrapping an interpolate(zoom) expression inside an
+   arithmetic operator breaks that rule — MapLibre rejects the layer for it,
+   silently: addLayer neither throws nor adds the layer, it just logs to the
+   console ("zoom expression may only be used as input to a top-level step or
+   interpolate expression") and moves on. That is exactly what happened here:
+   roadnet-casing silently failed to exist at all, so every road actually
+   rendered as bare colour with no outline — which is its own kind of "looks
+   muddy at density", just not the original bug. The fix is to build TWO
+   independent top-level interpolate(zoom) expressions instead, with the
+   ratio baked into each stop's multiplier in JS at expression-build time. */
+const NET_WIDTH_STOPS=[[9,0.22],[12,0.38],[15,1.55],[18,5.5]];
+const CASING_RATIO=1.32;
+function netWidthExpr(){const pw=pavementWidthExpr();const e=['interpolate',['exponential',1.4],['zoom']];NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',pw,m]);});return e;}
 function netWidth(){return netWidthExpr();}
-/* Casing is defined as a constant PROPORTION of the fill (here 32% wider)
-   rather than its own independent interpolate curve. That is the actual fix,
-   not just retuning one number: two curves built from separately-chosen
-   per-stop constants will always drift apart at some zoom or pavement width,
-   the way 0.06-vs-0.25 did. A single multiplier on the fill expression keeps
-   casing reading as a thin outline at every zoom and every road, by
-   construction, instead of by coincidence at the stops someone remembered to
-   check. */
-function netCasingWidth(){return ['*',netWidthExpr(),1.32];}
+function netCasingWidth(){const pw=pavementWidthExpr();const e=['interpolate',['exponential',1.4],['zoom']];NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',pw,+(m*CASING_RATIO).toFixed(4)]);});return e;}
 const NAME_KEYS=['NAME','Name','name','DISTRICT','District','district','AC_NAME','LAC_NAME','CONSTITUEN','Constituency','LABEL'];
 function featName(p){for(const k of NAME_KEYS)if(p&&p[k]!=null&&p[k]!=='')return String(p[k]);return '';}
 function nameExpr(){const e=['coalesce'];NAME_KEYS.forEach(k=>e.push(['get',k]));e.push('');return e;}
