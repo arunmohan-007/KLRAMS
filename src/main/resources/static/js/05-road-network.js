@@ -150,6 +150,48 @@ function clearNetFilters(){netFilters=[];renderNetFilters();applyNetFilter();}
    by ticking a checkbox, a typo in the search box just narrows the list —
    it can never corrupt the filter into matching nothing. */
 function nfVals(f){return String(f.val==null?'':f.val).split(',').map(s=>s.trim()).filter(s=>s!=='');}
+/* Does one metadata row satisfy one filter condition? Shared by the map
+   filter and the cascading value picker so both answer the same question. */
+function nfRowMatches(p,r){
+  const m=ATTRS[r.attr]||{};const raw=p[r.attr];if(raw==null||raw==='')return false;
+  if(m.numeric){
+    const v=+raw;
+    if(r.op==='=')return nfVals(r).map(Number).some(n=>!isNaN(n)&&v==n);
+    const c=+r.val;switch(r.op){case'>':return v>c;case'>=':return v>=c;case'<':return v<c;case'<=':return v<=c;default:return v==c;}
+  }
+  const s=String(raw);
+  if(r.op==='contains')return s.toLowerCase().includes(String(r.val).toLowerCase());
+  return nfVals(r).indexOf(s)>=0;
+}
+/* Roads still in play after every OTHER completed condition (skip the row
+   whose picker is open). That is what makes a second condition's value list
+   collapse to e.g. only Section_La values that carry Road_Num=34 — the first
+   condition already narrowed the pool. */
+function nfMatchMeta(exceptIdx){
+  const meta=netMetaRows();
+  const rows=netFilters.filter((f,i)=>i!==exceptIdx&&f.attr&&f.val!=='');
+  if(!rows.length)return meta;
+  return meta.filter(p=>{
+    const t=rows.map(r=>nfRowMatches(p,r));
+    return netMode==='all'?t.every(Boolean):t.some(Boolean);
+  });
+}
+/* Distinct values of `attr` among the roads that survive the other conditions.
+   Sorted the same way the unscoped ATTRS.values list is (alpha / numeric). */
+function nfAttrValues(attr,exceptIdx){
+  const set={};
+  nfMatchMeta(exceptIdx).forEach(p=>{
+    const v=p[attr];if(v==null||v==='')return;
+    set[String(v)]=1;
+  });
+  return Object.keys(set).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+}
+/* ATTRS entry for a row, but with .values replaced by the cascaded list so
+   the picker / datalist / All button only offer in-scope choices. */
+function nfAttrMetaForRow(i,f){
+  const m=ATTRS[f.attr]||{numeric:false,values:[]};
+  return {numeric:!!m.numeric,min:m.min,max:m.max,values:nfAttrValues(f.attr,i)};
+}
 let _nfPopRow=-1,_nfPopQuery='';
 function nfCloseValPop(){const p=document.getElementById('nfValPop');if(p)p.remove();_nfPopRow=-1;_nfPopQuery='';}
 function nfRefreshRowButton(i,f,m){
@@ -170,7 +212,7 @@ function nfPopList(f,m){
   p.querySelector('#nvpCnt').textContent=sel.length+' selected · '+known.length+' value'+(known.length===1?'':'s');
   p.querySelector('#nvpList').innerHTML=items.length
     ?items.map(v=>'<label class="nvp-it"><span>'+esc(v)+'</span><input type="checkbox" value="'+esc(v)+'"'+(sel.indexOf(v)>=0?' checked':'')+'></label>').join('')
-    :'<div class="nvp-empty">No values match “'+esc(_nfPopQuery)+'”.</div>';
+    :'<div class="nvp-empty">'+(known.length?'No values match “'+esc(_nfPopQuery)+'”.':'No values left under the other conditions.')+'</div>';
   p.querySelectorAll('#nvpList input').forEach(cb=>{cb.onchange=()=>{
     let vals=nfVals(f).filter(v=>known.indexOf(v)>=0);
     if(cb.checked){if(vals.indexOf(cb.value)<0)vals.push(cb.value);}else{vals=vals.filter(v=>v!==cb.value);}
@@ -179,6 +221,9 @@ function nfPopList(f,m){
   };});
 }
 function nfOpenValPop(i,f,m,anchor){
+  /* Re-resolve cascaded values at open time so a just-applied prior condition
+     is reflected even if the row was rendered before that value was chosen. */
+  m=nfAttrMetaForRow(i,f);
   nfCloseValPop();_nfPopRow=i;_nfPopQuery='';
   const p=document.createElement('div');p.className='nvp';p.id='nfValPop';
   p.innerHTML='<div class="nvp-top"><input type="text" class="nvp-q" placeholder="Search values…" autocomplete="off">'
@@ -209,7 +254,7 @@ function renderNetFilters(){
   nfCloseValPop();
   const box=document.getElementById('netFilters');box.innerHTML='';
   netFilters.forEach((f,i)=>{
-    const m=ATTRS[f.attr]||{numeric:false,values:[]};
+    const m=nfAttrMetaForRow(i,f);
     const row=document.createElement('div');row.className='frow';
     const vq=String(f.val==null?'':f.val).replace(/"/g,'&quot;');
     const as=Object.keys(ATTRS).sort().map(k=>`<option ${k===f.attr?'selected':''}>${k}</option>`).join('');
@@ -217,9 +262,9 @@ function renderNetFilters(){
     const os=ops.map(o=>`<option ${o===f.op?'selected':''}>${o}</option>`).join('');
     const listId='dl'+i;
     let valCell,isBtn=false;
-    if(f.op==='='&&m.values.length){
-      /* click-to-open picker — the filter value is only ever set by ticking a
-         checkbox, so this can never be "misspelled" into matching nothing */
+    if(f.op==='='&&(m.values.length||(ATTRS[f.attr]&&ATTRS[f.attr].values&&ATTRS[f.attr].values.length))){
+      /* click-to-open picker — values are cascaded (nfAttrMetaForRow), so a
+         second condition only offers choices still present under the first */
       isBtn=true;
       const sel=nfVals(f).filter(v=>m.values.map(String).indexOf(v)>=0);
       const txt=sel.length?sel.join(', '):(m.numeric?'Number(s)…':'Select value(s)…');
@@ -289,17 +334,10 @@ function applyNetFilter(){
      have one so fitFeaturesBounds can still zoom to the match. */
   if(rows.length){
     const meta=netMetaRows();
-    list=meta.filter(p=>{const t=rows.map(r=>{
-      const m=ATTRS[r.attr]||{};const raw=p[r.attr];if(raw==null||raw==='')return false;
-      if(m.numeric){
-        const v=+raw;
-        if(r.op==='=')return nfVals(r).map(Number).some(n=>!isNaN(n)&&v==n);
-        const c=+r.val;switch(r.op){case'>':return v>c;case'>=':return v>=c;case'<':return v<c;case'<=':return v<=c;default:return v==c;}
-      }
-      const s=String(raw);
-      if(r.op==='contains')return s.toLowerCase().includes(String(r.val).toLowerCase());
-      return nfVals(r).indexOf(s)>=0;
-    });return netMode==='all'?t.every(Boolean):t.some(Boolean);}).map(p=>{
+    list=meta.filter(p=>{
+      const t=rows.map(r=>nfRowMatches(p,r));
+      return netMode==='all'?t.every(Boolean):t.some(Boolean);
+    }).map(p=>{
       const road=p.road!=null?String(p.road):'';
       const full=(typeof ROADS!=='undefined'&&ROADS[road])?ROADS[road]:null;
       return full||{properties:p};

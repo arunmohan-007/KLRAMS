@@ -61,18 +61,50 @@ function setupSearch(){
   document.addEventListener('click',e=>{if(!document.getElementById('search').contains(e.target))box.classList.remove('show');});
 }
 /* ===== location (base map) geocoding search ===== */
-let locMarker=null;
-function clearLocation(){if(locMarker){locMarker.remove();locMarker=null;}const c=document.getElementById('locClear');if(c)c.classList.remove('show');}
+/* Up to two pins stay on the map so a place search and a lat/long (or a
+   second place) can be dropped one after the other without wiping the first. */
+const LOC_PIN_MAX=2;
+const LOC_PIN_COLORS=[
+  {fill:'#15976a',stroke:'#0d7a51'},
+  {fill:'#2f6fed',stroke:'#1a4fbf'}
+];
+let locMarkers=[];
+function clearLocation(){
+  locMarkers.forEach(m=>{try{m.remove();}catch(e){}});
+  locMarkers=[];
+  const c=document.getElementById('locClear');if(c)c.classList.remove('show');
+}
+function locPinSvg(color){
+  return '<svg width="26" height="34" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg"><path d="M13 1C6.4 1 1 6.3 1 12.8 1 21.5 13 33 13 33s12-11.5 12-20.2C25 6.3 19.6 1 13 1Z" fill="'+color.fill+'" stroke="'+color.stroke+'" stroke-width="1.5"/><circle cx="13" cy="12.6" r="4.4" fill="#fff"/></svg>';
+}
+function locFitAll(){
+  if(!locMarkers.length)return;
+  if(locMarkers.length===1){
+    const ll=locMarkers[0].getLngLat();
+    map.flyTo({center:[ll.lng,ll.lat],zoom:Math.max(map.getZoom(),15),duration:700});
+    return;
+  }
+  const b=new maplibregl.LngLatBounds();
+  locMarkers.forEach(m=>b.extend(m.getLngLat()));
+  map.fitBounds(b,{padding:80,maxZoom:16,duration:800});
+}
 function placeLocation(lon,lat,label){
-  if(locMarker)locMarker.remove();
+  /* Cap at LOC_PIN_MAX: a third search drops the oldest pin so the newest
+     two always stay — place then coordinate, or two places, either order. */
+  if(locMarkers.length>=LOC_PIN_MAX){
+    try{locMarkers.shift().remove();}catch(e){}
+  }
+  const color=LOC_PIN_COLORS[locMarkers.length%LOC_PIN_COLORS.length];
   const el=document.createElement('div');el.className='locpin';
-  el.innerHTML='<svg width="26" height="34" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg"><path d="M13 1C6.4 1 1 6.3 1 12.8 1 21.5 13 33 13 33s12-11.5 12-20.2C25 6.3 19.6 1 13 1Z" fill="#15976a" stroke="#0d7a51" stroke-width="1.5"/><circle cx="13" cy="12.6" r="4.4" fill="#fff"/></svg>';
+  el.innerHTML=locPinSvg(color);
   const safe=String(label).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  locMarker=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat([lon,lat])
+  const marker=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat([lon,lat])
     .setPopup(new maplibregl.Popup({offset:28,closeButton:false}).setHTML('<div style="font:600 12.5px Inter,system-ui,sans-serif;color:#1f2a3d;max-width:220px;line-height:1.35">'+safe+'</div>'))
     .addTo(map);
-  locMarker.togglePopup();
+  marker.togglePopup();
+  locMarkers.push(marker);
   const c=document.getElementById('locClear');if(c)c.classList.add('show');
+  locFitAll();
 }
 function parseLatLng(q){const m=String(q).trim().match(/^([+-]?\d{1,3}(?:\.\d+)?)\s*[,\s]\s*([+-]?\d{1,3}(?:\.\d+)?)$/);if(!m)return null;let a=parseFloat(m[1]),b=parseFloat(m[2]),lat,lng;if(Math.abs(a)<=90&&Math.abs(b)<=180){lat=a;lng=b;}else if(Math.abs(b)<=90&&Math.abs(a)<=180){lat=b;lng=a;}else return null;if(Math.abs(lat)>90||Math.abs(lng)>180)return null;return {lat:lat,lng:lng};}
 function setupLocationSearch(){
@@ -86,7 +118,12 @@ function setupLocationSearch(){
     return out.slice(0,3).join(', ');
   }
   const pinSvg='<span class="pin"><svg width="13" height="16" viewBox="0 0 13 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6.5 1C3.6 1 1 3.4 1 6.4 1 10.5 6.5 15 6.5 15S12 10.5 12 6.4C12 3.4 9.4 1 6.5 1Z"/><circle cx="6.5" cy="6.2" r="1.7" fill="currentColor" stroke="none"/></svg></span>';
-  function gotoCoord(ll){box.classList.remove('show');inp.value=ll.lat.toFixed(6)+', '+ll.lng.toFixed(6);clr.classList.add('show');map.flyTo({center:[ll.lng,ll.lat],zoom:16,duration:900});placeLocation(ll.lng,ll.lat,'Lat '+ll.lat.toFixed(6)+', Lng '+ll.lng.toFixed(6));}
+  function gotoCoord(ll){
+    box.classList.remove('show');inp.value=ll.lat.toFixed(6)+', '+ll.lng.toFixed(6);clr.classList.add('show');
+    /* placeLocation flies / fits; don't double-fly here or a second pin would
+       yank the camera off the first before fitBounds runs. */
+    placeLocation(ll.lng,ll.lat,'Lat '+ll.lat.toFixed(6)+', Lng '+ll.lng.toFixed(6));
+  }
   function renderCoord(ll){items=[{__coord:ll}];active=0;const cross='<span class="pin"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg></span>';box.innerHTML='<div class="lit active" data-i="0">'+cross+'<div><div class="nm">Go to '+ll.lat.toFixed(6)+', '+ll.lng.toFixed(6)+'</div><div class="meta">Latitude, longitude</div></div><span class="tp">coordinate</span></div>';box.classList.add('show');box.querySelectorAll('.lit').forEach(el=>el.onclick=()=>choose(items[+el.dataset.i]));}
   function render(list){
     items=list;active=-1;
@@ -104,8 +141,12 @@ function setupLocationSearch(){
     if(!f||!f.geometry)return;const p=f.properties||{};const c=f.geometry.coordinates;if(!c)return;
     const lon=+c[0],lat=+c[1];const nm=p.name||p.city||'Location';const m=meta(p);
     box.classList.remove('show');inp.value=nm;
-    if(Array.isArray(p.extent)&&p.extent.length===4){const e=p.extent;map.fitBounds([[e[0],e[3]],[e[2],e[1]]],{padding:80,maxZoom:16,duration:800});}
-    else map.flyTo({center:[lon,lat],zoom:15,duration:900});
+    /* Single-result extent zoom only when this is the first pin — a second
+       place would otherwise override the two-pin fitBounds that placeLocation
+       is about to run. */
+    if(!locMarkers.length&&Array.isArray(p.extent)&&p.extent.length===4){
+      const e=p.extent;map.fitBounds([[e[0],e[3]],[e[2],e[1]]],{padding:80,maxZoom:16,duration:800});
+    }
     placeLocation(lon,lat,m?nm+' \u2014 '+m:nm);
   }
   function run(q){
@@ -115,7 +156,7 @@ function setupLocationSearch(){
       .catch(()=>{if(my!==seq)return;box.innerHTML='<div class="lnone">Location search unavailable. Check your internet connection and try again.</div>';box.classList.add('show');});
   }
   inp.addEventListener('input',()=>{
-    const q=inp.value.trim();clr.classList.toggle('show',!!inp.value||!!locMarker);
+    const q=inp.value.trim();clr.classList.toggle('show',!!inp.value||locMarkers.length>0);
     if(t)clearTimeout(t);
     const __ll=parseLatLng(q);if(__ll){renderCoord(__ll);return;}
     if(q.length<3){box.classList.remove('show');return;}
