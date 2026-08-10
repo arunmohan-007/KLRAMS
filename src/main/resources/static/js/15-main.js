@@ -17,7 +17,7 @@ map.on('load',()=>{
          search are ready, so login stays fast but the Road Condition layer is
          already in memory — turning the toggle on is then instant instead of
          waiting for a fresh fetch. Fire-and-forget on a short delay so it never
-         competes with the initial map paint; syncLazyVis() (and addCondLayers,
+         competes with the initial map paint; KLLayers.syncLazyLayers() (and addCondLayers,
          which now honours the toggle) keep the layer hidden while showCond is off. */
       /* Build 167 — also background-preload the FWD map layer AFTER the segments
          finish, so switching "FWD (D0)" on is an instant visibility flip instead
@@ -39,7 +39,7 @@ map.on('load',()=>{
           .then(()=>{try{if(window.FWD&&FWD.load)return FWD.load();}catch(e){}});
       }catch(e){return Promise.resolve();}};
       const _preloadPci=()=>{setTimeout(()=>{try{
-        if(typeof generatePCI==='function'&&typeof DATA!=='undefined'&&DATA&&!map.getLayer('pci-avg'))generatePCI(true);
+        if(typeof generatePCI==='function'&&Segs.collection()&&!map.getLayer('pci-avg'))generatePCI(true);
       }catch(e){}},300);};
       /* Build 170 — if the user jumps straight into NSV footage, hold the
          remaining background steps while the video is actually PLAYING: the FWD

@@ -133,13 +133,13 @@ function pciPopup(lngLat,props,basis){
    always shows something). Toggling a PCI switch on is then an instant
    visibility flip instead of a full 33k-segment recompute at click time. */
 function generatePCI(silent){
-  if(!DATA){setPciStatus('Loading segments\u2026');loadSegments().then(()=>{if(DATA&&DATA.features&&DATA.features.length)generatePCI(silent);else setPciStatus('No condition segments yet. Build them in the Data console.');});return;}
+  if(!Segs.collection()){setPciStatus('Loading segments\u2026');Segs.ensure().then(()=>{if(Segs.loaded())generatePCI(silent);else setPciStatus('No condition segments yet. Build them in the Data console.');});return;}
   PCI_PARAMS.forEach(pp=>{const el=document.getElementById('w_'+pp.key);if(el)PCI_W[pp.key]=+el.value||0;});
   let nA=0,lenA=0,pA=0,nW=0,lenW=0,pW=0;
-  DATA.features.forEach(f=>{const L=Math.max(0,(+f.properties.to_ch||0)-(+f.properties.from_ch||0))||1;
+  Segs.all().forEach(f=>{const L=Math.max(0,(+f.properties.to_ch||0)-(+f.properties.from_ch||0))||1;
     const va=segPCI(f.properties,'avg');f.properties.pci_avg=(va==null)?-1:Math.round(va*10)/10;if(va!=null){nA++;lenA+=L;pA+=va*L;}
     const vw=segPCI(f.properties,'worst');f.properties.pci_worst=(vw==null)?-1:Math.round(vw*10)/10;if(vw!=null){nW++;lenW+=L;pW+=vw*L;}});
-  if(map.getSource('segs'))map.getSource('segs').setData(DATA);
+  if(map.getSource('segs'))map.getSource('segs').setData(Segs.collection());
   PCI_LAYERS.forEach(L=>{
     if(!map.getLayer(L.id)){
       map.addLayer({id:L.id,type:'line',source:'segs',layout:{'line-cap':'round'},paint:{'line-color':pciColorExpr(L.prop),'line-width':['interpolate',['linear'],['zoom'],10,3.5,16,8],'line-offset':['interpolate',['linear'],['zoom'],10,L.off*1.5,16,L.off*3.5]}});
@@ -152,8 +152,8 @@ function generatePCI(silent){
   if(!silent&&ta&&tw&&!ta.checked&&!tw.checked)ta.checked=true;
   map.setLayoutProperty('pci-avg','visibility',(ta&&ta.checked)?'visible':'none');
   map.setLayoutProperty('pci-worst','visibility',(tw&&tw.checked)?'visible':'none');
-  renderPciSummary({avg:lenA?pA/lenA:null,worst:lenW?pW/lenW:null,nA:nA,nW:nW,total:DATA.features.length});
-  setPciStatus('\u2713 PCI generated (Composite & Worst-Lane) for '+nA+' of '+DATA.features.length+' segments.');
+  renderPciSummary({avg:lenA?pA/lenA:null,worst:lenW?pW/lenW:null,nA:nA,nW:nW,total:Segs.count()});
+  setPciStatus('\u2713 PCI generated (Composite & Worst-Lane) for '+nA+' of '+Segs.count()+' segments.');
 }
 (function initPci(){
   renderPciWeights();renderPciLegend();

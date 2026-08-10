@@ -8,18 +8,21 @@
 let lastPciReport=null;
 const PCI_ORDER=['Excellent','Good','Satisfactory','Fair','Poor','Fail'];
 function pciClassColor(label){const b=PCI_BANDS.find(x=>x.label===label);return b?b.color:'#b9c2cc';}
-function syncLazyVis(){const cOn=!!((document.getElementById('showCond')||{}).checked);const _rt=document.getElementById('showRoads');if(map.getLayer('roadnet-casing'))map.setLayoutProperty('roadnet-casing','visibility',(_rt&&_rt.checked)?'visible':'none');[['roadnet','showRoads'],['pci-avg','showPciAvg'],['pci-worst','showPciWorst']].forEach(([l,t])=>{const tg=document.getElementById(t);if(map.getLayer(l))map.setLayoutProperty(l,'visibility',(tg&&tg.checked)?'visible':'none');});['seg-CC','seg-CL1','seg-CL2','seg-CR1','seg-CR2'].forEach(l=>{if(map.getLayer(l))map.setLayoutProperty(l,'visibility',cOn?'visible':'none');});}
+/* syncLazyVis() used to live here — eight layer ids and four checkbox ids
+   written out by hand, in the PCI *report* file, because layer
+   reconciliation had nowhere of its own to live. It is now
+   KLLayers.syncLazyLayers() in 02b-layer-registry.js. */
 function pciRptBody(){return document.getElementById(window.PCI_RPT_TARGET||'dashBody');}
 function renderPciReport(){
   const body=pciRptBody();
   const needRoads=!ROADS||!Object.keys(ROADS).length;
-  const needSegs=!DATA||!DATA.features||!DATA.features.length;
+  const needSegs=!Segs.loaded();
   if(needRoads||needSegs){
     body.innerHTML='<div class="dash-loading">Preparing PCI report — loading road &amp; condition data…</div>';
     Promise.resolve().then(()=>needRoads?loadRoads():null).then(()=>needSegs?loadSegments():null).then(()=>{
-      syncLazyVis();
+      KLLayers.syncLazyLayers();
       if(dashTabCur!=='pci')return;
-      if(!DATA||!DATA.features||!DATA.features.length){body.innerHTML='<div class="dash-loading">No condition segments yet. Build them in the Data console first.</div>';return;}
+      if(!Segs.loaded()){body.innerHTML='<div class="dash-loading">No condition segments yet. Build them in the Data console first.</div>';return;}
       renderPciReportNow();
     }).catch(e=>{body.innerHTML='<div class="dash-loading">Could not prepare PCI report: '+((e&&e.message)||e)+'</div>';});
     return;
@@ -34,7 +37,7 @@ function llc(lat,lng){return (lat==null||lng==null||isNaN(lat)||isNaN(lng))?'\u2
 function pciReportData(basis){
   PCI_PARAMS.forEach(pp=>{const el=document.getElementById('w_'+pp.key);if(el)PCI_W[pp.key]=+el.value||0;});
   const sections={};
-  (DATA.features||[]).forEach(f=>{
+  Segs.all().forEach(f=>{
     const p=f.properties;
     const L=Math.max(0,(+p.to_ch||0)-(+p.from_ch||0))||1;
     const area=L*pavementWidthM(p.road);
@@ -64,7 +67,7 @@ function pciReportData(basis){
     sc.band=sc.pci!=null?pciBand(sc.pci):null;
   });
   const segM={};let segTot=0,segW=0,segAr=0;
-  (DATA.features||[]).forEach(f=>{const v=segPCI(f.properties,basis);if(v==null)return;const L=Math.max(0,(+f.properties.to_ch||0)-(+f.properties.from_ch||0))||1;const a=L*pavementWidthM(f.properties.road);segM[pciBand(v).label]=(segM[pciBand(v).label]||0)+L;segTot+=L;segW+=v*a;segAr+=a;});
+  Segs.all().forEach(f=>{const v=segPCI(f.properties,basis);if(v==null)return;const L=Math.max(0,(+f.properties.to_ch||0)-(+f.properties.from_ch||0))||1;const a=L*pavementWidthM(f.properties.road);segM[pciBand(v).label]=(segM[pciBand(v).label]||0)+L;segTot+=L;segW+=v*a;segAr+=a;});
   return {sections:secs,seg:{m:segM,tot:segTot,w:segW,area:segAr}};
 }
 /* Area weighting: pavement width (m) from the road-network Pavement_W code (1-5).
@@ -98,7 +101,7 @@ function pciRowCells(s,mode){
 let pciRptView='section';let pciRptFilt='all';
 function setPciRptView(v){pciRptView=v;renderPciReportNow();}
 function setPciRptFilt(f){pciRptFilt=f;renderPciReportNow();}
-function pciStretchData(basis){const rows=[];(DATA.features||[]).forEach(f=>{const p=f.properties;const pci=segPCI(p,basis);if(pci==null)return;const rd=ROADS[p.road];const rp=rd?rd.properties:{};const ee=segEnds(f);rows.push({label:(p.road==null?'\u2014':String(p.road)),name:(rp.name||rp.Road_Name||''),num:(rp.Road_Num||''),pwd:(rp.PWD_Sec&&String(rp.PWD_Sec).trim()!=='')?String(rp.PWD_Sec):'Unassigned',district:(rp.District&&String(rp.District).trim()!=='')?String(rp.District):'Unassigned',fr:Math.round(+p.from_ch||0),to:Math.round(+p.to_ch||0),len:Math.max(0,(+p.to_ch||0)-(+p.from_ch||0))||0,pci:pci,band:pciBand(pci),slat:ee[0]?ee[0][1]:null,slng:ee[0]?ee[0][0]:null,elat:ee[1]?ee[1][1]:null,elng:ee[1]?ee[1][0]:null});});return rows;}
+function pciStretchData(basis){const rows=[];Segs.all().forEach(f=>{const p=f.properties;const pci=segPCI(p,basis);if(pci==null)return;const rd=ROADS[p.road];const rp=rd?rd.properties:{};const ee=segEnds(f);rows.push({label:(p.road==null?'\u2014':String(p.road)),name:(rp.name||rp.Road_Name||''),num:(rp.Road_Num||''),pwd:(rp.PWD_Sec&&String(rp.PWD_Sec).trim()!=='')?String(rp.PWD_Sec):'Unassigned',district:(rp.District&&String(rp.District).trim()!=='')?String(rp.District):'Unassigned',fr:Math.round(+p.from_ch||0),to:Math.round(+p.to_ch||0),len:Math.max(0,(+p.to_ch||0)-(+p.from_ch||0))||0,pci:pci,band:pciBand(pci),slat:ee[0]?ee[0][1]:null,slng:ee[0]?ee[0][0]:null,elat:ee[1]?ee[1][1]:null,elng:ee[1]?ee[1][0]:null});});return rows;}
 function stretchHead(mode){return (mode==='district')?'<tr><th>Road No.</th><th>Road Name</th><th>Section Label</th><th>Chainage (m)</th><th class="num">Len</th><th class="num">PCI</th><th>Class</th><th>Start (lat, lng)</th><th>End (lat, lng)</th></tr>':'<tr><th>Section Label</th><th>Road Name</th><th>Chainage (m)</th><th class="num">Len</th><th class="num">PCI</th><th>Class</th><th>Start (lat, lng)</th><th>End (lat, lng)</th></tr>';}
 function stretchRow(s,mode){const ch='<td class="mono">'+s.fr+'\u2013'+s.to+'</td>';const len='<td class="num">'+Math.round(s.len)+'</td>';const pci='<td class="num">'+s.pci.toFixed(1)+'</td>';const cls='<td><span class="pci-chip" style="background:'+s.band.color+'">'+s.band.label+'</span></td>';const ll='<td class="mono" style="font-size:10px;white-space:nowrap">'+llc(s.slat,s.slng)+'</td><td class="mono" style="font-size:10px;white-space:nowrap">'+llc(s.elat,s.elng)+'</td>';return (mode==='district')?'<td class="mono">'+escH(s.num||'\u2013')+'</td><td>'+escH(s.name||'\u2014')+'</td><td class="mono">'+escH(s.label)+'</td>'+ch+len+pci+cls+ll:'<td class="mono">'+escH(s.label)+'</td><td>'+escH(s.name||'\u2014')+'</td>'+ch+len+pci+cls+ll;}
 const cmpSecChain=(a,b)=>{const L=String(a.label||'').localeCompare(String(b.label||''),undefined,{numeric:true});if(L)return L;const N=String(a.name||'').localeCompare(String(b.name||''),undefined,{numeric:true});if(N)return N;return (a.fr||0)-(b.fr||0);};
@@ -296,7 +299,7 @@ function pciAnalysisData(basis){
   /* pick up any edited weights, like the report does */
   PCI_PARAMS.forEach(pp=>{const el=document.getElementById('w_'+pp.key);if(el)PCI_W[pp.key]=+el.value||0;});
   const overall={};let tot=0,wsum=0,atot=0;const byClass={};const clsTot={},clsW={},clsA={};
-  (DATA.features||[]).forEach(f=>{
+  Segs.all().forEach(f=>{
     const p=f.properties;const v=segPCI(p,basis);if(v==null)return;
     const L=Math.max(0,(+p.to_ch||0)-(+p.from_ch||0))||1;const a=L*pavementWidthM(p.road);
     const band=pciBand(v).label;
@@ -311,12 +314,12 @@ function pciAnalysisData(basis){
 function renderPciAnalysis(){
   const body=document.getElementById('dashBody');
   const needRoads=!ROADS||!Object.keys(ROADS).length;
-  const needSegs=!DATA||!DATA.features||!DATA.features.length;
+  const needSegs=!Segs.loaded();
   if(needRoads||needSegs){
     body.innerHTML='<div class="dash-loading">Preparing PCI analysis — loading road &amp; condition data…</div>';
     Promise.resolve().then(()=>needRoads?loadRoads(true):null).then(()=>needSegs?loadSegments():null).then(()=>{
       if(dashTabCur!=='pcia')return;
-      if(!DATA||!DATA.features||!DATA.features.length){body.innerHTML='<div class="dash-loading">No condition segments yet. Build them in the Data console first.</div>';return;}
+      if(!Segs.loaded()){body.innerHTML='<div class="dash-loading">No condition segments yet. Build them in the Data console first.</div>';return;}
       renderPciAnalysisNow();
     }).catch(e=>{body.innerHTML='<div class="dash-loading">Could not prepare PCI analysis: '+((e&&e.message)||e)+'</div>';});
     return;
