@@ -163,7 +163,7 @@ public class SegmentService {
      * selects both columns — so this runs there too, leaving the values NULL until
      * the next Build Segments (the viewer then falls back to computing in-browser).
      */
-    private void ensurePciColumns() {
+    void ensurePciColumns() {
         Boolean exists = jdbc.queryForObject(
             "SELECT to_regclass('condition_segments') IS NOT NULL", Boolean.class);
         if (!Boolean.TRUE.equals(exists)) return;
