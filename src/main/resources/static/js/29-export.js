@@ -460,7 +460,9 @@ function assetDef(t){try{return ASSETS.filter(function(a){return a.type===t;})[0
 function ensureAssetData(t){
   if(typeof ASSET_DATA!=='undefined'&&ASSET_DATA[t])return Promise.resolve();
   var d=assetDef(t);
-  return (d&&typeof loadAsset==='function')?loadAsset(d):Promise.resolve();
+  /* loadAssetData, not loadAsset: an export writes real geometry for the whole
+     network, so it needs the GeoJSON even when the map is drawing from tiles. */
+  return (d&&typeof loadAssetData==='function')?loadAssetData(d):Promise.resolve();
 }
 function assetEntry(type,label,color,toggle){
   return {label:label,color:color,toggle:toggle,

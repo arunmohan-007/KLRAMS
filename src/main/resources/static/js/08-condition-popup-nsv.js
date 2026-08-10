@@ -31,11 +31,13 @@ function ensureSummaryData(){
   if(_sumLoading)return _sumLoading;
   var jobs=[];
   try{
-    if(typeof ASSETS!=='undefined'&&typeof loadAsset==='function'&&typeof ASSET_DATA!=='undefined'){
+    /* loadAssetData, not loadAsset: these are per-section COUNTS over the whole
+       network, which tiles cannot answer — see the note on loadAssetData. */
+    if(typeof ASSETS!=='undefined'&&typeof loadAssetData==='function'&&typeof ASSET_DATA!=='undefined'){
       ['bridge','culvert','subgrade','bituminous_core','fwd'].forEach(function(t){
         if(ASSET_DATA[t])return;
         var a=null;for(var i=0;i<ASSETS.length;i++){if(ASSETS[i].type===t){a=ASSETS[i];break;}}
-        if(a)jobs.push(loadAsset(a));
+        if(a)jobs.push(loadAssetData(a));
       });
     }
   }catch(e){}

@@ -379,7 +379,9 @@ function toggleNetScopeCard(){
 function ensureScopeDatasets(){
   if(_nscLoadKicked)return;_nscLoadKicked=true;
   const wanted={bridge:1,culvert:1,fwd:1,subgrade:1,bituminous_core:1}; /* only the datasets the card shows */
-  try{if(typeof ASSETS!=='undefined'&&typeof loadAsset==='function')ASSETS.forEach(a=>{if(wanted[a.type]&&(typeof ASSET_DATA==='undefined'||!ASSET_DATA[a.type]))loadAsset(a);});}catch(e){}
+  /* loadAssetData, not loadAsset: the card counts the WHOLE network, which a tile can
+     never answer, and it must not depend on the layer having been built. */
+  try{if(typeof ASSETS!=='undefined'&&typeof loadAssetData==='function')ASSETS.forEach(a=>{if(wanted[a.type]&&(typeof ASSET_DATA==='undefined'||!ASSET_DATA[a.type]))loadAssetData(a);});}catch(e){}
   try{if(!Segs.collection())Segs.ensure();}catch(e){}
   try{if(typeof TRAFFIC_LOADED!=='undefined'&&!TRAFFIC_LOADED&&typeof loadTraffic==='function')loadTraffic();}catch(e){}
 }
