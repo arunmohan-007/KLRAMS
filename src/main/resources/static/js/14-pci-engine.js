@@ -101,6 +101,27 @@ function segPCI(props,basis){
 }
 
 const PCI_LAYERS=[{id:'pci-avg',prop:'pci_avg',basis:'avg',off:-1,tg:'showPciAvg'},{id:'pci-worst',prop:'pci_worst',basis:'worst',off:1,tg:'showPciWorst'}];
+/* Which property the PCI layers actually paint from.
+
+   GeoJSON mode: pci_avg / pci_worst, which generatePCI() stamps onto each
+   feature and pushes back through setData.
+
+   Tile mode: pci_def_avg / pci_def_worst, the values SegmentService stored at
+   Build Segments time and the tile already carries. A vector source has no
+   setData, so nothing can be stamped onto it — but nothing needs to be, because
+   at the default weights segPCI() returns exactly those stored numbers anyway.
+   The consequence is better than parity: the PCI layers render with no download
+   at all, where before they cost the whole network plus a 33k-segment scoring
+   pass in the browser.
+
+   Editing a weight makes the stored value wrong for that view. That path still
+   needs per-segment recomputation and is not served here — see the status text
+   in generatePCI(). */
+function pciProp(basis){
+  const worst=(basis==='worst');
+  if(TILES_ON)return worst?'pci_def_worst':'pci_def_avg';
+  return worst?'pci_worst':'pci_avg';
+}
 function pciBasisLabel(b){return b==='worst'?'Worst-Lane PCI':'Composite PCI';}
 function pciColorExpr(prop){return ['case',['<',['coalesce',['get',prop],-1],0],'#b9c2cc',['step',['get',prop],'#c92a2a',20,'#e8590c',40,'#f08c00',60,'#f2c200',80,'#7cb518',90,'#157f3c']];}
 function setPciStatus(t){const el=document.getElementById('pciStatus');if(el)el.textContent=t||'';}
@@ -132,24 +153,48 @@ function pciPopup(lngLat,props,basis){
    (that auto-tick exists for the explicit "Generate PCI" button, so a click
    always shows something). Toggling a PCI switch on is then an instant
    visibility flip instead of a full 33k-segment recompute at click time. */
+/* Layer creation, shared by both paths. In tile mode the source is a vector
+   source so every layer must name the layer inside the tile, or MapLibre
+   renders nothing and says nothing. */
+function addPciLayers(){
+  if(TILES_ON&&typeof ensureSegSource==='function')ensureSegSource();
+  PCI_LAYERS.forEach(L=>{
+    const prop=pciProp(L.basis);
+    if(!map.getLayer(L.id)){
+      const spec={id:L.id,type:'line',source:'segs',layout:{'line-cap':'round'},paint:{'line-color':pciColorExpr(prop),'line-width':['interpolate',['linear'],['zoom'],10,3.5,16,8],'line-offset':['interpolate',['linear'],['zoom'],10,L.off*1.5,16,L.off*3.5]}};
+      if(TILES_ON)spec['source-layer']=SEG_TILE_LAYER;
+      map.addLayer(spec);
+      map.on('click',L.id,e=>{if(e.features.length)pciPopup(e.lngLat,e.features[0].properties,L.basis);});
+      map.on('mouseenter',L.id,()=>map.getCanvas().style.cursor='pointer');
+      map.on('mouseleave',L.id,()=>map.getCanvas().style.cursor='');
+    }else{map.setPaintProperty(L.id,'line-color',pciColorExpr(prop));}
+  });
+}
+/* The explicit "Generate PCI" button auto-ticks Composite so a click always
+   shows something; the background preload (silent) must not. */
+function showPciToggles(silent){
+  const ta=document.getElementById('showPciAvg'),tw=document.getElementById('showPciWorst');
+  if(!silent&&ta&&tw&&!ta.checked&&!tw.checked)ta.checked=true;
+  return ta;
+}
 function generatePCI(silent){
+  /* Tile mode: the layers paint from the stored PCI the tile already carries,
+     so they can be built with nothing downloaded. Only the NETWORK SUMMARY
+     needs every segment, and that is not worth a multi-megabyte fetch nobody
+     asked for -- it fills in once something else (the PCI report, an export)
+     has loaded them. */
+  if(TILES_ON&&!Segs.collection()){addPciLayers();showPciToggles(silent);
+    setPciStatus('PCI shown from stored values. Open the PCI report for network totals.');
+    renderPciSummary(null);return;}
   if(!Segs.collection()){setPciStatus('Loading segments\u2026');Segs.ensure().then(()=>{if(Segs.loaded())generatePCI(silent);else setPciStatus('No condition segments yet. Build them in the Data console.');});return;}
   PCI_PARAMS.forEach(pp=>{const el=document.getElementById('w_'+pp.key);if(el)PCI_W[pp.key]=+el.value||0;});
   let nA=0,lenA=0,pA=0,nW=0,lenW=0,pW=0;
   Segs.all().forEach(f=>{const L=Math.max(0,(+f.properties.to_ch||0)-(+f.properties.from_ch||0))||1;
     const va=segPCI(f.properties,'avg');f.properties.pci_avg=(va==null)?-1:Math.round(va*10)/10;if(va!=null){nA++;lenA+=L;pA+=va*L;}
     const vw=segPCI(f.properties,'worst');f.properties.pci_worst=(vw==null)?-1:Math.round(vw*10)/10;if(vw!=null){nW++;lenW+=L;pW+=vw*L;}});
-  if(map.getSource('segs'))map.getSource('segs').setData(Segs.collection());
-  PCI_LAYERS.forEach(L=>{
-    if(!map.getLayer(L.id)){
-      map.addLayer({id:L.id,type:'line',source:'segs',layout:{'line-cap':'round'},paint:{'line-color':pciColorExpr(L.prop),'line-width':['interpolate',['linear'],['zoom'],10,3.5,16,8],'line-offset':['interpolate',['linear'],['zoom'],10,L.off*1.5,16,L.off*3.5]}});
-      map.on('click',L.id,e=>{if(e.features.length)pciPopup(e.lngLat,e.features[0].properties,L.basis);});
-      map.on('mouseenter',L.id,()=>map.getCanvas().style.cursor='pointer');
-      map.on('mouseleave',L.id,()=>map.getCanvas().style.cursor='');
-    }else{map.setPaintProperty(L.id,'line-color',pciColorExpr(L.prop));}
-  });
-  const ta=document.getElementById('showPciAvg'),tw=document.getElementById('showPciWorst');
-  if(!silent&&ta&&tw&&!ta.checked&&!tw.checked)ta.checked=true;
+  if(!TILES_ON&&map.getSource('segs'))map.getSource('segs').setData(Segs.collection());
+  addPciLayers();
+  const ta=showPciToggles(silent);const tw=document.getElementById('showPciWorst');
   map.setLayoutProperty('pci-avg','visibility',(ta&&ta.checked)?'visible':'none');
   map.setLayoutProperty('pci-worst','visibility',(tw&&tw.checked)?'visible':'none');
   renderPciSummary({avg:lenA?pA/lenA:null,worst:lenW?pW/lenW:null,nA:nA,nW:nW,total:Segs.count()});

@@ -169,7 +169,35 @@ var Segs = (function () {
     });
   }
 
+  /* ---- server-answered questions --------------------------------------
+     In tile mode the segments array is not downloaded, so these are asked
+     of /api/segments/* instead. Async by necessity: the answer is over the
+     network. The GeoJSON path keeps its synchronous answers, so callers
+     that cannot await still work exactly as before. */
+
+  /** {count, total, filtered, bbox} for the condition filters, from SQL. */
+  function matchStats(rows, mode) {
+    var qs = '/api/segments/match?mode=' + encodeURIComponent(mode || 'all');
+    (rows || []).forEach(function (r) {
+      var op = { '>': 'gt', '>=': 'gte', '<': 'lt', '<=': 'lte', '=': 'eq' }[r.op];
+      if (op) qs += '&f=' + encodeURIComponent(r.param + ':' + op + ':' + r.val);
+    });
+    return fetch(qs).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    });
+  }
+
+  /** Network segment count, from SQL. */
+  function countRemote() {
+    return fetch('/api/segments/stats')
+      .then(function (r) { return r.ok ? r.json() : { count: 0 }; })
+      .then(function (j) { return j.count || 0; });
+  }
+
   return {
+    matchStats: matchStats,
+    countRemote: countRemote,
     loaded: loaded,
     ensure: ensure,
     hasPci: hasPci,

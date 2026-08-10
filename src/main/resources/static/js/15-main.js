@@ -58,7 +58,17 @@ map.on('load',()=>{
         if(typeof loadIri2km==='function'&&!map.getLayer('iri2km'))loadIri2km(true);
       }catch(e){}},900);};
       const _afterSegs=()=>{_videoIdle().then(_preloadFwd).then(_videoIdle,_videoIdle).then(_preloadPci,_preloadPci).then(_preloadIri2km,_preloadIri2km);};
-      if(typeof loadSegments==='function'&&!map.getSource('segs')){
+      /* THE line that costs the download today. In GeoJSON mode this preloads
+         every condition segment 1.5s after login, so the map holds the whole
+         network before anyone asks for it. In tile mode there is nothing to
+         preload: ensureSegSource() registers a tile template and MapLibre
+         fetches only the viewport, so the segments GeoJSON is never requested
+         until something genuinely needs per-segment rows (the PCI report, an
+         export) and asks for it then. */
+      if(TILES_ON){
+        setTimeout(()=>{try{ensureSegSource();}catch(e){}
+          _afterSegs();},600);
+      }else if(typeof loadSegments==='function'&&!map.getSource('segs')){
         setTimeout(()=>{try{loadSegments().then(_afterSegs,_afterSegs);}catch(e){}},1500);
       }else{
         setTimeout(_afterSegs,1500);
