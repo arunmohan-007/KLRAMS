@@ -149,14 +149,22 @@ final class SegmentLaneColumns {
     }
 
     /**
-     * {@code 1} when the lane key is present in {@code lane_vals}, else {@code 0}.
+     * {@code 1} when the lane key is present in {@code lane_vals}, else NULL.
      *
      * <p>{@code jsonb_exists(...)} rather than the {@code ?} existence operator. {@code ?} is also
      * the JDBC placeholder character, and PostgreSQL's driver would try to bind it — the function
      * form is the only way to ask this question from prepared SQL.
+     *
+     * <p>NULL rather than {@code 0} for an absent lane, so the key disappears entirely: through
+     * {@code jsonb_strip_nulls} on the GeoJSON side and through {@code ST_AsMVT}, which omits a
+     * NULL property from the tile. Both then match {@code 07-data-loaders.js} exactly — it writes
+     * {@code L_<lane>} only for lanes the segment actually carries. A zero would read the same
+     * (every consumer goes through {@code condLaneFilter}, which coalesces a missing key to 0)
+     * but would spend four dead keys per feature on a single-lane segment, and most of the
+     * network is single-lane.
      */
     private static String presenceExpr(String alias, String lane) {
         return "(CASE WHEN jsonb_exists(" + alias + ".lane_vals, '" + lane
-                + "') THEN 1 ELSE 0 END)";
+                + "') THEN 1 ELSE NULL END)";
     }
 }
