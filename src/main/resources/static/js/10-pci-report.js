@@ -8,7 +8,10 @@
 let lastPciReport=null;
 const PCI_ORDER=['Excellent','Good','Satisfactory','Fair','Poor','Fail'];
 function pciClassColor(label){const b=PCI_BANDS.find(x=>x.label===label);return b?b.color:'#b9c2cc';}
-function syncLazyVis(){const cOn=!!((document.getElementById('showCond')||{}).checked);const _rt=document.getElementById('showRoads');if(map.getLayer('roadnet-casing'))map.setLayoutProperty('roadnet-casing','visibility',(_rt&&_rt.checked)?'visible':'none');[['roadnet','showRoads'],['pci-avg','showPciAvg'],['pci-worst','showPciWorst']].forEach(([l,t])=>{const tg=document.getElementById(t);if(map.getLayer(l))map.setLayoutProperty(l,'visibility',(tg&&tg.checked)?'visible':'none');});['seg-CC','seg-CL1','seg-CL2','seg-CR1','seg-CR2'].forEach(l=>{if(map.getLayer(l))map.setLayoutProperty(l,'visibility',cOn?'visible':'none');});}
+/* syncLazyVis() used to live here — eight layer ids and four checkbox ids
+   written out by hand, in the PCI *report* file, because layer
+   reconciliation had nowhere of its own to live. It is now
+   KLLayers.syncLazyLayers() in 02b-layer-registry.js. */
 function pciRptBody(){return document.getElementById(window.PCI_RPT_TARGET||'dashBody');}
 function renderPciReport(){
   const body=pciRptBody();
@@ -17,7 +20,7 @@ function renderPciReport(){
   if(needRoads||needSegs){
     body.innerHTML='<div class="dash-loading">Preparing PCI report — loading road &amp; condition data…</div>';
     Promise.resolve().then(()=>needRoads?loadRoads():null).then(()=>needSegs?loadSegments():null).then(()=>{
-      syncLazyVis();
+      KLLayers.syncLazyLayers();
       if(dashTabCur!=='pci')return;
       if(!DATA||!DATA.features||!DATA.features.length){body.innerHTML='<div class="dash-loading">No condition segments yet. Build them in the Data console first.</div>';return;}
       renderPciReportNow();

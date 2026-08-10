@@ -17,7 +17,7 @@ map.on('load',()=>{
          search are ready, so login stays fast but the Road Condition layer is
          already in memory — turning the toggle on is then instant instead of
          waiting for a fresh fetch. Fire-and-forget on a short delay so it never
-         competes with the initial map paint; syncLazyVis() (and addCondLayers,
+         competes with the initial map paint; KLLayers.syncLazyLayers() (and addCondLayers,
          which now honours the toggle) keep the layer hidden while showCond is off. */
       /* Build 167 — also background-preload the FWD map layer AFTER the segments
          finish, so switching "FWD (D0)" on is an instant visibility flip instead

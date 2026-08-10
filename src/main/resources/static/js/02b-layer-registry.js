@@ -230,19 +230,47 @@ var KLLayers = (function () {
   }
 
   /**
-   * Square every family's visibility against its toggle.
+   * Square families' visibility against their toggles.
    *
-   * This is the job syncLazyVis() does today from inside
-   * 10-pci-report.js, generalised: after a background preload the
-   * layers exist but their toggles may be unticked, and something has
-   * to reconcile the two. Families without a toggle are left alone —
-   * the measure and selection layers are driven by code.
+   * The job syncLazyVis() used to do from inside 10-pci-report.js: after
+   * a background preload the layers exist but their toggles may be
+   * unticked, and something has to reconcile the two.
+   *
+   * Families without a toggle are always left alone — the measure and
+   * selection layers are driven by code, and roadnet-hit is deliberately
+   * visible at all times so Video-on-click keeps working with the
+   * network layer switched off.
+   *
+   * `opts.sources` narrows the pass to families reading those sources.
+   * Callers use it because reconciling EVERYTHING is not the same
+   * operation: a preload of the road network has no business deciding
+   * whether the FWD layer should be on. Omit it only when you really do
+   * mean every layer.
    */
-  function syncFromToggles() {
+  function syncFromToggles(opts) {
+    var sources = opts && opts.sources;
     SPECS.forEach(function (spec) {
       if (!spec.toggle) return;
+      if (sources && sources.indexOf(spec.source) < 0) return;
       setVisible(spec, toggled(spec));
     });
+  }
+
+  /**
+   * Reconcile the lazily-loaded map layers — the road network and
+   * everything drawn from the condition segments.
+   *
+   * Called after a background preload finishes. Those loads build their
+   * layers whether or not the user has ticked anything, so without this
+   * a preload would flash condition colours onto a map whose Condition
+   * toggle is off.
+   *
+   * Deliberately narrower than syncFromToggles() with no arguments:
+   * assets, traffic, boundaries and the merged network load on their own
+   * schedules and must not be swept up by a road-network preload.
+   */
+  function syncLazyLayers() {
+    syncFromToggles({ sources: ['roadnet', 'segs'] });
   }
 
   /* ------------------------------------------------------------------
@@ -296,6 +324,7 @@ var KLLayers = (function () {
     setVisible: setVisible,
     show: show,
     syncFromToggles: syncFromToggles,
+    syncLazyLayers: syncLazyLayers,
     describe: describe
   };
 })();
