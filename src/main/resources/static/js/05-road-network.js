@@ -58,9 +58,32 @@ function buildAttrMeta(gj){
     const valuesByFreq=[...distinct.keys()].sort((a,b)=>(distinct.get(b)-distinct.get(a))||a.localeCompare(b));
     ATTRS[k]={numeric:numeric&&min!==Infinity,min,max,values:[...distinct.keys()].sort(),valuesByFreq};
   });
+  populateColorBySelect();
+}
+function populateColorBySelect(){
   const sel=document.getElementById('netColorBy');
   sel.innerHTML='<option value="__class__">Default (SH / MDR)</option>';
   Object.keys(ATTRS).sort().forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k+(ATTRS[k].numeric?' (numeric)':'');sel.appendChild(o);});
+}
+/* Tile-mode twin of buildAttrMeta(gj): same ATTRS shape, but asked of
+   /api/roads/attrs + /api/roads/attr-meta instead of scanned out of a
+   downloaded FeatureCollection. Only worth doing because a MapLibre `match`
+   expression has to have every category and its colour baked in before the
+   first tile is even requested -- a paint expression can't compute "what
+   values exist" from data it hasn't rendered yet, so this is the one
+   question about the network a tile itself can never answer.
+   /api/roads/attrs already excludes id/geom and never contains the
+   road/name/len aliases (those aren't real columns), so no SKIP_ATTRS
+   filtering is needed here the way buildAttrMeta needs it against raw
+   feature properties. */
+function buildAttrMetaFromServer(){
+  return fetch('/api/roads/attrs').then(r=>r.json()).then(list=>{
+    ATTRS={};
+    return Promise.all(list.map(a=>
+      fetch('/api/roads/attr-meta?attr='+encodeURIComponent(a.attr))
+        .then(r=>r.json()).then(meta=>{ATTRS[a.attr]=meta;})
+    ));
+  }).then(populateColorBySelect);
 }
 function netColorByExpr(attr){
   const m=ATTRS[attr];
@@ -97,7 +120,7 @@ function netColorByExpr(attr){
 function renderNetLegend(attr){
   const el=document.getElementById('netLegend'); el.innerHTML='';
   const m=ATTRS[attr];
-  if(!m){el.innerHTML='<div class="lg"><span class="bar" style="background:#8a4d1f"></span><span class="lgt">SH</span></div><div class="lg"><span class="bar" style="background:#3b6fa0"></span><span class="lgt">MDR</span></div>';return;}
+  if(!m){el.innerHTML='<div class="lg"><span class="bar" style="background:'+CLS.SH+'"></span><span class="lgt">SH</span></div><div class="lg"><span class="bar" style="background:'+CLS.MDR+'"></span><span class="lgt">MDR</span></div>';return;}
   if(m.numeric&&/road.?num/i.test(attr)){
     el.innerHTML=ROAD_NUM_PALETTE.map(c=>`<span class="bar" style="background:${c};display:inline-block;width:14px;height:10px;margin-right:2px;border-radius:2px"></span>`).join('')
       +`<div class="lg"><span class="lgt">Each road number gets its own distinct colour (hashed, not a gradient)</span></div>`;
@@ -244,8 +267,15 @@ function applyNetFilter(){
   if(map.getLayer('roadnet'))map.setFilter('roadnet',ex);if(map.getLayer('roadnet-casing'))map.setFilter('roadnet-casing',ex);
   const rows=netFilters.filter(f=>f.attr&&f.val!=='');
   let info='',list=null;
+  /* Attribute filtering never reads geometry -- every predicate is against a
+     plain property (District, Road_Class, chainage, ...), so this scans
+     RoadsIndex (metadata only) rather than requiring the whole network's
+     geometry to already be in ROADS. Wrapped back into {properties:...} so
+     renderNetScopeCard and everything downstream keeps the shape it already
+     expects -- only fitFeaturesBounds needs actual coordinates, and it
+     already no-ops gracefully (try/catch) when a feature has none. */
   if(rows.length){
-    list=Object.values(ROADS).filter(f=>{const p=f.properties;const t=rows.map(r=>{
+    list=RoadsIndex.all().filter(p=>{const t=rows.map(r=>{
       const m=ATTRS[r.attr]||{};const raw=p[r.attr];if(raw==null||raw==='')return false;
       if(m.numeric){
         const v=+raw;
@@ -255,8 +285,8 @@ function applyNetFilter(){
       const s=String(raw);
       if(r.op==='contains')return s.toLowerCase().includes(String(r.val).toLowerCase());
       return nfVals(r).indexOf(s)>=0;
-    });return netMode==='all'?t.every(Boolean):t.some(Boolean);});
-    info=list.length+' of '+Object.keys(ROADS).length+' roads match';
+    });return netMode==='all'?t.every(Boolean):t.some(Boolean);}).map(p=>({properties:p}));
+    info=list.length+' of '+RoadsIndex.all().length+' roads match';
   }
   document.getElementById('netMatchInfo').textContent=info;
   /* Build 163 — scope every road-linked layer to the filtered roads */

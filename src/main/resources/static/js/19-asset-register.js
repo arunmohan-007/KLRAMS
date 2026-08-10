@@ -15,15 +15,19 @@ let regTab='road', regSearch='', regClass='', regDistrict='', regAttr='', regAtt
 function regSectionKey(p){ try{var v=pickProp(p,ROAD_KEYS);return (v!=null&&v!=='')?String(v):(p&&p.road!=null?String(p.road):'');}catch(e){return (p&&p.road!=null)?String(p.road):'';} }
 function regAssetId(p){ var v=pickProp(p,ID_KEYS); return (v!=null&&v!=='')?String(v):''; }
 function regNum(v){ return (v!=null&&v!=='')?(isNaN(+v)?v:+v):null; }
-function roadProps(sec){ return (ROADS[sec]&&ROADS[sec].properties)||{}; }
+/* Register rows need road METADATA only -- name, class, chainage, district --
+   never geometry, so this reads the lightweight RoadsIndex first (cheap even
+   for the whole network) rather than requiring every road's full feature to
+   already be hydrated in ROADS. */
+function roadProps(sec){ return RoadsIndex.byRoad(sec) || (ROADS[sec]&&ROADS[sec].properties) || {}; }
 function regCount(gj){ const m={};((gj&&gj.features)||[]).forEach(f=>{const k=regSectionKey(f.properties||{});if(k)m[k]=(m[k]||0)+1;});return m; }
 function regChainExtent(sec){ return Segs.chainExtent(sec); }
 
 /* ---- build row sets ---- */
 function buildRoadRows(){
   const culv=regCount(REG_CULV_GJ), brid=regCount(REG_BRID_GJ), rows=[];
-  Object.keys(ROADS).forEach(key=>{
-    const p=roadProps(key), ext=regChainExtent(key);
+  RoadsIndex.all().forEach(p=>{
+    const key=p.road, ext=regChainExtent(key);
     const rdS=regNum(p.Rd_Str_cha), rdE=regNum(p.Rd_End_cha);
     rows.push({sec:key,name:p.Road_Name||p.name||'',num:p.Road_Num||'',cls:p.Road_Class||'',clsLabel:dec('Road_Class',p.Road_Class||'')||'',
       sCh:ext[0]!=null?ext[0]:rdS,eCh:ext[1]!=null?ext[1]:rdE,rdSCh:rdS,rdECh:rdE,
@@ -78,9 +82,9 @@ function openRegScreen(tab){
   ['dashboard','pciScreen','condScreen','reportHub'].forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('open');});
   s.classList.add('open');
   document.getElementById('regBody').innerHTML='<div class="dash-loading">Preparing Asset Register&hellip;</div>';
-  const needRoads=!ROADS||!Object.keys(ROADS).length;
+  const needRoads=!RoadsIndex.all().length;
   Promise.resolve()
-    .then(()=>needRoads?loadRoads():null)
+    .then(()=>needRoads?RoadsIndex.ensure():null)
     .then(()=>REG_CULV_GJ?null:fetch('/api/assets/culvert/geojson').then(r=>r.json()).then(gj=>{REG_CULV_GJ=gj||{features:[]};}).catch(()=>{REG_CULV_GJ={features:[]};}))
     .then(()=>REG_BRID_GJ?null:fetch('/api/assets/bridge/geojson').then(r=>r.json()).then(gj=>{REG_BRID_GJ=gj||{features:[]};}).catch(()=>{REG_BRID_GJ={features:[]};}))
     .then(()=>{ REG_ROADS=buildRoadRows(); REG_CULV=buildCulvRows(); REG_BRID=buildBridRows(); regScreenTab(tab||regTab||'road'); })

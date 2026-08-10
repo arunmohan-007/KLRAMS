@@ -10,33 +10,40 @@ function setupSearch(){
   function render(list){
     items=list;active=-1;
     if(!list.length){box.innerHTML='<div class="none">No matching road</div>';box.classList.add('show');return;}
-    box.innerHTML=list.map((f,i)=>{const p=f.properties;const num=p.Road_Num?(' · No. '+p.Road_Num):'';return `<div class="it" data-i="${i}"><div class="nm">${p.name||p.road}</div><div class="id">${p.road}${num}</div></div>`;}).join('');
+    box.innerHTML=list.map((p,i)=>{const num=p.Road_Num?(' · No. '+p.Road_Num):'';return `<div class="it" data-i="${i}"><div class="nm">${p.name||p.road}</div><div class="id">${p.road}${num}</div></div>`;}).join('');
     box.classList.add('show');
     box.querySelectorAll('.it').forEach(el=>el.onclick=()=>choose(items[+el.dataset.i]));
   }
-  function choose(f){
-    if(!f)return;
-    box.classList.remove('show');inp.value=f.properties.name||f.properties.road;
-    const line=lineOf(f);const b=new maplibregl.LngLatBounds();line.geometry.coordinates.forEach(c=>b.extend(c));
-    if(!b.isEmpty())map.fitBounds(b,{padding:90,maxZoom:15,duration:700});
-    const s=line.geometry.coordinates[0];
-    onPick(f.properties.road,{lng:s[0],lat:s[1]});
+  /* The typeahead list is metadata only (RoadsIndex, no geometry) -- cheap
+     enough to search across the whole network on every keystroke. The chosen
+     result is the one place that needs coordinates, so it hydrates just that
+     one road (RoadsIndex.hydrateFeature) before fitting bounds / picking. */
+  function choose(p){
+    if(!p)return;
+    box.classList.remove('show');inp.value=p.name||p.road;
+    RoadsIndex.hydrateFeature(p.road).then(f=>{
+      if(!f)return;
+      const line=lineOf(f);const b=new maplibregl.LngLatBounds();line.geometry.coordinates.forEach(c=>b.extend(c));
+      if(!b.isEmpty())map.fitBounds(b,{padding:90,maxZoom:15,duration:700});
+      const s=line.geometry.coordinates[0];
+      onPick(p.road,{lng:s[0],lat:s[1]});
+    });
   }
   inp.addEventListener('input',()=>{
     const q=inp.value.trim().toLowerCase();
     if(!q){box.classList.remove('show');return;}
     const doFilter=()=>{
-      const m=Object.values(ROADS).filter(f=>{const p=f.properties;return String(p.name||'').toLowerCase().includes(q)||String(p.road||'').toLowerCase().includes(q)||String(p.Road_Num||'').toLowerCase().includes(q);}).slice(0,10);
+      const m=RoadsIndex.all().filter(p=>String(p.name||'').toLowerCase().includes(q)||String(p.road||'').toLowerCase().includes(q)||String(p.Road_Num||'').toLowerCase().includes(q)).slice(0,10);
       render(m);
     };
-    /* build 120 — if the road network hasn't loaded yet, fetch it on demand
+    /* build 120 — if the road index hasn't loaded yet, fetch it on demand
        instead of asking the user to turn on the layer first. Search now works
        straight away and is independent of any layer toggle. */
-    if(!Object.keys(ROADS).length){
+    if(!RoadsIndex.all().length){
       box.innerHTML='<div class="none">Loading roads…</div>';box.classList.add('show');
-      Promise.resolve(typeof loadRoads==='function'?loadRoads(true):null).then(()=>{
+      RoadsIndex.ensure().then(()=>{
         if(inp.value.trim().toLowerCase()!==q)return;            // user kept typing
-        if(!Object.keys(ROADS).length){box.innerHTML='<div class="none">No road data available.</div>';return;}
+        if(!RoadsIndex.all().length){box.innerHTML='<div class="none">No road data available.</div>';return;}
         doFilter();
       });
       return;
