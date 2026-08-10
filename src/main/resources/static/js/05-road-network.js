@@ -262,20 +262,34 @@ function netFilterExpr(){
   });
   return [netMode==='all'?'all':'any',...parts];
 }
+/* Property bags for the network attribute filter. Tile mode keeps these in
+   RoadsIndex (no geometry); GeoJSON mode never loads the index and already
+   has every road in ROADS. Prefer the index when it has rows, otherwise
+   fall back to ROADS — scanning an empty index produced "0 of 0" summaries
+   and an empty NET_SCOPE Set that filtered roadnet-hit to nothing, so clicks
+   stopped opening the road popup while a filter was active. */
+function netMetaRows(){
+  if(typeof RoadsIndex!=='undefined'&&RoadsIndex.all().length)return RoadsIndex.all();
+  return Object.keys(ROADS||{}).map(k=>{
+    const f=ROADS[k],p=Object.assign({},(f&&f.properties)||{});
+    if(p.road==null)p.road=(p.Section_La!=null?p.Section_La:k);
+    return p;
+  });
+}
 function applyNetFilter(){
   const ex=netFilterExpr();
   if(map.getLayer('roadnet'))map.setFilter('roadnet',ex);if(map.getLayer('roadnet-casing'))map.setFilter('roadnet-casing',ex);
   const rows=netFilters.filter(f=>f.attr&&f.val!=='');
   let info='',list=null;
   /* Attribute filtering never reads geometry -- every predicate is against a
-     plain property (District, Road_Class, chainage, ...), so this scans
-     RoadsIndex (metadata only) rather than requiring the whole network's
-     geometry to already be in ROADS. Wrapped back into {properties:...} so
-     renderNetScopeCard and everything downstream keeps the shape it already
-     expects -- only fitFeaturesBounds needs actual coordinates, and it
-     already no-ops gracefully (try/catch) when a feature has none. */
+     plain property (District, Road_Class, chainage, ...). Prefer RoadsIndex
+     (metadata only); fall back to ROADS in GeoJSON mode. Wrapped back into
+     {properties:...} so renderNetScopeCard and everything downstream keeps
+     the shape it already expects. Prefer a hydrated ROADS feature when we
+     have one so fitFeaturesBounds can still zoom to the match. */
   if(rows.length){
-    list=RoadsIndex.all().filter(p=>{const t=rows.map(r=>{
+    const meta=netMetaRows();
+    list=meta.filter(p=>{const t=rows.map(r=>{
       const m=ATTRS[r.attr]||{};const raw=p[r.attr];if(raw==null||raw==='')return false;
       if(m.numeric){
         const v=+raw;
@@ -285,12 +299,19 @@ function applyNetFilter(){
       const s=String(raw);
       if(r.op==='contains')return s.toLowerCase().includes(String(r.val).toLowerCase());
       return nfVals(r).indexOf(s)>=0;
-    });return netMode==='all'?t.every(Boolean):t.some(Boolean);}).map(p=>({properties:p}));
-    info=list.length+' of '+RoadsIndex.all().length+' roads match';
+    });return netMode==='all'?t.every(Boolean):t.some(Boolean);}).map(p=>{
+      const road=p.road!=null?String(p.road):'';
+      const full=(typeof ROADS!=='undefined'&&ROADS[road])?ROADS[road]:null;
+      return full||{properties:p};
+    });
+    info=list.length+' of '+meta.length+' roads match';
   }
   document.getElementById('netMatchInfo').textContent=info;
-  /* Build 163 — scope every road-linked layer to the filtered roads */
-  window.NET_SCOPE=(rows.length&&list)?new Set(list.map(f=>String(f.properties.road))):null;
+  /* Build 163 — scope every road-linked layer to the filtered roads.
+     list must be checked for .length: an empty array is truthy in JS, and
+     `new Set([])` would scope every layer (including roadnet-hit) to nothing
+     — summary tiles all read 0 and road clicks stop firing. */
+  window.NET_SCOPE=rows.length?(list&&list.length?new Set(list.map(f=>String((f.properties||{}).road))):new Set()):null;
   if(typeof applyNetScope==='function')applyNetScope();
   renderNetScopeCard(list,rows);
   if(_netFitT)clearTimeout(_netFitT);

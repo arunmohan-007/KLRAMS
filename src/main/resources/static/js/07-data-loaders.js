@@ -163,6 +163,10 @@ function loadRoads(noFit){
     if(!gj||!gj.features)throw new Error('malformed response');
     if(!gj.features.length){roadsStatus('No road network uploaded yet.',false);return;}
     renderRoads(gj,noFit);
+    /* Keep RoadsIndex warm in GeoJSON mode too — the network filter, search
+       and asset register prefer it, and without this they saw an empty index
+       (0 matches / dead roadnet-hit scope) whenever ?tiles=1 was off. */
+    if(typeof RoadsIndex!=='undefined')RoadsIndex.ensure();
   }).catch(err=>{
     /* Leave nothing half-built behind, or the retry would short-circuit. */
     teardownRoads();
