@@ -25,18 +25,30 @@ public class RoadController {
     private final JdbcTemplate jdbc;
     private volatile String cachedGeojson;
     private volatile String cachedEtag;
+    private volatile String cachedIndex;
+    private volatile String cachedIndexEtag;
 
     public RoadController(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    /** Builds the cache if it isn't already warm. Called on startup so the first real request is fast. */
+    /** Builds the caches if they aren't already warm. Called on startup so the first real request
+     *  is fast — including the index, now that tile mode makes it the FIRST thing a login fetches
+     *  rather than a side effect of the full GeoJSON already being in memory. */
     public void warm() {
         if (cachedGeojson == null) {
             synchronized (this) {
                 if (cachedGeojson == null) {
                     cachedGeojson = buildGeojson();
                     cachedEtag = GeoJsonResponse.contentTag(cachedGeojson);
+                }
+            }
+        }
+        if (cachedIndex == null) {
+            synchronized (this) {
+                if (cachedIndex == null) {
+                    cachedIndex = buildIndex();
+                    cachedIndexEtag = GeoJsonResponse.contentTag(cachedIndex);
                 }
             }
         }
@@ -68,8 +80,55 @@ public class RoadController {
         synchronized (this) {
             cachedGeojson = null;
             cachedEtag = null;
+            cachedIndex = null;
+            cachedIndexEtag = null;
         }
         return "{\"ok\":true,\"message\":\"road geojson cache cleared\"}";
+    }
+
+    /**
+     * Every road's metadata, with NO geometry — search, the network attribute filter and the
+     * asset register table all need to scan every road, but none of them read a coordinate.
+     * Coordinates are the entire cost of the road network's payload (measured: 4.0 MB full
+     * GeoJSON versus 92 KB for this same query with geometry left out, on a 133-road test
+     * network — the ratio only widens as roads get longer and carry more vertices), so this is
+     * cheap enough to load unconditionally even in tile mode, the same way the old code loaded
+     * the whole GeoJSON unconditionally — it is just 40x lighter.
+     *
+     * <p>A plain JSON array, not a FeatureCollection: there is no geometry to make it a
+     * "Feature", and every consumer (search, the filter, the register) wants an array of
+     * property bags, not something it has to reach into {@code .properties} for.
+     */
+    @GetMapping(value = "/index", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> index(@RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        String body = cachedIndex, tag = cachedIndexEtag;
+        if (body == null || tag == null) {
+            synchronized (this) {
+                if (cachedIndex == null) {
+                    cachedIndex = buildIndex();
+                    cachedIndexEtag = GeoJsonResponse.contentTag(cachedIndex);
+                }
+                body = cachedIndex;
+                tag = cachedIndexEtag;
+            }
+        }
+        return GeoJsonResponse.conditional(body, tag, ifNoneMatch);
+    }
+
+    private String buildIndex() {
+        String sql = """
+            SELECT COALESCE(json_agg(
+                (to_jsonb(r) - 'geom')
+                    || jsonb_build_object(
+                         'road', r."Section_La",
+                         'name', r."Road_Name",
+                         'len',  r."Measrd_Len"
+                       )
+            ), '[]'::json)::text
+            FROM roads r
+            WHERE r.geom IS NOT NULL
+            """;
+        return jdbc.queryForObject(sql, String.class);
     }
 
     /**

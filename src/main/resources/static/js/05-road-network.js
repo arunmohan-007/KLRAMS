@@ -244,8 +244,15 @@ function applyNetFilter(){
   if(map.getLayer('roadnet'))map.setFilter('roadnet',ex);if(map.getLayer('roadnet-casing'))map.setFilter('roadnet-casing',ex);
   const rows=netFilters.filter(f=>f.attr&&f.val!=='');
   let info='',list=null;
+  /* Attribute filtering never reads geometry -- every predicate is against a
+     plain property (District, Road_Class, chainage, ...), so this scans
+     RoadsIndex (metadata only) rather than requiring the whole network's
+     geometry to already be in ROADS. Wrapped back into {properties:...} so
+     renderNetScopeCard and everything downstream keeps the shape it already
+     expects -- only fitFeaturesBounds needs actual coordinates, and it
+     already no-ops gracefully (try/catch) when a feature has none. */
   if(rows.length){
-    list=Object.values(ROADS).filter(f=>{const p=f.properties;const t=rows.map(r=>{
+    list=RoadsIndex.all().filter(p=>{const t=rows.map(r=>{
       const m=ATTRS[r.attr]||{};const raw=p[r.attr];if(raw==null||raw==='')return false;
       if(m.numeric){
         const v=+raw;
@@ -255,8 +262,8 @@ function applyNetFilter(){
       const s=String(raw);
       if(r.op==='contains')return s.toLowerCase().includes(String(r.val).toLowerCase());
       return nfVals(r).indexOf(s)>=0;
-    });return netMode==='all'?t.every(Boolean):t.some(Boolean);});
-    info=list.length+' of '+Object.keys(ROADS).length+' roads match';
+    });return netMode==='all'?t.every(Boolean):t.some(Boolean);}).map(p=>({properties:p}));
+    info=list.length+' of '+RoadsIndex.all().length+' roads match';
   }
   document.getElementById('netMatchInfo').textContent=info;
   /* Build 163 — scope every road-linked layer to the filtered roads */

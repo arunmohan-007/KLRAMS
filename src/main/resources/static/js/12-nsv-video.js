@@ -39,7 +39,16 @@ function updateRouteLabel(){
   ['dRoute','hudRoute'].forEach(function(id){var el=document.getElementById(id);if(!el)return;if(html==='\u2014'){el.textContent='\u2014';el.removeAttribute('title');}else{el.innerHTML=html;el.title=ttl;}});
 }
 function onPick(roadId,lngLat,lane){
-  const feature=ROADS[roadId];if(!feature)return;
+  const feature=ROADS[roadId];
+  /* In tile mode ROADS starts empty and stays sparse -- populated only for
+     roads someone has actually clicked. A click on a road no one has hydrated
+     yet used to silently do nothing here; now it fetches that one road's full
+     geometry (RoadsIndex.hydrateFeature, /api/roads/one/geojson) and re-enters
+     once it has it, rather than dropping the click on the floor. */
+  if(!feature){
+    if(typeof RoadsIndex!=='undefined'){RoadsIndex.hydrateFeature(roadId).then(f=>{if(f)onPick(roadId,lngLat,lane);});}
+    return;
+  }
   const name=feature.properties.name||roadId,len=parseFloat(feature.properties.len)||0;
   const line=lineOf(feature),geoLenKm=turf.length(line,{units:'kilometers'});
   const snap=turf.nearestPointOnLine(line,[lngLat.lng,lngLat.lat],{units:'kilometers'});
