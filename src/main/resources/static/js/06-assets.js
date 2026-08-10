@@ -155,10 +155,11 @@ const ICON_SVGS={
  'ic-furnp':'<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13" fill="#3b6fa0" stroke="#fff" stroke-width="2.4"/><path d="M15 7l7 11H8z" fill="#fff"/><rect x="14" y="18" width="2" height="6" fill="#fff"/></svg>',
  'ic-furnl':'<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="1" y="1" width="30" height="30" rx="7" fill="#0fa3a3" stroke="#fff" stroke-width="2"/><path d="M6 13h20M6 19h20" stroke="#fff" stroke-width="2.6"/><path d="M9 13v6M16 13v6M23 13v6" stroke="#fff" stroke-width="2"/></svg>'};
 function loadIcon(name){return new Promise(res=>{if(map.hasImage(name))return res();const img=new Image(40,40);img.onload=()=>{if(!map.hasImage(name))map.addImage(name,img,{pixelRatio:2});res();};img.onerror=()=>res();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(ICON_SVGS[name]);});}
-/* The layer name inside the asset MVT, as AssetTileService names it. FWD is deliberately not
-   in this set — see AssetTileService's class doc for why it stays on the GeoJSON path. */
+/* The layer name inside the asset MVT, as AssetTileService names it. FWD is served by
+   FwdTileService under the same layer name: its chainage ranges are cut into stretches in SQL,
+   so the browser no longer has to download the whole road network to re-derive them. */
 const ASSET_TILE_LAYER='assets';
-const ASSET_TILED_TYPES=new Set(['bridge','furniture_line','culvert','furniture_point','subgrade','bituminous_core','pavement_crust']);
+const ASSET_TILED_TYPES=new Set(['bridge','furniture_line','culvert','furniture_point','subgrade','bituminous_core','pavement_crust','fwd']);
 /* A tile feature's properties carry attrs_json (one JSON-text blob, since asset attrs have no
    fixed schema) instead of the flattened keys the GeoJSON endpoint emits. Reshape it back into
    the same {road, from_ch, to_ch, ...attrs} shape assetPopup() already expects, so every click

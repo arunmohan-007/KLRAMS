@@ -23,6 +23,42 @@ function setTrfStatus(m){const el=document.getElementById('trfStatus');if(el)el.
 function trfPad(n){return (n<10?'0':'')+n;}
 function trfChainagePoint(section,ch){try{const rd=ROADS[section];if(!rd||!rd.geometry)return null;const len=parseFloat(rd.properties.len)||parseFloat(rd.properties.Measrd_Len)||0;if(!(len>0))return null;const line=lineOf(rd);const gl=turf.length(line,{units:'kilometers'});let f=ch/len;if(isNaN(f))return null;f=Math.max(0,Math.min(f,1));const pt=turf.along(line,f*gl,{units:'kilometers'});const c=pt&&pt.geometry&&pt.geometry.coordinates;if(!c||isNaN(c[0])||isNaN(c[1]))return null;return c;}catch(e){return null;}}
 function trfEnsureRoads(cb){ensureFullRoadsGeojson().then(cb,cb);}
+/* Place every station on its road, and prefer the SERVER to do it.
+   /api/traffic/stations/geojson runs the same chainage -> point linear reference
+   trfChainagePoint() does, but in PostGIS (ST_LineInterpolatePoint over the standard
+   reference length: Rd_End_cha - Rd_Str_cha, then Measrd_Len, then geodesic length —
+   CLAUDE.md), so it returns 8 KB of finished points. Doing it in the browser instead
+   costs the ENTIRE 4 MB road network first, purely to read geometry we then throw
+   away: that one download is what undoes the road-network tile migration, and it is
+   the reason this is worth changing for a dataset of only ~33 stations.
+
+   The browser path is kept as a fallback, not deleted. trfFetchStore() can answer
+   out of localStorage when the API has nothing, and those records may have no rows
+   in traffic_stations at all — the server would place none of them. Anything that
+   yields zero placed stations therefore falls back to placing them here, so an
+   offline/legacy store keeps working exactly as before. */
+function trfPlaceStations(recs,done){
+  fetch('/api/traffic/stations/geojson',{credentials:'same-origin'})
+    .then(r=>r.ok?r.json():null)
+    .then(gj=>{
+      const fs=(gj&&gj.features)||[];
+      if(!fs.length)throw new Error('server placed none');
+      fs.forEach(f=>{if(f.properties)f.properties.placed='chainage';});
+      done(fs,Math.max(0,recs.length-fs.length));
+    })
+    .catch(()=>{
+      trfEnsureRoads(function(){
+        let nSkip=0;const feats=[];
+        recs.forEach(rec=>{
+          const ch=(rec.ch==null?NaN:+rec.ch),lat=(rec.lat==null?NaN:+rec.lat),lng=(rec.lng==null?NaN:+rec.lng);
+          const coord=(rec.section&&!isNaN(ch))?trfChainagePoint(rec.section,ch):null;
+          if(!coord){nSkip++;return;}
+          feats.push({type:'Feature',geometry:{type:'Point',coordinates:coord},properties:{name:rec.name,road:rec.road||'',section:rec.section||'',ch:(rec.ch==null?'':rec.ch),xsp:rec.xsp||'',lat:isNaN(lat)?null:lat,lng:isNaN(lng)?null:lng,placed:'chainage'}});
+        });
+        done(feats,nSkip);
+      });
+    });
+}
 function trfEnsureLayer(){if(!map.getSource('trafficstn'))map.addSource('trafficstn',{type:'geojson',data:TRAFFIC_STN});else map.getSource('trafficstn').setData(TRAFFIC_STN);if(!map.getLayer('trafficstn-lyr')){map.addLayer({id:'trafficstn-lyr',type:'circle',source:'trafficstn',paint:{'circle-radius':['interpolate',['linear'],['zoom'],8,4,13,7,16,10],'circle-color':'#1565c0','circle-stroke-color':'#ffffff','circle-stroke-width':2,'circle-opacity':0.9}});map.on('click','trafficstn-lyr',e=>{if(e.features.length)trafficPopup(e.lngLat,e.features[0].properties);});map.on('mouseenter','trafficstn-lyr',()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave','trafficstn-lyr',()=>map.getCanvas().style.cursor='');}const tg=document.getElementById('showTraffic');map.setLayoutProperty('trafficstn-lyr','visibility',(tg&&tg.checked)?'visible':'none');}
 function trfFit(){const fs=TRAFFIC_STN.features;if(!fs.length)return;let a=180,b=90,c=-180,d=-90;fs.forEach(f=>{const x=f.geometry.coordinates[0],y=f.geometry.coordinates[1];a=Math.min(a,x);c=Math.max(c,x);b=Math.min(b,y);d=Math.max(d,y);});try{map.fitBounds([[a,b],[c,d]],{padding:60,maxZoom:13});}catch(e){}}
 function trfFetchStore(done){fetch('/api/traffic/store').then(r=>r.ok?r.json():null).then(st=>{if(st&&((st.stations&&st.stations.length)||(st.counts&&Object.keys(st.counts).length)))return done(st);done(trfGetStore());}).catch(()=>done(trfGetStore()));}
@@ -32,7 +68,7 @@ function loadTraffic(cb){if(TRAFFIC_LOADED){if(cb)cb();return;}setTrfStatus('Loa
   TRAFFIC_COUNTS={};let _cOK=0,_cBad=0;
   const _raw=st.counts||{};
   Object.keys(_raw).forEach(function(k){const o=trfCountObj(_raw[k]);if(o&&o.total!=null){TRAFFIC_COUNTS[k]=o;_cOK++;}else if(o){TRAFFIC_COUNTS[k]=o;_cBad++;}else _cBad++;});
-  window.__trfCounts={ok:_cOK,bad:_cBad};if(!recs.length){setTrfStatus('No traffic data — import it in the Data Console.');return;}setTrfStatus('Placing stations by chainage…');trfEnsureRoads(function(){let nCh=0,nSkip=0;const feats=[];recs.forEach(rec=>{const ch=(rec.ch==null?NaN:+rec.ch),lat=(rec.lat==null?NaN:+rec.lat),lng=(rec.lng==null?NaN:+rec.lng);const coord=(rec.section&&!isNaN(ch))?trfChainagePoint(rec.section,ch):null;if(!coord){nSkip++;return;}nCh++;feats.push({type:'Feature',geometry:{type:'Point',coordinates:coord},properties:{name:rec.name,road:rec.road||'',section:rec.section||'',ch:(rec.ch==null?'':rec.ch),xsp:rec.xsp||'',lat:isNaN(lat)?null:lat,lng:isNaN(lng)?null:lng,placed:'chainage'}});});TRAFFIC_STN={type:'FeatureCollection',features:feats};TRAFFIC_LOADED=true;window.__trfPlaced={ch:nCh,skip:nSkip};trfEnsureLayer();trfFit();setTrfStatus(feats.length?('<b>'+feats.length+'</b> stations'+(_cOK?(' · counts for <b>'+_cOK+'</b>'):' · no counts')+(_cBad?(' · <b style="color:#e8590c">'+_cBad+' unreadable — re-import the counts CSV</b>'):'')+(nSkip?(' · <b style="color:#e8590c">'+nSkip+' not placed — section label not found on any road</b>'):'')+'.'):'No traffic data — import it in the Data Console.');if(typeof updateNetScopeCard==='function')updateNetScopeCard();if(cb)cb();});});}
+  window.__trfCounts={ok:_cOK,bad:_cBad};if(!recs.length){setTrfStatus('No traffic data — import it in the Data Console.');return;}setTrfStatus('Placing stations by chainage…');trfPlaceStations(recs,function(feats,nSkip){TRAFFIC_STN={type:'FeatureCollection',features:feats};TRAFFIC_LOADED=true;window.__trfPlaced={ch:feats.length,skip:nSkip};trfEnsureLayer();trfFit();setTrfStatus(feats.length?('<b>'+feats.length+'</b> stations'+(_cOK?(' · counts for <b>'+_cOK+'</b>'):' · no counts')+(_cBad?(' · <b style="color:#e8590c">'+_cBad+' unreadable — re-import the counts CSV</b>'):'')+(nSkip?(' · <b style="color:#e8590c">'+nSkip+' not placed — section label not found on any road</b>'):'')+'.'):'No traffic data — import it in the Data Console.');if(typeof updateNetScopeCard==='function')updateNetScopeCard();if(cb)cb();});});}
 
 /* Build 164 — professional station popup built on the shared .klpop card:
    a title + station meta, a 3-up stat row (ADT / peak / survey days), then
