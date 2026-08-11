@@ -5,30 +5,30 @@
    share one global scope, so load order is preserved exactly.
    ============================================================ */
 function lineOf(feature){const g=feature.geometry;let c=g.type==='MultiLineString'?g.coordinates.flat():g.coordinates;return turf.lineString(c);}
-/* Basemap-aware road style: light basemaps (OSM / Light / Topo) use a vivid
-   palette + soft slate halo; dark basemaps (Night / Satellite) switch to
-   luminous colours + white halo so the network stays clear on every backdrop. */
+/* Basemap-aware road style.
+   Light basemaps: classic NH/SH/MDR/ODR fills — no dark casing at statewide
+   zoom (slate halos made every road look dark and broke the legend match).
+   Dark/sat: brighter fills + white halo for contrast on imagery. */
 const CLS_BY_MODE={
-  light:{NH:'#e03131',SH:'#f08c00',MDR:'#1c7ed6',ODR:'#868e96'},
-  dark:{NH:'#ff6b6b',SH:'#ffd43b',MDR:'#4dabf7',ODR:'#ced4da'}
+  light:{NH:'#c0392b',SH:'#d9760c',MDR:'#1868c4',ODR:'#7d8ea3'},
+  dark:{NH:'#ff6b6b',SH:'#ffd43b',MDR:'#74c0fc',ODR:'#adb5bd'}
 };
 let NET_BASE_MODE='light';
 let CLS=CLS_BY_MODE.light;
-function netColor(){const c=['match',['get','Road_Class']];Object.entries(CLS).forEach(([k,v])=>c.push(k,v));c.push(CLS.ODR||'#868e96');return c;}
-function netCasingColor(){return NET_BASE_MODE==='dark'?'#ffffff':'#1e293b';}
+/* Case/whitespace-tolerant so tile + GeoJSON both match the legend swatches. */
+function roadClassKey(){return ['upcase',['trim',['to-string',['coalesce',['get','Road_Class'],'']]]];}
+function netColor(){
+  const c=['match',roadClassKey()];
+  Object.entries(CLS).forEach(([k,v])=>c.push(k,v));
+  c.push(CLS.ODR||'#7d8ea3');
+  return c;
+}
+function netCasingColor(){return '#ffffff';}
 function pavementWidthExpr(){return ['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];}
-/* Class weight keeps NH/SH as the clear corridors; MDR stays strong enough to
-   read at statewide zoom without turning into a solid blotch. */
-function classWidthScale(){return ['match',['get','Road_Class'],'NH',1.55,'SH',1.3,'MDR',0.95,'ODR',0.65,1];}
-function classOpacityScale(){return ['match',['get','Road_Class'],'NH',1,'SH',1,'MDR',0.88,'ODR',0.7,0.9];}
-/* Zoom curve notes:
-   - Fill vs casing are two independent top-level interpolate(zoom) expressions
-     (MapLibre rejects wrapping zoom interpolate inside arithmetic).
-   - Dark casing used to blot Kerala at statewide zoom; light mode now uses a
-     soft slate halo that eases in gently, dark/sat uses a white halo.
-   - Widths are intentionally bold so roads stay clear on every basemap. */
-const NET_WIDTH_STOPS=[[6,0.16],[8,0.24],[10,0.36],[12,0.5],[15,1.6],[18,5.5]];
-const CASING_RATIO=1.4;
+function classWidthScale(){return ['match',roadClassKey(),'NH',1.45,'SH',1.25,'MDR',0.95,'ODR',0.65,1];}
+function classOpacityScale(){return ['match',roadClassKey(),'NH',1,'SH',1,'MDR',0.92,'ODR',0.75,0.9];}
+const NET_WIDTH_STOPS=[[6,0.15],[8,0.22],[10,0.34],[12,0.48],[15,1.55],[18,5.5]];
+const CASING_RATIO=1.28;
 function netWidthExpr(){
   const pw=pavementWidthExpr(),cs=classWidthScale();
   const e=['interpolate',['exponential',1.4],['zoom']];
@@ -45,13 +45,15 @@ function netCasingWidth(){
 function netHitWidth(){return ['interpolate',['linear'],['zoom'],6,1.5,8,4,10,10,12,16,16,24];}
 function _scaleOp(expr,userOp){const u=(userOp==null||userOp>=0.999)?null:+userOp;return u==null?expr:['*',expr,Math.max(0.05,Math.min(1,u))];}
 function netCasingOpacity(userOp){
+  /* Light: casing off until ~z12 so legend colours stay true statewide.
+     Dark/sat: white halo earlier for readability on imagery. */
   const e=NET_BASE_MODE==='dark'
-    ?['interpolate',['linear'],['zoom'],6,0.45,8,0.65,10,0.85,12,1]
-    :['interpolate',['linear'],['zoom'],6,0.18,8,0.32,10,0.5,12,0.8,14,1];
+    ?['interpolate',['linear'],['zoom'],6,0.5,8,0.7,10,0.9,12,1]
+    :['interpolate',['linear'],['zoom'],10,0,11.5,0,12,0.35,14,0.75];
   return _scaleOp(e,userOp);
 }
 function netFillOpacity(userOp){
-  const byZoom=['interpolate',['linear'],['zoom'],6,0.92,8,0.96,10,1,12,1];
+  const byZoom=['interpolate',['linear'],['zoom'],6,0.95,8,1,10,1];
   return _scaleOp(['*',byZoom,classOpacityScale()],userOp);
 }
 function _netUserOpacityFromUi(){
