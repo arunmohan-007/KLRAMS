@@ -51,7 +51,7 @@ Core tables created on startup:
 - `go_folders`, `go_documents` — Government Orders repository
 - `site_content` — Editable public portal content (About, Contact, FAQ)
 - `boundary` — Administrative boundaries (district, constituency)
-- `full_road_network` — Secondary road network by road name
+- `full_road_network` — Secondary road network by road name; map layer served as MVT from `/api/full-network/tiles/{z}/{x}/{y}.mvt`
 
 ### Frontend Structure
 
@@ -81,6 +81,10 @@ COALESCE(
 -- Line assets (bridges): ST_LineSubstring(geom, start_ch/len, end_ch/len)
 -- Point assets (culverts): ST_LineInterpolatePoint(geom, ch/len)
 ```
+
+### Vector tiles (map render)
+
+Map **paint** layers with PostGIS geometry are served as Mapbox Vector Tiles under `/api/.../tiles/{z}/{x}/{y}.mvt`, gated by `TILES_ON` (default; `?tiles=0` keeps GeoJSON). Pair a `*TileService` + `*TileController`; reuse `app.tile.extent|buffer|max-zoom`. Keep `/geojson` for analysis, import, or documented exceptions (FWD stretch, traffic LRS, small boundaries). Client sources use `type:'vector'` + `source-layer` — do not preload the whole FeatureCollection just to draw.
 
 ### Dual-Carriageway Handling
 

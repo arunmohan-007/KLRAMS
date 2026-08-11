@@ -1,0 +1,28 @@
+---
+description: Map layers with PostGIS geometry must ship as Mapbox Vector Tiles (MVT)
+alwaysApply: true
+---
+
+# Vector tiles for map layers
+
+New (and converted) map **render** layers whose geometry lives in PostGIS must be served as Mapbox Vector Tiles, not as a whole-network GeoJSON download.
+
+## Backend
+
+- Add a `*TileService` that builds one tile with the shared bounds pattern (`ST_TileEnvelope` → filter `geom && wgs` → `ST_AsMVTGeom` → `ST_AsMVT`).
+- Add a `*TileController` at `GET /api/<resource>/tiles/{z}/{x}/{y}.mvt`.
+- Reuse `app.tile.extent`, `app.tile.buffer`, and `app.tile.max-zoom` (see existing `RoadTileService`, `SegmentTileService`, `FullNetworkTileService`).
+- Keep `/geojson` only when needed for analysis, import, or a documented exception (e.g. FWD chainage stretch). Say why in a comment if you leave a layer on GeoJSON.
+
+## Frontend
+
+- When `TILES_ON` (default; opt out with `?tiles=0`), register `type: 'vector'` with `tiles: [...]` and set `source-layer` to the MVT layer name.
+- Do not preload a full FeatureCollection just to paint the map.
+- Flatten free-form jsonb attrs as a text property (`props_json` / `attrs_json`) and merge on click, matching assets and Full Road Network.
+
+## Known GeoJSON holdouts (do not "fix" without a real tiling design)
+
+- FWD map layer (client-side chainage stretch + D0 scale)
+- Traffic stations (linear reference against road centrelines)
+- District / constituency boundaries (small overlays)
+- Ephemeral UI sources (`sel-road`, measure)

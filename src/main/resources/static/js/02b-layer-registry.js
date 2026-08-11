@@ -361,9 +361,8 @@ var KLLayers = (function () {
   });
 
   /* ---- Merged road network (22-road-merged) ----
-     ensureRoads2Layer() builds the layers but returns early unless
-     ROADS2_GJ is already populated, so the loader — not the builder —
-     is what belongs here. */
+     Tile mode: loadRoads2FromServer() registers the vector source (no GeoJSON).
+     GeoJSON mode (?tiles=0): it fetches /api/full-network/geojson first. */
   L.register({
     key: 'roadnet2', label: 'Merged road network', group: 'network',
     layers: ['roadnet2-casing', 'roadnet2', 'roadnet2-sel'], source: 'roadnet2',
