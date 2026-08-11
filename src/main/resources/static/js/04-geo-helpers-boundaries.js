@@ -32,6 +32,14 @@ const CASING_RATIO=1.32;
 function netWidthExpr(){const pw=pavementWidthExpr();const e=['interpolate',['exponential',1.4],['zoom']];NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',pw,m]);});return e;}
 function netWidth(){return netWidthExpr();}
 function netCasingWidth(){const pw=pavementWidthExpr();const e=['interpolate',['exponential',1.4],['zoom']];NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',pw,+(m*CASING_RATIO).toFixed(4)]);});return e;}
+/* roadnet-hit is a near-invisible (0.01 opacity) wide stroke used only for click
+   tolerance. Its old flat 8px->12 first stop meant MapLibre CLAMPED it to a
+   constant 12px at every zoom below 8: at statewide zoom, thousands of dense,
+   overlapping segments each drew that "invisible" 12px stroke, and the alpha
+   stacked into a visible dark blob (same clamping trap as the casing width
+   above, just with opacity too low to notice in isolated testing). Hairline
+   low-zoom stops fix it while keeping generous hit tolerance once zoomed in. */
+function netHitWidth(){return ['interpolate',['linear'],['zoom'],6,1.5,8,4,10,10,12,16,16,24];}
 function _scaleOp(expr,userOp){const u=(userOp==null||userOp>=0.999)?null:+userOp;return u==null?expr:['*',expr,Math.max(0.05,Math.min(1,u))];}
 function netCasingOpacity(userOp){return _scaleOp(['interpolate',['linear'],['zoom'],9,0,10.5,0,11,0.45,12,0.8,13,1],userOp);}
 function netFillOpacity(userOp){return _scaleOp(['interpolate',['linear'],['zoom'],6,0.4,8,0.55,10,0.8,12,1],userOp);}
