@@ -68,8 +68,8 @@ function renderRoads(gj,noFit){
        ("There is already a source with this ID"), so clear before rebuilding. */
     teardownRoads();
     map.addSource('roadnet',{type:'geojson',data:gj});
-    map.addLayer({id:'roadnet-casing',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#0b1322','line-width':netCasingWidth()}});
-    map.addLayer({id:'roadnet',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netColor(),'line-width':netWidth()}});
+    map.addLayer({id:'roadnet-casing',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#0b1322','line-width':netCasingWidth(),'line-opacity':netCasingOpacity()}});
+    map.addLayer({id:'roadnet',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netColor(),'line-width':netWidth(),'line-opacity':netFillOpacity()}});
     map.addLayer({id:'roadnet-hit',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#000000','line-opacity':0.01,'line-width':['interpolate',['linear'],['zoom'],8,12,12,16,16,24]}});
     wireRoadHandlers();
   }
@@ -97,8 +97,8 @@ function ensureRoadSource(){
     tiles:[location.origin+'/api/roads/tiles/{z}/{x}/{y}.mvt'],
     minzoom:0,maxzoom:16});
   const mk=(id,extra)=>Object.assign({id:id,type:'line',source:'roadnet','source-layer':ROAD_TILE_LAYER},extra);
-  map.addLayer(mk('roadnet-casing',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#0b1322','line-width':netCasingWidth()}}));
-  map.addLayer(mk('roadnet',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netColor(),'line-width':netWidth()}}));
+  map.addLayer(mk('roadnet-casing',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#0b1322','line-width':netCasingWidth(),'line-opacity':netCasingOpacity()}}));
+  map.addLayer(mk('roadnet',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netColor(),'line-width':netWidth(),'line-opacity':netFillOpacity()}}));
   map.addLayer(mk('roadnet-hit',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#000000','line-opacity':0.01,'line-width':['interpolate',['linear'],['zoom'],8,12,12,16,16,24]}}));
   wireRoadHandlers();
   /* Same rule as the GeoJSON path: preloading roads must not force them

@@ -12,37 +12,25 @@ function lineOf(feature){const g=feature.geometry;let c=g.type==='MultiLineStrin
 const CLS={NH:'#c0392b',SH:'#d9760c',MDR:'#1868c4',ODR:'#7d8ea3'};
 function netColor(){const c=['match',['get','Road_Class']];Object.entries(CLS).forEach(([k,v])=>c.push(k,v));c.push('#7d8ea3');return c;}
 function pavementWidthExpr(){return ['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];}
-/* Build: the zoom-9 multiplier used to be 0.06, which renders a ~1px-wide
-   pavement (Pavement_W '1' = 4.5) at roughly 0.27px — invisible against the
-   basemap when zoomed out to view the whole state. Raised to 0.25 so the
-   coloured road-class line stays visible (~1.1px+) at a statewide zoom, but
-   only the FILL was fixed — the casing kept its own 0.06 at the same zoom
-   stop, so from z9 up to about z11 the near-black casing rendered noticeably
-   WIDER than the colour it was meant to outline: at Pavement_W '4' (default),
-   fill sat around 1.75px while casing sat around 3.2px, and MapLibre draws
-   the casing UNDER the fill. Every road on the network read as a solid dark
-   line with the colour barely visible at its edges — exactly what "style is
-   bad" was seeing, at any zoom wide enough to view more than a few roads at
-   once. */
-/* One stop table drives both curves, so the ratio between them is exact by
-   construction — see the comment above. It is NOT applied as a runtime
-   ['*', fillExpr, 1.32] on top of the fill expression: MapLibre's style spec
-   requires ["zoom"] to be used ONLY as the direct, top-level input to
-   interpolate/step. Wrapping an interpolate(zoom) expression inside an
-   arithmetic operator breaks that rule — MapLibre rejects the layer for it,
-   silently: addLayer neither throws nor adds the layer, it just logs to the
-   console ("zoom expression may only be used as input to a top-level step or
-   interpolate expression") and moves on. That is exactly what happened here:
-   roadnet-casing silently failed to exist at all, so every road actually
-   rendered as bare colour with no outline — which is its own kind of "looks
-   muddy at density", just not the original bug. The fix is to build TWO
-   independent top-level interpolate(zoom) expressions instead, with the
-   ratio baked into each stop's multiplier in JS at expression-build time. */
-const NET_WIDTH_STOPS=[[9,0.22],[12,0.38],[15,1.55],[18,5.5]];
+/* Zoom curve notes:
+   - Below the first stop MapLibre CLAMPS to that stop's value. A first stop at
+     z9 with multiplier 0.22 left statewide views (z6–z8, ~100 km scale) drawing
+     ~2–3 px near-black casings on every SH/MDR — dense enough to read as a
+     solid dark shade over Kerala. Hairline stops at z6/z8 fix that.
+   - Fill vs casing must stay two independent top-level interpolate(zoom)
+     expressions: wrapping interpolate(zoom) inside arithmetic is rejected by
+     MapLibre ("zoom expression may only be used as input to a top-level step
+     or interpolate"), and addLayer fails silently. Ratio is baked into each
+     casing stop at expression-build time.
+   - Casing opacity also eases in with zoom so overlapping dark outlines don't
+     fill opaque when the network is dense. */
+const NET_WIDTH_STOPS=[[6,0.045],[8,0.09],[10,0.16],[12,0.34],[15,1.55],[18,5.5]];
 const CASING_RATIO=1.32;
 function netWidthExpr(){const pw=pavementWidthExpr();const e=['interpolate',['exponential',1.4],['zoom']];NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',pw,m]);});return e;}
 function netWidth(){return netWidthExpr();}
 function netCasingWidth(){const pw=pavementWidthExpr();const e=['interpolate',['exponential',1.4],['zoom']];NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',pw,+(m*CASING_RATIO).toFixed(4)]);});return e;}
+function netCasingOpacity(){return ['interpolate',['linear'],['zoom'],6,0.18,8,0.35,10,0.65,12,1];}
+function netFillOpacity(){return ['interpolate',['linear'],['zoom'],6,0.7,8,0.85,10,1];}
 const NAME_KEYS=['NAME','Name','name','DISTRICT','District','district','AC_NAME','LAC_NAME','CONSTITUEN','Constituency','LABEL'];
 function featName(p){for(const k of NAME_KEYS)if(p&&p[k]!=null&&p[k]!=='')return String(p[k]);return '';}
 function nameExpr(){const e=['coalesce'];NAME_KEYS.forEach(k=>e.push(['get',k]));e.push('');return e;}
