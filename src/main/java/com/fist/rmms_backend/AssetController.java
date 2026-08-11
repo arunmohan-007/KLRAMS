@@ -93,6 +93,11 @@ public class AssetController {
         relocateFwdLineGeoms();
     }
 
+    /** Called from startup warm-up so FWD vector tiles see line geoms before the first map pan. */
+    public void warm() {
+        ensure();
+    }
+
     /**
      * Backfill {@code end_chainage} from attrs when missing, then set {@code geom} with
      * {@code ST_LineSubstring} for FWD rows that still carry a point (legacy) or no geom.

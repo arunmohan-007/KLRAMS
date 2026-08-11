@@ -53,8 +53,8 @@ var KLLayers = (function () {
     CONDITION:      30,   // per-lane condition colouring
     IRI_2KM:        35,   // 2 km IRI roll-up
     PCI:            40,   // composite / worst-lane PCI
-    ASSET_LINE:     50,   // bridges, line furniture — drawn over the carriageway
-    ASSET_POINT:    55,   // culverts, cores, FWD points
+    ASSET_LINE:     50,   // bridges, line furniture, FWD stretches
+    ASSET_POINT:    55,   // culverts, cores, soil / crust points
     TRAFFIC:        60,   // survey stations
     ROAD_PICK:      65,   // invisible click target for the network
     SELECTION:      70,   // highlight of the picked road
@@ -420,7 +420,7 @@ var KLLayers = (function () {
     { key: 'soil',      label: 'Sub-Grade Soil',    layer: 'as-soil',    toggle: 'showSoil',    z: Z.ASSET_POINT },
     { key: 'core',      label: 'Bituminous Core',   layer: 'as-core',    toggle: 'showCore',    z: Z.ASSET_POINT },
     { key: 'crust',     label: 'Pavement Crust',    layer: 'as-crust',   toggle: 'showCrust',   z: Z.ASSET_POINT },
-    { key: 'fwd',       label: 'FWD',               layer: 'as-fwd',     toggle: 'showFwd',     z: Z.ASSET_POINT }
+    { key: 'fwd',       label: 'FWD',               layer: 'as-fwd',     toggle: 'showFwd',     z: Z.ASSET_LINE }
   ].forEach(function (a) {
     L.register({
       key: a.key, label: a.label, group: 'assets',

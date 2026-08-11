@@ -22,7 +22,7 @@ New (and converted) map **render** layers whose geometry lives in PostGIS must b
 
 ## Known GeoJSON holdouts (do not "fix" without a real tiling design)
 
-- FWD map layer (uses MVT via FwdTileService; uploaded as From..To line stretches — lat/lng in attrs are display-only)
-- Traffic stations (linear reference against road centrelines; small payload)
+- FWD map layer is MVT (`/api/assets/fwd/tiles/...`); keep `/geojson` only for inspector/HUD chainage lookup
+- Traffic stations (linear reference; small payload — GeoJSON is fine)
 - District / constituency boundaries (small overlays)
 - Ephemeral UI sources (`sel-road`, measure)

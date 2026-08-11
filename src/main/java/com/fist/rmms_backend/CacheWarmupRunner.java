@@ -25,15 +25,17 @@ public class CacheWarmupRunner implements ApplicationRunner {
     private final FwdSegmentService fwdSegments;
     private final IriSegmentService iriSegments;
     private final FullNetworkController fullNetwork;
+    private final AssetController assets;
 
     public CacheWarmupRunner(RoadController roads, SegmentService segments,
                               FwdSegmentService fwdSegments, IriSegmentService iriSegments,
-                              FullNetworkController fullNetwork) {
+                              FullNetworkController fullNetwork, AssetController assets) {
         this.roads = roads;
         this.segments = segments;
         this.fwdSegments = fwdSegments;
         this.iriSegments = iriSegments;
         this.fullNetwork = fullNetwork;
+        this.assets = assets;
     }
 
     @Override
@@ -47,6 +49,8 @@ public class CacheWarmupRunner implements ApplicationRunner {
         long start = System.currentTimeMillis();
         try { roads.warm(); } catch (Exception e) { log.warn("Road cache warm-up failed", e); }
         try { segments.segmentsGeoJson(); } catch (Exception e) { log.warn("Condition segment cache warm-up failed", e); }
+        /* Promote legacy FWD point geoms to From..To line stretches before tiles are hit. */
+        try { assets.warm(); } catch (Exception e) { log.warn("FWD line-geom warm-up failed", e); }
         try { fwdSegments.segmentsGeoJson(); } catch (Exception e) { log.warn("FWD segment cache warm-up failed", e); }
         try { iriSegments.segmentsGeoJson(); } catch (Exception e) { log.warn("2 km IRI cache warm-up failed", e); }
         try { fullNetwork.warm(); } catch (Exception e) { log.warn("Full network cache warm-up failed", e); }

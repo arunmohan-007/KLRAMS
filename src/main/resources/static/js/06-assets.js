@@ -157,9 +157,9 @@ const ICON_SVGS={
  'ic-furnp':'<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13" fill="#3b6fa0" stroke="#fff" stroke-width="2.4"/><path d="M15 7l7 11H8z" fill="#fff"/><rect x="14" y="18" width="2" height="6" fill="#fff"/></svg>',
  'ic-furnl':'<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="1" y="1" width="30" height="30" rx="7" fill="#0fa3a3" stroke="#fff" stroke-width="2"/><path d="M6 13h20M6 19h20" stroke="#fff" stroke-width="2.6"/><path d="M9 13v6M16 13v6M23 13v6" stroke="#fff" stroke-width="2"/></svg>'};
 function loadIcon(name){return new Promise(res=>{if(map.hasImage(name))return res();const img=new Image(40,40);img.onload=()=>{if(!map.hasImage(name))map.addImage(name,img,{pixelRatio:2});res();};img.onerror=()=>res();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(ICON_SVGS[name]);});}
-/* The layer name inside the asset MVT, as AssetTileService names it. FWD is served by
-   FwdTileService under the same layer name: its chainage ranges are cut into stretches in SQL,
-   so the browser no longer has to download the whole road network to re-derive them. */
+/* The layer name inside the asset MVT, as AssetTileService / FwdTileService name it.
+   FWD map paint uses /api/assets/fwd/tiles/{z}/{x}/{y}.mvt (From..To line + __d0).
+   /api/assets/fwd/geojson remains only for inspector/HUD chainage lookup and analysis. */
 const ASSET_TILE_LAYER='assets';
 const ASSET_TILED_TYPES=new Set(['bridge','furniture_line','culvert','furniture_point','subgrade','bituminous_core','pavement_crust','fwd']);
 /* A tile feature's properties carry attrs_json (one JSON-text blob, since asset attrs have no
@@ -287,6 +287,13 @@ function assetTileInfo(a){
 /* Build one asset type's MAP LAYER. In tile mode that costs no download at all — the
    source is a tile template and MapLibre asks only for the current viewport. */
 function loadAsset(a){
+  /* FWD map paint is always MVT when TILES_ON: upload stores From..To as a line
+     stretch, and /api/assets/fwd/tiles/... stamps __d0 for the colour scale.
+     Skip tile-info / GeoJSON so toggling FWD never pulls the whole survey. */
+  if(a&&a.type==='fwd'&&typeof TILES_ON!=='undefined'&&TILES_ON){
+    try{addAssetLayer(a,null,true,true);}catch(e){}
+    return Promise.resolve();
+  }
   return assetTileInfo(a).then(useTiles=>{
     if(useTiles){
       addAssetLayer(a,null,false,true);
