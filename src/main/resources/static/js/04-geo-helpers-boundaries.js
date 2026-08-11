@@ -25,9 +25,11 @@ function netColor(){
 }
 function netCasingColor(){return '#ffffff';}
 function pavementWidthExpr(){return ['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];}
-function classWidthScale(){return ['match',roadClassKey(),'NH',1.45,'SH',1.25,'MDR',0.95,'ODR',0.65,1];}
-function classOpacityScale(){return ['match',roadClassKey(),'NH',1,'SH',1,'MDR',0.92,'ODR',0.75,0.9];}
-const NET_WIDTH_STOPS=[[6,0.15],[8,0.22],[10,0.34],[12,0.48],[15,1.55],[18,5.5]];
+function classWidthScale(){return ['match',roadClassKey(),'NH',1.35,'SH',1.2,'MDR',0.7,'ODR',0.45,0.85];}
+/* MDR is densest — keep it lighter so orange SH / blue MDR stay distinct
+   instead of stacking into a muddy dark brown. */
+function classOpacityScale(){return ['match',roadClassKey(),'NH',1,'SH',1,'MDR',0.55,'ODR',0.4,0.7];}
+const NET_WIDTH_STOPS=[[6,0.11],[8,0.17],[10,0.26],[12,0.42],[15,1.55],[18,5.5]];
 const CASING_RATIO=1.28;
 function netWidthExpr(){
   const pw=pavementWidthExpr(),cs=classWidthScale();
@@ -42,7 +44,13 @@ function netCasingWidth(){
   NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',['*',pw,cs],+(m*CASING_RATIO).toFixed(4)]);});
   return e;
 }
-function netHitWidth(){return ['interpolate',['linear'],['zoom'],6,1.5,8,4,10,10,12,16,16,24];}
+function netHitWidth(){
+  /* Keep the click target narrow at mid zoom. A wide near-black hit stroke
+     drawn ABOVE the coloured roads used to alpha-stack into a dark blotch
+     over dense SH/MDR — exactly the "very dark, not legend colours" look. */
+  return ['interpolate',['linear'],['zoom'],6,0.8,8,2,10,5,12,10,14,16,16,22];
+}
+function netSortKey(){return ['match',roadClassKey(),'NH',4,'SH',3,'MDR',2,'ODR',1,0];}
 function _scaleOp(expr,userOp){const u=(userOp==null||userOp>=0.999)?null:+userOp;return u==null?expr:['*',expr,Math.max(0.05,Math.min(1,u))];}
 function netCasingOpacity(userOp){
   /* Light: casing off until ~z12 so legend colours stay true statewide.
@@ -53,7 +61,7 @@ function netCasingOpacity(userOp){
   return _scaleOp(e,userOp);
 }
 function netFillOpacity(userOp){
-  const byZoom=['interpolate',['linear'],['zoom'],6,0.95,8,1,10,1];
+  const byZoom=['interpolate',['linear'],['zoom'],6,0.85,8,0.92,10,1];
   return _scaleOp(['*',byZoom,classOpacityScale()],userOp);
 }
 function _netUserOpacityFromUi(){
@@ -81,6 +89,9 @@ function applyNetBasemapStyle(baseName){
     const byClass=!sel||sel.value==='__class__';
     if(byClass)map.setPaintProperty('roadnet','line-color',netColor());
     map.setPaintProperty('roadnet','line-width',netWidth());
+    if(map.getLayer('roadnet')){
+      try{map.setLayoutProperty('roadnet','line-sort-key',netSortKey());}catch(e){}
+    }
     if(map.getLayer('roadnet-casing')){
       map.setPaintProperty('roadnet-casing','line-color',netCasingColor());
       map.setPaintProperty('roadnet-casing','line-width',netCasingWidth());

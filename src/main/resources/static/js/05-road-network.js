@@ -121,10 +121,8 @@ function renderNetLegend(attr){
   const el=document.getElementById('netLegend'); el.innerHTML='';
   const m=ATTRS[attr];
   if(!m){el.innerHTML=
-    '<div class="lg"><span class="bar" style="background:'+CLS.NH+'"></span><span class="lgt">NH</span></div>'+
     '<div class="lg"><span class="bar" style="background:'+CLS.SH+'"></span><span class="lgt">SH</span></div>'+
-    '<div class="lg"><span class="bar" style="background:'+CLS.MDR+'"></span><span class="lgt">MDR</span></div>'+
-    '<div class="lg"><span class="bar" style="background:'+CLS.ODR+'"></span><span class="lgt">ODR</span></div>';
+    '<div class="lg"><span class="bar" style="background:'+CLS.MDR+'"></span><span class="lgt">MDR</span></div>';
     return;}
   if(m.numeric&&/road.?num/i.test(attr)){
     el.innerHTML=ROAD_NUM_PALETTE.map(c=>`<span class="bar" style="background:${c};display:inline-block;width:14px;height:10px;margin-right:2px;border-radius:2px"></span>`).join('')
