@@ -5,11 +5,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Linear referencing for FWD (Falling Weight Deflectometer) data — the FWD
- * survey is uploaded as the "fwd" asset (points), but each row is really a
- * chainage RANGE (From..To) carrying D0..Dn deflections, exactly like the
- * condition survey. This service cuts those ranges into coloured line segments
- * along the road centreline, mirroring {@link SegmentService} for condition.
+ * Linear referencing for FWD (Falling Weight Deflectometer) data — FWD is
+ * uploaded as a LINE asset (From..To + D0..Dn in attrs; lat/lng display-only).
+ * This service materialises those stretches into {@code fwd_segments} for the
+ * dashboard/archive, mirroring {@link SegmentService} for condition.
  *
  * Reference length = (Rd_End_cha - Rd_Str_cha), fallback Measrd_Len, then geometry.
  * D0 is pulled from the row's kept attributes (attrs jsonb) — the characteristic

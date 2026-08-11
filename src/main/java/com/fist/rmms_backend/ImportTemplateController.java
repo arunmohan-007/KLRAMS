@@ -563,6 +563,8 @@ public class ImportTemplateController {
             new Col("D0", "number", "Microns", true, "412")));
         for (int i = 1; i <= 9; i++)
             fwd.add(new Col("D" + i, "number", "Microns", false, String.valueOf(400 - i * 35)));
+        fwd.add(new Col("Latitude", "number", "Degrees", false, "8.5241"));
+        fwd.add(new Col("Longitude", "number", "Degrees", false, "76.9366"));
         seed("fwd", fwd);
 
         seed("video_catalog", List.of(

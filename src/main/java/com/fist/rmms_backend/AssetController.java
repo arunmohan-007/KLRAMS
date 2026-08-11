@@ -18,11 +18,13 @@ import java.util.*;
  * Road assets, linearly referenced onto the network:
  *   bridge          -> LINE  (Start_Chainage..End_Chainage via ST_LineSubstring)
  *   furniture_line  -> LINE
+ *   fwd             -> LINE  (From..To chainage + D0..Dn in attrs; lat/lng kept in attrs
+ *                             only for display — placement is always LRS, like bridges)
  *   culvert         -> POINT (Chainage via ST_LineInterpolatePoint)
  *   furniture_point -> POINT
  *
  * CSV requirements (case-insensitive headers):
- *   lines : Section_Label, Start_Chainage, End_Chainage, ...any other columns
+ *   lines : Section_Label, Start_Chainage/From, End_Chainage/To, ...any other columns
  *   points: Section_Label, Chainage (or Start_Chainage), ...any other columns
  * Every other CSV column is kept and shown in the popup.
  *
@@ -34,8 +36,8 @@ import java.util.*;
 @RequestMapping("/api/assets")
 public class AssetController {
 
-    private static final Set<String> LINE_TYPES  = Set.of("bridge", "furniture_line");
-    private static final Set<String> POINT_TYPES = Set.of("culvert", "furniture_point", "subgrade", "bituminous_core", "pavement_crust", "fwd");
+    private static final Set<String> LINE_TYPES  = Set.of("bridge", "furniture_line", "fwd");
+    private static final Set<String> POINT_TYPES = Set.of("culvert", "furniture_point", "subgrade", "bituminous_core", "pavement_crust");
     /* Field-survey streams belong to a survey period; permanent inventory
        (bridge, culvert, furniture) does not. */
     private static final Set<String> SURVEY_TYPES = Set.of("fwd", "subgrade", "bituminous_core", "pavement_crust");
@@ -84,6 +86,72 @@ public class AssetController {
         jdbc.execute("ALTER TABLE road_assets ADD COLUMN IF NOT EXISTS period_id integer");
         jdbc.execute("CREATE INDEX IF NOT EXISTS road_assets_type_idx ON road_assets(asset_type)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS road_assets_period_idx ON road_assets(period_id)");
+        /* Older FWD uploads stored a start-chainage POINT while From..To lived only in
+           attrs. Promote those rows to LINE stretches so the map/tiles paint the same
+           geom upload writes for new FWD CSVs. Safe to re-run: only touches FWD rows
+           whose geom is still a Point (or null) and that have a usable to-chainage. */
+        relocateFwdLineGeoms();
+    }
+
+    /**
+     * Backfill {@code end_chainage} from attrs when missing, then set {@code geom} with
+     * {@code ST_LineSubstring} for FWD rows that still carry a point (legacy) or no geom.
+     * Latitude/Longitude in attrs are left alone — display only, never used for placement.
+     */
+    private void relocateFwdLineGeoms() {
+        try {
+            Boolean built = jdbc.queryForObject(
+                    "SELECT to_regclass('road_assets') IS NOT NULL", Boolean.class);
+            if (!Boolean.TRUE.equals(built)) return;
+
+            /* Pull From/To out of free-form attrs when the typed columns are blank —
+               same key lists FwdTileService / the viewer have always accepted. */
+            jdbc.update("""
+                UPDATE road_assets a SET
+                    start_chainage = COALESCE(a.start_chainage, (
+                        SELECT (e.value)::double precision
+                          FROM jsonb_each_text(a.attrs) e
+                         WHERE regexp_replace(lower(e.key), '[^a-z0-9]', '', 'g') IN
+                               ('fromch','fromchainage','startch','startchainage','chainagefrom',
+                                'chfrom','frch','fromm','startm','from','start','chainage')
+                           AND e.value ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                         LIMIT 1)),
+                    end_chainage = COALESCE(a.end_chainage, (
+                        SELECT (e.value)::double precision
+                          FROM jsonb_each_text(a.attrs) e
+                         WHERE regexp_replace(lower(e.key), '[^a-z0-9]', '', 'g') IN
+                               ('toch','tochainage','endch','endchainage','chainageto','chto',
+                                'tch','tom','endm','to','end')
+                           AND e.value ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                         LIMIT 1))
+                WHERE a.asset_type = 'fwd'
+                  AND a.attrs IS NOT NULL
+                  AND (a.end_chainage IS NULL OR a.start_chainage IS NULL)
+                """);
+
+            String lenExpr = """
+                COALESCE(
+                    NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
+                    NULLIF(r."Measrd_Len"::double precision, 0),
+                    ST_Length(r.geom::geography))
+                """;
+            jdbc.update("""
+                UPDATE road_assets a SET geom = ST_LineSubstring(
+                    ST_LineMerge(r.geom),
+                    GREATEST(LEAST(LEAST(a.start_chainage, a.end_chainage) / %s, 1.0), 0.0),
+                    GREATEST(LEAST(GREATEST(a.start_chainage, a.end_chainage) / %s, 1.0), 0.0))
+                FROM roads r
+                WHERE a.asset_type = 'fwd'
+                  AND a.start_chainage IS NOT NULL
+                  AND a.end_chainage IS NOT NULL
+                  AND a.end_chainage <> a.start_chainage
+                  AND r."Section_La" = a.section_label
+                  AND r.geom IS NOT NULL
+                  AND (a.geom IS NULL OR GeometryType(a.geom) IN ('POINT','MULTIPOINT'))
+                """.formatted(lenExpr, lenExpr));
+        } catch (Exception e) {
+            /* Schema/roads may not be ready on first boot — next upload/ensure retries. */
+        }
     }
 
     @PostMapping("/{type}/upload")
@@ -139,9 +207,9 @@ public class AssetController {
             Integer iEnd = first(idx, "end_chainage","end_chiange","end","to_chainage",
                     "to_ch","toch","tochainage","chainage_to","chainageto","end_ch","endch","to");
             if (iSec == null || iStart == null)
-                { r.put("status","error"); r.put("message","CSV must have Section_Label and "+(isLine?"Start_Chainage/End_Chainage":"Chainage")); return r; }
+                { r.put("status","error"); r.put("message","CSV must have Section_Label and "+(isLine?"Start_Chainage/From and End_Chainage/To":"Chainage")); return r; }
             if (isLine && iEnd == null)
-                { r.put("status","error"); r.put("message","Line assets need End_Chainage too"); return r; }
+                { r.put("status","error"); r.put("message","Line assets (including FWD) need End_Chainage / To as well as Start / From"); return r; }
 
             // Additive by section: replace only the section labels present in THIS
             // file (of this asset type), so uploading another section adds to the
@@ -156,13 +224,10 @@ public class AssetController {
                 String[] c = parse(line);
                 String sec = val(c, iSec);
                 Double s = num(val(c, iStart));
-                // Lines always carry an end chainage. FWD is a point layer but its
-                // survey rows are chainage RANGES (From..To) — keep the end so the
-                // FWD segments can be cut later (see FwdSegmentService). Other point
-                // types stay single-chainage (end = null).
-                Double e = isLine ? num(val(c, iEnd))
-                        : (type.equals("fwd") && iEnd != null ? num(val(c, iEnd)) : null);
-                if (sec == null || s == null || (isLine && (e == null || e <= s))) { skipped++; continue; }
+                Double e = isLine ? num(val(c, iEnd)) : null;
+                if (sec == null || s == null || (isLine && (e == null || e.equals(s)))) { skipped++; continue; }
+                // Allow reversed From/To (common in FWD surveys): store lo..hi for LRS.
+                if (isLine && e < s) { Double t = s; s = e; e = t; }
                 // first row for this section in this upload -> clear its old rows of
                 // this type, only within the chosen survey period (older periods keep
                 // their data; inventory types have no period)

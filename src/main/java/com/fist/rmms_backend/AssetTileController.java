@@ -12,10 +12,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * Serves the seven simple {@code road_assets} types as Mapbox Vector Tiles — everything
- * {@link AssetTileService#TILED_TYPES} covers; FWD is not one of them (see that class).
- * Additive, same as {@link SegmentTileController} / {@link RoadTileController}:
- * {@code /api/assets/{type}/geojson} is untouched and still serves every current consumer.
+ * Serves {@code road_assets} as Mapbox Vector Tiles.
+ * Additive: {@code /api/assets/{type}/geojson} is untouched.
+ * FWD is answered by {@link FwdTileService} (line stretches + D0 colour props).
  */
 @RestController
 public class AssetTileController {
@@ -30,35 +29,27 @@ public class AssetTileController {
         this.fwdTiles = fwdTiles;
     }
 
-    /** Every type this endpoint serves. FWD is included but answered by {@link FwdTileService},
-     *  which cuts its stretch in SQL rather than reading the stored start-chainage point. */
+    /** Every type this endpoint serves. FWD is included and answered by {@link FwdTileService}. */
     private static boolean tileable(String type) {
         return AssetTileService.TILED_TYPES.contains(type) || "fwd".equals(type);
     }
 
     /**
-     * Whether this type can be drawn from tiles, and whether its rows are chainage ranges.
-     *
-     * <p>Asked once per layer before it is built. {@code tiled:false} or {@code stretch:true} both
-     * mean "use the GeoJSON path" — see {@link AssetTileService#hasRangeRows}. Answering for an
-     * unknown type is deliberately a 200 with {@code tiled:false} rather than a 404: the caller's
-     * question is "can I tile this?", and "no" is a valid answer, not an error.
+     * Whether this type can be drawn from tiles, and whether its rows are chainage ranges
+     * that still need a GeoJSON stretch fallback ({@link AssetTileService#hasRangeRows}).
+     * FWD is never a stretch fallback: it is uploaded/stored as a line and tiled as one.
      */
     @GetMapping("/api/assets/{type}/tile-info")
     public Map<String, Object> tileInfo(@PathVariable String type,
                                         @RequestParam(value = "period_id", required = false) Integer periodId) {
         String t = type.toLowerCase();
-        // FWD's ranges are cut server-side, so it is never a "stretch" fallback despite being one.
         boolean tiled = tileable(t);
         boolean stretch = tiled && !"fwd".equals(t) && tiles.hasRangeRows(t, periodId);
         return Map.of("tiled", tiled, "stretch", stretch);
     }
 
     /**
-     * One tile of one asset type. {@code type} outside {@link AssetTileService#TILED_TYPES}
-     * (including {@code fwd}) is a 404, not a 400 — it is a valid asset type, just not one this
-     * endpoint serves, and the caller (06-assets.js) uses the type's presence in that set to
-     * decide whether to request tiles at all, so this only ever fires from a coding mistake.
+     * One tile of one asset type. Unknown/untileable types are 404.
      */
     @GetMapping(value = "/api/assets/{type}/tiles/{z}/{x}/{y}.mvt", produces = MVT)
     public ResponseEntity<byte[]> tile(@PathVariable String type,

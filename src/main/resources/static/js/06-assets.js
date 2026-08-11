@@ -35,8 +35,10 @@ const ASSETS=[
   {type:'subgrade', layer:'as-soil', kind:'point', color:'#8a4d1f', radius:5, toggle:'showSoil', label:'Sub-Grade Soil'},
   {type:'bituminous_core', layer:'as-core', kind:'point', color:'#2b2b2b', radius:5, toggle:'showCore', label:'Bituminous Core'},
   {type:'pavement_crust', layer:'as-crust', kind:'point', color:'#b8860b', radius:5, toggle:'showCrust', label:'Pavement Crust'},
-  {type:'fwd', layer:'as-fwd', kind:'point', color:'#7b1fa2', radius:5, toggle:'showFwd', label:'FWD'}
+  {type:'fwd', layer:'as-fwd', kind:'line', color:'#7b1fa2', width:5, toggle:'showFwd', label:'FWD'}
 ];
+/* FWD is a LINE asset (From..To + D0..Dn). Lat/Lng in the CSV stay in attrs for
+   the popup only — placement is always Section_Label + chainage LRS. */
 function fwdD0(p){if(!p)return null;for(const k in p){const kk=String(k).toLowerCase().replace(/[^a-z0-9]/g,'');if(kk==='d0'||kk==='do'){const v=p[k];if(v!=null&&v!=='')return v;}}return null;}
 const FWD_D0_STOPS=[['#1a9850','< 100'],['#91cf60','100 – 200'],['#fee08b','200 – 350'],['#fdae61','350 – 500'],['#f46d43','500 – 700'],['#b2182b','> 700']];
 function fwdScale(gj){let mx=0;((gj&&gj.features)||[]).forEach(f=>{const v=parseFloat(fwdD0(f.properties));if(!isNaN(v))mx=Math.max(mx,Math.abs(v));});return (mx>0&&mx<10)?1000:1;}
@@ -247,15 +249,20 @@ function loadAssetData(a){
   if(_assetDataP[a.type])return _assetDataP[a.type];
   const p=(a.type==='fwd'?fwdGeojsonFetch():fetch('/api/assets/'+a.type+'/geojson').then(r=>r.json())).then(gj=>{
     if(!gj||!gj.features||!gj.features.length)return null;
-    const asLine=(a.type==='fwd')||((a.kind==='point')&&isStretchData(gj));
-    const go=()=>{if(asLine)linRefFeatures(gj);if(a.type==='fwd'){const sc=fwdScale(gj);gj.features.forEach(f=>{const v=fwdD0(f.properties);if(v!=null&&v!=='')f.properties.__d0=Math.round(+v*sc);f.properties.__dscale=sc;});}
+    /* FWD is uploaded as a line stretch; only re-derive geometry for legacy
+       point rows (or other point types that carry a From..To range). */
+    const needLinRef=(a.type==='fwd')
+      ? gj.features.some(f=>{const g=f.geometry&&f.geometry.type;return !g||g==='Point'||g==='MultiPoint';})
+      : ((a.kind==='point')&&isStretchData(gj));
+    const asLine=(a.kind==='line')||needLinRef||(a.type==='fwd');
+    const go=()=>{if(needLinRef)linRefFeatures(gj);if(a.type==='fwd'){const sc=fwdScale(gj);gj.features.forEach(f=>{const v=fwdD0(f.properties);if(v!=null&&v!=='')f.properties.__d0=Math.round(+v*sc);f.properties.__dscale=sc;});}
       /* Build 163 — resolve each feature's section label into __sec so the
          network-scope filter can match assets regardless of CSV column names */
       gj.features.forEach(f=>{const v=pickProp(f.properties,ROAD_KEYS);if(v!=null&&v!=='')f.properties.__sec=String(v);});
       ASSET_DATA[a.type]=gj;
       if(typeof updateNetScopeCard==='function')updateNetScopeCard();
       return gj;};
-    return asLine?ensureRoads().then(go):go();
+    return needLinRef?ensureRoads().then(go):go();
   }).catch(()=>null);
   _assetDataP[a.type]=p;
   p.then(gj=>{if(!gj)_assetDataP[a.type]=null;},()=>{_assetDataP[a.type]=null;});
@@ -287,7 +294,7 @@ function loadAsset(a){
     }
     return loadAssetData(a).then(gj=>{
       if(!gj)return;
-      addAssetLayer(a,gj,(a.type==='fwd')||((a.kind==='point')&&isStretchData(gj)),false);
+      addAssetLayer(a,gj,(a.kind==='line')||(a.type==='fwd')||((a.kind==='point')&&isStretchData(gj)),false);
     });
   }).catch(()=>{});
 }

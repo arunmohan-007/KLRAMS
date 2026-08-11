@@ -11,14 +11,10 @@ import java.util.Set;
  * PostGIS. Same shape as {@link SegmentTileService} / {@link RoadTileService}: additive, next to
  * the untouched {@code /api/assets/{type}/geojson}.
  *
- * <p>FWD is deliberately excluded from {@link #TILED_TYPES}. Every other type's stored {@code
- * geom} column already IS the render geometry — {@code AssetController.upload()} places it once
- * with {@code ST_LineSubstring}/{@code ST_LineInterpolatePoint} and nothing downstream changes it.
- * FWD's stored geom is a single point at the survey's START chainage only (it is a POINT_TYPE as
- * far as upload() is concerned); the map instead draws it as a chainage-range STRETCH computed
- * client-side per load (see {@code chainageStretch()} in {@code 04-geo-helpers-boundaries.js}),
- * on top of a network-wide D0 colour-scale decision. Replicating both in SQL is a separate,
- * riskier piece of work than the other seven, so FWD stays on the GeoJSON path for now.
+ * <p>FWD is served by {@link FwdTileService} (same URL under {@link AssetTileController}) because
+ * its tiles also stamp network-wide {@code __d0}/{@code __dscale} for the deflection colour
+ * legend. Upload now stores FWD as a LINE stretch ({@code ST_LineSubstring} of From..To), so the
+ * tile paints stored geom rather than a client-side re-derivation.
  *
  * <p>{@code attrs} is free-form per CSV upload — unlike the condition/road columns, there is no
  * fixed catalogue to project column-by-column, so it ships as one JSON-text property
@@ -30,17 +26,18 @@ public class AssetTileService {
 
     static final String LAYER_NAME = "assets";
 
-    /** Types whose stored geom is already correct for direct MVT rendering. FWD is not one. */
+    /** Types whose stored geom is already correct for direct MVT rendering. FWD uses
+     *  {@link FwdTileService} for the extra D0 colour properties. */
     static final Set<String> TILED_TYPES = Set.of(
             "bridge", "furniture_line", "culvert", "furniture_point",
             "subgrade", "bituminous_core", "pavement_crust");
 
     /** Field-survey streams are scoped to a survey period; permanent inventory is not — same
-     *  split as {@link AssetController}'s SURVEY_TYPES, minus fwd (not tiled here). */
+     *  split as {@link AssetController}'s SURVEY_TYPES, minus fwd (handled by FwdTileService). */
     private static final Set<String> SURVEY_TYPES = Set.of("subgrade", "bituminous_core", "pavement_crust");
 
     /** Types stored as a LINE stretch by {@code ST_LineSubstring} — mirrors
-     *  {@link AssetController}'s LINE_TYPES. See {@link #hasRangeRows}. */
+     *  {@link AssetController}'s LINE_TYPES (FWD included there, but tiled separately). */
     private static final Set<String> LINE_TYPES = Set.of("bridge", "furniture_line");
 
     private final JdbcTemplate jdbc;
