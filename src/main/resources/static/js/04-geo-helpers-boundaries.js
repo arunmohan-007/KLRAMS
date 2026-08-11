@@ -5,11 +5,10 @@
    share one global scope, so load order is preserved exactly.
    ============================================================ */
 function lineOf(feature){const g=feature.geometry;let c=g.type==='MultiLineString'?g.coordinates.flat():g.coordinates;return turf.lineString(c);}
-/* Solid dark class colours — visible zoomed out and zoomed in. No blotch:
-   hit layer stays under the paint; light basemaps use no casing. */
+/* Classic SH brown / MDR blue — same look as the original DEFAULT legend. */
 const CLS_BY_MODE={
-  light:{NH:'#7f1d1d',SH:'#0a3d62',MDR:'#111827',ODR:'#6b7280'},
-  dark:{NH:'#ff6b6b',SH:'#74c0fc',MDR:'#e5e7eb',ODR:'#9ca3af'}
+  light:{NH:'#c0392b',SH:'#8a4d1f',MDR:'#1868c4',ODR:'#7d8ea3'},
+  dark:{NH:'#ff6b6b',SH:'#d4a574',MDR:'#74c0fc',ODR:'#adb5bd'}
 };
 let NET_BASE_MODE='light';
 let CLS=CLS_BY_MODE.light;
@@ -17,17 +16,18 @@ function roadClassKey(){return ['upcase',['trim',['to-string',['coalesce',['get'
 function netColor(){
   const c=['match',roadClassKey()];
   Object.entries(CLS).forEach(([k,v])=>c.push(k,v));
-  c.push(CLS.ODR||'#4a5568');
+  c.push(CLS.ODR||'#7d8ea3');
   return c;
 }
 function netCasingColor(){return '#ffffff';}
 /* Flat-ish base so every section stays visible; class scale adds hierarchy. */
 function pavementWidthExpr(){return ['match',['to-string',['get','Pavement_W']],'1',6,'2',7,'3',8,'4',9,'5',10,8];}
-function classWidthScale(){return ['match',roadClassKey(),'NH',1.4,'SH',1.25,'MDR',1.05,'ODR',0.8,1];}
-function classOpacityScale(){return ['match',roadClassKey(),'NH',1,'SH',1,'MDR',1,'ODR',0.9,1];}
-/* Pixel-visible at statewide (~z7–9) and clearly thick when zoomed in. */
-const NET_WIDTH_STOPS=[[6,0.22],[8,0.35],[10,0.55],[12,1.1],[14,2.4],[16,4],[18,6.5]];
-const CASING_RATIO=1.22;
+function classWidthScale(){return ['match',roadClassKey(),'NH',1.45,'SH',1.35,'MDR',1.15,'ODR',0.85,1.1];}
+function classOpacityScale(){return ['match',roadClassKey(),'NH',1,'SH',1,'MDR',1,'ODR',0.95,1];}
+/* Bold statewide strokes so SH brown / MDR blue read clearly at ~100 km zoom
+   without a dark blotch (hit stays under paint; halo is white only). */
+const NET_WIDTH_STOPS=[[6,0.42],[8,0.7],[10,1.05],[12,1.55],[14,2.8],[16,4.2],[18,6.5]];
+const CASING_RATIO=1.2;
 function netWidthExpr(){
   const pw=pavementWidthExpr(),cs=classWidthScale();
   const e=['interpolate',['exponential',1.3],['zoom']];
@@ -44,9 +44,16 @@ function netCasingWidth(){
 function netHitWidth(){return ['interpolate',['linear'],['zoom'],6,0.5,8,1.2,10,3,12,8,14,14,16,20];}
 function netSortKey(){return ['match',roadClassKey(),'NH',4,'SH',3,'MDR',2,'ODR',1,0];}
 function _scaleOp(expr,userOp){const u=(userOp==null||userOp>=0.999)?null:+userOp;return u==null?expr:['*',expr,Math.max(0.05,Math.min(1,u))];}
+/* Only Carto Light is a clean, muted canvas the class colour can stand on by
+   itself. Every other basemap (OSM Streets, Satellite, Topo, Night) bakes in
+   its own colours/imagery right where our line sits, so a white halo is what
+   keeps the class colour reading as OURS instead of blending into the
+   basemap underneath it. */
+let NET_HALO=true;
 function netCasingOpacity(userOp){
-  if(NET_BASE_MODE!=='dark')return 0;
-  return _scaleOp(['interpolate',['linear'],['zoom'],6,0.45,8,0.65,10,0.85,12,1],userOp);
+  if(!NET_HALO)return 0;
+  /* Soft white edge only — enough to lift colour off OSM, not a dark fill. */
+  return _scaleOp(['interpolate',['linear'],['zoom'],6,0.35,8,0.5,10,0.7,12,0.9],userOp);
 }
 function netFillOpacity(userOp){return _scaleOp(classOpacityScale(),userOp);}
 function _netUserOpacityFromUi(){
@@ -65,6 +72,7 @@ function applyNetUserOpacity(userOp){
 function applyNetBasemapStyle(baseName){
   const n=baseName||((document.getElementById('basemap')||{}).value)||'osm';
   NET_BASE_MODE=(n==='dark'||n==='sat')?'dark':'light';
+  NET_HALO=(n!=='light');
   CLS=CLS_BY_MODE[NET_BASE_MODE];
   if(!map.getLayer||!map.getLayer('roadnet'))return;
   try{
