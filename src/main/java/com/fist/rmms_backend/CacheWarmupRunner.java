@@ -48,6 +48,7 @@ public class CacheWarmupRunner implements ApplicationRunner {
     private void warmAll() {
         long start = System.currentTimeMillis();
         try { roads.warm(); } catch (Exception e) { log.warn("Road cache warm-up failed", e); }
+        try { segments.ensureDefaultPci(); } catch (Exception e) { log.warn("Stored PCI backfill failed", e); }
         try { segments.segmentsGeoJson(); } catch (Exception e) { log.warn("Condition segment cache warm-up failed", e); }
         /* Promote legacy FWD point geoms to From..To line stretches before tiles are hit. */
         try { assets.warm(); } catch (Exception e) { log.warn("FWD line-geom warm-up failed", e); }

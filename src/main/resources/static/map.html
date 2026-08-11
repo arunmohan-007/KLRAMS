@@ -122,6 +122,7 @@
     <div class="grp">
       <div class="switch"><span class="lname"><span class="ldot" style="background:#157f3c"></span>Composite PCI</span><input type="checkbox" id="showPciAvg"></div>
       <div class="switch"><span class="lname"><span class="ldot" style="background:#e8590c"></span>Worst-Lane PCI</span><input type="checkbox" id="showPciWorst"></div>
+      <div id="pciMapLegend" class="fwd-legend" style="display:none"></div>
     </div>
     <div class="grp-title">Traffic stations</div>
     <div class="grp">
@@ -1007,8 +1008,8 @@
   <script src="js/11-dashboard-charts.js?v=123"></script>
   <script src="js/12-nsv-video.js?v=172"></script>
   <script src="js/13-search.js?v=120"></script>
-  <script src="js/14-pci-engine.js?v=173"></script>
-  <script src="js/15-main.js?v=126"></script>
+  <script src="js/14-pci-engine.js?v=174"></script>
+  <script src="js/15-main.js?v=127"></script>
   <script src="js/16-traffic.js?v=171"></script>
   <script src="js/17-measure.js?v=117"></script>
   <script src="js/18-filters.js?v=119"></script>
@@ -1586,6 +1587,7 @@ html body #fpanes.hidden{display:none!important}
   .lx-k{color:#8193ac;font-weight:800;text-transform:uppercase;letter-spacing:.5px;font-size:9.5px}
   .lx-col{display:flex;align-items:center;gap:8px;font-weight:700;color:#42526b;font-size:12px}
   .lx-col i{width:14px;height:14px;border-radius:50%;display:inline-block;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .lx-grad{width:52px;height:10px;border-radius:4px;display:inline-block;box-shadow:0 0 0 1px rgba(0,0,0,.2);flex:0 0 auto}
   .lx-op{flex:1;height:5px;accent-color:#34d399;cursor:pointer}
   .lx-val{font-weight:800;color:#0e2038;min-width:40px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
 </style>
@@ -1632,9 +1634,18 @@ html body #fpanes.hidden{display:none!important}
       var sw=cb.closest?cb.closest('.switch'):null;if(!sw||sw.__lx)return;sw.__lx=1;
       var cfg=LMAP[id];
       var lx=document.createElement('div');lx.className='lx';
-      var nm=cfg.grad?'Graded scale':(NAMES[cfg.color.toLowerCase()]||'');
+      var swatch;
+      if(cfg.grad){
+        /* PCI uses the IRC 6-band scale; condition / IRI use Good→Fair→Poor. */
+        var g=(id==='showPciAvg'||id==='showPciWorst')
+          ?'linear-gradient(90deg,#c92a2a,#e8590c,#f08c00,#f2c200,#7cb518,#157f3c)'
+          :'linear-gradient(90deg,#2ba66a,#FFC400,#da4b43)';
+        swatch='<span class="lx-grad" style="background:'+g+'"></span>Graded scale';
+      }else{
+        swatch='<i style="background:'+cfg.color+'"></i>'+(NAMES[cfg.color.toLowerCase()]||'');
+      }
       lx.innerHTML='<div class="lx-div"></div>'+
-        '<div class="lx-row"><span class="lx-k">Colour</span><span class="lx-col"><i style="background:'+cfg.color+'"></i>'+nm+'</span></div>'+
+        '<div class="lx-row"><span class="lx-k">Colour</span><span class="lx-col">'+swatch+'</span></div>'+
         '<div class="lx-row"><span class="lx-k">Opacity</span><input type="range" class="lx-op" min="15" max="100" value="100"><span class="lx-val">100%</span></div>';
       sw.parentNode.insertBefore(lx,sw.nextSibling);
       var rng=lx.querySelector('.lx-op'),val=lx.querySelector('.lx-val');

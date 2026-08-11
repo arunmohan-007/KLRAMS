@@ -160,8 +160,12 @@ public class SegmentService {
     /**
      * Adds the stored-PCI columns when they are missing. Databases whose segments
      * were built before this feature still carry the old table, and buildGeoJson()
-     * selects both columns — so this runs there too, leaving the values NULL until
-     * the next Build Segments (the viewer then falls back to computing in-browser).
+     * / tiles select both columns — so this runs there too.
+     *
+     * <p>Column presence alone is not enough: tile mode paints PCI from
+     * {@code pci_def_*} with no browser recompute fallback. Call
+     * {@link #ensureDefaultPci()} (warm-up / first tile) to backfill NULLs;
+     * otherwise the layer draws as solid "No data" grey.
      */
     void ensurePciColumns() {
         Boolean exists = jdbc.queryForObject(
@@ -170,6 +174,23 @@ public class SegmentService {
         jdbc.execute("ALTER TABLE condition_segments " +
                      "ADD COLUMN IF NOT EXISTS pci_def_avg double precision, " +
                      "ADD COLUMN IF NOT EXISTS pci_def_worst double precision");
+    }
+
+    /**
+     * Backfills {@code pci_def_avg} / {@code pci_def_worst} when any segment is
+     * still NULL. No-ops when every row is already scored. Safe on every warm-up
+     * and first tile hit — the expensive path only runs when values are missing
+     * (typical after upgrading a DB that had segments before stored PCI).
+     */
+    void ensureDefaultPci() {
+        ensurePciColumns();
+        Boolean exists = jdbc.queryForObject(
+            "SELECT to_regclass('condition_segments') IS NOT NULL", Boolean.class);
+        if (!Boolean.TRUE.equals(exists)) return;
+        Long missing = jdbc.queryForObject(
+            "SELECT count(*) FROM condition_segments " +
+            "WHERE pci_def_avg IS NULL OR pci_def_worst IS NULL", Long.class);
+        if (missing != null && missing > 0) storeDefaultPci();
     }
 
     /** lane_vals jsonb -> { laneName: { param: value } }, keeping only PCI parameters. */

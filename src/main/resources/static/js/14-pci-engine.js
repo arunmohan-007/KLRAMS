@@ -123,7 +123,14 @@ function pciProp(basis){
   return worst?'pci_worst':'pci_avg';
 }
 function pciBasisLabel(b){return b==='worst'?'Worst-Lane PCI':'Composite PCI';}
-function pciColorExpr(prop){return ['case',['<',['coalesce',['get',prop],-1],0],'#b9c2cc',['step',['get',prop],'#c92a2a',20,'#e8590c',40,'#f08c00',60,'#f2c200',80,'#7cb518',90,'#157f3c']];}
+/* to-number: MVT can surface numeric props as strings; without it the step
+   expression fails open and the layer paints as a single flat colour (or grey). */
+function pciColorExpr(prop){
+  return ['case',
+    ['!',['has',prop]],'#b9c2cc',
+    ['<',['to-number',['get',prop]],0],'#b9c2cc',
+    ['step',['to-number',['get',prop]],'#c92a2a',20,'#e8590c',40,'#f08c00',60,'#f2c200',80,'#7cb518',90,'#157f3c']];
+}
 function setPciStatus(t){const el=document.getElementById('pciStatus');if(el)el.textContent=t||'';}
 function renderPciWeights(){
   const box=document.getElementById('pciWeights');if(!box)return;
@@ -133,7 +140,24 @@ function renderPciWeights(){
 }
 function updatePciSum(){let sum=0;PCI_PARAMS.forEach(pp=>sum+=(+PCI_W[pp.key]||0));const el=document.getElementById('pciSum');if(!el)return;el.innerHTML='&Sigma; weights = <b>'+sum.toFixed(2)+'</b>';el.classList.toggle('warn',Math.abs(sum-1)>0.005);}
 function resetPciWeights(){Object.assign(PCI_W,PCI_W_DEFAULT);renderPciWeights();if(map.getLayer('pci-avg')||map.getLayer('pci-worst'))generatePCI();}
-function renderPciLegend(){const el=document.getElementById('pciLegend');if(!el)return;el.innerHTML=PCI_BANDS.map(b=>`<div class="lg"><span class="bar" style="background:${b.color}"></span> ${b.label} <span class="rng">${b.min}\u2013${b.hi}</span></div>`).join('')+'<div class="lg"><span class="bar" style="background:#b9c2cc"></span> No data <span class="rng"></span></div>';}
+function renderPciLegend(){
+  const el=document.getElementById('pciLegend');
+  if(el)el.innerHTML=PCI_BANDS.map(b=>`<div class="lg"><span class="bar" style="background:${b.color}"></span> ${b.label} <span class="rng">${b.min}\u2013${b.hi}</span></div>`).join('')+'<div class="lg"><span class="bar" style="background:#b9c2cc"></span> No data <span class="rng"></span></div>';
+  /* Layers-panel scale (same pattern as FWD / Avg IRI). Show when either PCI toggle is on. */
+  const mapEl=document.getElementById('pciMapLegend');
+  if(mapEl){
+    mapEl.innerHTML='<div class="fl-hd"><span class="fl-t">PCI</span><span class="fl-u">IRC:82-2023</span></div>'+
+      PCI_BANDS.map(b=>'<div class="fl-r"><span class="sw" style="background:'+b.color+'"></span>'+
+        '<span class="fl-l">'+b.label+'</span><span class="fl-v">'+b.min+'\u2013'+b.hi+'</span></div>').join('')+
+      '<div class="fl-r"><span class="sw" style="background:#b9c2cc"></span><span class="fl-l">No data</span><span class="fl-v"></span></div>';
+  }
+  syncPciMapLegend();
+}
+function syncPciMapLegend(){
+  const lg=document.getElementById('pciMapLegend');if(!lg)return;
+  const a=document.getElementById('showPciAvg'),w=document.getElementById('showPciWorst');
+  lg.style.display=((a&&a.checked)||(w&&w.checked))?'block':'none';
+}
 function renderPciSummary(d){const el=document.getElementById('pciSummary');if(!el)return;if(!d||(d.avg==null&&d.worst==null)){el.innerHTML='';return;}
   function rw(lab,v){if(v==null)return '<div class="rec" style="margin-top:5px">'+lab+': \u2013</div>';const b=pciBand(v);return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px"><span class="big" style="font-size:22px">'+v.toFixed(1)+'</span><span class="band" style="margin-left:0;background:'+b.color+'">'+b.label+'</span><span class="rec" style="margin:0">'+lab+'</span></div>';}
   el.innerHTML='<div class="pci-summary"><div class="eyebrow" style="margin:0 0 2px">Network average PCI</div>'+rw('Composite',d.avg)+rw('Worst-Lane',d.worst)+'<div class="rec" style="margin-top:7px">'+(d.nA||0)+' of '+(d.total||0)+' segments scored</div></div>';}
@@ -185,7 +209,7 @@ function generatePCI(silent){
      has loaded them. */
   if(TILES_ON&&!Segs.collection()){addPciLayers();showPciToggles(silent);
     setPciStatus('PCI shown from stored values. Open the PCI report for network totals.');
-    renderPciSummary(null);return;}
+    renderPciSummary(null);syncPciMapLegend();return;}
   if(!Segs.collection()){setPciStatus('Loading segments\u2026');Segs.ensure().then(()=>{if(Segs.loaded())generatePCI(silent);else setPciStatus('No condition segments yet. Build them in the Data console.');});return;}
   PCI_PARAMS.forEach(pp=>{const el=document.getElementById('w_'+pp.key);if(el)PCI_W[pp.key]=+el.value||0;});
   let nA=0,lenA=0,pA=0,nW=0,lenW=0,pW=0;
@@ -199,8 +223,9 @@ function generatePCI(silent){
   map.setLayoutProperty('pci-worst','visibility',(tw&&tw.checked)?'visible':'none');
   renderPciSummary({avg:lenA?pA/lenA:null,worst:lenW?pW/lenW:null,nA:nA,nW:nW,total:Segs.count()});
   setPciStatus('\u2713 PCI generated (Composite & Worst-Lane) for '+nA+' of '+Segs.count()+' segments.');
+  syncPciMapLegend();
 }
 (function initPci(){
   renderPciWeights();renderPciLegend();
-  [['showPciAvg','pci-avg'],['showPciWorst','pci-worst']].forEach(([tgid,lid])=>{const tg=document.getElementById(tgid);if(tg)tg.addEventListener('change',e=>{if(e.target.checked){if(!map.getLayer(lid)){generatePCI();}else{map.setLayoutProperty(lid,'visibility','visible');}}else{if(map.getLayer(lid))map.setLayoutProperty(lid,'visibility','none');}});});
+  [['showPciAvg','pci-avg'],['showPciWorst','pci-worst']].forEach(([tgid,lid])=>{const tg=document.getElementById(tgid);if(tg)tg.addEventListener('change',e=>{if(e.target.checked){if(!map.getLayer(lid)){generatePCI();}else{map.setLayoutProperty(lid,'visibility','visible');}}else{if(map.getLayer(lid))map.setLayoutProperty(lid,'visibility','none');}syncPciMapLegend();});});
 })();

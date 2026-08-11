@@ -65,9 +65,9 @@ public class SegmentTileService {
                 "SELECT to_regclass('condition_segments') IS NOT NULL", Boolean.class);
         if (!Boolean.TRUE.equals(built)) return null;
 
-        // The projection below selects pci_def_avg / pci_def_worst, which a database built before
-        // stored PCI does not have. Same guarantee the GeoJSON path relies on, same guard.
-        segments.ensurePciColumns();
+        // Columns + values: a DB built before stored PCI gets NULL pci_def_* until
+        // Build Segments (or this backfill). Tile paint has no browser fallback.
+        segments.ensureDefaultPci();
 
         int periodId = periods.resolve(requestedPeriodId);
 
