@@ -5,65 +5,50 @@
    share one global scope, so load order is preserved exactly.
    ============================================================ */
 function lineOf(feature){const g=feature.geometry;let c=g.type==='MultiLineString'?g.coordinates.flat():g.coordinates;return turf.lineString(c);}
-/* Basemap-aware road style.
-   Light basemaps: classic NH/SH/MDR/ODR fills — no dark casing at statewide
-   zoom (slate halos made every road look dark and broke the legend match).
-   Dark/sat: brighter fills + white halo for contrast on imagery. */
+/* Solid dark class colours — visible zoomed out and zoomed in. No blotch:
+   hit layer stays under the paint; light basemaps use no casing. */
 const CLS_BY_MODE={
-  light:{NH:'#c0392b',SH:'#d9760c',MDR:'#1868c4',ODR:'#7d8ea3'},
-  dark:{NH:'#ff6b6b',SH:'#ffd43b',MDR:'#74c0fc',ODR:'#adb5bd'}
+  light:{NH:'#9b1c1c',SH:'#c45c00',MDR:'#0b4f8a',ODR:'#4a5568'},
+  dark:{NH:'#ff6b6b',SH:'#ffd43b',MDR:'#74c0fc',ODR:'#ced4da'}
 };
 let NET_BASE_MODE='light';
 let CLS=CLS_BY_MODE.light;
-/* Case/whitespace-tolerant so tile + GeoJSON both match the legend swatches. */
 function roadClassKey(){return ['upcase',['trim',['to-string',['coalesce',['get','Road_Class'],'']]]];}
 function netColor(){
   const c=['match',roadClassKey()];
   Object.entries(CLS).forEach(([k,v])=>c.push(k,v));
-  c.push(CLS.ODR||'#7d8ea3');
+  c.push(CLS.ODR||'#4a5568');
   return c;
 }
 function netCasingColor(){return '#ffffff';}
-function pavementWidthExpr(){return ['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];}
-function classWidthScale(){return ['match',roadClassKey(),'NH',1.35,'SH',1.2,'MDR',0.7,'ODR',0.45,0.85];}
-/* MDR is densest — keep it lighter so orange SH / blue MDR stay distinct
-   instead of stacking into a muddy dark brown. */
-function classOpacityScale(){return ['match',roadClassKey(),'NH',1,'SH',1,'MDR',0.55,'ODR',0.4,0.7];}
-const NET_WIDTH_STOPS=[[6,0.11],[8,0.17],[10,0.26],[12,0.42],[15,1.55],[18,5.5]];
-const CASING_RATIO=1.28;
+/* Flat-ish base so every section stays visible; class scale adds hierarchy. */
+function pavementWidthExpr(){return ['match',['to-string',['get','Pavement_W']],'1',6,'2',7,'3',8,'4',9,'5',10,8];}
+function classWidthScale(){return ['match',roadClassKey(),'NH',1.4,'SH',1.25,'MDR',1.05,'ODR',0.8,1];}
+function classOpacityScale(){return ['match',roadClassKey(),'NH',1,'SH',1,'MDR',1,'ODR',0.9,1];}
+/* Pixel-visible at statewide (~z7–9) and clearly thick when zoomed in. */
+const NET_WIDTH_STOPS=[[6,0.22],[8,0.35],[10,0.55],[12,1.1],[14,2.4],[16,4],[18,6.5]];
+const CASING_RATIO=1.22;
 function netWidthExpr(){
   const pw=pavementWidthExpr(),cs=classWidthScale();
-  const e=['interpolate',['exponential',1.4],['zoom']];
+  const e=['interpolate',['exponential',1.3],['zoom']];
   NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',['*',pw,cs],m]);});
   return e;
 }
 function netWidth(){return netWidthExpr();}
 function netCasingWidth(){
   const pw=pavementWidthExpr(),cs=classWidthScale();
-  const e=['interpolate',['exponential',1.4],['zoom']];
+  const e=['interpolate',['exponential',1.3],['zoom']];
   NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',['*',pw,cs],+(m*CASING_RATIO).toFixed(4)]);});
   return e;
 }
-function netHitWidth(){
-  /* Keep the click target narrow at mid zoom. A wide near-black hit stroke
-     drawn ABOVE the coloured roads used to alpha-stack into a dark blotch
-     over dense SH/MDR — exactly the "very dark, not legend colours" look. */
-  return ['interpolate',['linear'],['zoom'],6,0.8,8,2,10,5,12,10,14,16,16,22];
-}
+function netHitWidth(){return ['interpolate',['linear'],['zoom'],6,0.5,8,1.2,10,3,12,8,14,14,16,20];}
 function netSortKey(){return ['match',roadClassKey(),'NH',4,'SH',3,'MDR',2,'ODR',1,0];}
 function _scaleOp(expr,userOp){const u=(userOp==null||userOp>=0.999)?null:+userOp;return u==null?expr:['*',expr,Math.max(0.05,Math.min(1,u))];}
 function netCasingOpacity(userOp){
-  /* Light: casing off until ~z12 so legend colours stay true statewide.
-     Dark/sat: white halo earlier for readability on imagery. */
-  const e=NET_BASE_MODE==='dark'
-    ?['interpolate',['linear'],['zoom'],6,0.5,8,0.7,10,0.9,12,1]
-    :['interpolate',['linear'],['zoom'],10,0,11.5,0,12,0.35,14,0.75];
-  return _scaleOp(e,userOp);
+  if(NET_BASE_MODE!=='dark')return 0;
+  return _scaleOp(['interpolate',['linear'],['zoom'],6,0.45,8,0.65,10,0.85,12,1],userOp);
 }
-function netFillOpacity(userOp){
-  const byZoom=['interpolate',['linear'],['zoom'],6,0.85,8,0.92,10,1];
-  return _scaleOp(['*',byZoom,classOpacityScale()],userOp);
-}
+function netFillOpacity(userOp){return _scaleOp(classOpacityScale(),userOp);}
 function _netUserOpacityFromUi(){
   try{
     const sw=document.getElementById('showRoads');
@@ -77,8 +62,6 @@ function applyNetUserOpacity(userOp){
   if(map.getLayer('roadnet'))map.setPaintProperty('roadnet','line-opacity',netFillOpacity(userOp));
   if(map.getLayer('roadnet-casing'))map.setPaintProperty('roadnet-casing','line-opacity',netCasingOpacity(userOp));
 }
-/* Switch road colours / halo to match the active basemap. Safe to call before
-   the road layers exist — it only paints when they are present. */
 function applyNetBasemapStyle(baseName){
   const n=baseName||((document.getElementById('basemap')||{}).value)||'osm';
   NET_BASE_MODE=(n==='dark'||n==='sat')?'dark':'light';
