@@ -22,15 +22,24 @@ function pavementWidthExpr(){return ['match',['to-string',['get','Pavement_W']],
      MapLibre ("zoom expression may only be used as input to a top-level step
      or interpolate"), and addLayer fails silently. Ratio is baked into each
      casing stop at expression-build time.
-   - Casing opacity also eases in with zoom so overlapping dark outlines don't
-     fill opaque when the network is dense. */
-const NET_WIDTH_STOPS=[[6,0.045],[8,0.09],[10,0.16],[12,0.34],[15,1.55],[18,5.5]];
+   - Near-black casing is OFF until ~z11: at statewide density it fills the
+     state as a dark blotch even at hairline width. Fill opacity also stays
+     soft until district zoom so overlapping coloured strokes don't stack opaque.
+   - The Layers opacity slider used to setPaintProperty(line-opacity, 1) and
+     wipe these zoom curves — applyNetUserOpacity() multiplies instead. */
+const NET_WIDTH_STOPS=[[6,0.035],[8,0.07],[10,0.14],[12,0.34],[15,1.55],[18,5.5]];
 const CASING_RATIO=1.32;
 function netWidthExpr(){const pw=pavementWidthExpr();const e=['interpolate',['exponential',1.4],['zoom']];NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',pw,m]);});return e;}
 function netWidth(){return netWidthExpr();}
 function netCasingWidth(){const pw=pavementWidthExpr();const e=['interpolate',['exponential',1.4],['zoom']];NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',pw,+(m*CASING_RATIO).toFixed(4)]);});return e;}
-function netCasingOpacity(){return ['interpolate',['linear'],['zoom'],6,0.18,8,0.35,10,0.65,12,1];}
-function netFillOpacity(){return ['interpolate',['linear'],['zoom'],6,0.7,8,0.85,10,1];}
+function _scaleOp(expr,userOp){const u=(userOp==null||userOp>=0.999)?null:+userOp;return u==null?expr:['*',expr,Math.max(0.05,Math.min(1,u))];}
+function netCasingOpacity(userOp){return _scaleOp(['interpolate',['linear'],['zoom'],9,0,10.5,0,11,0.45,12,0.8,13,1],userOp);}
+function netFillOpacity(userOp){return _scaleOp(['interpolate',['linear'],['zoom'],6,0.4,8,0.55,10,0.8,12,1],userOp);}
+/* Re-apply zoom opacity curves, scaled by the Layers panel slider (0–1). */
+function applyNetUserOpacity(userOp){
+  if(map.getLayer('roadnet'))map.setPaintProperty('roadnet','line-opacity',netFillOpacity(userOp));
+  if(map.getLayer('roadnet-casing'))map.setPaintProperty('roadnet-casing','line-opacity',netCasingOpacity(userOp));
+}
 const NAME_KEYS=['NAME','Name','name','DISTRICT','District','district','AC_NAME','LAC_NAME','CONSTITUEN','Constituency','LABEL'];
 function featName(p){for(const k of NAME_KEYS)if(p&&p[k]!=null&&p[k]!=='')return String(p[k]);return '';}
 function nameExpr(){const e=['coalesce'];NAME_KEYS.forEach(k=>e.push(['get',k]));e.push('');return e;}

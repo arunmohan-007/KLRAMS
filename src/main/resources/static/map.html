@@ -988,10 +988,10 @@
   <script src="js/02c-segment-data.js?v=2"></script>
   <script src="js/02d-road-index.js?v=2"></script>
   <script src="js/03-condition-style-filter.js?v=177"></script>
-  <script src="js/04-geo-helpers-boundaries.js?v=120"></script>
+  <script src="js/04-geo-helpers-boundaries.js?v=121"></script>
   <script src="js/05-road-network.js?v=128"></script>
   <script src="js/06-assets.js?v=171"></script>
-  <script src="js/07-data-loaders.js?v=177"></script>
+  <script src="js/07-data-loaders.js?v=178"></script>
   <script src="js/08-condition-popup-nsv.js?v=166"></script>
   <script src="js/09-dashboard-core.js?v=123"></script>
   <script src="js/10-pci-report.js?v=124"></script>
@@ -1604,7 +1604,15 @@ html body #fpanes.hidden{display:none!important}
       showCrust:{layers:['as-crust','as-crust-icon'],color:'#b8860b'}
     };
     var NAMES={'#8a4d1f':'Brown','#3a4ad6':'Blue','#2ba66a':'Green','#7b1fa2':'Purple','#0e2038':'Navy','#0d7a51':'Green','#8a5cb8':'Violet','#e07b2a':'Orange','#0fa3a3':'Teal','#3b6fa0':'Steel','#157f3c':'Green','#e8590c':'Orange','#1565c0':'Blue','#2b2b2b':'Black','#b8860b':'Gold'};
-    function setOpacity(layers,v){layers.forEach(function(id){if(!map.getLayer(id))return;var t=map.getLayer(id).type;try{
+    function setOpacity(layers,v){
+      /* Road network keeps zoom-based opacity (thin + no dark casing when zoomed
+         out). A flat setPaintProperty(line-opacity, 1) was wiping that curve and
+         restoring the statewide dark blotch whenever the Layers card refreshed. */
+      if(layers.indexOf('roadnet')>=0&&typeof applyNetUserOpacity==='function'){
+        applyNetUserOpacity(v);
+        return;
+      }
+      layers.forEach(function(id){if(!map.getLayer(id))return;var t=map.getLayer(id).type;try{
       if(t==='line')map.setPaintProperty(id,'line-opacity',v);
       else if(t==='circle')map.setPaintProperty(id,'circle-opacity',v);
       else if(t==='symbol'){try{map.setPaintProperty(id,'icon-opacity',v);}catch(e){}try{map.setPaintProperty(id,'text-opacity',v);}catch(e){}}
