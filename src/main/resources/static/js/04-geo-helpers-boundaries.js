@@ -8,8 +8,8 @@ function lineOf(feature){const g=feature.geometry;let c=g.type==='MultiLineStrin
 /* Solid dark class colours — visible zoomed out and zoomed in. No blotch:
    hit layer stays under the paint; light basemaps use no casing. */
 const CLS_BY_MODE={
-  light:{NH:'#9b1c1c',SH:'#c45c00',MDR:'#0b4f8a',ODR:'#4a5568'},
-  dark:{NH:'#ff6b6b',SH:'#ffd43b',MDR:'#74c0fc',ODR:'#ced4da'}
+  light:{NH:'#7f1d1d',SH:'#0a3d62',MDR:'#111827',ODR:'#6b7280'},
+  dark:{NH:'#ff6b6b',SH:'#74c0fc',MDR:'#e5e7eb',ODR:'#9ca3af'}
 };
 let NET_BASE_MODE='light';
 let CLS=CLS_BY_MODE.light;
