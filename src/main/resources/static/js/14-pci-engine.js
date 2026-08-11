@@ -201,13 +201,21 @@ function showPciToggles(silent){
   if(!silent&&ta&&tw&&!ta.checked&&!tw.checked)ta.checked=true;
   return ta;
 }
+/* Match layer visibility to the checkboxes. Shared by both tile and GeoJSON
+   paths — tile mode used to skip this and left pci-* at MapLibre's default
+   (visible), so PCI painted with both toggles off and could not be turned off. */
+function applyPciVisibility(silent){
+  const ta=showPciToggles(silent),tw=document.getElementById('showPciWorst');
+  if(map.getLayer('pci-avg'))map.setLayoutProperty('pci-avg','visibility',(ta&&ta.checked)?'visible':'none');
+  if(map.getLayer('pci-worst'))map.setLayoutProperty('pci-worst','visibility',(tw&&tw.checked)?'visible':'none');
+}
 function generatePCI(silent){
   /* Tile mode: the layers paint from the stored PCI the tile already carries,
      so they can be built with nothing downloaded. Only the NETWORK SUMMARY
      needs every segment, and that is not worth a multi-megabyte fetch nobody
      asked for -- it fills in once something else (the PCI report, an export)
      has loaded them. */
-  if(TILES_ON&&!Segs.collection()){addPciLayers();showPciToggles(silent);
+  if(TILES_ON&&!Segs.collection()){addPciLayers();applyPciVisibility(silent);
     setPciStatus('PCI shown from stored values. Open the PCI report for network totals.');
     renderPciSummary(null);syncPciMapLegend();return;}
   if(!Segs.collection()){setPciStatus('Loading segments\u2026');Segs.ensure().then(()=>{if(Segs.loaded())generatePCI(silent);else setPciStatus('No condition segments yet. Build them in the Data console.');});return;}
@@ -218,9 +226,7 @@ function generatePCI(silent){
     const vw=segPCI(f.properties,'worst');f.properties.pci_worst=(vw==null)?-1:Math.round(vw*10)/10;if(vw!=null){nW++;lenW+=L;pW+=vw*L;}});
   if(!TILES_ON&&map.getSource('segs'))map.getSource('segs').setData(Segs.collection());
   addPciLayers();
-  const ta=showPciToggles(silent);const tw=document.getElementById('showPciWorst');
-  map.setLayoutProperty('pci-avg','visibility',(ta&&ta.checked)?'visible':'none');
-  map.setLayoutProperty('pci-worst','visibility',(tw&&tw.checked)?'visible':'none');
+  applyPciVisibility(silent);
   renderPciSummary({avg:lenA?pA/lenA:null,worst:lenW?pW/lenW:null,nA:nA,nW:nW,total:Segs.count()});
   setPciStatus('\u2713 PCI generated (Composite & Worst-Lane) for '+nA+' of '+Segs.count()+' segments.');
   syncPciMapLegend();
