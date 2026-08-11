@@ -21,6 +21,8 @@ const BASEMAPS=['osm','sat','topo','light','dark'];
 window.setBaseLayer=function(name){
   BASEMAPS.forEach(b=>{if(map.getLayer(b))map.setLayoutProperty(b,'visibility',b===name?'visible':'none');});
   const sel=document.getElementById('basemap');if(sel&&sel.value!==name)sel.value=name;
+  /* Retune road-network colours / halo for light vs dark/satellite basemaps. */
+  if(typeof applyNetBasemapStyle==='function')applyNetBasemapStyle(name);
 };
 document.getElementById('basemap').addEventListener('change',e=>window.setBaseLayer(e.target.value));
 // Apply Night mode (dark basemap) on load if the user enabled it from the launcher.

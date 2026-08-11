@@ -68,7 +68,7 @@ function renderRoads(gj,noFit){
        ("There is already a source with this ID"), so clear before rebuilding. */
     teardownRoads();
     map.addSource('roadnet',{type:'geojson',data:gj});
-    map.addLayer({id:'roadnet-casing',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#0b1322','line-width':netCasingWidth(),'line-opacity':netCasingOpacity()}});
+    map.addLayer({id:'roadnet-casing',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netCasingColor(),'line-width':netCasingWidth(),'line-opacity':netCasingOpacity()}});
     map.addLayer({id:'roadnet',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netColor(),'line-width':netWidth(),'line-opacity':netFillOpacity()}});
     map.addLayer({id:'roadnet-hit',type:'line',source:'roadnet',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#000000','line-opacity':0.01,'line-width':netHitWidth()}});
     wireRoadHandlers();
@@ -77,6 +77,7 @@ function renderRoads(gj,noFit){
      preloading roads on startup does NOT force them visible), but keep the
      invisible hit layer ALWAYS clickable for Video-on-click. */
   {const _sr=document.getElementById('showRoads');const _vv=(_sr&&_sr.checked)?'visible':'none';if(map.getLayer('roadnet'))map.setLayoutProperty('roadnet','visibility',_vv);if(map.getLayer('roadnet-casing'))map.setLayoutProperty('roadnet-casing','visibility',_vv);if(map.getLayer('roadnet-hit'))map.setLayoutProperty('roadnet-hit','visibility','visible');}
+  if(typeof applyNetBasemapStyle==='function')applyNetBasemapStyle();
   const b=new maplibregl.LngLatBounds();
   gj.features.forEach(f=>{const g=f.geometry;if(!g)return;const w=a=>{if(typeof a[0]==='number')b.extend(a);else a.forEach(w);};if(g.coordinates)w(g.coordinates);});
   if(!noFit&&!b.isEmpty())map.fitBounds(b,{padding:50});
@@ -97,7 +98,7 @@ function ensureRoadSource(){
     tiles:[location.origin+'/api/roads/tiles/{z}/{x}/{y}.mvt'],
     minzoom:0,maxzoom:16});
   const mk=(id,extra)=>Object.assign({id:id,type:'line',source:'roadnet','source-layer':ROAD_TILE_LAYER},extra);
-  map.addLayer(mk('roadnet-casing',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#0b1322','line-width':netCasingWidth(),'line-opacity':netCasingOpacity()}}));
+  map.addLayer(mk('roadnet-casing',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netCasingColor(),'line-width':netCasingWidth(),'line-opacity':netCasingOpacity()}}));
   map.addLayer(mk('roadnet',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':netColor(),'line-width':netWidth(),'line-opacity':netFillOpacity()}}));
   map.addLayer(mk('roadnet-hit',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#000000','line-opacity':0.01,'line-width':netHitWidth()}}));
   wireRoadHandlers();
@@ -107,6 +108,7 @@ function ensureRoadSource(){
    map.setLayoutProperty('roadnet','visibility',_vv);
    map.setLayoutProperty('roadnet-casing','visibility',_vv);
    map.setLayoutProperty('roadnet-hit','visibility','visible');}
+  if(typeof applyNetBasemapStyle==='function')applyNetBasemapStyle();
   return Promise.resolve();
 }
 /* Line-referenced assets (bridges, line furniture) and chainage-placed

@@ -5,48 +5,87 @@
    share one global scope, so load order is preserved exactly.
    ============================================================ */
 function lineOf(feature){const g=feature.geometry;let c=g.type==='MultiLineString'?g.coordinates.flat():g.coordinates;return turf.lineString(c);}
-/* Road-class palette. NH/SH/MDR carry the visual weight in that order (red >
-   amber > azure), ODR recedes into a neutral grey-blue so minor roads don't
-   compete with major ones for attention — the kind of deliberate hierarchy an
-   enterprise basemap uses instead of a flat, same-weight palette. */
-const CLS={NH:'#c0392b',SH:'#d9760c',MDR:'#1868c4',ODR:'#7d8ea3'};
-function netColor(){const c=['match',['get','Road_Class']];Object.entries(CLS).forEach(([k,v])=>c.push(k,v));c.push('#7d8ea3');return c;}
+/* Basemap-aware road style: light basemaps (OSM / Light / Topo) use a vivid
+   palette + soft slate halo; dark basemaps (Night / Satellite) switch to
+   luminous colours + white halo so the network stays clear on every backdrop. */
+const CLS_BY_MODE={
+  light:{NH:'#e03131',SH:'#f08c00',MDR:'#1c7ed6',ODR:'#868e96'},
+  dark:{NH:'#ff6b6b',SH:'#ffd43b',MDR:'#4dabf7',ODR:'#ced4da'}
+};
+let NET_BASE_MODE='light';
+let CLS=CLS_BY_MODE.light;
+function netColor(){const c=['match',['get','Road_Class']];Object.entries(CLS).forEach(([k,v])=>c.push(k,v));c.push(CLS.ODR||'#868e96');return c;}
+function netCasingColor(){return NET_BASE_MODE==='dark'?'#ffffff':'#1e293b';}
 function pavementWidthExpr(){return ['match',['to-string',['get','Pavement_W']],'1',4.5,'2',6.25,'3',8.5,'4',11.5,'5',14,7];}
+/* Class weight keeps NH/SH as the clear corridors; MDR stays strong enough to
+   read at statewide zoom without turning into a solid blotch. */
+function classWidthScale(){return ['match',['get','Road_Class'],'NH',1.55,'SH',1.3,'MDR',0.95,'ODR',0.65,1];}
+function classOpacityScale(){return ['match',['get','Road_Class'],'NH',1,'SH',1,'MDR',0.88,'ODR',0.7,0.9];}
 /* Zoom curve notes:
-   - Below the first stop MapLibre CLAMPS to that stop's value. A first stop at
-     z9 with multiplier 0.22 left statewide views (z6–z8, ~100 km scale) drawing
-     ~2–3 px near-black casings on every SH/MDR — dense enough to read as a
-     solid dark shade over Kerala. Hairline stops at z6/z8 fix that.
-   - Fill vs casing must stay two independent top-level interpolate(zoom)
-     expressions: wrapping interpolate(zoom) inside arithmetic is rejected by
-     MapLibre ("zoom expression may only be used as input to a top-level step
-     or interpolate"), and addLayer fails silently. Ratio is baked into each
-     casing stop at expression-build time.
-   - Near-black casing is OFF until ~z11: at statewide density it fills the
-     state as a dark blotch even at hairline width. Fill opacity also stays
-     soft until district zoom so overlapping coloured strokes don't stack opaque.
-   - The Layers opacity slider used to setPaintProperty(line-opacity, 1) and
-     wipe these zoom curves — applyNetUserOpacity() multiplies instead. */
-const NET_WIDTH_STOPS=[[6,0.035],[8,0.07],[10,0.14],[12,0.34],[15,1.55],[18,5.5]];
-const CASING_RATIO=1.32;
-function netWidthExpr(){const pw=pavementWidthExpr();const e=['interpolate',['exponential',1.4],['zoom']];NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',pw,m]);});return e;}
+   - Fill vs casing are two independent top-level interpolate(zoom) expressions
+     (MapLibre rejects wrapping zoom interpolate inside arithmetic).
+   - Dark casing used to blot Kerala at statewide zoom; light mode now uses a
+     soft slate halo that eases in gently, dark/sat uses a white halo.
+   - Widths are intentionally bold so roads stay clear on every basemap. */
+const NET_WIDTH_STOPS=[[6,0.16],[8,0.24],[10,0.36],[12,0.5],[15,1.6],[18,5.5]];
+const CASING_RATIO=1.4;
+function netWidthExpr(){
+  const pw=pavementWidthExpr(),cs=classWidthScale();
+  const e=['interpolate',['exponential',1.4],['zoom']];
+  NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',['*',pw,cs],m]);});
+  return e;
+}
 function netWidth(){return netWidthExpr();}
-function netCasingWidth(){const pw=pavementWidthExpr();const e=['interpolate',['exponential',1.4],['zoom']];NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',pw,+(m*CASING_RATIO).toFixed(4)]);});return e;}
-/* roadnet-hit is a near-invisible (0.01 opacity) wide stroke used only for click
-   tolerance. Its old flat 8px->12 first stop meant MapLibre CLAMPED it to a
-   constant 12px at every zoom below 8: at statewide zoom, thousands of dense,
-   overlapping segments each drew that "invisible" 12px stroke, and the alpha
-   stacked into a visible dark blob (same clamping trap as the casing width
-   above, just with opacity too low to notice in isolated testing). Hairline
-   low-zoom stops fix it while keeping generous hit tolerance once zoomed in. */
+function netCasingWidth(){
+  const pw=pavementWidthExpr(),cs=classWidthScale();
+  const e=['interpolate',['exponential',1.4],['zoom']];
+  NET_WIDTH_STOPS.forEach(([z,m])=>{e.push(z,['*',['*',pw,cs],+(m*CASING_RATIO).toFixed(4)]);});
+  return e;
+}
 function netHitWidth(){return ['interpolate',['linear'],['zoom'],6,1.5,8,4,10,10,12,16,16,24];}
 function _scaleOp(expr,userOp){const u=(userOp==null||userOp>=0.999)?null:+userOp;return u==null?expr:['*',expr,Math.max(0.05,Math.min(1,u))];}
-function netCasingOpacity(userOp){return _scaleOp(['interpolate',['linear'],['zoom'],9,0,10.5,0,11,0.45,12,0.8,13,1],userOp);}
-function netFillOpacity(userOp){return _scaleOp(['interpolate',['linear'],['zoom'],6,0.4,8,0.55,10,0.8,12,1],userOp);}
-/* Re-apply zoom opacity curves, scaled by the Layers panel slider (0–1). */
+function netCasingOpacity(userOp){
+  const e=NET_BASE_MODE==='dark'
+    ?['interpolate',['linear'],['zoom'],6,0.45,8,0.65,10,0.85,12,1]
+    :['interpolate',['linear'],['zoom'],6,0.18,8,0.32,10,0.5,12,0.8,14,1];
+  return _scaleOp(e,userOp);
+}
+function netFillOpacity(userOp){
+  const byZoom=['interpolate',['linear'],['zoom'],6,0.92,8,0.96,10,1,12,1];
+  return _scaleOp(['*',byZoom,classOpacityScale()],userOp);
+}
+function _netUserOpacityFromUi(){
+  try{
+    const sw=document.getElementById('showRoads');
+    const lx=sw&&sw.parentNode&&sw.parentNode.querySelector('.lx.on .lx-op');
+    if(lx)return Math.max(0.15,Math.min(1,+lx.value/100));
+  }catch(e){}
+  return 1;
+}
 function applyNetUserOpacity(userOp){
+  if(userOp==null)userOp=_netUserOpacityFromUi();
   if(map.getLayer('roadnet'))map.setPaintProperty('roadnet','line-opacity',netFillOpacity(userOp));
   if(map.getLayer('roadnet-casing'))map.setPaintProperty('roadnet-casing','line-opacity',netCasingOpacity(userOp));
+}
+/* Switch road colours / halo to match the active basemap. Safe to call before
+   the road layers exist — it only paints when they are present. */
+function applyNetBasemapStyle(baseName){
+  const n=baseName||((document.getElementById('basemap')||{}).value)||'osm';
+  NET_BASE_MODE=(n==='dark'||n==='sat')?'dark':'light';
+  CLS=CLS_BY_MODE[NET_BASE_MODE];
+  if(!map.getLayer||!map.getLayer('roadnet'))return;
+  try{
+    const sel=document.getElementById('netColorBy');
+    const byClass=!sel||sel.value==='__class__';
+    if(byClass)map.setPaintProperty('roadnet','line-color',netColor());
+    map.setPaintProperty('roadnet','line-width',netWidth());
+    if(map.getLayer('roadnet-casing')){
+      map.setPaintProperty('roadnet-casing','line-color',netCasingColor());
+      map.setPaintProperty('roadnet-casing','line-width',netCasingWidth());
+    }
+    applyNetUserOpacity();
+    if(byClass&&typeof renderNetLegend==='function')renderNetLegend(null);
+  }catch(e){}
 }
 const NAME_KEYS=['NAME','Name','name','DISTRICT','District','district','AC_NAME','LAC_NAME','CONSTITUEN','Constituency','LABEL'];
 function featName(p){for(const k of NAME_KEYS)if(p&&p[k]!=null&&p[k]!=='')return String(p[k]);return '';}
