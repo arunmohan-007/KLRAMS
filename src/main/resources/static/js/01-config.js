@@ -35,9 +35,11 @@ let mode='all',filters=[],DATA=null,ROADS={},segsByRoad={},CATALOG={};
    wrong).
    OFF: the map downloads every condition segment as one GeoJSON before it is
    useful, and every module reads that array. ON: the condition layers render
-   from /api/segments/tiles, the whole-network questions (match count, segment
-   count) are answered by /api/segments/*, and the full GeoJSON is fetched only
-   when something genuinely needs per-segment rows — the PCI report, an export. */
+   from /api/segments/tiles, roads from /api/roads/tiles, Avg IRI 2 km from
+   /api/iri-2km/tiles, the whole-network questions (match count, segment
+   count) are answered by /api/segments/* (and /api/iri-2km/match), and the
+   full GeoJSON is fetched only when something genuinely needs per-segment
+   rows — the PCI report, an export. */
 const TILES_ON=!/[?&]tiles=0\b/.test(location.search);
 let dir='fwd',cur=null,marker=null,carIcon=null,carLabel=null,carIri=null,seeking=false,lastChainage=0,follow=false,curCarLL=null;
 const FOLLOW_ZOOM=16;

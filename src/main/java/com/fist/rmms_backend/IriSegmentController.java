@@ -51,4 +51,18 @@ public class IriSegmentController {
         result.put("count", service.count());
         return result;
     }
+
+    /**
+     * Filter match count for the Avg IRI Filters-folder section. Used when the map
+     * renders from tiles and no longer holds the full FeatureCollection to scan.
+     * Query params mirror the UI: {@code min}/{@code max} on worst_iri, {@code lane}
+     * on worst_lane.
+     */
+    @GetMapping("/match")
+    public Map<String, Object> match(@RequestParam(value = "min", required = false) Double min,
+                                     @RequestParam(value = "max", required = false) Double max,
+                                     @RequestParam(value = "lane", required = false) String lane,
+                                     @RequestParam(value = "period_id", required = false) Integer periodId) {
+        return service.match(min, max, lane, periodId);
+    }
 }

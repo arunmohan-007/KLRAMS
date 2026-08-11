@@ -58,9 +58,10 @@ map.on('load',()=>{
         const v=document.getElementById('video'),dk=document.getElementById('dock');
         if(dk&&dk.classList.contains('open')&&v&&v.src&&!v.paused&&!v.ended)return setTimeout(chk,4000);
       }catch(e){}res();})();});
-      /* The 2 km IRI roll-up is a small payload (one line per 2 km, not per
-         100 m row), so it goes last and costs almost nothing — the layer is
-         created hidden and the toggle just flips visibility. */
+      /* The 2 km IRI roll-up: in tile mode loadIri2km is free (a tile template,
+         no download), so preloading just registers the source hidden. In
+         GeoJSON mode it is still a small payload (one line per 2 km) and goes
+         last. Either way the toggle only flips visibility once the layer exists. */
       const _preloadIri2km=()=>{setTimeout(()=>{try{
         if(typeof loadIri2km==='function'&&!map.getLayer('iri2km'))loadIri2km(true);
       }catch(e){}},900);};

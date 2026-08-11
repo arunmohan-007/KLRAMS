@@ -44,7 +44,7 @@ Core tables created on startup:
 - `roads` — Road network centrelines (LineString/MultiLineString geometry)
 - `condition` — Raw condition survey data (IRI, crack, pothole, etc.)
 - `condition_segments` — Materialized view with linear-referenced condition segments
-- `iri_2km_segments` — IRI rolled up into 2 km bins per section: length-weighted average per lane (`lane_avgs` jsonb, whichever of CC/CL1/CL2/CR1/CR2 the section carries) plus the worst of them (`IriSegmentService`, rebuilt with the condition segments)
+- `iri_2km_segments` — IRI rolled up into 2 km bins per section: length-weighted average per lane (`lane_avgs` jsonb, whichever of CC/CL1/CL2/CR1/CR2 the section carries) plus the worst of them (`IriSegmentService`, rebuilt with the condition segments); map layer served as MVT from `/api/iri-2km/tiles/{z}/{x}/{y}.mvt`
 - `road_assets` — Bridges, culverts, road furniture (POINT/LINE via linear reference)
 - `road_video` — NSV video catalog (videos stored on disk at `${app.video-dir}`)
 - `traffic_stations`, `traffic_counts` — Traffic survey data persistence

@@ -1,5 +1,5 @@
 /* ============================================================
-   KLRAMS viewer · 32-iri-2km.js   (build 1)
+   KLRAMS viewer · 32-iri-2km.js   (build 2)
    "Avg IRI (2 km · worst lane)" layer.
 
    The condition survey is collected in ~100 m stretches per lane, which is far
@@ -15,13 +15,16 @@
        as CC alone, and a dual carriageway's two centrelines each carry only
        their own side (…A → CL1/CL2, …B → CR1/CR2).
 
-   This module fetches /api/iri-2km/geojson and draws ONE line per 2 km bin,
-   coloured by worst_iri against the same Good/Fair/Poor IRI thresholds the
-   condition layer uses (IRC:82-2023 — Good < 2.55, Poor > 3.30 m/km, editable
-   under Road Condition). Clicking a bin lists every lane's average, worst
-   marked. The module also owns this layer's section of the Filters folder
-   (worst-lane IRI range + which lane is the worst); the shared layer-off lock
-   handling stays in 18-filters.js.
+   Rendering: when TILES_ON (default), the layer is a vector-tile source at
+   /api/iri-2km/tiles/{z}/{x}/{y}.mvt — MapLibre fetches only the viewport, so
+   there is no whole-network download on load. Opt out with ?tiles=0 to keep the
+   old /api/iri-2km/geojson path. Coloured by worst_iri against the same
+   Good/Fair/Poor IRI thresholds the condition layer uses (IRC:82-2023 —
+   Good < 2.55, Poor > 3.30 m/km, editable under Road Condition). Clicking a
+   bin lists every lane's average, worst marked. The Filters-folder section
+   (worst-lane IRI range + which lane is the worst) applies a MapLibre filter;
+   the "N of M match" line scans the GeoJSON in ?tiles=0 mode and calls
+   /api/iri-2km/match when tiles are on.
 
    Loaded as an ordered classic script from map.html; all modules share one
    global scope, so load order is preserved exactly.
@@ -29,6 +32,10 @@
 (function(){
   var LAYER='iri2km', SRC='iri2km';
   var TOGGLE='showIri2km';
+  /* MVT layer name inside the tile, as IriTileService names it. Every layer
+     bound to a vector source must declare it or MapLibre silently renders
+     nothing. */
+  var TILE_LAYER='iri2km';
 
   /* Thresholds come from the Road Condition pane when the user is looking at
      IRI, so the two layers always agree; otherwise the IRC defaults apply. */
@@ -86,8 +93,8 @@
   var LANE_ORDER=['CL2','CL1','CC','CR1','CR2'];
   function laneRank(x){var i=LANE_ORDER.indexOf(x);return i<0?LANE_ORDER.length:i;}
 
-  /* lane_avgs arrives as a jsonb object, but MapLibre stringifies nested feature
-     properties, so accept either form. */
+  /* lane_avgs arrives as a jsonb object on GeoJSON, or as text from the MVT
+     (ST_AsMVT stringifies jsonb). Accept either. */
   function laneAvgs(p){
     var la=p.lane_avgs;
     if(typeof la==='string'){try{la=JSON.parse(la);}catch(e){la=null;}}
@@ -128,34 +135,57 @@
       .addTo(map);
   }
 
-  var _inflight=null, _loaded=false, _data=null;
+  var _inflight=null, _loaded=false, _data=null, _wired=false;
 
+  function tilesOn(){return typeof TILES_ON!=='undefined'&&TILES_ON;}
   function vis(){var t=document.getElementById(TOGGLE);return (t&&t.checked)?'visible':'none';}
 
-  function addLayer(gj){
+  function wireHandlers(){
+    if(_wired)return;_wired=true;
+    map.on('click',LAYER,function(e){if(e.features.length)popup(e.lngLat,e.features[0].properties);});
+    map.on('mouseenter',LAYER,function(){map.getCanvas().style.cursor='pointer';});
+    map.on('mouseleave',LAYER,function(){map.getCanvas().style.cursor='';});
+  }
+
+  function addLayerPaint(){
+    if(map.getLayer(LAYER)){
+      map.setPaintProperty(LAYER,'line-color',colorExpr());
+      map.setLayoutProperty(LAYER,'visibility',vis());
+    }else{
+      var spec={id:LAYER,type:'line',source:SRC,
+        layout:{'line-cap':'round','line-join':'round','visibility':vis()},
+        paint:{'line-color':colorExpr(),
+               'line-width':['interpolate',['linear'],['zoom'],10,4.5,16,10],
+               'line-offset':['interpolate',['linear'],['zoom'],10,-3.5,16,-8]}};
+      if(tilesOn())spec['source-layer']=TILE_LAYER;
+      map.addLayer(spec);
+      wireHandlers();
+    }
+    /* A filter set before the layer existed (the Filters folder is reachable
+       while the layer is still preloading) has to be re-applied to the new
+       layer, or it would silently show everything. */
+    applyIri2kmFilter(true);
+  }
+
+  /* Tile mode: register a vector source template — MapLibre fetches only the
+     viewport. No download here; that is the whole point of the migration. */
+  function ensureTileSource(){
+    if(map.getSource(SRC)){addLayerPaint();return true;}
+    map.addSource(SRC,{type:'vector',promoteId:'seg_id',
+      tiles:[location.origin+'/api/iri-2km/tiles/{z}/{x}/{y}.mvt'],
+      minzoom:0,maxzoom:16});
+    addLayerPaint();
+    return true;
+  }
+
+  function addGeoJsonLayer(gj){
     if(map.getSource(SRC)){map.getSource(SRC).setData(gj);}
     else{
       /* tolerance:0 — same reason as the condition segments: the default
          simplification collapses short bins at low zoom. */
       map.addSource(SRC,{type:'geojson',data:gj,tolerance:0});
     }
-    if(!map.getLayer(LAYER)){
-      map.addLayer({id:LAYER,type:'line',source:SRC,
-        layout:{'line-cap':'round','line-join':'round','visibility':vis()},
-        paint:{'line-color':colorExpr(),
-               'line-width':['interpolate',['linear'],['zoom'],10,4.5,16,10],
-               'line-offset':['interpolate',['linear'],['zoom'],10,-3.5,16,-8]}});
-      map.on('click',LAYER,function(e){if(e.features.length)popup(e.lngLat,e.features[0].properties);});
-      map.on('mouseenter',LAYER,function(){map.getCanvas().style.cursor='pointer';});
-      map.on('mouseleave',LAYER,function(){map.getCanvas().style.cursor='';});
-    }else{
-      map.setPaintProperty(LAYER,'line-color',colorExpr());
-      map.setLayoutProperty(LAYER,'visibility',vis());
-    }
-    /* A filter set before the layer existed (the Filters folder is reachable
-       while the layer is still preloading) has to be re-applied to the new
-       layer, or it would silently show everything. */
-    applyIri2kmFilter(true);
+    addLayerPaint();
   }
 
   /* ---------- filter: worst-lane IRI range + which lane is the worst ----------
@@ -168,7 +198,7 @@
             any:(!isNaN(mn)||!isNaN(mx)||!!lane)};
   }
 
-  function matchCount(f){
+  function matchCountLocal(f){
     var el=document.getElementById('iriMatchInfo');if(!el)return;
     if(!_data||!_data.features){el.textContent='';return;}
     if(!f.any){el.textContent='';return;}
@@ -182,6 +212,28 @@
       n++;
     });
     el.textContent=n+' of '+_data.features.length+' bins match';
+  }
+
+  /* Tile mode has no FeatureCollection to scan — ask the server. */
+  function matchCountRemote(f){
+    var el=document.getElementById('iriMatchInfo');if(!el)return;
+    if(!f.any){el.textContent='';return;}
+    var qs=[];
+    if(!isNaN(f.mn))qs.push('min='+encodeURIComponent(f.mn));
+    if(!isNaN(f.mx))qs.push('max='+encodeURIComponent(f.mx));
+    if(f.lane)qs.push('lane='+encodeURIComponent(f.lane));
+    fetch('/api/iri-2km/match?'+qs.join('&'),{credentials:'same-origin'})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(j){
+        if(!j){el.textContent='';return;}
+        el.textContent=(j.matched||0)+' of '+(j.total||0)+' bins match';
+      })
+      .catch(function(){el.textContent='';});
+  }
+
+  function matchCount(f){
+    if(tilesOn())matchCountRemote(f);
+    else matchCountLocal(f);
   }
 
   /* quiet=true is the internal re-apply after a (re)load — it must not report
@@ -214,11 +266,19 @@
   window.clearIri2kmFilter=clearIri2kmFilter;
 
   /* Load once and cache; silent=true is the background preload from 15-main.js
-     (layer created hidden, toggling is then an instant visibility flip). */
+     (layer created hidden, toggling is then an instant visibility flip).
+     In tile mode there is nothing to download — just register the source. */
   function loadIri2km(silent){
     if(_inflight)return _inflight;
     if(_loaded&&map.getLayer(LAYER)){map.setLayoutProperty(LAYER,'visibility',vis());return Promise.resolve();}
     var st=document.getElementById('status');
+    if(tilesOn()){
+      ensureTileSource();
+      _loaded=true;
+      renderLegend();
+      if(!silent&&st)st.textContent='✓ Avg IRI (2 km) ready.';
+      return Promise.resolve();
+    }
     if(!silent&&st)st.textContent='Loading 2 km IRI…';
     var _fetch=(typeof fetchJsonRetry==='function')
       ? fetchJsonRetry('/api/iri-2km/geojson',3)
@@ -229,7 +289,7 @@
         return;
       }
       _data=gj;              /* kept for the filter's match count */
-      addLayer(gj);
+      addGeoJsonLayer(gj);
       _loaded=true;
       renderLegend();
       if(!silent&&st)st.textContent='✓ '+gj.features.length+' 2 km IRI bins loaded.';
@@ -242,7 +302,7 @@
   }
   window.loadIri2km=loadIri2km;
 
-  /* toggle: first tick fetches, later ticks flip visibility */
+  /* toggle: first tick fetches / registers, later ticks flip visibility */
   (function wire(){
     var t=document.getElementById(TOGGLE);if(!t)return;
     t.addEventListener('change',function(e){

@@ -4,6 +4,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * "Avg IRI (2 km · worst lane)" — the condition survey is collected in short
  * stretches (typically 100 m per lane), which is far finer than the 2 km unit
@@ -193,5 +198,56 @@ public class IriSegmentService {
         } catch (Exception e) {
             return 0;
         }
+    }
+
+    /**
+     * How many 2 km bins match the Filters-folder predicates (worst-lane IRI range
+     * and/or which lane is the worst). Replaces the client-side scan of the GeoJSON
+     * array once the map renders from tiles — a tile only ever carries the viewport,
+     * so "N of M bins match" has to come from SQL.
+     *
+     * <p>Same semantics as {@code 32-iri-2km.js}: a missing {@code worst_iri} never
+     * matches a numeric comparison; an empty predicate list means "no filter".
+     */
+    public Map<String, Object> match(Double min, Double max, String lane, Integer requestedPeriodId) {
+        Map<String, Object> out = new HashMap<>();
+        Boolean built = jdbc.queryForObject(
+                "SELECT to_regclass('iri_2km_segments') IS NOT NULL", Boolean.class);
+        if (!Boolean.TRUE.equals(built)) {
+            out.put("total", 0L);
+            out.put("matched", 0L);
+            return out;
+        }
+        int periodId = periods.resolve(requestedPeriodId);
+        Long total = jdbc.queryForObject(
+                "SELECT count(*) FROM iri_2km_segments WHERE period_id = ?", Long.class, periodId);
+        out.put("total", total == null ? 0L : total);
+
+        List<String> clauses = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        args.add(periodId);
+        clauses.add("period_id = ?");
+        if (min != null) {
+            clauses.add("worst_iri >= ?");
+            args.add(min);
+        }
+        if (max != null) {
+            clauses.add("worst_iri <= ?");
+            args.add(max);
+        }
+        if (lane != null && !lane.isBlank()) {
+            clauses.add("worst_lane = ?");
+            args.add(lane.trim());
+        }
+        if (clauses.size() == 1) {
+            /* no filter predicates — "matched" is unused by the client when any=false */
+            out.put("matched", out.get("total"));
+            return out;
+        }
+        Long matched = jdbc.queryForObject(
+                "SELECT count(*) FROM iri_2km_segments WHERE " + String.join(" AND ", clauses),
+                Long.class, args.toArray());
+        out.put("matched", matched == null ? 0L : matched);
+        return out;
     }
 }
