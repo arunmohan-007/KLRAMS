@@ -895,7 +895,16 @@
         }
       }catch(e){}
     };
-    KL.sync=function(force){var t=Date.now();if(!force&&KL._lastSync&&(t-KL._lastSync)<1200)return;KL._lastSync=t;KL.syncGlobals();KL.scanSources();};
+    /* Throttle map-source scans, but NEVER skip a segsByRoad reindex — the
+       inspector/HUD can load one road's segments while a recent sync is still
+       inside the 1.2s window, and skipping left KL.pci returning null until a
+       later refresh ("PCI not linked" flash). */
+    KL.sync=function(force){
+      var t=Date.now(),needSegs=false;
+      try{if(typeof segsByRoad!=='undefined'&&segsByRoad){var n=0,r;for(r in segsByRoad)n+=segsByRoad[r].length;if(KL._segN!==n)needSegs=true;}}catch(e){}
+      if(!force&&!needSegs&&KL._lastSync&&(t-KL._lastSync)<1200)return;
+      KL._lastSync=t;KL.syncGlobals();KL.scanSources();
+    };
     /* exact match only (no sticky nearest) \u2014 for chainage-varying readings (FWD etc.) */
     KL.atExact=function(road,ch){
       KL.sync();
@@ -958,7 +967,7 @@
        Works at any chainage without generating the layer; persists per road. */
     KL.pci=function(road,ch){
       KL.sync();
-      var compKeys=['pci_avg','composite_pci','comp_pci','avg_pci','road_pci','pci_composite','pci'],worstKeys=['pci_worst','worst_pci','worst_lane_pci','lane_worst_pci'];
+      var compKeys=['pci_def_avg','pci_avg','composite_pci','comp_pci','avg_pci','road_pci','pci_composite','pci'],worstKeys=['pci_def_worst','pci_worst','worst_pci','worst_lane_pci','lane_worst_pci'];
       function rd(p,keys){if(!p)return null;for(var i=0;i<keys.length;i++){var x=p[keys[i]];if(x!=null&&x!==''){var n=+x;if(!isNaN(n)&&n>=0)return n;}}return null;}
       function calc(p,basis){if(typeof segPCI==='function'){try{var v=segPCI(p,basis);if(v!=null&&!isNaN(v))return Math.round(v*10)/10;}catch(e){}}return null;}
       var sp=KL.segAt(road,ch),comp=null,worst=null;
@@ -992,11 +1001,11 @@
   <script src="js/05-road-network.js?v=130"></script>
   <script src="js/06-assets.js?v=171"></script>
   <script src="js/07-data-loaders.js?v=181"></script>
-  <script src="js/08-condition-popup-nsv.js?v=166"></script>
+  <script src="js/08-condition-popup-nsv.js?v=167"></script>
   <script src="js/09-dashboard-core.js?v=123"></script>
   <script src="js/10-pci-report.js?v=124"></script>
   <script src="js/11-dashboard-charts.js?v=123"></script>
-  <script src="js/12-nsv-video.js?v=171"></script>
+  <script src="js/12-nsv-video.js?v=172"></script>
   <script src="js/13-search.js?v=120"></script>
   <script src="js/14-pci-engine.js?v=173"></script>
   <script src="js/15-main.js?v=126"></script>

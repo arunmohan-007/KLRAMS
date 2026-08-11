@@ -342,9 +342,10 @@ var _pciCache={};
 /* Persistent PCI: exact segment at chainage -> nearest segment -> cached/aggregate.
    Once a road has any PCI, it never blinks back to "not linked". */
 function roadPciResolve(road,ch){
-  var compKeys=['pci','composite_pci','comp_pci','avg_pci','road_pci'];
-  var worstKeys=['worst_pci','worst_lane_pci','pci_worst'];
-  function rd(p,keys){if(!p)return null;for(var i=0;i<keys.length;i++){if(p[keys[i]]!=null&&p[keys[i]]!=='')return +p[keys[i]];}return null;}
+  var compKeys=['pci_def_avg','pci_avg','pci','composite_pci','comp_pci','avg_pci','road_pci'];
+  var worstKeys=['pci_def_worst','pci_worst','worst_pci','worst_lane_pci'];
+  function rd(p,keys){if(!p)return null;for(var i=0;i<keys.length;i++){if(p[keys[i]]!=null&&p[keys[i]]!==''){var n=+p[keys[i]];if(!isNaN(n)&&n>=0)return n;}}return null;}
+  function calc(p,basis){if(typeof segPCI==='function'&&p){try{var v=segPCI(p,basis);if(v!=null&&!isNaN(v))return Math.round(v*10)/10;}catch(e){}}return null;}
   var segs=(typeof segsByRoad!=='undefined'&&segsByRoad[road])?segsByRoad[road]:[];
   var cache=_pciCache[road]||(_pciCache[road]={comp:null,worst:null});
   // nearest segment to current chainage (0 distance = contains it)
@@ -354,11 +355,14 @@ function roadPciResolve(road,ch){
     if(isNaN(a)||isNaN(b))continue;var lo=Math.min(a,b),hi=Math.max(a,b);
     var d=(ch>=lo&&ch<=hi)?0:Math.min(Math.abs(ch-lo),Math.abs(ch-hi));
     if(d<bestDist){bestDist=d;best=p;}}
-  var comp=rd(best,compKeys),worst=rd(best,worstKeys);
+  var comp=calc(best,'avg');if(comp==null)comp=rd(best,compKeys);
+  var worst=calc(best,'worst');if(worst==null)worst=rd(best,worstKeys);
   if(comp!=null)cache.comp=comp;if(worst!=null)cache.worst=worst;
   // seed cache from the whole road so PCI is available from the very first frame
   if(cache.comp==null||cache.worst==null){
-    var aC=[],aW=[];for(var j=0;j<segs.length;j++){var pp=segs[j].properties||{};var cc=rd(pp,compKeys),ww=rd(pp,worstKeys);if(cc!=null)aC.push(cc);if(ww!=null)aW.push(ww);}
+    var aC=[],aW=[];for(var j=0;j<segs.length;j++){var pp=segs[j].properties||{};
+      var cc=calc(pp,'avg');if(cc==null)cc=rd(pp,compKeys);if(cc!=null)aC.push(cc);
+      var ww=calc(pp,'worst');if(ww==null)ww=rd(pp,worstKeys);if(ww!=null)aW.push(ww);}
     if(cache.comp==null&&aC.length)cache.comp=Math.round(aC.reduce(function(x,y){return x+y;},0)/aC.length);
     if(cache.worst==null&&aW.length)cache.worst=Math.min.apply(null,aW);
   }

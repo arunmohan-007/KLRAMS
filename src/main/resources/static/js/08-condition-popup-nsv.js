@@ -161,9 +161,9 @@ function decodeVal(param,v){
 }
 /* PCI from road/segment data only (no invented numbers). Returns number or null. */
 function pciOf(props,c){
-  var keys=['pci','composite_pci','comp_pci','PCI','avg_pci','road_pci'];
-  for(var i=0;i<keys.length;i++){if(props&&props[keys[i]]!=null&&props[keys[i]]!=='')return +props[keys[i]];}
-  if(c){for(var j=0;j<keys.length;j++){if(c[keys[j]]!=null&&c[keys[j]]!=='')return +c[keys[j]];}}
+  var keys=['pci_def_avg','pci_avg','pci','composite_pci','comp_pci','PCI','avg_pci','road_pci'];
+  for(var i=0;i<keys.length;i++){if(props&&props[keys[i]]!=null&&props[keys[i]]!==''){var n=+props[keys[i]];if(!isNaN(n)&&n>=0)return n;}}
+  if(c){for(var j=0;j<keys.length;j++){if(c[keys[j]]!=null&&c[keys[j]]!==''){var m=+c[keys[j]];if(!isNaN(m)&&m>=0)return m;}}}
   return null;
 }
 function pciBand(p){if(p>=80)return{l:'Good',c:'#34d399'};if(p>=60)return{l:'Fair',c:'#f2c200'};return{l:'Poor',c:'#e24b4a'};}
@@ -274,14 +274,27 @@ function buildPopup(props,roadId,ch,lane){
       H+='<td class="avgc"'+(acol?(' style="background:'+acol+'2e"'):'')+'>'+(av!=null?av.toFixed(2):'\u2013')+'</td></tr>';
     });
     H+='</table>';
-    /* PCI at this chainage — persistent via global store (build 143) */
-    var _pr=(window.KL&&KL.pci)?KL.pci(roadId,ch):{comp:pciOf(props,c),worst:(function(){var ks=['worst_pci','worst_lane_pci','pci_worst'];for(var i=0;i<ks.length;i++){if(c&&c[ks[i]]!=null)return +c[ks[i]];if(props[ks[i]]!=null)return +props[ks[i]];}return null;})()};
-    var pciC=_pr.comp, pciW=_pr.worst;
+    /* PCI from the same segment row as the matrix (segPCI / pci_def_*). Do NOT wait
+       on KL.pci alone — that store can lag behind segsByRoad for up to 1.2s because
+       KL.sync is throttled, which falsely flashed "PCI not linked" on first click. */
+    var pciC=null,pciW=null;
+    if(typeof segPCI==='function'){
+      try{var _va=segPCI(c,'avg');if(_va!=null&&!isNaN(_va))pciC=Math.round(_va*10)/10;}catch(e){}
+      try{var _vw=segPCI(c,'worst');if(_vw!=null&&!isNaN(_vw))pciW=Math.round(_vw*10)/10;}catch(e){}
+    }
+    if(pciC==null||pciW==null){
+      var _pr=(window.KL&&KL.pci)?KL.pci(roadId,ch):null;
+      if(_pr){if(pciC==null)pciC=_pr.comp;if(pciW==null)pciW=_pr.worst;}
+    }
+    if(pciC==null)pciC=pciOf(props,c);
+    if(pciW==null){var _wks=['pci_def_worst','pci_worst','worst_pci','worst_lane_pci'];for(var _wi=0;_wi<_wks.length;_wi++){if(c[_wks[_wi]]!=null&&c[_wks[_wi]]!==''){var _wn=+c[_wks[_wi]];if(!isNaN(_wn)&&_wn>=0){pciW=_wn;break;}}}}
     H+='<div class="kc-pcirow">';
     if(pciC!=null){var b=pciBand(pciC);H+='<div class="kc-pci"><span class="pl">Composite PCI</span><span class="pv" style="color:'+b.c+'">'+Math.round(pciC)+'</span></div>';}
     if(pciW!=null){var b2=pciBand(pciW);H+='<div class="kc-pci"><span class="pl">Worst-lane PCI</span><span class="pv" style="color:'+b2.c+'">'+Math.round(pciW)+'</span></div>';}
     if(pciC==null&&pciW==null)H+='<div class="kc-pend" style="margin:0">PCI not linked at this chainage</div>';
     H+='</div>';
+  }else if(_inspCtx&&_inspCtx.loadingSegs){
+    H+='<div class="kc-pend" style="margin:0">Loading condition &amp; PCI\u2026</div>';
   }else{H+='<div class="kp-none">No survey done at this chainage.</div>';}
   H+='</div>';
 
@@ -391,15 +404,20 @@ var _inspCtx=null;
    on the spot (via ensureSegData) so the card is populated even when the
    Road Condition Data / FWD layer toggles are OFF, then refreshes in place. */
 function openInspector(props,roadId,ch,lane){
-  _inspCtx={props:props,roadId:roadId,ch:ch,lane:lane};
+  var needSegs=!(segsByRoad&&segsByRoad[roadId])&&!(typeof DATA!=='undefined'&&DATA&&DATA.features);
+  _inspCtx={props:props,roadId:roadId,ch:ch,lane:lane,loadingSegs:needSegs};
   showInspector(buildPopup(props,roadId,ch,lane),roadId);
   var _rf=function(){if(_inspCtx&&_inspCtx.roadId===roadId)refreshInspectorData();};
   /* Per-road, not the whole network: every condition read on this card is
      segsByRoad[roadId] (condAt and the lane table), so pulling all ~33k segments
      to reach ~30 was the single biggest cost of clicking a road. */
   if(typeof ensureSegDataForRoad==='function'){
-    try{ensureSegDataForRoad(roadId).then(_rf);}catch(e){}
-  }
+    try{ensureSegDataForRoad(roadId).then(function(){
+      if(_inspCtx&&_inspCtx.roadId===roadId)_inspCtx.loadingSegs=false;
+      try{if(window.KL&&KL.sync)KL.sync(true);}catch(e){}
+      _rf();
+    });}catch(e){if(_inspCtx)_inspCtx.loadingSegs=false;}
+  }else if(_inspCtx){_inspCtx.loadingSegs=false;}
   /* FWD tab: no longer preloaded at login, so pull it here and refresh in place
      the same way the condition data does. FWD.at() returns null until this
      resolves, which just renders the tab without deflection rows until it does. */
