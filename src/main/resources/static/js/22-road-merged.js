@@ -109,7 +109,7 @@ function importRoadLayer(){const fi=document.getElementById('roads2File');if(fi)
 function r2SetStatus(txt){const s=document.getElementById('roads2Status');if(s)s.textContent=txt;}
 function r2Apply(gj){
   if(!gj||!gj.features||!gj.features.length){r2SetStatus('No features found in file.');return;}
-  ROADS2_GJ=gj; ensureRoads2Layer();
+  ROADS2_GJ=gj; ROADS2_COUNT=gj.features.length; ensureRoads2Layer();
   const t2=document.getElementById('showRoads2'); if(t2)t2.checked=true;
   r2CloseAllPopups(); hideSectionRoadNet(); setRoads2Visible(true);
   try{const b=new maplibregl.LngLatBounds();gj.features.forEach(f=>{const g=f.geometry;if(!g)return;const w=a=>{if(typeof a[0]==='number')b.extend(a);else a.forEach(w);};if(g.coordinates)w(g.coordinates);});if(!b.isEmpty())map.fitBounds(b,{padding:50});}catch(e){}
@@ -144,19 +144,46 @@ function r2Persist(gj){
     }).catch(e=>{ r2SetStatus('Shown, but server save failed: '+((e&&e.message)||e)); });
 }
 
-/* ---- load persisted network from DB on startup ---- */
+/* ---- load persisted network from DB, ON DEMAND ---- */
 function r2WhenMapReady(cb){
   if(typeof map!=='undefined'&&map&&map.isStyleLoaded&&map.isStyleLoaded()){cb();return;}
   if(typeof map!=='undefined'&&map&&map.on){map.on('load',cb);return;}
   setTimeout(()=>r2WhenMapReady(cb),300);
 }
+/* build 118 — this download used to run unconditionally at DOMContentLoaded, but
+   ensureRoads2Layer() creates the layer HIDDEN and only the "Full Road Network"
+   toggle ever reveals it. On the live network that is several MB of geometry
+   fetched on every map open for a layer most sessions never switch on — it was
+   one of the largest single payloads on the page.
+
+   Startup now asks /api/full-network/count for the row count (a few bytes), which
+   is all the UI actually needs up front: whether a saved network exists, and how
+   many roads to name in the status line. The FeatureCollection is fetched the
+   first time the toggle is turned on, and memoised after that. */
+let ROADS2_COUNT=null,_r2LoadP=null;
+function r2LoadCount(){
+  return fetch('/api/full-network/count',{credentials:'same-origin'})
+    .then(r=>r.ok?r.json():null).then(j=>{
+      ROADS2_COUNT=(j&&j.count)||0;
+      if(ROADS2_COUNT)r2SetStatus(ROADS2_COUNT+' roads (saved)');
+    }).catch(()=>{ROADS2_COUNT=null;});   /* null = unknown; the toggle still tries */
+}
 function loadRoads2FromServer(){
-  return fetch('/api/full-network/geojson').then(r=>r.json()).then(gj=>{
-    if(!gj||!gj.features||!gj.features.length)return;
-    ROADS2_GJ=gj;
+  if(ROADS2_GJ)return Promise.resolve(ROADS2_GJ);
+  if(_r2LoadP)return _r2LoadP;
+  r2SetStatus('Loading full road network…');
+  var _p=fetch('/api/full-network/geojson',{credentials:'same-origin'}).then(r=>r.json()).then(gj=>{
+    if(!gj||!gj.features||!gj.features.length){r2SetStatus('Import a layer first.');return null;}
+    ROADS2_GJ=gj; ROADS2_COUNT=gj.features.length;
     r2WhenMapReady(()=>ensureRoads2Layer());   // layer created hidden; toggle shows it
     r2SetStatus(gj.features.length+' roads (saved)');
-  }).catch(()=>{});
+    return gj;
+  }).catch(e=>{r2SetStatus('Could not load saved network: '+((e&&e.message)||e));return null;});
+  _r2LoadP=_p;
+  /* Clear on settle so a failed load can be retried; a SUCCESSFUL one is held by
+     ROADS2_GJ above, which is what short-circuits the repeat call. */
+  _p.then(function(){_r2LoadP=null;},function(){_r2LoadP=null;});
+  return _p;
 }
 
 /* ---- wiring ---- */
@@ -164,14 +191,24 @@ function loadRoads2FromServer(){
   function wire(){
     const t2=document.getElementById('showRoads2');
     if(t2)t2.addEventListener('change',e=>{
-      if(e.target.checked){ if(!ROADS2_GJ){r2SetStatus('Import a layer first.');e.target.checked=false;return;} r2CloseAllPopups(); hideSectionRoadNet(); setRoads2Visible(true); }
+      if(e.target.checked){
+        /* Only refuse outright when we KNOW the table is empty. ROADS2_COUNT is
+           null when the count call failed, in which case fall through and let the
+           real fetch decide. */
+        if(!ROADS2_GJ&&ROADS2_COUNT===0){r2SetStatus('Import a layer first.');e.target.checked=false;return;}
+        r2CloseAllPopups(); hideSectionRoadNet();
+        Promise.resolve(loadRoads2FromServer()).then(()=>{
+          if(!ROADS2_GJ){e.target.checked=false;setSectionHit(true);return;}
+          if(t2.checked)setRoads2Visible(true);   /* they may have toggled off mid-download */
+        });
+      }
       else { setRoads2Visible(false); setSectionHit(true); }
     });
     const t1=document.getElementById('showRoads');
     if(t1)t1.addEventListener('change',e=>{ if(e.target.checked){ r2CloseAllPopups(); hideFullRoadNet(); setSectionHit(true); } });
     const fi=document.getElementById('roads2File');
     if(fi)fi.addEventListener('change',function(){r2OnFile(this);});
-    loadRoads2FromServer();   // restore any previously-saved full network
+    r2LoadCount();   // just how many roads are saved; geometry waits for the toggle
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
 })();

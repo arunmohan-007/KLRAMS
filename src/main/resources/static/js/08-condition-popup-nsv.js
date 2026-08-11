@@ -11,14 +11,53 @@ function fmt(v,unit){const n=+v;return (isNaN(n)?v:(Number.isInteger(n)?n:n.toFi
 /* build 75 — fetch condition segments for popups without drawing the layer,
    so the Road Network popup can show chainage averages even when the
    "Road Condition Data" layer toggle is off. No-op once data is in memory. */
+/* Flatten one feature's lane_vals into the L_<xsp> / <xsp>_<param> keys every
+   condition reader expects. Extracted so the per-road path below cannot drift
+   from the whole-network one. */
+function _segFlatten(f){
+  let lv=f.properties.lane_vals;
+  if(typeof lv==='string'){try{lv=JSON.parse(lv);}catch(e){lv=null;}}
+  if(lv&&typeof lv==='object'){Object.keys(lv).forEach(xsp=>{f.properties['L_'+xsp]=1;const o=lv[xsp]||{};Object.keys(o).forEach(k=>{if(o[k]!=null)f.properties[xsp+'_'+k]=o[k];});});}
+  return f;
+}
 function ensureSegData(){
   if(DATA&&DATA.features)return Promise.resolve(DATA);
   return fetch('/api/segments/geojson').then(r=>r.json()).then(gj=>{
     if(!gj||!gj.features)return null;
     DATA=gj;segsByRoad={};
-    gj.features.forEach(f=>{const r=f.properties.road;(segsByRoad[r]=segsByRoad[r]||[]).push(f);let lv=f.properties.lane_vals;if(typeof lv==='string'){try{lv=JSON.parse(lv);}catch(e){lv=null;}}if(lv&&typeof lv==='object'){Object.keys(lv).forEach(xsp=>{f.properties['L_'+xsp]=1;const o=lv[xsp]||{};Object.keys(o).forEach(k=>{if(o[k]!=null)f.properties[xsp+'_'+k]=o[k];});});}});
+    gj.features.forEach(f=>{const r=f.properties.road;(segsByRoad[r]=segsByRoad[r]||[]).push(_segFlatten(f));});
     return DATA;
   }).catch(()=>null);
+}
+/* ONE road's condition segments, for the readers that only ever ask about the
+   road in hand — the inspector card (condAt) and the NSV player's coverage/HUD.
+
+   Deliberately does NOT assign DATA. That global means "the whole network is
+   here", and Segs.loaded() / Segs.collection() gate the PCI report, the exports
+   and the dashboards on it; filling it with a single road would make every one of
+   those silently compute a NETWORK summary from one road. Only segsByRoad is
+   touched, which is keyed per road and is exactly what the per-road readers use.
+
+   Falls through to whatever the whole-network path already loaded, so once
+   something has pulled the full payload this costs nothing. */
+var _segRoadP={};
+function ensureSegDataForRoad(roadId){
+  if(!roadId)return Promise.resolve([]);
+  if(DATA&&DATA.features)return Promise.resolve(segsByRoad[roadId]||[]);
+  if(segsByRoad[roadId])return Promise.resolve(segsByRoad[roadId]);
+  if(_segRoadP[roadId])return _segRoadP[roadId];
+  var p=fetch('/api/segments/one?section='+encodeURIComponent(roadId),{credentials:'same-origin'})
+    .then(r=>r.ok?r.json():null).then(gj=>{
+      var fs=(gj&&gj.features)||[];
+      fs.forEach(_segFlatten);
+      /* Assign even when empty: a road with no survey rows is a real answer, and
+         caching it stops every popup re-open from re-asking. */
+      segsByRoad[roadId]=fs;
+      return fs;
+    }).catch(()=>null);
+  _segRoadP[roadId]=p;
+  p.then(function(){delete _segRoadP[roadId];},function(){delete _segRoadP[roadId];});
+  return p;
 }
 /* ---- Survey Summary (inspector "Survey" tab) data helpers ----
    Counts come from the SAME datasets the map layers use (ASSET_DATA via
@@ -355,9 +394,16 @@ function openInspector(props,roadId,ch,lane){
   _inspCtx={props:props,roadId:roadId,ch:ch,lane:lane};
   showInspector(buildPopup(props,roadId,ch,lane),roadId);
   var _rf=function(){if(_inspCtx&&_inspCtx.roadId===roadId)refreshInspectorData();};
-  if(typeof ensureSegData==='function'){
-    try{ensureSegData().then(_rf);}catch(e){}
+  /* Per-road, not the whole network: every condition read on this card is
+     segsByRoad[roadId] (condAt and the lane table), so pulling all ~33k segments
+     to reach ~30 was the single biggest cost of clicking a road. */
+  if(typeof ensureSegDataForRoad==='function'){
+    try{ensureSegDataForRoad(roadId).then(_rf);}catch(e){}
   }
+  /* FWD tab: no longer preloaded at login, so pull it here and refresh in place
+     the same way the condition data does. FWD.at() returns null until this
+     resolves, which just renders the tab without deflection rows until it does. */
+  try{if(window.FWD&&FWD.load)FWD.load().then(_rf);}catch(e){}
   /* Survey tab: pull in any asset/traffic datasets not yet downloaded, then
      swap the '…' placeholders for real counts in place. */
   try{ensureSummaryData().then(_rf);}catch(e){}

@@ -77,7 +77,12 @@ function onPick(roadId,lngLat,lane){
     document.getElementById('dock').classList.add('open','loaded');
     renderCoverageSummary();
     /* condition segments may still be loading — refresh coverage once they arrive */
-    if(typeof ensureSegData==='function'){const _r=roadId;ensureSegData().then(function(){if(cur&&cur.road===_r){renderCoverageSummary();buildTravelPlan();if(video.duration&&!isNaN(video.duration))seek(lastChainage);}});}
+    /* roadCoverageRanges / roadGapRanges / coveragePieces all read segsByRoad[road]
+       and nothing else, so this needs one road's segments, not the network's. */
+    if(typeof ensureSegDataForRoad==='function'){const _r=roadId;ensureSegDataForRoad(_r).then(function(){if(cur&&cur.road===_r){renderCoverageSummary();buildTravelPlan();if(video.duration&&!isNaN(video.duration))seek(lastChainage);}});}
+    /* Same deal for the HUD's FWD D0 / temperature rows — fetched when footage
+       actually opens rather than at login, then re-seek so the row appears. */
+    try{if(window.FWD&&FWD.load){const _rf2=roadId;FWD.load().then(function(){if(cur&&cur.road===_rf2&&video.duration&&!isNaN(video.duration))seek(lastChainage);});}}catch(e){}
   }
   setChainage(frac);placeCar(frac);seek(chainage);if(typeof buildVidTrack==='function'){buildVidTrack();updateVidHud();}
 }

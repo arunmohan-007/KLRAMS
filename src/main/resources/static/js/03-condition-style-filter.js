@@ -56,10 +56,17 @@ function refreshMatchStatsRemote(){
 function applyFilter(){const ex=filterExpr();LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;if(!map.getLayer(id))return;const base=condLaneFilter(s.x);map.setFilter(id,ex?['all',base,ex]:base);});if(TILES_ON){refreshMatchStatsRemote();return;}matchCount();if(_condFitT)clearTimeout(_condFitT);const _fts=matchingFeatures();if(_fts&&_fts.length)_condFitT=setTimeout(()=>fitFeaturesBounds(_fts),550);}
 cb.addEventListener('change',()=>{loadThreshDefaults();applyColors();syncCondMetricUI();});
 ['fair','poor'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{applyColors();updateBandKey();}));
-document.getElementById('showRoads').addEventListener('change',e=>{if(e.target.checked&&typeof ensureSegData==='function')ensureSegData();/* Build 172 — roadsReady() (not just the source) so toggling the layer can
+document.getElementById('showRoads').addEventListener('change',e=>{/* Pre-warming the whole condition network here only makes sense in GeoJSON mode,
+   where that download happens anyway. In tile mode it is the ONE thing turning
+   this toggle on was supposed to stop costing, and the popup no longer needs it:
+   it calls ensureSegDataForRoad() on click (08-condition-popup-nsv.js), which
+   fetches just the clicked road. */if(e.target.checked&&!TILES_ON&&typeof ensureSegData==='function')ensureSegData();/* Build 172 — roadsReady() (not just the source) so toggling the layer can
    rebuild a half-built network instead of flipping visibility on nothing. */
 if(e.target.checked&&!roadsReady()){loadRoads();return;}const _v=e.target.checked?'visible':'none';if(map.getLayer('roadnet'))map.setLayoutProperty('roadnet','visibility',_v);if(map.getLayer('roadnet-casing'))map.setLayoutProperty('roadnet-casing','visibility',_v);});
-document.getElementById('showCond').addEventListener('change',e=>{if(e.target.checked&&!map.getSource('segs')){loadSegments();return;}CONDLAYERS.forEach(id=>{if(map.getLayer(id))map.setLayoutProperty(id,'visibility',e.target.checked?'visible':'none');});});
+document.getElementById('showCond').addEventListener('change',e=>{if(e.target.checked&&!map.getSource('segs')){/* Tiles need only a source + layers, not the whole-network GeoJSON this
+   toggle used to pull down just to draw a viewport. loadSegments() stays the
+   GeoJSON-mode path; ensureSegSource() is the same call the boot preload
+   already makes in tile mode. */if(TILES_ON){ensureSegSource();}else{loadSegments();return;}}CONDLAYERS.forEach(id=>{if(map.getLayer(id))map.setLayoutProperty(id,'visibility',e.target.checked?'visible':'none');});});
 document.getElementById('showDist').addEventListener('change',e=>{const v=e.target.checked;if(v&&!map.getSource('district')){ensureBoundary('district').then(n=>{if(!n)alert('No district boundary imported yet — upload it in the Data console.');});return;}['district-fill','district-line','district-casing','district-label'].forEach(l=>{if(map.getLayer(l))map.setLayoutProperty(l,'visibility',v?'visible':'none');});});
 document.getElementById('showCons').addEventListener('change',e=>{const v=e.target.checked;if(v&&!map.getSource('constituency')){ensureBoundary('constituency').then(n=>{if(!n)alert('No constituency boundary imported yet — upload it in the Data console.');});return;}['cons-fill','cons-line','cons-label'].forEach(l=>{if(map.getLayer(l))map.setLayoutProperty(l,'visibility',v?'visible':'none');});});
 

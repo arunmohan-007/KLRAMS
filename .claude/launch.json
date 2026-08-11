@@ -12,6 +12,13 @@
       "runtimeExecutable": "java",
       "runtimeArgs": ["-jar", "target/rmms-backend-0.0.1-SNAPSHOT.jar"],
       "port": 8090
+    },
+    {
+      "name": "rmms-local",
+      "runtimeExecutable": "java",
+      "runtimeArgs": ["-jar", "target/rmms-backend-0.0.1-SNAPSHOT.jar", "--spring.profiles.active=local", "--server.port=8096"],
+      "port": 8096,
+      "autoPort": false
     }
   ]
 }

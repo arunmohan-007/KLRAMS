@@ -35,8 +35,15 @@ map.on('load',()=>{
       const _preloadFwd=()=>{try{
         if(typeof ASSETS==='undefined'||typeof loadAsset!=='function')return Promise.resolve();
         const _fa=ASSETS.find(x=>x.type==='fwd');
+        /* loadAsset() is free in tile mode (a tile template, no download), so the
+           map layer still gets built up front. FWD.load(), by contrast, pulls the
+           whole FWD survey down purely to answer chainage lookups for the road
+           inspector and the NSV HUD — neither of which is on screen at login. Both
+           callers now trigger it themselves and refresh in place when it lands
+           (openInspector, playRoad), so preloading it here only spent bandwidth on
+           a feature the user may never open. */
         return Promise.resolve((_fa&&!map.getSource(_fa.layer))?loadAsset(_fa):null)
-          .then(()=>{try{if(window.FWD&&FWD.load)return FWD.load();}catch(e){}});
+          .then(()=>{try{if(!TILES_ON&&window.FWD&&FWD.load)return FWD.load();}catch(e){}});
       }catch(e){return Promise.resolve();}};
       const _preloadPci=()=>{setTimeout(()=>{try{
         if(typeof generatePCI==='function'&&Segs.collection()&&!map.getLayer('pci-avg'))generatePCI(true);

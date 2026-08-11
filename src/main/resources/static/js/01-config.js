@@ -30,15 +30,15 @@ const ROAD_FIELDS=[
 ];
 function dec(group,val){const t=LK[group];const k=String(val).trim();return t&&t[k]?t[k]:val;}
 let mode='all',filters=[],DATA=null,ROADS={},segsByRoad={},CATALOG={};
-/* Vector-tile mode, opt-in with ?tiles=1.
+/* Vector-tile mode, default ON. Opt out with ?tiles=0 (kept as an escape
+   hatch — no redeploy needed to fall back to the old path if something looks
+   wrong).
    OFF: the map downloads every condition segment as one GeoJSON before it is
    useful, and every module reads that array. ON: the condition layers render
    from /api/segments/tiles, the whole-network questions (match count, segment
    count) are answered by /api/segments/*, and the full GeoJSON is fetched only
-   when something genuinely needs per-segment rows — the PCI report, an export.
-   Behind a flag because this changes where every number on the map comes from;
-   the old path stays byte-identical until the new one has been lived with. */
-const TILES_ON=/[?&]tiles=1\b/.test(location.search);
+   when something genuinely needs per-segment rows — the PCI report, an export. */
+const TILES_ON=!/[?&]tiles=0\b/.test(location.search);
 let dir='fwd',cur=null,marker=null,carIcon=null,carLabel=null,carIri=null,seeking=false,lastChainage=0,follow=false,curCarLL=null;
 const FOLLOW_ZOOM=16;
 // keep the car in the visible band above the video dock: shift the map centre

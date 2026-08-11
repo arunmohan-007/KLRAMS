@@ -95,6 +95,21 @@ public class FullNetworkController {
         return GeoJsonResponse.conditional(body, tag, ifNoneMatch);
     }
 
+    /**
+     * Row count only. The map used to pull the whole FeatureCollection on every
+     * open just to learn whether a saved network exists — the layer it builds is
+     * created hidden and is only ever revealed by the "Full Road Network" toggle,
+     * so on a network this size that was several MB spent per session on geometry
+     * most users never display. The viewer now asks for this instead, and defers
+     * /geojson until the toggle is actually switched on.
+     */
+    @GetMapping(value = "/count", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> count() {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM full_road_network WHERE geom IS NOT NULL", Integer.class);
+        return Map.of("count", n == null ? 0 : n);
+    }
+
     private String build() {
         return jdbc.queryForObject("""
             SELECT json_build_object(

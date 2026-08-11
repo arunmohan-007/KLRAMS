@@ -58,6 +58,21 @@ public class SegmentController {
         return GeoJsonResponse.conditional(p.body(), p.etag(), ifNoneMatch);
     }
 
+    /**
+     * One section's segments, same feature shape as {@code /geojson}.
+     *
+     * <p>For the readers that only ever ask about the road in hand — the inspector card and
+     * the NSV player. Both used to pull the entire network to reach a single road's rows.
+     * ETag'd like the rest, so re-clicking a road is a 304 rather than a re-read.
+     */
+    @GetMapping(value = "/one", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> one(@RequestParam("section") String section,
+                                      @RequestParam(value = "period_id", required = false) Integer periodId,
+                                      @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        String body = service.segmentsForSection(section, periodId);
+        return GeoJsonResponse.conditional(body, GeoJsonResponse.contentTag(body), ifNoneMatch);
+    }
+
     @GetMapping("/count")
     public Map<String, Object> count() {
         Map<String, Object> result = new HashMap<>();

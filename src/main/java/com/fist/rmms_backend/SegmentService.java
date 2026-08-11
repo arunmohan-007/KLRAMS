@@ -227,8 +227,34 @@ public class SegmentService {
         return segmentsGeoJson(null);
     }
 
+    /**
+     * GeoJSON of ONE section's segments, in the same feature shape as the whole-network
+     * payload.
+     *
+     * <p>The road inspector card and the NSV player only ever read the road in hand
+     * ({@code segsByRoad[road]} on the client), but the only way to get it was to download
+     * every segment in the network — the single heaviest payload in the app — and index it.
+     * On a click-a-road interaction that is the whole network for ~30 rows.
+     *
+     * <p>Not cached: the result is small, it is keyed by section rather than by period, and
+     * a per-section cache would need invalidating on every segment rebuild for no real gain.
+     * The controller still sends an ETag, so clicking the same road twice is a 304.
+     */
+    public String segmentsForSection(String section, Integer requestedPeriodId) {
+        int pid = periods.resolve(requestedPeriodId);
+        ensurePciColumns();
+        return jdbc.queryForObject(segmentsSql(" AND section_label = ?"), String.class, pid, section);
+    }
+
     private String buildGeoJson(int periodId) {
         ensurePciColumns();
+        return jdbc.queryForObject(segmentsSql(""), String.class, periodId);
+    }
+
+    /** The one definition of a segment feature, shared by the whole-network payload and the
+     *  per-section read so the two shapes can never drift apart. {@code extraWhere} is
+     *  appended to the WHERE clause; its parameters follow {@code period_id}. */
+    private static String segmentsSql(String extraWhere) {
         // ST_AsGeoJSON(geom, 6): 6-decimal coordinates (~0.1 m) cut the payload size
         // substantially versus the 9-decimal default, with no visible loss for roads.
         //
@@ -263,8 +289,9 @@ public class SegmentService {
                         )
                 )), '[]'::json))::text
             FROM condition_segments s WHERE period_id = ?
-            """;
-        return jdbc.queryForObject(sql, String.class, periodId);
+            """
+            + extraWhere;
+        return sql;
     }
 
     public long count() {
