@@ -15,6 +15,8 @@ import java.util.*;
  *
  * Safety:
  *  - requires a non-empty FeatureCollection of (Multi)LineStrings
+ *  - stores geom as LineString (ST_LineMerge — never ST_Multi) so linear
+ *    referencing (ST_LineSubstring / ST_LineInterpolatePoint) keeps working
  *  - requires every feature to carry a non-blank Section_La
  *  - only writes columns that already exist in the roads table (case-sensitive),
  *    casting numerics by the table's own column types
@@ -172,12 +174,18 @@ public class RoadUploadController {
                     names.add('"' + k + '"');
                     vals.add(val);
                 }
+                // Keep LineString for LRS. ST_Multi would force MultiLineString even when
+                // the upload is LineString and break ST_LineSubstring on rebuild paths that
+                // do not wrap with ST_LineMerge. Connected MultiLineString parts merge to one line.
                 String sql = "INSERT INTO roads (" + String.join(",", names) + ", geom) VALUES (" +
                         String.join(",", Collections.nCopies(names.size(), "?")) +
-                        ", ST_SetSRID(ST_Multi(ST_GeomFromGeoJSON(?)),4326))";
+                        ", ST_SetSRID(ST_LineMerge(ST_GeomFromGeoJSON(?)),4326))";
                 vals.add(geomJson);
                 jdbc.update(sql, vals.toArray());
             }
+
+            // Heal any leftover MultiLineString rows (e.g. prior uploads that used ST_Multi).
+            healMultiToLineString();
 
             r.put("status", "ok");
             r.put("mode", mode);
@@ -195,6 +203,20 @@ public class RoadUploadController {
             // text can expose SQL / schema detail).
             return err(r, ApiErrors.safe("road upload", e));
         }
+    }
+
+    /**
+     * Convert single-path MultiLineString roads (from older ST_Multi uploads) back
+     * to LineString so condition/asset linear referencing stays valid.
+     * @return number of rows updated
+     */
+    public int healMultiToLineString() {
+        return jdbc.update("""
+            UPDATE roads SET geom = ST_LineMerge(geom)
+            WHERE geom IS NOT NULL
+              AND ST_GeometryType(geom) = 'ST_MultiLineString'
+              AND ST_GeometryType(ST_LineMerge(geom)) = 'ST_LineString'
+            """);
     }
 
     private Map<String, Object> err(Map<String, Object> r, String m) {

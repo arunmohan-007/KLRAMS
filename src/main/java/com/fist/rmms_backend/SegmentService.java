@@ -76,7 +76,7 @@ public class SegmentService {
                 GROUP BY section_label, start_chainage, end_chainage, period_id
             ),
             joined AS (
-                SELECT a.*, r.geom AS road_geom,
+                SELECT a.*, ST_LineMerge(r.geom) AS road_geom,
                     COALESCE(
                         NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
                         NULLIF(r."Measrd_Len"::double precision, 0),
@@ -84,6 +84,7 @@ public class SegmentService {
                 FROM agg a
                 JOIN roads r ON r."Section_La" = a.section_label
                 WHERE r.geom IS NOT NULL
+                  AND ST_GeometryType(ST_LineMerge(r.geom)) = 'ST_LineString'
             )
             SELECT
                 section_label, start_chainage, end_chainage, period_id,

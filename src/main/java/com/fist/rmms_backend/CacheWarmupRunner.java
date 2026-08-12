@@ -21,16 +21,19 @@ public class CacheWarmupRunner implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(CacheWarmupRunner.class);
 
     private final RoadController roads;
+    private final RoadUploadController roadUpload;
     private final SegmentService segments;
     private final FwdSegmentService fwdSegments;
     private final IriSegmentService iriSegments;
     private final FullNetworkController fullNetwork;
     private final AssetController assets;
 
-    public CacheWarmupRunner(RoadController roads, SegmentService segments,
+    public CacheWarmupRunner(RoadController roads, RoadUploadController roadUpload,
+                              SegmentService segments,
                               FwdSegmentService fwdSegments, IriSegmentService iriSegments,
                               FullNetworkController fullNetwork, AssetController assets) {
         this.roads = roads;
+        this.roadUpload = roadUpload;
         this.segments = segments;
         this.fwdSegments = fwdSegments;
         this.iriSegments = iriSegments;
@@ -47,6 +50,13 @@ public class CacheWarmupRunner implements ApplicationRunner {
 
     private void warmAll() {
         long start = System.currentTimeMillis();
+        /* Undo legacy ST_Multi road uploads before any LRS / tile warm-up. */
+        try {
+            int n = roadUpload.healMultiToLineString();
+            if (n > 0) log.info("Converted {} MultiLineString road(s) to LineString", n);
+        } catch (Exception e) {
+            log.warn("Road LineString heal failed", e);
+        }
         try { roads.warm(); } catch (Exception e) { log.warn("Road cache warm-up failed", e); }
         try { segments.ensureDefaultPci(); } catch (Exception e) { log.warn("Stored PCI backfill failed", e); }
         try { segments.segmentsGeoJson(); } catch (Exception e) { log.warn("Condition segment cache warm-up failed", e); }
