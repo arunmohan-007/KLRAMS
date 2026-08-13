@@ -206,17 +206,64 @@ public class RoadUploadController {
     }
 
     /**
-     * Convert single-path MultiLineString roads (from older ST_Multi uploads) back
-     * to LineString so condition/asset linear referencing stays valid.
-     * @return number of rows updated
+     * Convert MultiLineString roads (from older ST_Multi uploads / Multi column typmod)
+     * back to LineString so condition/asset linear referencing stays valid.
+     * The column itself is often {@code geometry(MultiLineString,4326)}, which silently
+     * re-wraps any LineString assignment as Multi — so we ALTER the typmod first.
+     * @return number of MultiLineString rows present before the heal (0 if already LineString)
      */
     public int healMultiToLineString() {
-        return jdbc.update("""
-            UPDATE roads SET geom = ST_LineMerge(geom)
-            WHERE geom IS NOT NULL
-              AND ST_GeometryType(geom) = 'ST_MultiLineString'
-              AND ST_GeometryType(ST_LineMerge(geom)) = 'ST_LineString'
-            """);
+        Integer multiBefore = jdbc.queryForObject(
+                "SELECT count(*) FROM roads WHERE geom IS NOT NULL AND ST_GeometryType(geom) = 'ST_MultiLineString'",
+                Integer.class);
+        int n = multiBefore == null ? 0 : multiBefore;
+
+        String typ = null;
+        try {
+            typ = jdbc.queryForObject(
+                    "SELECT type FROM geometry_columns WHERE f_table_schema = 'public' AND f_table_name = 'roads' AND f_geometry_column = 'geom'",
+                    String.class);
+        } catch (Exception ignored) { /* geometry_columns may be empty on some installs */ }
+
+        boolean needsAlter = typ != null && typ.toUpperCase(java.util.Locale.ROOT).contains("MULTI");
+        if (!needsAlter) {
+            try {
+                String col = jdbc.queryForObject("""
+                    SELECT format_type(a.atttypid, a.atttypmod)
+                      FROM pg_attribute a JOIN pg_class c ON a.attrelid = c.oid
+                     WHERE c.relname = 'roads' AND a.attname = 'geom' AND NOT a.attisdropped
+                    """, String.class);
+                needsAlter = col != null && col.toLowerCase(java.util.Locale.ROOT).contains("multilinestring");
+            } catch (Exception ignored) { /* leave needsAlter as-is */ }
+        }
+
+        if (needsAlter || n > 0) {
+            // Reject true multi-part rows that cannot become a single LineString.
+            Integer bad = jdbc.queryForObject("""
+                SELECT count(*) FROM roads
+                 WHERE geom IS NOT NULL
+                   AND ST_GeometryType(ST_LineMerge(geom)) <> 'ST_LineString'
+                """, Integer.class);
+            if (bad != null && bad > 0) {
+                throw new IllegalStateException(bad + " road(s) merge to MultiLineString (disconnected parts) — fix those before altering geom to LineString");
+            }
+            jdbc.execute("""
+                ALTER TABLE roads
+                  ALTER COLUMN geom TYPE geometry(LineString,4326)
+                  USING CASE
+                    WHEN geom IS NULL THEN NULL
+                    ELSE ST_LineMerge(geom)
+                  END
+                """);
+        } else if (n > 0) {
+            jdbc.update("""
+                UPDATE roads SET geom = ST_LineMerge(geom)
+                WHERE geom IS NOT NULL
+                  AND ST_GeometryType(geom) = 'ST_MultiLineString'
+                  AND ST_GeometryType(ST_LineMerge(geom)) = 'ST_LineString'
+                """);
+        }
+        return n;
     }
 
     private Map<String, Object> err(Map<String, Object> r, String m) {

@@ -293,6 +293,35 @@
     .brand .s{display:none}
     .topbar .vlink span,.topbar .signout span{display:none}
   }
+
+  /* ---------- import column-mapping wizard ---------- */
+  .wiz-box{display:none;border:1px solid var(--hair-2);border-radius:var(--r-md);background:#fbfcfe;padding:14px 16px;margin:2px 0 14px}
+  .wiz-box.show{display:block}
+  .wiz-hd{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:2px}
+  .wiz-hd .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .wiz-hd .dot.ok{background:var(--accent)}
+  .wiz-hd .dot.warn{background:var(--amber)}
+  .wiz-hd .dot.busy{background:var(--muted)}
+  .wiz-sub{font-size:11.5px;color:var(--muted);margin:2px 0 10px;line-height:1.5}
+  .wiz-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px}
+  .wiz-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);padding:5px 8px;border-bottom:1px solid var(--hair)}
+  .wiz-table td{padding:6px 8px;border-bottom:1px solid var(--hair);vertical-align:middle}
+  .wiz-table td.src{font-family:var(--mono);font-size:11.5px;color:var(--ink)}
+  .wiz-table td.sample{color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wiz-table select{max-width:none;margin:0;padding:5px 7px;font-size:12px}
+  .wiz-tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px}
+  .wiz-tag.matched{background:#e7f6ef;color:var(--accent-d)}
+  .wiz-tag.renamed{background:#e8f1fd;color:var(--blue)}
+  .wiz-tag.extra{background:#eef1f6;color:var(--muted)}
+  .wiz-missing{background:#fdf2e9;border:1px solid var(--hub-bd);border-radius:10px;padding:10px 12px;margin:0 0 10px}
+  .wiz-missing .wt{font-size:12.5px;font-weight:700;color:var(--hub-accent);margin-bottom:6px}
+  .wiz-missing-row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12.5px}
+  .wiz-missing-row label{min-width:130px;font-weight:600;color:var(--ink)}
+  .wiz-missing-row select{max-width:none;flex:1;margin:0;padding:6px 8px;font-size:12px}
+  .wiz-errors{background:#fcebea;border:1px solid #f3c6c2;border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:12px;color:#a3302a}
+  .wiz-errors ul{margin:6px 0 0 18px;padding:0}
+  .wiz-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+  .wiz-ready{font-size:12px;color:var(--accent-d);font-weight:600}
 </style>
 </head>
 <body>
@@ -726,27 +755,46 @@ async function upFullNetwork(){
   }catch(e){ show(out,false,'Failed: '+e.message);logUpload('Full road network',f.name,false,e.message); }
 }
 async function upBoundary(type){
-  const inp=document.getElementById(type==='district'?'dist':'cons');
-  const out=document.getElementById(type==='district'?'oDist':'oCons');
+  var idSafe=String(type).replace(/[^a-z0-9_]/gi,'_');
+  const inp=document.getElementById('bndFile_'+idSafe) || document.getElementById(type==='district'?'dist':'cons');
+  const out=document.getElementById('oBnd_'+idSafe) || document.getElementById(type==='district'?'oDist':'oCons');
+  if(!inp||!out){alert('Import panel not ready — refresh the page.');return;}
   const f=inp.files[0]; if(!f){show(out,false,'Choose a file first.');return;}
+  var modeEl=document.querySelector('input[name="bndMode_'+idSafe+'"]:checked');
+  var mode=modeEl?modeEl.value:'replace';
   show(out,true,'Reading & uploading…');
   try{
     let gj; const n=f.name.toLowerCase();
     if(n.endsWith('.zip')){ gj=await shp(await f.arrayBuffer()); if(Array.isArray(gj)) gj={type:'FeatureCollection',features:gj.flatMap(x=>x.features||[])}; }
     else { gj=JSON.parse(await f.text()); }
     const cnt=gj&&gj.features?gj.features.length:0;
-    // projection sanity: coordinates must be lng/lat
     let bad=false;
     try{const w=a=>{if(typeof a[0]==='number'){if(Math.abs(a[0])>180||Math.abs(a[1])>90)bad=true;}else a.forEach(w);};(gj.features||[]).slice(0,5).forEach(f=>f.geometry&&f.geometry.coordinates&&w(f.geometry.coordinates));}catch(e){}
-    if(bad){show(out,false,'This file is not in latitude/longitude (WGS84) — it looks projected (e.g. UTM). Re-export it from QGIS as EPSG:4326 and upload again.');return;}
-    const r=await fetch('/api/boundary/'+type,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
-    const j=await r.json();
-    const ds=(type==='district'?'District boundary':'Constituency boundary');
-    if(j.status==='ok'){const msg='✓ Saved '+cnt+' boundary feature(s). Toggle it on in the viewer.';show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
-    else{show(out,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
-  }catch(e){ show(out,false,'Failed: '+e.message);logUpload((type==='district'?'District boundary':'Constituency boundary'),f.name,false,e.message); }
+    if(bad){show(out,false,'This file is not in latitude/longitude (WGS84) — re-export as EPSG:4326.');return;}
+    var url='/api/boundary/'+encodeURIComponent(type)+'?mode='+encodeURIComponent(mode);
+    var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
+    var j=await r.json();
+    if(j.status==='exists'){
+      if(confirm('Data already uploaded for this boundary ('+(j.featureCount||'?')+' features).\n\nReplace the entire layer with this file?\n\n(Cancel keeps existing data. To merge instead, choose “Add / merge” and upload again.)')){
+        r=await fetch(url+'&force=true',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
+        j=await r.json();
+      } else { show(out,false,'Import cancelled — existing data kept.'); return; }
+    }
+    const ds=type+' boundary';
+    if(j.status==='ok'){const msg='✓ Saved '+cnt+' feature(s) ('+(j.mode||mode)+').';show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();loadBndStatus(type);}
+    else{show(out,false,'Error: '+(j.message||'upload failed'));logUpload(ds,f.name,false,j.message||'failed');}
+  }catch(e){ show(out,false,'Failed: '+e.message);logUpload(type+' boundary',f.name,false,e.message); }
 }
-/* ===== Traffic data (summarised in-browser for the viewer) ===== */
+async function loadBndStatus(type){
+  var idSafe=String(type).replace(/[^a-z0-9_]/gi,'_');
+  var el=document.getElementById('bndStatus_'+idSafe); if(!el) return;
+  try{
+    var r=await fetch('/api/boundary/'+encodeURIComponent(type)+'/status',{cache:'no-store'});
+    var j=await r.json();
+    if(j.hasData) el.innerHTML='<b style="color:#c05621">Already has data</b> ('+Number(j.featureCount||0).toLocaleString()+' features) — choose Replace or Add below.';
+    else el.innerHTML='No data yet — ready for first upload.';
+  }catch(e){ el.textContent=''; }
+}
 const TRF_KEY='klrams_traffic_v1';
 const TRF_NONVEH=new Set(['STATION_NAME','TIME','DATE','DURATION_IN_MINUTES','SECTION_LABEL_CODE','SECTION_LABEL','LATITUDE','LONGITUDE','ROAD_CHAINAGE','CHAINAGE','DIRECTION','XSP','XSP_CODE','SL','SL_NO','S_NO','SNO','TOTAL','GRAND_TOTAL','REMARKS']);
 function trfPad(n){return (n<10?'0':'')+n;}
@@ -892,16 +940,17 @@ async function buildFwd(){
   }catch(e){show(el,false,'Failed: '+e.message);logUpload('FWD segments build','—',false,e.message);}
 }
 
-/* remove the stored boundary for a type (district / constituency) */
+/* remove the stored boundary for a type (district / constituency / custom). */
 async function removeBoundary(type){
-  const out=document.getElementById(type==='district'?'oDist':'oCons');
-  const ds=(type==='district'?'District boundary':'Constituency boundary');
-  if(!confirm('Remove the current '+ds.toLowerCase()+'? This deletes the stored boundary from the server.')) return;
-  show(out,true,'Removing…');
-  try{const r=await fetch('/api/boundary/'+type,{method:'DELETE'});const j=await r.json();
-    if(j.status==='ok'){show(out,true,'✓ Removed the '+ds.toLowerCase()+'. Reload the viewer to see it gone.');logUpload(ds,'—',true,'Removed current data');refresh();}
-    else{show(out,false,'Error: '+(j.message||'failed'));logUpload(ds,'—',false,j.message||'failed');}
-  }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,'—',false,e.message);}
+  var idSafe=String(type).replace(/[^a-z0-9_]/gi,'_');
+  const out=document.getElementById('oBnd_'+idSafe) || document.getElementById(type==='district'?'oDist':'oCons');
+  const ds=type+' boundary';
+  if(!confirm('Remove the current '+ds+'? This deletes the stored boundary from the server.')) return;
+  if(out) show(out,true,'Removing…');
+  try{const r=await fetch('/api/boundary/'+encodeURIComponent(type),{method:'DELETE'});const j=await r.json();
+    if(j.status==='ok'){if(out)show(out,true,'✓ Removed. Reload the viewer to see it gone.');logUpload(ds,'—',true,'Removed current data');refresh();loadBndStatus(type);}
+    else{if(out)show(out,false,'Error: '+(j.message||'failed'));logUpload(ds,'—',false,j.message||'failed');}
+  }catch(e){if(out)show(out,false,'Failed: '+e.message);logUpload(ds,'—',false,e.message);}
 }
 
 /* ===================== three-tab navigation ===================== */
@@ -932,7 +981,8 @@ function assetPanel(type,title,sub){
     +'<p class="ip-sub">'+sub+'</p>'
     +'<select id="assetType" style="display:none"><option value="'+type+'" selected></option></select>'
     +'<div class="ip-field"><label class="ip-label">CSV file</label><input type="file" id="assetfile" accept=".csv"></div>'
-    +'<button class="btn" onclick="upAsset()">Upload asset CSV</button>'
+    +'<div id="wiz_assetfile" class="wiz-box"></div>'
+    +'<button class="btn" id="btn_assetfile" onclick="upAsset()">Upload asset CSV</button>'
     +'<div class="out" id="oAsset"></div>'
     +'<p class="hint">Additive by section: re-uploading a section replaces just that section’s records; other sections are kept. If a section in the file already has data, you’ll be asked to confirm before it is replaced. Rows with missing chainage or an unknown Section_Label are skipped and reported.</p>';
 }
@@ -942,7 +992,8 @@ function geoPanel(type,title,sub){
     +'<select id="geoType" style="display:none"><option value="'+type+'" selected></option></select>'
     +spSelField()
     +'<div class="ip-field"><label class="ip-label">CSV file</label><input type="file" id="geofile" accept=".csv"></div>'
-    +'<button class="btn" onclick="upGeo()">Upload data CSV</button>'
+    +'<div id="wiz_geofile" class="wiz-box"></div>'
+    +'<button class="btn" id="btn_geofile" onclick="upGeo()">Upload data CSV</button>'
     +'<div class="out" id="oGeo"></div>'
     +'<p class="hint">The file is first checked to be the right dataset — e.g. a Bituminous Core CSV is rejected by the Sub-Grade Soil importer, and vice versa. Additive by section within the chosen survey period: re-uploading a section replaces just that section’s records in that period; other sections and other periods are kept. If a section in the file already has data in this period, you’ll be asked to confirm before it is replaced. Switch the matching layer on in the viewer and click any icon for full details.</p>';
 }
@@ -972,7 +1023,8 @@ const PANELS={
     +'<p class="ip-sub">Import the raw condition survey CSV (IRI, cracking, potholes…). After it loads, switch to <b>Build segments</b> to cut it against the road network.</p>'
     +spSelField()
     +'<div class="ip-field"><label class="ip-label">Condition CSV</label><input type="file" id="cfile" accept=".csv"></div>'
-    +'<button class="btn" onclick="up(\'condition\')">Upload CSV</button> <button class="btn ghost" onclick="refresh()">Refresh counts</button>'
+    +'<div id="wiz_cfile" class="wiz-box"></div>'
+    +'<button class="btn" id="btn_cfile" onclick="up(\'condition\')">Upload CSV</button> <button class="btn ghost" onclick="refresh()">Refresh counts</button>'
     +'<div class="out" id="oCond"></div>'
     +'<p class="hint">The file is checked before anything is imported: first for duplicate rows (same Section_Label, XSP and chainage — they double-count lane-km in the dashboard totals), then for sections that already have data in the chosen survey period. In both cases you’re asked to confirm before anything is replaced.</p>',
   'cond-build':'<div class="ip-title">Build segments</div>'
@@ -997,7 +1049,8 @@ const PANELS={
     +'<p class="ip-sub">Link each road section to its video file and direction. The NSV video is recorded during a survey cycle, so the catalogue is stored per survey period — like the condition and FWD data it was filmed with.</p>'
     +spSelField()
     +'<div class="ip-field"><label class="ip-label">Catalogue CSV</label><input type="file" id="vfile" accept=".csv"></div>'
-    +'<button class="btn" onclick="up(\'catalog\')">Upload catalogue</button>'
+    +'<div id="wiz_vfile" class="wiz-box"></div>'
+    +'<button class="btn" id="btn_vfile" onclick="up(\'catalog\')">Upload catalogue</button>'
     +'<div class="out" id="oCat"></div>'
     +'<p class="hint">Columns: <code>section_label</code>, <code>video_file</code>, <code>direction</code> (front or back). <code>video_file</code> is the file name inside the zip, or a full <code>https://</code> link.</p>'
     +'<a class="viewer" href="/map.html">Open the viewer to play videos &rarr;</a>',
@@ -1007,6 +1060,7 @@ const PANELS={
     +'<label><input type="radio" name="rmode" value="merge" checked> Add / update by Section_La</label>'
     +'<label><input type="radio" name="rmode" value="replace"> Replace entire network</label></div></div>'
     +'<div class="ip-field"><label class="ip-label">Shapefile ZIP (.shp/.shx/.dbf/.prj) or GeoJSON</label><input type="file" id="roadfile" accept=".zip,.geojson,.json"></div>'
+    +'<div id="attrRef" class="wiz-box"></div>'
     +'<button class="btn" onclick="upRoads()">Upload road network</button>'
     +'<div class="out" id="oRoad"></div>'
     +'<p class="hint">The file must carry a <code>Section_La</code> for every road. Validation runs first — if it fails, nothing is changed. In add/update mode, if any Section_La in the file already exists you’ll be asked to confirm before those roads are replaced. After upload, run <b>Build segments</b> to re-cut condition data.</p>',
@@ -1016,6 +1070,7 @@ const PANELS={
     +'<label><input type="radio" name="fnmode" value="merge" checked> Add / update by Road_id</label>'
     +'<label><input type="radio" name="fnmode" value="replace"> Replace entire network</label></div></div>'
     +'<div class="ip-field"><label class="ip-label">Shapefile ZIP (.shp/.shx/.dbf/.prj) or GeoJSON</label><input type="file" id="fnfile" accept=".zip,.geojson,.json"></div>'
+    +'<div id="attrRef" class="wiz-box"></div>'
     +'<button class="btn" onclick="upFullNetwork()">Upload full road network</button>'
     +'<div class="out" id="oFN"></div>'
     +'<p class="hint">Re-importing a road with the same <code>Road_id</code> updates it; new ones are added. Toggle <b>Full Road Network</b> on in the viewer to see it.</p>',
@@ -1031,7 +1086,8 @@ const PANELS={
     +'<select id="geoType" style="display:none"><option value="fwd" selected></option></select>'
     +spSelField()
     +'<div class="ip-field"><label class="ip-label">FWD CSV</label><input type="file" id="geofile" accept=".csv"></div>'
-    +'<button class="btn" onclick="upGeo()">Upload data CSV</button>'
+    +'<div id="wiz_geofile" class="wiz-box"></div>'
+    +'<button class="btn" id="btn_geofile" onclick="upGeo()">Upload data CSV</button>'
     +'<div class="out" id="oGeo"></div>'
     +'<p class="hint">Needs <code>Section_Label</code> (or <code>Label</code>), <code>From</code> and <code>To</code> chainage, and the <code>D0</code>…<code>Dn</code> deflection columns. Additive by section: re-uploading a section replaces just that section; other sections are kept. If a section already has FWD data in this period, you’ll be asked to confirm before it is replaced.</p>',
   'fwd-build':'<div class="ip-title">Build FWD segments</div>'
@@ -1042,26 +1098,32 @@ const PANELS={
     +'<p class="ip-sub">Import the station list, then the counts. Stations are placed by chainage; counts are summarised per station (ADT, peak hour, direction-wise).</p>'
     +spSelField()
     +'<div class="ip-field"><label class="ip-label">1 · Traffic stations CSV</label><input type="file" id="trfStn" accept=".csv"></div>'
-    +'<button class="btn" onclick="upTraffic(\'stations\')">Upload stations</button>'
+    +'<div id="wiz_trfStn" class="wiz-box"></div>'
+    +'<button class="btn" id="btn_trfStn" onclick="upTraffic(\'stations\')">Upload stations</button>'
     +'<div class="out" id="oTrfStn"></div>'
     +'<div class="ip-field" style="margin-top:16px"><label class="ip-label">2 · Traffic count CSV</label><input type="file" id="trfCnt" accept=".csv"></div>'
-    +'<button class="btn" onclick="upTraffic(\'counts\')">Upload counts</button>'
+    +'<div id="wiz_trfCnt" class="wiz-box"></div>'
+    +'<button class="btn" id="btn_trfCnt" onclick="upTraffic(\'counts\')">Upload counts</button>'
     +'<div class="out" id="oTrfCnt"></div>'
     +'<div class="ip-field" style="margin-top:16px"><label class="ip-label">Stored</label><div class="hint" id="trfState" style="margin-top:0">No traffic data stored.</div></div>'
     +'<p class="hint">Additive by station: uploading more stations/counts adds to the data; re-uploading a station updates it. Stations CSV needs <code>Station Name, Section Label, Latitude, Longitude, Chainage</code>. Count CSV needs <code>STATION_NAME, DATE, TIME, DIRECTION</code> and the vehicle-class columns.</p>',
-  'bnd-district':'<div class="ip-title">District boundary</div>'
-    +'<p class="ip-sub">Upload district boundaries as a shapefile zip (or GeoJSON in WGS84).</p>'
-    +'<div class="ip-field"><label class="ip-label">Shapefile ZIP / GeoJSON</label><input type="file" id="dist" accept=".zip,.geojson,.json"></div>'
-    +'<button class="btn" onclick="upBoundary(\'district\')">Upload district boundary</button> <button class="btn ghost" onclick="removeBoundary(\'district\')">Remove current data</button>'
-    +'<div class="out" id="oDist"></div>'
-    +'<p class="hint">A shapefile zip must contain the <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> (and <code>.prj</code>) together. Appears as a toggleable layer in the viewer. <b>Remove current data</b> deletes the stored district boundary.</p>',
-  'bnd-constituency':'<div class="ip-title">Constituency boundary</div>'
-    +'<p class="ip-sub">Upload constituency boundaries as a shapefile zip (or GeoJSON in WGS84).</p>'
-    +'<div class="ip-field"><label class="ip-label">Shapefile ZIP / GeoJSON</label><input type="file" id="cons" accept=".zip,.geojson,.json"></div>'
-    +'<button class="btn" onclick="upBoundary(\'constituency\')">Upload constituency boundary</button> <button class="btn ghost" onclick="removeBoundary(\'constituency\')">Remove current data</button>'
-    +'<div class="out" id="oCons"></div>'
-    +'<p class="hint">A shapefile zip must contain the <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> (and <code>.prj</code>) together. Appears as a toggleable layer in the viewer. <b>Remove current data</b> deletes the stored constituency boundary.</p>'
 };
+/* Boundary import panels are built dynamically from Layer Management folders/layers. */
+function boundaryPanel(type, label){
+  var idSafe=String(type).replace(/[^a-z0-9_]/gi,'_');
+  return '<div class="ip-title">'+escLog(label||type)+'</div>'
+    +'<p class="ip-sub">Upload as shapefile zip or GeoJSON (WGS84). Created under Layer Management → Folders &amp; layers.</p>'
+    +'<div class="hint" id="bndStatus_'+idSafe+'" style="margin-bottom:10px">Checking existing data…</div>'
+    +'<div class="ip-field"><label class="ip-label">Shapefile ZIP / GeoJSON</label><input type="file" id="bndFile_'+idSafe+'" accept=".zip,.geojson,.json"></div>'
+    +'<div id="attrRef" class="wiz-box"></div>'
+    +'<div class="ip-field"><label class="ip-label">If data already exists</label>'
+    +'<label style="display:block;margin:4px 0;font-size:13px"><input type="radio" name="bndMode_'+idSafe+'" value="replace" checked> Replace entire layer</label>'
+    +'<label style="display:block;margin:4px 0;font-size:13px"><input type="radio" name="bndMode_'+idSafe+'" value="add"> Add / merge features into existing</label></div>'
+    +'<button class="btn" onclick="upBoundary(\''+String(type).replace(/'/g,"\\'")+'\')">Upload</button> '
+    +'<button class="btn ghost" onclick="removeBoundary(\''+String(type).replace(/'/g,"\\'")+'\')">Remove current data</button>'
+    +'<div class="out" id="oBnd_'+idSafe+'"></div>'
+    +'<p class="hint">One-time full upload is typical. If data is already here, choose <b>Replace</b> or <b>Add</b>. Shapefile zip needs <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> (and <code>.prj</code>).</p>';
+}
 const HUB=[
   {id:'periods',cat:'Survey Periods',icon:'cal',types:[
     {id:'svy-periods',label:'Manage survey periods',fmt:'Action — no file'}
@@ -1108,6 +1170,24 @@ const HUB=[
   ]}
 ];
 let curCat=HUB[0].id, curType=null;
+/* Refresh Boundaries category from Layer Management folder→layer registry. */
+async function refreshBoundaryHub(){
+  try{
+    const r=await fetch('/api/layers/boundaries',{credentials:'same-origin',cache:'no-store'});
+    if(!r.ok) return;
+    const list=await r.json();
+    if(!Array.isArray(list)||!list.length) return;
+    const cat=HUB.find(c=>c.id==='boundary');
+    if(!cat) return;
+    cat.types=list.map(function(L){
+      return {id:'bnd-'+L.key, label:L.label+(L.folderLabel?(' · '+L.folderLabel):''), fmt:'Shapefile & ZIP / GeoJSON', boundaryKey:L.key, boundaryLabel:L.label};
+    });
+    list.forEach(function(L){
+      PANELS['bnd-'+L.key]=boundaryPanel(L.key, L.label);
+    });
+    if(curCat==='boundary'){renderTypes(); if(curType&&!findType(curType)&&cat.types[0]) selectType(cat.types[0].id);}
+  }catch(e){ /* keep static district/constituency fallback */ }
+}
 function hubRow(active,ic,label,onclick,chev){
   return '<div class="hub-row'+(active?' active':'')+'" onclick="'+onclick+'">'
     +'<span class="hub-ic">'+ic+'</span><span class="hub-label">'+escLog(label)+'</span>'
@@ -1145,6 +1225,259 @@ function selectType(id){
   if(document.getElementById('spSel'))spFillSel();
   if(id==='svy-periods')spRenderAdmin();
   if(id==='cleanup-orphans')cleanupRenderAdmin();
+  if(id && id.indexOf('bnd-')===0){
+    var bkey=(t&&t.boundaryKey)||id.slice(4);
+    loadBndStatus(bkey);
+  }
+  wireTemplateWizards();
+  wireLayerAttrPanels(id, t);
+}
+
+/* ===================== Import column-mapping wizard =====================
+   Wires the already-built /api/templates/validate (ImportTemplateController)
+   into every CSV import panel: on file pick, the file's headers are checked
+   against that dataset's template. Renamed-but-recognised columns and any
+   extra columns are shown for information; a required column the file
+   doesn't have blocks Upload until the user says which of their columns it
+   is (or confirms it truly isn't in the file). Once resolved, just the
+   header line is rewritten to the canonical field names and swapped into
+   the <input> via DataTransfer — the existing up()/upAsset()/upGeo()/
+   upTraffic() functions are untouched; they simply read a corrected File. */
+const WIZ_INPUTS={
+  assetfile:{ds:function(){var e=document.getElementById('assetType');return e?e.value:null;}},
+  geofile:{ds:function(){var e=document.getElementById('geoType');return e?e.value:null;}},
+  cfile:{ds:'condition'},
+  trfStn:{ds:'traffic_stations'},
+  trfCnt:{ds:'traffic_counts'},
+  vfile:{ds:'video_catalog'}
+};
+/* datasets whose importer keeps unmatched columns as free-form attrs (AssetController-backed) */
+const WIZ_EXTRA_KEPT=new Set(['bridge','culvert','furniture_line','furniture_point','subgrade','bituminous_core','pavement_crust','fwd']);
+const WIZ_STATE={};
+
+function wizDatasetKey(inputId){
+  var cfg=WIZ_INPUTS[inputId];if(!cfg)return null;
+  return typeof cfg.ds==='function'?cfg.ds():cfg.ds;
+}
+function wizSetEnabled(inputId,on){
+  var btn=document.getElementById('btn_'+inputId);
+  if(btn)btn.disabled=!on;
+}
+function wireTemplateWizards(){
+  Object.keys(WIZ_INPUTS).forEach(function(inputId){
+    var input=document.getElementById(inputId),box=document.getElementById('wiz_'+inputId);
+    if(!input||!box)return;
+    delete WIZ_STATE[inputId];
+    box.className='wiz-box';box.innerHTML='';
+    wizSetEnabled(inputId,true);
+    input.addEventListener('change',function(){wizOnFileChange(inputId);});
+  });
+}
+function splitCsvLine(line){
+  var out=[],cur='',q=false;
+  for(var i=0;i<line.length;i++){
+    var ch=line[i];
+    if(q){if(ch==='"'){if(line[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=ch;}
+    else{if(ch==='"')q=true;else if(ch===','){out.push(cur);cur='';}else cur+=ch;}
+  }
+  out.push(cur);
+  return out;
+}
+function csvCell(v){
+  v=v==null?'':String(v);
+  return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;
+}
+/* loose match, mirrors the backend's norm(): lowercase, letters/digits only */
+function wizNorm(s){return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,'');}
+function wizGuessHeader(fieldName,headers){
+  var target=wizNorm(fieldName);
+  for(var i=0;i<headers.length;i++)if(wizNorm(headers[i])===target)return headers[i];
+  return '';
+}
+
+async function wizOnFileChange(inputId){
+  var input=document.getElementById(inputId),box=document.getElementById('wiz_'+inputId);
+  var file=input.files[0];
+  var ds=wizDatasetKey(inputId);
+  delete WIZ_STATE[inputId];
+  if(!file||!ds){box.className='wiz-box';box.innerHTML='';wizSetEnabled(inputId,true);return;}
+  wizSetEnabled(inputId,false);
+  box.className='wiz-box show';
+  box.innerHTML='<div class="wiz-hd"><span class="dot busy"></span>Checking columns against the KLRAMS '+escLog(ds)+' template…</div>';
+  await wizRunCheck(inputId,file);
+}
+
+async function wizRunCheck(inputId,file){
+  var box=document.getElementById('wiz_'+inputId);
+  var ds=wizDatasetKey(inputId);
+  try{
+    var text=await file.text();
+    var headerLine=(text.split(/\r\n|\n|\r/)[0]||'').replace(/^﻿/,'');
+    var headers=splitCsvLine(headerLine).map(function(h){return h.trim();});
+    var fd=new FormData();fd.append('dataset',ds);fd.append('file',file);
+    var r=await fetch('/api/templates/validate',{method:'POST',credentials:'same-origin',body:fd});
+    var j=await r.json();
+    WIZ_STATE[inputId]={file:file,headerLine:headerLine,headers:headers,result:j,ds:ds,overrideErrors:false};
+    wizRender(inputId);
+  }catch(e){
+    box.innerHTML='<div class="wiz-hd"><span class="dot warn"></span>Could not check columns (' +escLog(e.message)+ ').</div>'
+      +'<div class="wiz-sub">You can still upload — the importer runs its own checks as usual.</div>';
+    wizSetEnabled(inputId,true);
+  }
+}
+
+function wizRender(inputId){
+  var st=WIZ_STATE[inputId];if(!st)return;
+  var box=document.getElementById('wiz_'+inputId);
+  var j=st.result;
+
+  if(j.status==='no_template'){
+    box.className='wiz-box';box.innerHTML='';
+    wizSetEnabled(inputId,true);
+    return;
+  }
+  if(j.status==='error'){
+    box.innerHTML='<div class="wiz-hd"><span class="dot warn"></span>Column check failed: '+escLog(j.message||'unknown error')+'</div>'
+      +'<div class="wiz-sub">You can still upload — the importer runs its own checks as usual.</div>';
+    wizSetEnabled(inputId,true);
+    return;
+  }
+
+  var html='';
+  if(j.status==='invalid'){
+    var missing=j.missing||[];
+    if(missing.length){
+      html+='<div class="wiz-missing"><div class="wt">This file is missing '+missing.length+' required column'+(missing.length===1?'':'s')+' KLRAMS expects'+(j.template?(' for the "'+escLog(j.template)+'" template'):'')+'. Pick which of your columns it is, or confirm it isn\'t in the file:</div>';
+      missing.forEach(function(f){
+        var guess=wizGuessHeader(f,st.headers);
+        html+='<div class="wiz-missing-row"><label>'+escLog(f)+'</label><select data-missing-field="'+escLog(f)+'">'
+          +'<option value="">— not in my file —</option>'
+          +st.headers.map(function(h){return '<option value="'+escLog(h)+'"'+(h===guess?' selected':'')+'>'+escLog(h)+'</option>';}).join('')
+          +'</select></div>';
+      });
+      html+='</div>';
+    }
+    if(j.errors&&j.errors.length){
+      html+='<div class="wiz-errors"><b>'+(j.total_errors||j.errors.length)+' cell value problem'+((j.total_errors||j.errors.length)===1?'':'s')+'</b> in already-matched columns:<ul>'
+        +j.errors.slice(0,8).map(function(e){return '<li>row '+e.row+', <code>'+escLog(e.column)+'</code> = “'+escLog(e.value)+'” — '+escLog(e.problem)+'</li>';}).join('')
+        +'</ul>'+((j.total_errors||0)>8?('<div style="margin-top:4px">…and '+(j.total_errors-8)+' more.</div>'):'')
+        +'<label style="display:flex;align-items:center;gap:7px;margin-top:8px;font-weight:600;cursor:pointer">'
+        +'<input type="checkbox" id="wizOverride_'+inputId+'"'+(st.overrideErrors?' checked':'')+'> Import anyway — I\'ll fix the data later</label>'
+        +'</div>';
+    }
+    if(missing.length){
+      html+='<div class="wiz-actions"><button class="btn sm" type="button" onclick="wizApplyMissing(\''+inputId+'\')">Apply mapping &amp; recheck</button></div>';
+    }
+    box.innerHTML='<div class="wiz-hd"><span class="dot warn"></span>Column check — action needed</div>'+html;
+    var ov=document.getElementById('wizOverride_'+inputId);
+    if(ov)ov.addEventListener('change',function(){st.overrideErrors=ov.checked;wizSetEnabled(inputId, !missing.length && st.overrideErrors);});
+    wizSetEnabled(inputId,false);
+    return;
+  }
+
+  // status === 'ok'
+  var rename=j.rename||{},extra=j.extra||[];
+  var renameKeys=Object.keys(rename);
+  if(renameKeys.length){
+    html+='<table class="wiz-table"><thead><tr><th>Your column</th><th>Sample</th><th>Mapped to</th></tr></thead><tbody>'
+      +renameKeys.map(function(h){
+        return '<tr><td class="src">'+escLog(h)+'</td><td class="sample">—</td><td><span class="wiz-tag renamed">'+escLog(rename[h])+'</span></td></tr>';
+      }).join('')+'</tbody></table>';
+  }
+  if(extra.length){
+    var kept=WIZ_EXTRA_KEPT.has(st.ds);
+    html+='<div class="wiz-sub"><b>'+extra.length+' extra column'+(extra.length===1?'':'s')+'</b> not in the template ('+extra.map(escLog).join(', ')+') — '
+      +(kept?'kept as extra attributes on each record.':'ignored by this importer.')+'</div>';
+  }
+  if(!renameKeys.length&&!extra.length){
+    html+='<div class="wiz-ready">✓ Every column matches'+(j.template?(' the "'+escLog(j.template)+'" template'):'')+'.</div>';
+  }
+  box.innerHTML='<div class="wiz-hd"><span class="dot ok"></span>Columns checked'+(j.checked_rows!=null?(' — '+j.checked_rows+' row(s)'):'')+'</div>'+html;
+
+  if(renameKeys.length){
+    var newHeader=st.headers.map(function(h){return csvCell(rename[h]||h);}).join(',');
+    wizFinish(inputId,newHeader);
+  }else{
+    wizSetEnabled(inputId,true);
+  }
+}
+
+function wizApplyMissing(inputId){
+  var st=WIZ_STATE[inputId];if(!st)return;
+  var box=document.getElementById('wiz_'+inputId);
+  var selects=box.querySelectorAll('[data-missing-field]');
+  var mapping={}; // source header -> canonical field name
+  selects.forEach(function(sel){
+    var field=sel.getAttribute('data-missing-field');
+    var chosen=sel.value;
+    if(chosen)mapping[chosen]=field;
+  });
+  var newHeader=st.headers.map(function(h){return csvCell(mapping[h]||h);}).join(',');
+  box.innerHTML='<div class="wiz-hd"><span class="dot busy"></span>Rechecking…</div>';
+  rewriteCsvHeader(st.file,newHeader).then(function(newFile){
+    return wizRunCheck(inputId,newFile);
+  });
+}
+
+function rewriteCsvHeader(file,newHeaderLine){
+  return file.text().then(function(text){
+    var m=text.match(/\r\n|\n|\r/);
+    var rest=m?text.slice(m.index):'';
+    return new File([newHeaderLine+rest],file.name,{type:file.type||'text/csv'});
+  });
+}
+
+function wizFinish(inputId,newHeaderLine){
+  var st=WIZ_STATE[inputId];if(!st)return;
+  rewriteCsvHeader(st.file,newHeaderLine).then(function(newFile){
+    var input=document.getElementById(inputId);
+    try{
+      var dt=new DataTransfer();
+      dt.items.add(newFile);
+      input.files=dt.files;
+    }catch(e){ /* older browser without DataTransfer support — original file still uploads */ }
+    wizSetEnabled(inputId,true);
+  });
+}
+
+/* ===================== Layer attribute reference (geometry imports) =====================
+   Road network / full network / boundary layers import shapefile or GeoJSON —
+   properties are matched 1:1 against real DB columns or dropped, there's no
+   template to map against. Show the live schema instead, from the same
+   /api/layers/{key}/attributes Layer Management already uses, so the
+   attribute data the system expects is still visible before importing. */
+function wireLayerAttrPanels(id,t){
+  var box=document.getElementById('attrRef');
+  if(!box)return;
+  var layerKey=null;
+  if(id==='road-net')layerKey='roadnet';
+  else if(id==='full-net')layerKey='roadnet2';
+  else if(id&&id.indexOf('bnd-')===0)layerKey=(t&&t.boundaryKey)||id.slice(4);
+  if(!layerKey){box.className='wiz-box';box.innerHTML='';return;}
+  box.className='wiz-box show';
+  box.innerHTML='<div class="wiz-hd"><span class="dot busy"></span>Loading layer attributes…</div>';
+  fetch('/api/layers/'+encodeURIComponent(layerKey)+'/attributes',{credentials:'same-origin'})
+    .then(function(r){return r.json();})
+    .then(function(attrs){renderAttrRef(box,attrs);})
+    .catch(function(){box.innerHTML='<div class="wiz-sub">Could not load layer attributes.</div>';});
+}
+function renderAttrRef(box,attrs){
+  var cols=attrs.columns||[];
+  if(attrs.message&&!cols.length){
+    box.innerHTML='<div class="wiz-hd"><span class="dot ok"></span>Layer attributes</div><div class="wiz-sub">'+escLog(attrs.message)+'</div>';
+    return;
+  }
+  if(!cols.length){
+    box.innerHTML='<div class="wiz-hd"><span class="dot ok"></span>Layer attributes</div><div class="wiz-sub">No columns found yet for this layer.</div>';
+    return;
+  }
+  var rows=cols.map(function(c){
+    var sample=c.sampleValue==='No value'?'—':c.sampleValue;
+    return '<tr><td class="src">'+escLog(c.name)+'</td><td>'+escLog(c.displayType)+'</td><td class="sample" title="'+escLog(sample)+'">'+escLog(sample)+'</td></tr>';
+  }).join('');
+  box.innerHTML='<div class="wiz-hd"><span class="dot ok"></span>Layer attributes in the system — '+cols.length+' column'+(cols.length===1?'':'s')+'</div>'
+    +'<div class="wiz-sub">Shapefile/GeoJSON properties are matched against these column names on import; anything else is dropped. Live from the database — full detail in <a class="viewer" style="display:inline" href="/layers.html">Layer Management</a>.</div>'
+    +'<table class="wiz-table"><thead><tr><th>Column</th><th>Type</th><th>Sample</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
 function isSuperAdmin(){return !!(window.RoleGate&&RoleGate.me&&RoleGate.me.role==='SUPER_ADMIN');}
 /* role-gate.js is a deferred script, so window.RoleGate doesn't exist yet at
@@ -1290,6 +1623,9 @@ async function cleanupDelete(type,periodId,btn){
   }catch(e){alert('Request failed: '+e.message);}
 }
 /* build the hub and land on the Count tab */
+PANELS['bnd-district']=boundaryPanel('district','District boundary');
+PANELS['bnd-constituency']=boundaryPanel('constituency','Constituency boundary');
+refreshBoundaryHub().then(function(){ renderCats(); selectCat(HUB[0].id); });
 renderCats();
 selectCat(HUB[0].id);
 switchTab('count');
