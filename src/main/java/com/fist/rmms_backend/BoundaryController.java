@@ -5,40 +5,80 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
- * Stores and serves boundary layers (district, constituency, and any names created
- * under Layer Management → Administrative Boundary) as GeoJSON.
+ * Stores and serves boundary layers (district, constituency) as GeoJSON.
  *
  * <p>The shapefile zip is parsed in the browser; this keeps the resulting GeoJSON
- * text in {@code boundary(type, geojson)}. Layer names must exist in
- * {@code admin_boundary_layers} (see {@link ManagedLayerService}).
+ * text in {@code boundary(type, geojson)}.
  */
 @RestController
 @RequestMapping("/api/boundary")
 public class BoundaryController {
 
-    private final JdbcTemplate jdbc;
-    private final ManagedLayerService managed;
+    private static final Pattern SAFE_TYPE = Pattern.compile("^[a-z][a-z0-9_]{1,62}$");
+    private static final Set<String> KNOWN = Set.of("district", "constituency");
 
-    public BoundaryController(JdbcTemplate jdbc, ManagedLayerService managed) {
+    private final JdbcTemplate jdbc;
+
+    public BoundaryController(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        this.managed = managed;
     }
 
     private void ensure() {
         jdbc.execute("CREATE TABLE IF NOT EXISTS boundary (type text PRIMARY KEY, geojson text)");
     }
 
+    private boolean knownType(String type) {
+        if (type == null) return false;
+        String t = type.trim().toLowerCase(Locale.ROOT);
+        return KNOWN.contains(t) || SAFE_TYPE.matcher(t).matches();
+    }
+
+    private boolean hasData(String type) {
+        try {
+            String g = jdbc.queryForObject(
+                    "SELECT geojson FROM boundary WHERE type = ?", String.class, type);
+            return g != null && g.contains("\"features\"") && !g.contains("\"features\":[]");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private long featureCount(String type) {
+        try {
+            String g = jdbc.queryForObject(
+                    "SELECT geojson FROM boundary WHERE type = ?", String.class, type);
+            if (g == null) return 0;
+            int n = 0, idx = 0;
+            while ((idx = g.indexOf("\"type\":\"Feature\"", idx)) >= 0) {
+                n++;
+                idx += 16;
+            }
+            if (n == 0) {
+                idx = 0;
+                while ((idx = g.indexOf("\"type\": \"Feature\"", idx)) >= 0) {
+                    n++;
+                    idx += 17;
+                }
+            }
+            return n;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     @GetMapping("/{type}/status")
     public Map<String, Object> status(@PathVariable String type) {
         Map<String, Object> r = new HashMap<>();
         r.put("type", type);
-        r.put("managed", managed.isManagedBoundary(type));
-        boolean has = managed.boundaryHasData(type);
+        boolean has = knownType(type) && hasData(type);
         r.put("hasData", has);
-        r.put("featureCount", managed.boundaryFeatureCount(type));
+        r.put("featureCount", knownType(type) ? featureCount(type) : 0);
         r.put("message", has
                 ? "Data already uploaded for this boundary. Replace the whole layer, or cancel."
                 : "No data yet — ready for first upload.");
@@ -56,32 +96,32 @@ public class BoundaryController {
                                     @RequestParam(value = "force", defaultValue = "false") boolean force) {
         Map<String, Object> r = new HashMap<>();
         try {
-            if (!managed.isManagedBoundary(type)) {
+            if (!knownType(type)) {
                 r.put("status", "error");
-                r.put("message", "Unknown boundary layer '" + type
-                        + "'. Create it first under Layer Management → Administrative Boundary.");
+                r.put("message", "Unknown boundary layer '" + type + "'.");
                 return r;
             }
+            String key = type.trim().toLowerCase(Locale.ROOT);
             ensure();
-            boolean has = managed.boundaryHasData(type);
+            boolean has = hasData(key);
             if (has && "replace".equalsIgnoreCase(mode) && !force) {
                 r.put("status", "exists");
                 r.put("existing", true);
-                r.put("featureCount", managed.boundaryFeatureCount(type));
+                r.put("featureCount", featureCount(key));
                 r.put("message", "Boundary data already exists. Re-post with force=true to replace, or mode=add to merge features.");
                 return r;
             }
             String toStore = geojson;
             if (has && "add".equalsIgnoreCase(mode)) {
-                toStore = mergeGeoJson(type, geojson);
+                toStore = mergeGeoJson(key, geojson);
             }
             jdbc.update("""
                 INSERT INTO boundary (type, geojson) VALUES (?, ?)
                 ON CONFLICT (type) DO UPDATE SET geojson = EXCLUDED.geojson
-                """, type, toStore);
+                """, key, toStore);
             r.put("status", "ok");
             r.put("mode", mode);
-            r.put("featureCount", managed.boundaryFeatureCount(type));
+            r.put("featureCount", featureCount(key));
         } catch (Exception e) {
             r.put("status", "error");
             r.put("message", ApiErrors.safe("boundary save", e));
@@ -89,18 +129,18 @@ public class BoundaryController {
         return r;
     }
 
-    /** Remove the stored boundary GeoJSON for a type (registry row stays). */
+    /** Remove the stored boundary GeoJSON for a type. */
     @DeleteMapping("/{type}")
     public Map<String, Object> remove(@PathVariable String type) {
         Map<String, Object> r = new HashMap<>();
         try {
-            if (!managed.isManagedBoundary(type)) {
+            if (!knownType(type)) {
                 r.put("status", "error");
                 r.put("message", "Unknown boundary layer.");
                 return r;
             }
             ensure();
-            int n = jdbc.update("DELETE FROM boundary WHERE type = ?", type);
+            int n = jdbc.update("DELETE FROM boundary WHERE type = ?", type.trim().toLowerCase(Locale.ROOT));
             r.put("status", "ok");
             r.put("removed", n);
         } catch (Exception e) {

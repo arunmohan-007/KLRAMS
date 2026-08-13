@@ -1060,7 +1060,6 @@ const PANELS={
     +'<label><input type="radio" name="rmode" value="merge" checked> Add / update by Section_La</label>'
     +'<label><input type="radio" name="rmode" value="replace"> Replace entire network</label></div></div>'
     +'<div class="ip-field"><label class="ip-label">Shapefile ZIP (.shp/.shx/.dbf/.prj) or GeoJSON</label><input type="file" id="roadfile" accept=".zip,.geojson,.json"></div>'
-    +'<div id="attrRef" class="wiz-box"></div>'
     +'<button class="btn" onclick="upRoads()">Upload road network</button>'
     +'<div class="out" id="oRoad"></div>'
     +'<p class="hint">The file must carry a <code>Section_La</code> for every road. Validation runs first — if it fails, nothing is changed. In add/update mode, if any Section_La in the file already exists you’ll be asked to confirm before those roads are replaced. After upload, run <b>Build segments</b> to re-cut condition data.</p>',
@@ -1070,7 +1069,6 @@ const PANELS={
     +'<label><input type="radio" name="fnmode" value="merge" checked> Add / update by Road_id</label>'
     +'<label><input type="radio" name="fnmode" value="replace"> Replace entire network</label></div></div>'
     +'<div class="ip-field"><label class="ip-label">Shapefile ZIP (.shp/.shx/.dbf/.prj) or GeoJSON</label><input type="file" id="fnfile" accept=".zip,.geojson,.json"></div>'
-    +'<div id="attrRef" class="wiz-box"></div>'
     +'<button class="btn" onclick="upFullNetwork()">Upload full road network</button>'
     +'<div class="out" id="oFN"></div>'
     +'<p class="hint">Re-importing a road with the same <code>Road_id</code> updates it; new ones are added. Toggle <b>Full Road Network</b> on in the viewer to see it.</p>',
@@ -1108,14 +1106,12 @@ const PANELS={
     +'<div class="ip-field" style="margin-top:16px"><label class="ip-label">Stored</label><div class="hint" id="trfState" style="margin-top:0">No traffic data stored.</div></div>'
     +'<p class="hint">Additive by station: uploading more stations/counts adds to the data; re-uploading a station updates it. Stations CSV needs <code>Station Name, Section Label, Latitude, Longitude, Chainage</code>. Count CSV needs <code>STATION_NAME, DATE, TIME, DIRECTION</code> and the vehicle-class columns.</p>',
 };
-/* Boundary import panels are built dynamically from Layer Management folders/layers. */
 function boundaryPanel(type, label){
   var idSafe=String(type).replace(/[^a-z0-9_]/gi,'_');
   return '<div class="ip-title">'+escLog(label||type)+'</div>'
-    +'<p class="ip-sub">Upload as shapefile zip or GeoJSON (WGS84). Created under Layer Management → Folders &amp; layers.</p>'
+    +'<p class="ip-sub">Upload as shapefile zip or GeoJSON (WGS84).</p>'
     +'<div class="hint" id="bndStatus_'+idSafe+'" style="margin-bottom:10px">Checking existing data…</div>'
     +'<div class="ip-field"><label class="ip-label">Shapefile ZIP / GeoJSON</label><input type="file" id="bndFile_'+idSafe+'" accept=".zip,.geojson,.json"></div>'
-    +'<div id="attrRef" class="wiz-box"></div>'
     +'<div class="ip-field"><label class="ip-label">If data already exists</label>'
     +'<label style="display:block;margin:4px 0;font-size:13px"><input type="radio" name="bndMode_'+idSafe+'" value="replace" checked> Replace entire layer</label>'
     +'<label style="display:block;margin:4px 0;font-size:13px"><input type="radio" name="bndMode_'+idSafe+'" value="add"> Add / merge features into existing</label></div>'
@@ -1170,24 +1166,6 @@ const HUB=[
   ]}
 ];
 let curCat=HUB[0].id, curType=null;
-/* Refresh Boundaries category from Layer Management folder→layer registry. */
-async function refreshBoundaryHub(){
-  try{
-    const r=await fetch('/api/layers/boundaries',{credentials:'same-origin',cache:'no-store'});
-    if(!r.ok) return;
-    const list=await r.json();
-    if(!Array.isArray(list)||!list.length) return;
-    const cat=HUB.find(c=>c.id==='boundary');
-    if(!cat) return;
-    cat.types=list.map(function(L){
-      return {id:'bnd-'+L.key, label:L.label+(L.folderLabel?(' · '+L.folderLabel):''), fmt:'Shapefile & ZIP / GeoJSON', boundaryKey:L.key, boundaryLabel:L.label};
-    });
-    list.forEach(function(L){
-      PANELS['bnd-'+L.key]=boundaryPanel(L.key, L.label);
-    });
-    if(curCat==='boundary'){renderTypes(); if(curType&&!findType(curType)&&cat.types[0]) selectType(cat.types[0].id);}
-  }catch(e){ /* keep static district/constituency fallback */ }
-}
 function hubRow(active,ic,label,onclick,chev){
   return '<div class="hub-row'+(active?' active':'')+'" onclick="'+onclick+'">'
     +'<span class="hub-ic">'+ic+'</span><span class="hub-label">'+escLog(label)+'</span>'
@@ -1230,7 +1208,6 @@ function selectType(id){
     loadBndStatus(bkey);
   }
   wireTemplateWizards();
-  wireLayerAttrPanels(id, t);
 }
 
 /* ===================== Import column-mapping wizard =====================
@@ -1440,45 +1417,6 @@ function wizFinish(inputId,newHeaderLine){
   });
 }
 
-/* ===================== Layer attribute reference (geometry imports) =====================
-   Road network / full network / boundary layers import shapefile or GeoJSON —
-   properties are matched 1:1 against real DB columns or dropped, there's no
-   template to map against. Show the live schema instead, from the same
-   /api/layers/{key}/attributes Layer Management already uses, so the
-   attribute data the system expects is still visible before importing. */
-function wireLayerAttrPanels(id,t){
-  var box=document.getElementById('attrRef');
-  if(!box)return;
-  var layerKey=null;
-  if(id==='road-net')layerKey='roadnet';
-  else if(id==='full-net')layerKey='roadnet2';
-  else if(id&&id.indexOf('bnd-')===0)layerKey=(t&&t.boundaryKey)||id.slice(4);
-  if(!layerKey){box.className='wiz-box';box.innerHTML='';return;}
-  box.className='wiz-box show';
-  box.innerHTML='<div class="wiz-hd"><span class="dot busy"></span>Loading layer attributes…</div>';
-  fetch('/api/layers/'+encodeURIComponent(layerKey)+'/attributes',{credentials:'same-origin'})
-    .then(function(r){return r.json();})
-    .then(function(attrs){renderAttrRef(box,attrs);})
-    .catch(function(){box.innerHTML='<div class="wiz-sub">Could not load layer attributes.</div>';});
-}
-function renderAttrRef(box,attrs){
-  var cols=attrs.columns||[];
-  if(attrs.message&&!cols.length){
-    box.innerHTML='<div class="wiz-hd"><span class="dot ok"></span>Layer attributes</div><div class="wiz-sub">'+escLog(attrs.message)+'</div>';
-    return;
-  }
-  if(!cols.length){
-    box.innerHTML='<div class="wiz-hd"><span class="dot ok"></span>Layer attributes</div><div class="wiz-sub">No columns found yet for this layer.</div>';
-    return;
-  }
-  var rows=cols.map(function(c){
-    var sample=c.sampleValue==='No value'?'—':c.sampleValue;
-    return '<tr><td class="src">'+escLog(c.name)+'</td><td>'+escLog(c.displayType)+'</td><td class="sample" title="'+escLog(sample)+'">'+escLog(sample)+'</td></tr>';
-  }).join('');
-  box.innerHTML='<div class="wiz-hd"><span class="dot ok"></span>Layer attributes in the system — '+cols.length+' column'+(cols.length===1?'':'s')+'</div>'
-    +'<div class="wiz-sub">Shapefile/GeoJSON properties are matched against these column names on import; anything else is dropped. Live from the database — full detail in <a class="viewer" style="display:inline" href="/layers.html">Layer Management</a>.</div>'
-    +'<table class="wiz-table"><thead><tr><th>Column</th><th>Type</th><th>Sample</th></tr></thead><tbody>'+rows+'</tbody></table>';
-}
 function isSuperAdmin(){return !!(window.RoleGate&&RoleGate.me&&RoleGate.me.role==='SUPER_ADMIN');}
 /* role-gate.js is a deferred script, so window.RoleGate doesn't exist yet at
    this point in the parse — hook onReady once parsing (and all defer scripts)
@@ -1625,7 +1563,6 @@ async function cleanupDelete(type,periodId,btn){
 /* build the hub and land on the Count tab */
 PANELS['bnd-district']=boundaryPanel('district','District boundary');
 PANELS['bnd-constituency']=boundaryPanel('constituency','Constituency boundary');
-refreshBoundaryHub().then(function(){ renderCats(); selectCat(HUB[0].id); });
 renderCats();
 selectCat(HUB[0].id);
 switchTab('count');
