@@ -1,5 +1,5 @@
 /* ============================================================
-   KLRAMS viewer · 29-export.js   (build 172)
+   KLRAMS viewer · 29-export.js   (build 175)
    Per-layer data export — Shapefile (zip), GeoJSON, KML, KMZ, CSV.
 
    Every layer row in the Layers panel gets an export button that
@@ -360,6 +360,19 @@ function shapefileZip(base,feats,rowFor){
 }
 function xmlEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function kmlColor(hex){hex=String(hex||'#3388ff').replace('#','');if(hex.length===3)hex=hex.split('').map(function(c){return c+c;}).join('');return 'ff'+hex.slice(4,6)+hex.slice(2,4)+hex.slice(0,2);}
+/* Good/Fair/Poor band for one condition parameter — mirrors the map's own
+   colorExpr() (03-condition-style-filter.js): same PMAP thresholds, same
+   GOOD/FAIR/POOR colours, so the exported KML matches what's on screen. */
+function condBandFor(param,v){
+  if(v==null||v==='')return null;
+  var n=+v;if(isNaN(n))return null;
+  var t=(typeof PMAP!=='undefined')?PMAP[param]:null;
+  if(!t)return null;
+  var gC=(typeof GOOD!=='undefined')?GOOD:'#2ba66a',fC=(typeof FAIR!=='undefined')?FAIR:'#FFC400',pC=(typeof POOR!=='undefined')?POOR:'#da4b43';
+  if(n>=t.poor)return{label:'Poor',color:pC};
+  if(n>=t.fair)return{label:'Fair',color:fC};
+  return{label:'Good',color:gC};
+}
 function kmlGeom(g){
   var cd=function(c){return c[0]+','+c[1]+',0';};
   var pl=pointList(g);
@@ -370,19 +383,45 @@ function kmlGeom(g){
     return ls.length===1?ls[0]:('<MultiGeometry>'+ls.join('')+'</MultiGeometry>');}
   return '';
 }
-function kmlBuild(title,hex,feats,rowFor,nameFor){
-  var col=kmlColor(hex);
+function kmlBuild(title,hex,feats,rowFor,nameFor,bandFor,bandOrder){
   var out=['<?xml version="1.0" encoding="UTF-8"?>',
     '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>',
-    '<name>'+xmlEsc(title)+'</name>',
-    '<Style id="s"><LineStyle><color>'+col+'</color><width>3</width></LineStyle><IconStyle><color>'+col+'</color><scale>0.9</scale></IconStyle></Style>'];
+    '<name>'+xmlEsc(title)+'</name>'];
+  /* Without a bandFor, every feature keeps the old flat single-colour style.
+     With one (PCI bands, or a single condition parameter's Good/Fair/Poor),
+     each band gets its own <Style> and the placemarks land in a same-named
+     <Folder> — Google Earth / QGIS then show a togglable, colour-coded
+     legend instead of one solid colour hiding the condition data. */
+  var styles={},order=[],buckets={};
+  function styleFor(label,color){
+    var key=label||'__default';
+    if(!styles[key]){
+      var id='s'+order.length,c=kmlColor(color||hex);
+      styles[key]={id:id,label:label};
+      out.push('<Style id="'+id+'"><LineStyle><color>'+c+'</color><width>3</width></LineStyle><IconStyle><color>'+c+'</color><scale>0.9</scale></IconStyle></Style>');
+      order.push(key);
+    }
+    return styles[key];
+  }
+  if(!bandFor)styleFor(null,hex);
   feats.forEach(function(f){
     var g=f&&f.geometry;if(!g)return;
     var geo=kmlGeom(g);if(!geo)return;
     var row=rowFor(f),ed='';
     Object.keys(row).forEach(function(k){var v=row[k];if(v==null||v==='')return;ed+='<Data name="'+xmlEsc(k)+'"><value>'+xmlEsc(v)+'</value></Data>';});
-    out.push('<Placemark><name>'+xmlEsc(nameFor(f))+'</name><styleUrl>#s</styleUrl>'+(ed?'<ExtendedData>'+ed+'</ExtendedData>':'')+geo+'</Placemark>');
+    var b=bandFor?bandFor(f):null;
+    var st=styleFor(b?b.label:null,b?b.color:hex);
+    var pm='<Placemark><name>'+xmlEsc(nameFor(f))+'</name><styleUrl>#'+st.id+'</styleUrl>'+(ed?'<ExtendedData>'+ed+'</ExtendedData>':'')+geo+'</Placemark>';
+    var key=st.label||'__default';
+    (buckets[key]=buckets[key]||[]).push(pm);
   });
+  if(bandFor){
+    var ord=(bandOrder||[]).filter(function(k){return buckets[k];});
+    order.forEach(function(k){if(ord.indexOf(k)<0&&buckets[k])ord.push(k);});
+    ord.forEach(function(k){out.push('<Folder><name>'+xmlEsc(k)+'</name>'+buckets[k].join('')+'</Folder>');});
+  }else{
+    (buckets['__default']||[]).forEach(function(pm){out.push(pm);});
+  }
   out.push('</Document></kml>');
   return out.join('\n');
 }
@@ -476,6 +515,15 @@ function assetEntry(type,label,color,toggle){
 }
 function pciEntry(prop,label,toggle,color){
   return {label:label,color:color,toggle:toggle,
+    bandOrder:(typeof PCI_BANDS!=='undefined')?PCI_BANDS.map(function(b){return b.label;}):undefined,
+    bandFor:function(){
+      return function(f){
+        var v=+((f.properties||{})[prop]);
+        if(!(v>=0)||typeof pciBand!=='function')return null;
+        var b=pciBand(v);
+        return{label:b.label,color:b.color};
+      };
+    },
     ensure:function(){
       if(Segs.hasPci())return Promise.resolve();
       var p=Segs.ensure();
@@ -506,6 +554,23 @@ var EXP={
       return {feats:fs,total:all.length,filtered:!!window.NET_SCOPE};
     }},
   cond:{label:'Road condition data',color:'#2ba66a',toggle:'showCond',hasParam:true,
+    bandOrder:['Poor','Fair','Good'],
+    /* A KML document carries ONE colour scale, so a condition export in that
+       format is always a single-parameter export: IRI, or Crack, or Rutting —
+       the segments, the columns and the Good/Fair/Poor colours all describing
+       the same metric. "All parameters" has no such scale, so for KML/KMZ it
+       resolves to whatever the map is currently coloured by (the colorBy
+       selector) rather than dumping every parameter under one flat colour.
+       CSV / GeoJSON / Shapefile are unaffected — they take all of it. */
+    paramFor:function(param,fmt){
+      if(fmt!=='kml'&&fmt!=='kmz')return param;
+      if(param&&param!=='all')return param;
+      return (typeof cb!=='undefined'&&cb)?cb.value:param;
+    },
+    bandFor:function(param){
+      if(!param||param==='all')return null;
+      return function(f){return condBandFor(param,(f.properties||{})[param]);};
+    },
     ensure:function(){return Segs.ensure();},
     collect:function(param){
       var all=Segs.all();
@@ -581,19 +646,24 @@ function saveBlob(name,blob){
 function slug(s){return String(s).replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'');}
 function dateTag(){var d=new Date();var p=function(n){return (n<10?'0':'')+n;};return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate());}
 function doExport(key,fmt,param){
-  var E=EXP[key],res=E.collect(param);
+  var E=EXP[key];
+  /* Resolved before collect() so the chosen parameter drives the rows AND the
+     colours — a KML that is coloured by Crack must carry the Crack columns. */
+  if(E.paramFor)param=E.paramFor(param,fmt);
+  var res=E.collect(param);
   var feats=res.feats;
   if(!feats.length)return 0;
   var rowFor=res.rowFor||function(f){return cleanProps(f.properties);};
   var nameFor=res.nameFor||function(f){return featName(f,E.label);};
+  var bandFor=E.bandFor?E.bandFor(param):null;
   var base='KLRAMS_'+slug(E.label)+(res.suffix?('_'+slug(res.suffix)):'')+(res.filtered?'_filtered':'')+'_'+dateTag();
   if(fmt==='geojson'){
     var gj={type:'FeatureCollection',name:E.label,features:feats.map(function(f){return {type:'Feature',geometry:f.geometry||null,properties:rowFor(f)};})};
     saveBlob(base+'.geojson',new Blob([JSON.stringify(gj)],{type:'application/geo+json'}));
   }else if(fmt==='kml'){
-    saveBlob(base+'.kml',new Blob([kmlBuild(E.label,E.color,feats,rowFor,nameFor)],{type:'application/vnd.google-earth.kml+xml'}));
+    saveBlob(base+'.kml',new Blob([kmlBuild(E.label,E.color,feats,rowFor,nameFor,bandFor,E.bandOrder)],{type:'application/vnd.google-earth.kml+xml'}));
   }else if(fmt==='kmz'){
-    var kml=ENC.encode(kmlBuild(E.label,E.color,feats,rowFor,nameFor));
+    var kml=ENC.encode(kmlBuild(E.label,E.color,feats,rowFor,nameFor,bandFor,E.bandOrder));
     saveBlob(base+'.kmz',new Blob([zipStore([{name:'doc.kml',data:kml}])],{type:'application/vnd.google-earth.kmz'}));
   }else if(fmt==='csv'){
     saveBlob(base+'.csv',new Blob([csvBuild(feats,rowFor)],{type:'text/csv;charset=utf-8'}));
@@ -662,7 +732,15 @@ function openExpMenu(key,anchor){
     +'</div>'
     +paramRow
     +'<div class="kexp-grid">'
-      +FORMATS.map(function(f){return '<button type="button" class="kexp-f off f-'+f.id+'" data-fmt="'+f.id+'"'+(f.hint?(' title="'+xmlEsc(f.hint)+'"'):'')+'><span class="kexp-fi">'+f.icon+'</span><span class="kexp-fn">'+f.name+'</span><span class="kexp-fd">'+f.desc+'</span></button>';}).join('')
+      +FORMATS.map(function(f){
+        var hint=f.hint;
+        if((f.id==='kml'||f.id==='kmz')&&E.bandFor){
+          hint=E.hasParam
+            ?'One parameter per file: exports just the parameter picked above (or the map\'s current colour-by metric if left on "All parameters") and colour-codes it Good/Fair/Poor in folders, matching the map. Export each parameter you need separately — use CSV for all of them at once.'
+            :'Colour-codes each segment by its PCI band (Excellent…Fail), grouped into folders, matching the map legend.';
+        }
+        return '<button type="button" class="kexp-f off f-'+f.id+'" data-fmt="'+f.id+'"'+(hint?(' title="'+xmlEsc(hint)+'"'):'')+'><span class="kexp-fi">'+f.icon+'</span><span class="kexp-fn">'+f.name+'</span><span class="kexp-fd">'+f.desc+'</span></button>';
+      }).join('')
     +'</div>'
     +'<div class="kexp-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Exports exactly what the map shows &mdash; active filters are applied.</span></div>';
   document.body.appendChild(m);
