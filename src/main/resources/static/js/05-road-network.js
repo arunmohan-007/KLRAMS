@@ -360,6 +360,138 @@ function applyNetFilter(){
 }
 
 /* ============================================================
+   Saved Road Network filters.
+   The whole filter state is just {mode, rows:[{attr,op,val}]}, so a
+   named filter is that object round-tripped through
+   /api/saved-filters (kind="network"). Own filters plus any an admin
+   has shared come back from one GET; only your own can be deleted.
+   ============================================================ */
+let NET_SAVED=[];
+function _nsInfo(msg,bad){
+  const el=document.getElementById('netSavedInfo');if(!el)return;
+  el.textContent=msg||'';
+  /* klrams-dark.css sets .statusline{color:...!important}, so a plain inline
+     colour is ignored in the dark theme — only an inline !important wins. */
+  if(bad)el.style.setProperty('color','#e07b7b','important');
+  else el.style.removeProperty('color');
+}
+/* Current panel state, in the shape the server stores. Blank rows are
+   dropped so an unfinished "+ Add condition" row never gets saved. */
+function netFilterState(){
+  return {mode:netMode,rows:netFilters.filter(f=>f.attr&&f.val!=='').map(f=>({attr:f.attr,op:f.op,val:f.val}))};
+}
+function renderNetSavedList(){
+  const sel=document.getElementById('netSavedSel');if(!sel)return;
+  const keep=sel.value;
+  sel.innerHTML='';
+  const ph=document.createElement('option');
+  ph.value='';ph.textContent=NET_SAVED.length?'— Select a saved filter —':'— No saved filters —';
+  sel.appendChild(ph);
+  NET_SAVED.forEach(s=>{
+    const o=document.createElement('option');
+    o.value=String(s.id);
+    /* textContent, not innerHTML: names are user-typed and shared filters
+       carry another user's name, so neither may be parsed as markup. */
+    o.textContent=s.name+(s.mine?'':' (shared by '+s.owner+')');
+    sel.appendChild(o);
+  });
+  if(keep&&NET_SAVED.some(s=>String(s.id)===keep))sel.value=keep;
+  onNetSavedPick();
+}
+function onNetSavedPick(){
+  const sel=document.getElementById('netSavedSel'),del=document.getElementById('netSavedDel');
+  if(!sel||!del)return;
+  const s=NET_SAVED.find(x=>String(x.id)===sel.value);
+  /* Shared filters are load-only for everyone but the user who saved them. */
+  del.disabled=!(s&&s.mine);
+  del.title=s?(s.mine?'Delete “'+s.name+'”':'Only '+s.owner+' can delete this shared filter'):'Delete the selected filter';
+}
+function refreshNetSavedList(){
+  return fetch('/api/saved-filters?kind=network',{credentials:'same-origin',headers:{'Accept':'application/json'}})
+    .then(r=>r.ok?r.json():[])
+    .then(list=>{NET_SAVED=Array.isArray(list)?list:[];renderNetSavedList();})
+    .catch(()=>{NET_SAVED=[];renderNetSavedList();});
+}
+function saveNetFilter(){
+  const nameEl=document.getElementById('netSaveName');if(!nameEl)return;
+  const name=nameEl.value.trim();
+  if(!name){_nsInfo('Give the filter a name first.',true);nameEl.focus();return;}
+  const state=netFilterState();
+  if(!state.rows.length){_nsInfo('Add at least one condition before saving.',true);return;}
+  const shareEl=document.getElementById('netSaveShared');
+  const existing=NET_SAVED.find(s=>s.mine&&s.name.toLowerCase()===name.toLowerCase());
+  if(existing&&!confirm('You already have a filter named “'+existing.name+'”. Overwrite it?'))return;
+  _nsInfo('Saving…');
+  fetch('/api/saved-filters',{
+    method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({kind:'network',name:name,shared:!!(shareEl&&shareEl.checked),payload:state})
+  }).then(r=>r.json().then(j=>({ok:r.ok,j:j})))
+    .then(res=>{
+      if(!res.ok||!res.j.ok){_nsInfo(res.j.error||'Could not save the filter.',true);return;}
+      nameEl.value='';
+      return refreshNetSavedList().then(()=>{
+        const saved=NET_SAVED.find(s=>s.mine&&s.name===res.j.name);
+        if(saved)document.getElementById('netSavedSel').value=String(saved.id);
+        onNetSavedPick();
+        _nsInfo('Saved “'+res.j.name+'”'+(res.j.shared?' and shared with all users.':'.'));
+      });
+    })
+    .catch(()=>_nsInfo('Could not reach the server.',true));
+}
+function loadNetSaved(){
+  const sel=document.getElementById('netSavedSel');if(!sel)return;
+  const s=NET_SAVED.find(x=>String(x.id)===sel.value);
+  if(!s){_nsInfo('Pick a saved filter to load.',true);return;}
+  const p=s.payload||{};
+  const rows=Array.isArray(p.rows)?p.rows:[];
+  if(!rows.length){_nsInfo('“'+s.name+'” has no conditions saved.',true);return;}
+  /* A filter saved against an earlier upload can name a column the current
+     road table no longer has. Load what still resolves and say what was
+     dropped, rather than silently applying a filter that matches nothing. */
+  const known=rows.filter(r=>ATTRS[r.attr]);
+  const missing=rows.filter(r=>!ATTRS[r.attr]).map(r=>r.attr);
+  netFilters=known.map(r=>({attr:r.attr,op:r.op||'=',val:r.val==null?'':String(r.val)}));
+  netMode=p.mode==='any'?'any':'all';
+  document.getElementById('nAll').classList.toggle('on',netMode==='all');
+  document.getElementById('nAny').classList.toggle('on',netMode==='any');
+  renderNetFilters();
+  applyNetFilter();
+  _nsInfo(missing.length
+    ?('Loaded “'+s.name+'” — skipped '+missing.length+' condition(s) on missing attribute(s): '+missing.join(', '))
+    :('Loaded “'+s.name+'”.'),missing.length>0);
+}
+function deleteNetSaved(){
+  const sel=document.getElementById('netSavedSel');if(!sel)return;
+  const s=NET_SAVED.find(x=>String(x.id)===sel.value);
+  if(!s||!s.mine)return;
+  if(!confirm('Delete the saved filter “'+s.name+'”?'+(s.shared?'\n\nIt is shared, so it will disappear for all users.':'')))return;
+  fetch('/api/saved-filters/'+encodeURIComponent(s.id),{method:'DELETE',credentials:'same-origin'})
+    .then(r=>r.json().then(j=>({ok:r.ok,j:j})))
+    .then(res=>{
+      if(!res.ok||!res.j.ok){_nsInfo(res.j.error||'Could not delete the filter.',true);return;}
+      sel.value='';
+      return refreshNetSavedList().then(()=>_nsInfo('Deleted “'+s.name+'”.'));
+    })
+    .catch(()=>_nsInfo('Could not reach the server.',true));
+}
+/* "Share with all users" is an ADMIN/SUPER_ADMIN control. map.html resolves
+   /api/me once and announces the role on kl-role-ready (window.__klRole);
+   this module loads before that script runs, so the listener always catches
+   it — the __klRole check is only a guard for a re-ordered load. This is UX
+   only: SavedFilterController re-checks the authority before honouring
+   shared=true. */
+function _nsApplyRole(role){
+  const row=document.getElementById('netShareRow');if(!row)return;
+  row.style.display=(role==='ADMIN'||role==='SUPER_ADMIN')?'':'none';
+}
+document.addEventListener('kl-role-ready',e=>_nsApplyRole(e.detail));
+if(typeof window.__klRole!=='undefined')_nsApplyRole(window.__klRole);
+
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',refreshNetSavedList);
+else refreshNetSavedList();
+
+/* ============================================================
    Build 163 — on-map filter summary card (#netScopeCard).
    Shows the active Road Network filter criteria, live counts of
    everything in scope (sections, length, condition segments,
