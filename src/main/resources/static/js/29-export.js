@@ -1,5 +1,5 @@
 /* ============================================================
-   KLRAMS viewer · 29-export.js   (build 175)
+   KLRAMS viewer · 29-export.js   (build 176)
    Per-layer data export — Shapefile (zip), GeoJSON, KML, KMZ, CSV.
 
    Every layer row in the Layers panel gets an export button that
@@ -373,6 +373,18 @@ function condBandFor(param,v){
   if(n>=t.fair)return{label:'Fair',color:fC};
   return{label:'Good',color:gC};
 }
+/* D0 deflection band — mirrors fwdD0ColorExpr() / FWD_D0_STOPS (06-assets.js):
+   same step thresholds, same colours and labels as the map's own legend. */
+function fwdBandFor(v){
+  if(v==null||v===''||isNaN(+v))return{label:'No data',color:'#9aa0a6'};
+  var n=+v;
+  if(n<100)return{label:'< 100',color:'#1a9850'};
+  if(n<200)return{label:'100 – 200',color:'#91cf60'};
+  if(n<350)return{label:'200 – 350',color:'#fee08b'};
+  if(n<500)return{label:'350 – 500',color:'#fdae61'};
+  if(n<700)return{label:'500 – 700',color:'#f46d43'};
+  return{label:'> 700',color:'#b2182b'};
+}
 function kmlGeom(g){
   var cd=function(c){return c[0]+','+c[1]+',0';};
   var pl=pointList(g);
@@ -516,6 +528,7 @@ function assetEntry(type,label,color,toggle){
 function pciEntry(prop,label,toggle,color){
   return {label:label,color:color,toggle:toggle,
     bandOrder:(typeof PCI_BANDS!=='undefined')?PCI_BANDS.map(function(b){return b.label;}):undefined,
+    bandLabel:'PCI band (Excellent…Fail, matching the map legend)',
     bandFor:function(){
       return function(f){
         var v=+((f.properties||{})[prop]);
@@ -591,6 +604,9 @@ var EXP={
       return {feats:fs,total:all.length,filtered:condF||!!window.NET_SCOPE,rowFor:rowFor,suffix:suffix};
     }},
   fwd:{label:'FWD deflection',color:'#7b1fa2',toggle:'showFwd',
+    bandOrder:['< 100','100 – 200','200 – 350','350 – 500','500 – 700','> 700','No data'],
+    bandLabel:'D0 deflection band (microns, matching the map legend)',
+    bandFor:function(){return function(f){return fwdBandFor((f.properties||{}).__d0);};},
     ensure:function(){return ensureAssetData('fwd');},
     collect:function(){
       var gj=(typeof ASSET_DATA!=='undefined')?ASSET_DATA.fwd:null;
@@ -737,7 +753,7 @@ function openExpMenu(key,anchor){
         if((f.id==='kml'||f.id==='kmz')&&E.bandFor){
           hint=E.hasParam
             ?'One parameter per file: exports just the parameter picked above (or the map\'s current colour-by metric if left on "All parameters") and colour-codes it Good/Fair/Poor in folders, matching the map. Export each parameter you need separately — use CSV for all of them at once.'
-            :'Colour-codes each segment by its PCI band (Excellent…Fail), grouped into folders, matching the map legend.';
+            :'Colour-codes each segment by its '+(E.bandLabel||'classification')+', grouped into folders.';
         }
         return '<button type="button" class="kexp-f off f-'+f.id+'" data-fmt="'+f.id+'"'+(hint?(' title="'+xmlEsc(hint)+'"'):'')+'><span class="kexp-fi">'+f.icon+'</span><span class="kexp-fn">'+f.name+'</span><span class="kexp-fd">'+f.desc+'</span></button>';
       }).join('')
