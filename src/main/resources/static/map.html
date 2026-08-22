@@ -210,6 +210,22 @@
     <div class="row2"><button class="btn ghost" onclick="addNetFilter()">+ Add condition</button><button class="btn ghost" onclick="clearNetFilters()">Clear</button></div>
     <div class="row2"><span class="note" style="margin:0">Match</span><span class="segmented"><button id="nAll" class="on" onclick="setNetMode('all')">All</button><button id="nAny" onclick="setNetMode('any')">Any</button></span></div>
     <div class="statusline" id="netMatchInfo"></div>
+
+    <div class="eyebrow" style="margin-top:12px">Saved filters</div>
+    <div class="row2">
+      <select id="netSavedSel" style="flex:1" onchange="onNetSavedPick()"><option value="">— No saved filters —</option></select>
+      <button class="btn ghost" onclick="loadNetSaved()" title="Apply the selected saved filter">Load</button>
+      <button class="btn ghost" id="netSavedDel" onclick="deleteNetSaved()" title="Delete the selected filter" disabled>&times;</button>
+    </div>
+    <div class="row2">
+      <input type="text" id="netSaveName" placeholder="Name this filter…" maxlength="80" style="flex:1" onkeydown="if(event.key==='Enter')saveNetFilter()">
+      <button class="btn ghost" onclick="saveNetFilter()" title="Save the conditions above under this name">Save</button>
+    </div>
+    <!-- admin-only; revealed by 05-road-network.js on the kl-role-ready event -->
+    <label class="row2" id="netShareRow" style="gap:6px;cursor:pointer;display:none">
+      <input type="checkbox" id="netSaveShared"><span class="note" style="margin:0">Share with all users</span>
+    </label>
+    <div class="statusline" id="netSavedInfo"></div>
       </div>
     </details>
 
@@ -999,7 +1015,7 @@
   <script src="js/02d-road-index.js?v=2"></script>
   <script src="js/03-condition-style-filter.js?v=177"></script>
   <script src="js/04-geo-helpers-boundaries.js?v=134"></script>
-  <script src="js/05-road-network.js?v=130"></script>
+  <script src="js/05-road-network.js?v=132"></script>
   <script src="js/06-assets.js?v=173"></script>
   <script src="js/07-data-loaders.js?v=181"></script>
   <script src="js/08-condition-popup-nsv.js?v=167"></script>

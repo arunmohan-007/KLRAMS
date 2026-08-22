@@ -100,6 +100,12 @@ public class SecurityConfig {
 
                 // --- self-service: change own password ---
                 .requestMatchers("/api/account/**").authenticated()
+                // saving a personal named map filter is self-service, not a data
+                // edit — view-only USER accounts must be able to POST/DELETE here.
+                // Ownership (and who may mark one "shared") is enforced inside
+                // SavedFilterController against auth.getName().
+                .requestMatchers("/api/saved-filters/**").authenticated()
+                .requestMatchers("/api/saved-filters").authenticated()
 
                 // --- view-only (USER) is blocked from every write ---
                 // climate seed/recalc are triggerable via GET, so pin them explicitly
