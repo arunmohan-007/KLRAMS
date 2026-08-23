@@ -138,12 +138,15 @@
       meta.push(l.sectionField + (l.chainageField ? ' · ' + l.chainageField : ''));
     }
 
-    var acts = '';
+    // Attributes are viewable on every layer, including protected ones — seeing
+    // what fields a layer carries is not an edit, and it is the main reason to
+    // open this screen at all.
+    var acts = '<button class="btn ghost sm" onclick="AD.open(' + l.id + ')">Attributes</button>';
     if (l.editable) {
-      acts += '<button class="btn ghost sm" onclick="LM.rename(' + l.id + ')">Rename</button>';
+      acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.rename(' + l.id + ')">Rename</button>';
     }
     if (l.deletable) {
-      acts += '<button class="btn danger sm" onclick="LM.remove(' + l.id + ')">Delete</button>';
+      acts += '<button class="btn danger sm" data-requires="admin" onclick="LM.remove(' + l.id + ')">Delete</button>';
     }
 
     return '<div class="lyr">' +
@@ -157,7 +160,7 @@
         (l.notes ? '<div class="lyr-note">' + esc(l.notes) + '</div>' : '') +
         (meta.length ? '<div class="lyr-meta">' + esc(meta.join('  ·  ')) + '</div>' : '') +
       '</div>' +
-      (acts ? '<div class="lyr-act" data-requires="admin">' + acts + '</div>' : '') +
+      (acts ? '<div class="lyr-act">' + acts + '</div>' : '') +
     '</div>';
   }
 

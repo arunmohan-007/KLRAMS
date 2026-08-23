@@ -62,9 +62,11 @@ public class LayerRegistryService {
     private static final Pattern SAFE_TABLE = Pattern.compile("^ul_[0-9]+_[a-z0-9_]{1,40}$");
 
     private final JdbcTemplate jdbc;
+    private final LayerAttributeService attributes;
 
-    public LayerRegistryService(JdbcTemplate jdbc) {
+    public LayerRegistryService(JdbcTemplate jdbc, LayerAttributeService attributes) {
         this.jdbc = jdbc;
+        this.attributes = attributes;
     }
 
     @PostConstruct
@@ -72,6 +74,9 @@ public class LayerRegistryService {
         try {
             ensureSchema();
             seedBuiltIns();
+            // Attributes describe the layers seeded above and hold a foreign key
+            // to them, so this must run last rather than on its own lifecycle.
+            attributes.ensure();
         } catch (Exception e) {
             // A registry failure must never stop the app booting — the map and
             // every existing module work fine without Layer Management.
@@ -548,6 +553,12 @@ public class LayerRegistryService {
         }
         createPhysicalTable(table, geometry, placement);
         jdbc.update("UPDATE layer_definition SET physical_table = ? WHERE id = ?", table, id);
+
+        // A linearly-referenced layer is unimportable without a section label and
+        // a chainage, so those attributes are generated rather than left for the
+        // user to discover they were required. Same transaction as the layer, so
+        // a layer can never exist without the attributes that place it.
+        attributes.ensurePlacementAttributes(id, "default", placement, geometry);
 
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", id);
