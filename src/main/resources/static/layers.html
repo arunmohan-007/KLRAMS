@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLRAMS Console · Layer Management — Kerala PWD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0b1220; --panel:#101b2e; --panel-2:#0e1726; --edge:#20304c; --edge-soft:#1a2740;
+    --text:#eaf0fa; --muted:#93a3bb; --muted-2:#5f6e86;
+    --green:#19b277; --blue:#3b86e6; --gold:#d3aa3e; --violet:#8a68e6; --red:#e65b5b; --amber:#ffa630;
+    --disp:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{min-height:100%}
+  body{font-family:var(--body);background:var(--void);color:var(--text);-webkit-font-smoothing:antialiased}
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:radial-gradient(90% 60% at 82% -10%, rgba(138,104,230,.14) 0, transparent 60%),
+      radial-gradient(70% 50% at 8% 108%, rgba(59,134,230,.12) 0, transparent 60%), var(--void)}
+  .shell{position:relative;z-index:2;max-width:1180px;margin:0 auto;padding:24px clamp(18px,4vw,48px) 44px}
+
+  .top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:13px}
+  .glyph{width:44px;height:44px;border-radius:12px;flex:none;background:linear-gradient(135deg,#8a68e6,#5b3fb0);display:flex;align-items:center;justify-content:center;color:#fff}
+  .glyph svg{width:23px;height:23px}
+  .bk .t{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.5px}
+  .bk .s{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted-2);margin-top:2px}
+  .top-r{display:flex;align-items:center;gap:11px}
+  .link{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);border:1px solid var(--edge);border-radius:999px;padding:8px 16px;text-decoration:none;transition:.2s}
+  .link:hover{color:var(--amber);border-color:rgba(255,166,48,.5)}
+
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(24px,3.4vw,34px);letter-spacing:-.01em;margin:26px 0 6px}
+  .sub{color:var(--muted);font-size:13.5px;max-width:720px}
+
+  .actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+  .btn{cursor:pointer;border:0;border-radius:9px;padding:11px 18px;font-family:var(--disp);font-weight:600;font-size:13.5px;color:#0c1320;background:linear-gradient(180deg,#a488f0,#8a68e6);transition:filter .18s,transform .06s}
+  .btn:hover{filter:brightness(1.06)} .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--edge)}
+  .btn.ghost:hover{color:var(--text);border-color:var(--violet)}
+  .btn.sm{padding:6px 11px;font-size:11.5px;border-radius:7px}
+  .btn.danger{background:linear-gradient(180deg,#ef7676,#e65b5b);color:#fff}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+
+  .msg{margin-top:14px;font-size:12.5px;padding:9px 12px;border-radius:9px;display:none}
+  .msg.err{display:block;color:#ffb4ac;background:rgba(230,91,91,.1);border:1px solid rgba(230,91,91,.32)}
+  .msg.ok{display:block;color:#a4ecc7;background:rgba(25,178,119,.1);border:1px solid rgba(25,178,119,.32)}
+
+  /* folders */
+  .folder{background:linear-gradient(165deg,var(--panel) 0,var(--panel-2) 100%);border:1px solid var(--edge-soft);border-radius:16px;margin-top:16px;overflow:hidden}
+  .fhead{display:flex;align-items:center;gap:12px;padding:16px 18px;cursor:pointer;user-select:none}
+  .fhead:hover{background:rgba(138,104,230,.05)}
+  .fhead .chev{color:var(--muted-2);transition:transform .18s;flex:none}
+  .folder.open .fhead .chev{transform:rotate(90deg)}
+  .fhead .fname{font-family:var(--disp);font-weight:600;font-size:14.5px;letter-spacing:.3px;flex:1}
+  .fcount{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--muted-2)}
+  .fbody{display:none;padding:0 18px 14px}
+  .folder.open .fbody{display:block}
+
+  /* layer rows */
+  .lyr{display:flex;align-items:flex-start;gap:14px;padding:13px 0;border-top:1px solid var(--edge-soft)}
+  .lyr-main{flex:1;min-width:0}
+  .lyr-name{font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .lock{color:var(--muted-2);flex:none}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .chip{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:4px 8px;border-radius:5px;border:1px solid var(--edge);color:var(--muted)}
+  .chip.geom{color:#9fc7f5;border-color:rgba(59,134,230,.35);background:rgba(59,134,230,.08)}
+  .chip.place{color:#c7b6f5;border-color:rgba(138,104,230,.35);background:rgba(138,104,230,.08)}
+  .chip.fmt{color:#a4ecc7;border-color:rgba(25,178,119,.32);background:rgba(25,178,119,.07)}
+  .chip.attr{color:#ffd28a;border-color:rgba(255,166,48,.32);background:rgba(255,166,48,.07)}
+  .badge{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;padding:4px 9px;border-radius:999px;flex:none}
+  .badge.sys{color:#9fc7f5;background:rgba(59,134,230,.12);border:1px solid rgba(59,134,230,.3)}
+  .badge.core{color:var(--muted);background:rgba(147,163,187,.1);border:1px solid var(--edge)}
+  .badge.edit{color:#ffd28a;background:rgba(255,166,48,.1);border:1px solid rgba(255,166,48,.3)}
+  .badge.user{color:#a4ecc7;background:rgba(25,178,119,.12);border:1px solid rgba(25,178,119,.3)}
+  .lyr-note{font-size:11.5px;color:var(--muted-2);margin-top:7px;line-height:1.5;max-width:660px}
+  .lyr-meta{font-family:var(--mono);font-size:10px;color:var(--muted-2);margin-top:6px}
+  .lyr-act{display:flex;gap:7px;flex:none;padding-top:2px}
+
+  /* modal */
+  .veil{position:fixed;inset:0;z-index:50;background:rgba(4,8,16,.72);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+  .veil.on{display:flex}
+  .modal{background:linear-gradient(165deg,var(--panel) 0,var(--panel-2) 100%);border:1px solid var(--edge);border-radius:16px;width:100%;max-width:600px;padding:24px}
+  .modal h2{font-family:var(--disp);font-size:17px;font-weight:600;margin-bottom:4px}
+  .modal .mst{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2);margin-bottom:18px}
+  label{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+  input[type=text],select{width:100%;padding:10px 12px;border:1px solid var(--edge);border-radius:9px;font-size:13.5px;font-family:var(--body);color:var(--text);background:rgba(6,11,20,.55);transition:.18s}
+  input:focus,select:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 3px rgba(138,104,230,.15)}
+  select option{background:#101b2e}
+  .fld{margin-bottom:16px}
+  .hint{font-size:11.5px;color:var(--muted-2);margin-top:6px;line-height:1.5}
+  .opts{display:grid;gap:9px}
+  .opt{display:flex;gap:11px;align-items:flex-start;padding:11px 13px;border:1px solid var(--edge);border-radius:10px;cursor:pointer;transition:.15s}
+  .opt:hover{border-color:rgba(138,104,230,.5)}
+  .opt input{margin-top:3px;flex:none;accent-color:var(--violet)}
+  .opt.sel{border-color:var(--violet);background:rgba(138,104,230,.08)}
+  /* Both are <span> inside the <label>, so they must be made block-level or the
+     title and its description run together on one line. */
+  .opt>span{display:block}
+  .opt .ot{display:block;font-size:13px;font-weight:600}
+  .opt .od{display:block;font-size:11.5px;color:var(--muted-2);margin-top:3px;line-height:1.45}
+  .opt.dis{opacity:.4;cursor:not-allowed}
+  .steps{display:flex;gap:6px;margin-bottom:18px}
+  .stp{flex:1;height:3px;border-radius:2px;background:var(--edge-soft)}
+  .stp.on{background:var(--violet)}
+  .mact{display:flex;justify-content:space-between;gap:10px;margin-top:22px}
+  .empty{color:var(--muted-2);font-size:12.5px;padding:16px 0}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="shell">
+
+  <div class="top">
+    <div class="brand">
+      <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
+      <div class="bk"><div class="t">KLRAMS Console</div><div class="s">Layer Management</div></div>
+    </div>
+    <div class="top-r">
+      <a class="link" href="/">&larr; Console</a>
+      <a class="link" href="/map.html">Map</a>
+    </div>
+  </div>
+
+  <h1>Layer Management</h1>
+  <p class="sub">Every layer KLRAMS draws, grouped as the map's Layers panel groups them &mdash; how each
+  one's features are placed, what may be uploaded into it, and whether it can be changed. Core and
+  system-generated layers are protected: they are maintained by their own import pipelines or computed
+  from other data.</p>
+
+  <div class="actions" data-requires="admin">
+    <button class="btn" onclick="openWizard()">+ New layer</button>
+    <button class="btn ghost" onclick="newFolder()">+ New folder</button>
+  </div>
+  <div id="msg" class="msg"></div>
+
+  <div id="tree"></div>
+</div>
+
+<!-- ── create-layer wizard ───────────────────────────────────── -->
+<div class="veil" id="veil">
+  <div class="modal">
+    <h2 id="wizTitle">New layer</h2>
+    <div class="mst" id="wStep">Step 1 of 4 &middot; Name and folder</div>
+    <div class="steps"><div class="stp on" data-s="1"></div><div class="stp" data-s="2"></div><div class="stp" data-s="3"></div><div class="stp" data-s="4"></div></div>
+
+    <!-- 1 · identity -->
+    <div class="wpane" data-pane="1">
+      <div class="fld">
+        <label>Layer name</label>
+        <input type="text" id="wName" placeholder="e.g. Street Lighting" autocomplete="off">
+        <div class="hint">Shown in the Layers panel. The database table name is generated from this
+        automatically &mdash; you never name it directly.</div>
+      </div>
+      <div class="fld">
+        <label>Folder</label>
+        <select id="wFolder"></select>
+      </div>
+    </div>
+
+    <!-- 2 · geometry -->
+    <div class="wpane" data-pane="2" style="display:none">
+      <div class="fld">
+        <label>Feature type</label>
+        <div class="opts" id="wGeom">
+          <label class="opt"><input type="radio" name="geom" value="POINT"><span><span class="ot">Point</span><span class="od">A single position &mdash; a sign, a test pit, a station.</span></span></label>
+          <label class="opt"><input type="radio" name="geom" value="LINESTRING"><span><span class="ot">Line</span><span class="od">A stretch along one road &mdash; a guardrail, a bridge span.</span></span></label>
+          <label class="opt"><input type="radio" name="geom" value="MULTILINESTRING"><span><span class="ot">Multi-line</span><span class="od">Several disjoint stretches treated as one feature.</span></span></label>
+          <label class="opt"><input type="radio" name="geom" value="POLYGON"><span><span class="ot">Polygon</span><span class="od">An area &mdash; a zone, a boundary. Needs a shapefile or GeoJSON.</span></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3 · upload + placement -->
+    <div class="wpane" data-pane="3" style="display:none">
+      <div class="fld">
+        <label>Accepted upload formats</label>
+        <div class="opts" id="wFmt">
+          <label class="opt"><input type="checkbox" value="SHAPEFILE"><span><span class="ot">Shapefile (.zip)</span><span class="od">Carries its own geometry. Parsed in the browser and sent as GeoJSON.</span></span></label>
+          <label class="opt"><input type="checkbox" value="GEOJSON"><span><span class="ot">GeoJSON</span><span class="od">Carries its own geometry.</span></span></label>
+          <label class="opt"><input type="checkbox" value="CSV"><span><span class="ot">CSV</span><span class="od">Carries no geometry &mdash; features must be placed from its columns.</span></span></label>
+        </div>
+      </div>
+      <div class="fld" id="wPlaceWrap" style="display:none">
+        <label>How should CSV rows be placed?</label>
+        <div class="opts" id="wPlace">
+          <label class="opt"><input type="radio" name="place" value="LATLNG"><span><span class="ot">By latitude / longitude</span><span class="od">The CSV carries coordinate columns. Points only.</span></span></label>
+          <label class="opt"><input type="radio" name="place" value="LINEAR_REFERENCE"><span><span class="ot">By linear reference</span><span class="od">Placed on the road centreline from a section label and chainage &mdash; how structures, FWD and traffic stations work.</span></span></label>
+        </div>
+        <div class="hint" id="wPlaceHint"></div>
+      </div>
+      <div class="fld" id="wLatLng" style="display:none">
+        <label>Coordinate columns</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <input type="text" id="wLat" placeholder="Latitude column (e.g. lat)">
+          <input type="text" id="wLng" placeholder="Longitude column (e.g. lng)">
+        </div>
+      </div>
+      <div class="fld" id="wLinear" style="display:none">
+        <label>Reference columns</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <input type="text" id="wSection" placeholder="Section label column">
+          <input type="text" id="wChainage" placeholder="Chainage column">
+        </div>
+        <div class="hint">Rows whose section label does not match a road in the network are rejected at
+        import rather than placed approximately.</div>
+      </div>
+    </div>
+
+    <!-- 4 · attributes -->
+    <div class="wpane" data-pane="4" style="display:none">
+      <div class="fld">
+        <label>Attribute data</label>
+        <div class="opts" id="wAttr">
+          <label class="opt"><input type="radio" name="attr" value="yes"><span><span class="ot">Define attributes for this layer</span><span class="od">The layer gets an entry in the Attribute Data module where you map its columns and set their types. Choose this if the layer carries data beyond its position.</span></span></label>
+          <label class="opt"><input type="radio" name="attr" value="no"><span><span class="ot">Geometry only</span><span class="od">Just the shapes. Attributes can be added later.</span></span></label>
+        </div>
+      </div>
+      <div class="hint" id="wSummary" style="border-top:1px solid var(--edge-soft);padding-top:14px;margin-top:4px"></div>
+    </div>
+
+    <div class="mact">
+      <button class="btn ghost" id="wBack" onclick="wizBack()">Back</button>
+      <div style="display:flex;gap:10px">
+        <button class="btn ghost" onclick="closeWizard()">Cancel</button>
+        <button class="btn" id="wNext" onclick="wizNext()">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/role-gate.js" defer></script>
+<script src="/js/layer-management.js?v=2" defer></script>
+</body>
+</html>
