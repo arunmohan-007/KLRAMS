@@ -321,6 +321,24 @@ public class LayerAttributeService {
         }
     }
 
+    /**
+     * The coordinate pair a lat/long layer is placed from.
+     *
+     * Given no role of their own — a role marks a LINEAR-reference column, and
+     * these are not that — but made mandatory, because a lat/long layer with an
+     * unmapped coordinate column cannot place a single feature.
+     */
+    public void ensureLatLngAttributes(int layerId, String dataset) {
+        if (!exists(layerId, dataset, "lat")) {
+            insert(layerId, dataset, "Latitude", "lat", "DECIMAL", null, "deg",
+                    "NONE", true, "STANDARD", 1);
+        }
+        if (!exists(layerId, dataset, "lng")) {
+            insert(layerId, dataset, "Longitude", "lng", "DECIMAL", null, "deg",
+                    "NONE", true, "STANDARD", 2);
+        }
+    }
+
     /** Whatever carries a placement role is mandatory by definition. */
     private void markPlacementMandatory(int layerId, String dataset) {
         jdbc.update("UPDATE layer_attribute SET mandatory = true "

@@ -121,6 +121,9 @@
     /* A system-generated layer has no upload target, so showing an empty
        "accepts" list would read as a gap in the data rather than a property of
        the layer. Say what it is built from instead. */
+    if (l.temporary) {
+      chips.push('<span class="chip tmp">Temporary</span>');
+    }
     if (l.sourceType === 'SYSTEM_GENERATED') {
       chips.push('<span class="chip">Computed' + (l.derivedFrom ? ' from ' + esc(l.derivedFrom) : '') + '</span>');
     } else if (l.uploadFormats && l.uploadFormats.length) {
@@ -142,6 +145,13 @@
     // what fields a layer carries is not an edit, and it is the main reason to
     // open this screen at all.
     var acts = '<button class="btn ghost sm" onclick="AD.open(' + l.id + ')">Attributes</button>';
+    // Only user layers load through this module — every built-in has its own
+    // import pipeline in the Data Console, and offering a second way in here
+    // would be two doors to the same table with different rules.
+    if (l.sourceType === 'USER') {
+      acts += '<button class="btn ghost sm" data-requires="admin" onclick="LI.open(' + l.id +
+        ',' + JSON.stringify(l.name) + ')">Import data</button>';
+    }
     if (l.editable) {
       acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.rename(' + l.id + ')">Rename</button>';
     }
@@ -257,6 +267,7 @@
     document.getElementById('wLng').value = '';
     document.getElementById('wSection').value = '';
     document.getElementById('wChainage').value = '';
+    document.getElementById('wTemp').checked = false;
     document.querySelectorAll('#veil input[type=radio],#veil input[type=checkbox]')
       .forEach(function (i) { i.checked = false; });
     document.querySelectorAll('#veil .opt').forEach(function (o) { o.classList.remove('sel'); });
@@ -396,6 +407,7 @@
       placement: placementValue(),
       uploadFormats: formats(),
       attributeMapping: val('attr') === 'yes',
+      temporary: document.getElementById('wTemp').checked,
       latField: document.getElementById('wLat').value.trim(),
       lngField: document.getElementById('wLng').value.trim(),
       sectionField: document.getElementById('wSection').value.trim(),
@@ -406,9 +418,15 @@
     post('/api/layers', body)
       .then(function (d) {
         closeWizard();
-        msg('Layer "' + d.name + '" created' +
-            (d.attributeMapping ? ' — define its attributes in the Attribute Data module.' : '.'), true);
         load();
+        // Creating a layer is almost always the first half of "get this file on
+        // the map", so the import step is offered straight away rather than
+        // leaving the user to find the button on the row they just made.
+        if (window.LI) {
+          setTimeout(function () { LI.open(d.id, d.name); }, 150);
+        }
+        msg('Layer "' + d.name + '" created' +
+            (d.attributeMapping ? ' — its attributes are ready in the Attribute Data module.' : '.'), true);
       })
       .catch(function (e) { msg(e.message); })
       .then(function () { btn.disabled = false; });
@@ -429,7 +447,7 @@
     if (step === 3) syncStep3();
   });
 
-  window.LM = { rename: rename, remove: remove };
+  window.LM = { rename: rename, remove: remove, reload: load };
   window.openWizard = openWizard;
   window.closeWizard = closeWizard;
   window.newFolder = newFolder;

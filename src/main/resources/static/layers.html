@@ -146,6 +146,30 @@
   .ck{display:flex;align-items:center;gap:9px;text-transform:none;letter-spacing:0;
     font-family:var(--body);font-size:13px;color:var(--text)}
   .ck input{width:auto;accent-color:var(--violet)}
+  .chip.tmp{color:#ffd28a;border-color:rgba(255,166,48,.4);background:rgba(255,166,48,.1)}
+
+  /* ── data import ──────────────────────────────────────── */
+  .drop{border:1.5px dashed var(--edge);border-radius:14px;padding:38px 24px;text-align:center;
+    transition:.18s;background:rgba(6,11,20,.35)}
+  .drop.over{border-color:var(--violet);background:rgba(138,104,230,.08)}
+  .drop-ic{font-size:26px;color:var(--muted-2);margin-bottom:10px}
+  .drop-t{font-family:var(--disp);font-size:15px;font-weight:600;margin-bottom:5px}
+  .drop-d{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted-2);margin-bottom:18px}
+  .mapsel{width:100%;padding:7px 9px;font-size:12.5px;border:1px solid var(--edge);border-radius:7px;
+    background:rgba(6,11,20,.55);color:var(--text)}
+  .mapsel.bad{border-color:rgba(230,91,91,.55);background:rgba(230,91,91,.07)}
+  .sample{font-family:var(--mono);font-size:10.5px;color:var(--muted-2);max-width:170px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .res{text-align:center;padding:26px 0 18px}
+  .res-n{font-family:var(--disp);font-size:46px;font-weight:700;color:var(--green);line-height:1}
+  .res-l{color:var(--muted);font-size:13px;margin-top:8px}
+  .res-w{font-size:12.5px;color:#ffd28a;background:rgba(255,166,48,.08);
+    border:1px solid rgba(255,166,48,.28);border-radius:9px;padding:10px 13px;margin-top:9px;line-height:1.5}
+  .probs{margin-top:16px;border-top:1px solid var(--edge-soft);padding-top:13px}
+  .probs-t{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--muted-2);margin-bottom:8px}
+  .prob{font-family:var(--mono);font-size:11px;color:var(--muted);padding:3px 0}
 </style>
 </head>
 <body>
@@ -257,6 +281,12 @@
           <label class="opt"><input type="radio" name="attr" value="no"><span><span class="ot">Geometry only</span><span class="od">Just the shapes. Attributes can be added later.</span></span></label>
         </div>
       </div>
+      <div class="fld" style="border-top:1px solid var(--edge-soft);padding-top:16px">
+        <label class="ck"><input type="checkbox" id="wTemp"> Temporary layer</label>
+        <div class="hint">A temporary layer is visible only to you and is meant for one-off analysis
+        &mdash; drop a file on the map, look at it, clear it. It behaves like any other layer
+        otherwise, and you can delete it in one action when you are done.</div>
+      </div>
       <div class="hint" id="wSummary" style="border-top:1px solid var(--edge-soft);padding-top:14px;margin-top:4px"></div>
     </div>
 
@@ -300,6 +330,21 @@
   </div>
 </div>
 
+<!-- ── data import ───────────────────────────────────────────── -->
+<div class="veil" id="impVeil">
+  <div class="modal wide">
+    <h2 id="impTitle">Import data</h2>
+    <div class="mst" id="impStep">Step 1 of 3 · Choose a file</div>
+    <div id="impMsg" class="msg"></div>
+    <div id="impBody"></div>
+    <div class="mact" id="impFoot">
+      <span></span>
+      <button class="btn ghost" onclick="LI.close()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
 <script src="/js/role-gate.js" defer></script>
 <script src="/js/layer-management.js?v=3" defer></script>
 <script src="/js/attribute-data.js?v=1" defer></script>

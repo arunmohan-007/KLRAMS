@@ -121,6 +121,12 @@ public class LayerRegistryService {
             )""");
 
         jdbc.execute("CREATE INDEX IF NOT EXISTS layer_definition_folder_idx ON layer_definition(folder_id)");
+
+        /* A temporary layer is an ordinary USER layer that only its creator sees
+           and that can be cleared in one action — added here rather than as its
+           own table so every path (attributes, import, viewer) treats it the
+           same and none of them need a special case. */
+        jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS temporary boolean NOT NULL DEFAULT false");
     }
 
     /* ------------------------------------------------------------------
@@ -422,6 +428,7 @@ public class LayerRegistryService {
             m.put("latField", rs.getString("lat_field"));
             m.put("lngField", rs.getString("lng_field"));
             m.put("notes", rs.getString("notes"));
+            m.put("temporary", rs.getBoolean("temporary"));
             // Derived, never stored — see the class comment.
             m.put("editable", "USER".equals(sourceType) || "EDITABLE_BUILT_IN".equals(sourceType));
             m.put("deletable", "USER".equals(sourceType));
@@ -530,12 +537,13 @@ public class LayerRegistryService {
         validatePlacement(geometry, placement, formats);
 
         String key = uniqueLayerKey(slug(name));
+        boolean temporary = Boolean.TRUE.equals(body.get("temporary"));
         Integer id = jdbc.queryForObject("""
             INSERT INTO layer_definition
                 (layer_key, folder_id, name, geometry_type, placement, source_type,
                  upload_formats, attribute_mapping, section_field, chainage_field,
-                 lat_field, lng_field, sort_order, created_by)
-            VALUES (?,?,?,?,?,'USER',?,?,?,?,?,?,500,?)
+                 lat_field, lng_field, sort_order, created_by, temporary)
+            VALUES (?,?,?,?,?,'USER',?,?,?,?,?,?,500,?,?)
             RETURNING id
             """, Integer.class,
             key, folderId, name.trim(), geometry, placement,
@@ -544,7 +552,7 @@ public class LayerRegistryService {
             "LINEAR_REFERENCE".equals(placement) ? str(body.get("chainageField")) : null,
             "LATLNG".equals(placement) ? str(body.get("latField")) : null,
             "LATLNG".equals(placement) ? str(body.get("lngField")) : null,
-            user);
+            user, temporary);
 
         String table = USER_TABLE_PREFIX + id + "_" + slug(name);
         if (table.length() > 55) table = table.substring(0, 55);
@@ -560,12 +568,20 @@ public class LayerRegistryService {
         // a layer can never exist without the attributes that place it.
         attributes.ensurePlacementAttributes(id, "default", placement, geometry);
 
+        // For a LATLNG layer the coordinate columns ARE the placement, so they are
+        // generated the same way the linear-reference ones are — otherwise the
+        // import screen would have nothing to map the file's lat/long onto.
+        if ("LATLNG".equals(placement)) {
+            attributes.ensureLatLngAttributes(id, "default");
+        }
+
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", id);
         m.put("key", key);
         m.put("name", name.trim());
         m.put("physicalTable", table);
         m.put("attributeMapping", attrMapping);
+        m.put("temporary", temporary);
         return m;
     }
 
