@@ -1,6 +1,8 @@
 package com.fist.rmms_backend;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -35,6 +37,8 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/assets")
 public class AssetController {
+
+    private static final Logger log = LoggerFactory.getLogger(AssetController.class);
 
     private static final Set<String> LINE_TYPES  = Set.of("bridge", "furniture_line", "fwd");
     private static final Set<String> POINT_TYPES = Set.of("culvert", "furniture_point", "subgrade", "bituminous_core", "pavement_crust");
@@ -155,7 +159,14 @@ public class AssetController {
                   AND (a.geom IS NULL OR GeometryType(a.geom) IN ('POINT','MULTIPOINT'))
                 """.formatted(lenExpr, lenExpr));
         } catch (Exception e) {
-            /* Schema/roads may not be ready on first boot — next upload/ensure retries. */
+            /* Non-fatal by design: on a first boot the roads table may not exist yet,
+               and the next upload/ensure() retries. But it must not be INVISIBLE —
+               a silent catch here once hid a wrong column name in the SQL above,
+               which meant the promotion never ran and nothing said so. Logged at
+               warn so a genuine failure is findable without stopping startup. */
+            log.warn("FWD line-geometry promotion did not run — legacy FWD rows may still "
+                    + "carry point geometry. Retried on the next asset upload. Cause: {}",
+                    e.toString(), e);
         }
     }
 

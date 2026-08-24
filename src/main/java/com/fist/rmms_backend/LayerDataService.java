@@ -54,9 +54,10 @@ public class LayerDataService {
      * Reference length for chainage, the same rule the condition segmentation uses.
      *
      * The column is {@code Measrd_Len} — ten characters, the DBF field-name limit
-     * a shapefile import truncates to. It is spelled {@code Measrd_Ln} in
-     * CLAUDE.md and in AssetController, which is a column that does not exist;
-     * there the statement sits inside a catch-all so the failure is invisible.
+     * a shapefile import truncates to. The example in CLAUDE.md spelled it
+     * {@code Measrd_Ln}, a column that does not exist; copying it from there cost
+     * an afternoon, because a failed statement aborts the whole transaction in
+     * PostgreSQL and the inserted rows silently vanished at commit.
      */
     private static final String LEN_EXPR = """
             COALESCE(

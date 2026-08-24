@@ -72,9 +72,12 @@ Condition segments and assets are placed on road centrelines using chainage-base
 
 ```sql
 -- Reference length priority: Rd_End_cha - Rd_Str_cha, then Measrd_Len, then geometry
+-- NOTE: the column is "Measrd_Len" (10 chars — the DBF field-name limit a shapefile
+-- import truncates to). Not "Measrd_Ln"; that column does not exist and the query
+-- fails, which inside a transaction rolls back everything else in it.
 COALESCE(
     NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
-    NULLIF(r."Measrd_Ln"::double precision, 0),
+    NULLIF(r."Measrd_Len"::double precision, 0),
     ST_Length(r.geom::geography)
 )
 
