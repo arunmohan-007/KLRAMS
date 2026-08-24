@@ -68,10 +68,13 @@ public class LayerDataService {
 
     private final JdbcTemplate jdbc;
     private final LayerAttributeService attributes;
+    private final SurveyPeriodService periods;
 
-    public LayerDataService(JdbcTemplate jdbc, LayerAttributeService attributes) {
+    public LayerDataService(JdbcTemplate jdbc, LayerAttributeService attributes,
+                            SurveyPeriodService periods) {
         this.jdbc = jdbc;
         this.attributes = attributes;
+        this.periods = periods;
     }
 
     /* ------------------------------------------------------------------
@@ -147,10 +150,17 @@ public class LayerDataService {
                                           Map<String, String> mapping,
                                           List<Map<String, Object>> rows,
                                           List<String> geoms,
-                                          boolean replace) {
+                                          boolean replace,
+                                          Integer requestedPeriodId) {
         Map<String, Object> layer = jdbc.queryForMap(
-                "SELECT id, layer_key, name, physical_table, placement, geometry_type, source_type "
-              + "FROM layer_definition WHERE id = ?", layerId);
+                "SELECT id, layer_key, name, physical_table, placement, geometry_type, "
+              + "source_type, frozen, period_scoped FROM layer_definition WHERE id = ?", layerId);
+
+        if (Boolean.TRUE.equals(layer.get("frozen"))) {
+            throw new IllegalArgumentException(
+                    "\"" + layer.get("name") + "\" is frozen. Unfreeze it before importing, "
+                    + "or the new rows would be loaded into data nothing is allowed to use.");
+        }
 
         String table = String.valueOf(layer.get("physical_table"));
         if (!"USER".equals(String.valueOf(layer.get("source_type"))) || table == null
@@ -171,7 +181,21 @@ public class LayerDataService {
             }
         }
 
-        if (replace) jdbc.update("DELETE FROM " + table);
+        /* A period-scoped layer stores which survey cycle each row belongs to, so
+           a new cycle never overwrites the last. That also narrows Replace: it
+           clears only THIS period, otherwise re-importing one cycle would wipe
+           every other cycle's data — which is exactly what period scoping exists
+           to prevent. */
+        boolean scoped = Boolean.TRUE.equals(layer.get("period_scoped"));
+        Integer periodId = scoped ? periods.resolve(requestedPeriodId) : null;
+        if (scoped && !periods.exists(periodId)) {
+            throw new IllegalArgumentException("Select the survey period this data belongs to.");
+        }
+
+        if (replace) {
+            if (scoped) jdbc.update("DELETE FROM " + table + " WHERE period_id = ?", periodId);
+            else jdbc.update("DELETE FROM " + table);
+        }
 
         int loaded = 0, skippedRows = 0, skippedValues = 0;
         List<String> problems = new ArrayList<>();
@@ -231,7 +255,7 @@ public class LayerDataService {
 
             String geoJson = (geoms != null && i < geoms.size()) ? geoms.get(i) : null;
             try {
-                insertRow(table, placement, geometry, attrs, section, ch, chEnd, geoJson);
+                insertRow(table, placement, geometry, attrs, section, ch, chEnd, geoJson, periodId);
                 loaded++;
             } catch (Exception e) {
                 skippedRows++;
@@ -262,7 +286,7 @@ public class LayerDataService {
 
     private void insertRow(String table, String placement, String geometry,
                            Map<String, Object> attrs, String section,
-                           Double ch, Double chEnd, String geoJson) {
+                           Double ch, Double chEnd, String geoJson, Integer periodId) {
         String attrsJson;
         try {
             attrsJson = JSON.writeValueAsString(attrs);
@@ -272,8 +296,8 @@ public class LayerDataService {
 
         switch (placement) {
             case "LINEAR_REFERENCE" -> jdbc.update(
-                    "INSERT INTO " + table + " (attrs, section_label, start_chainage, end_chainage) "
-                  + "VALUES (?::jsonb, ?, ?, ?)", attrsJson, section, ch, chEnd);
+                    "INSERT INTO " + table + " (attrs, section_label, start_chainage, end_chainage, period_id) "
+                  + "VALUES (?::jsonb, ?, ?, ?, ?)", attrsJson, section, ch, chEnd, periodId);
 
             case "LATLNG" -> {
                 Double lat = toDouble(attrs.get("lat")), lng = toDouble(attrs.get("lng"));
@@ -287,9 +311,9 @@ public class LayerDataService {
                 if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
                     throw new IllegalArgumentException("lat/long out of range");
                 }
-                jdbc.update("INSERT INTO " + table + " (attrs, lat, lng, geom) "
-                          + "VALUES (?::jsonb, ?, ?, ST_SetSRID(ST_MakePoint(?, ?), 4326))",
-                        attrsJson, lat, lng, lng, lat);
+                jdbc.update("INSERT INTO " + table + " (attrs, lat, lng, period_id, geom) "
+                          + "VALUES (?::jsonb, ?, ?, ?, ST_SetSRID(ST_MakePoint(?, ?), 4326))",
+                        attrsJson, lat, lng, periodId, lng, lat);
             }
 
             default -> {
@@ -302,8 +326,9 @@ public class LayerDataService {
                 String cast = geometry.startsWith("MULTI")
                         ? "ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON(?), 4326))"
                         : "ST_SetSRID(ST_GeomFromGeoJSON(?), 4326)";
-                jdbc.update("INSERT INTO " + table + " (attrs, geom) VALUES (?::jsonb, " + cast + ")",
-                        attrsJson, geoJson);
+                jdbc.update("INSERT INTO " + table + " (attrs, period_id, geom) "
+                          + "VALUES (?::jsonb, ?, " + cast + ")",
+                        attrsJson, periodId, geoJson);
             }
         }
     }
@@ -344,15 +369,29 @@ public class LayerDataService {
        Reading a layer back for the viewer
        ------------------------------------------------------------------ */
 
-    /** One layer's rows as GeoJSON, for the viewer to draw. */
-    public String geojson(int layerId) {
+    private static final String EMPTY_FC = "{\"type\":\"FeatureCollection\",\"features\":[]}";
+
+    /**
+     * One layer's rows as GeoJSON, for the viewer to draw.
+     *
+     * A frozen layer returns nothing. "Frozen" means its data is not used for
+     * anything, and that has to be enforced where the data is READ rather than
+     * only where it is listed — otherwise the layer would vanish from the panel
+     * but still be served to anyone holding its URL.
+     */
+    public String geojson(int layerId, Integer requestedPeriodId) {
         Map<String, Object> layer = jdbc.queryForMap(
-                "SELECT physical_table FROM layer_definition WHERE id = ?", layerId);
+                "SELECT physical_table, frozen, period_scoped FROM layer_definition WHERE id = ?", layerId);
+        if (Boolean.TRUE.equals(layer.get("frozen"))) return EMPTY_FC;
         String table = String.valueOf(layer.get("physical_table"));
         if (table == null || "null".equals(table) || !SAFE_TABLE.matcher(table).matches()) {
-            return "{\"type\":\"FeatureCollection\",\"features\":[]}";
+            return EMPTY_FC;
         }
-        String gj = jdbc.queryForObject("""
+        // A period-scoped layer shows one cycle at a time, defaulting to the
+        // active one — the same rule the rest of the viewer follows.
+        boolean scoped = Boolean.TRUE.equals(layer.get("period_scoped"));
+        String where = "WHERE t.geom IS NOT NULL" + (scoped ? " AND t.period_id = ?" : "");
+        String sql = """
             SELECT COALESCE(jsonb_build_object(
                        'type','FeatureCollection',
                        'features', COALESCE(jsonb_agg(jsonb_build_object(
@@ -362,9 +401,12 @@ public class LayerDataService {
                            'properties', COALESCE(t.attrs, '{}'::jsonb)
                        )), '[]'::jsonb))::text,
                        '{"type":"FeatureCollection","features":[]}')
-              FROM %s t WHERE t.geom IS NOT NULL
-            """.formatted(table), String.class);
-        return gj == null ? "{\"type\":\"FeatureCollection\",\"features\":[]}" : gj;
+              FROM %s t %s
+            """.formatted(table, where);
+        String gj = scoped
+                ? jdbc.queryForObject(sql, String.class, periods.resolve(requestedPeriodId))
+                : jdbc.queryForObject(sql, String.class);
+        return gj == null ? EMPTY_FC : gj;
     }
 
     /** Empty a user layer's rows, keeping the layer and its attributes. */
@@ -379,12 +421,52 @@ public class LayerDataService {
         return jdbc.update("DELETE FROM " + table);
     }
 
-    /** Layers the viewer should offer: user-created plus this user's temporary ones. */
+    /**
+     * Layers the Console offers as import targets.
+     *
+     * Unlike {@link #viewerLayers}, a frozen layer is INCLUDED and flagged. The
+     * Console is where a user goes to unfreeze one, so hiding a layer they know
+     * they created would leave them with no way to act on it. Hidden layers are
+     * included too — hidden is about the map, not about importing.
+     */
+    public List<Map<String, Object>> importTargets(String user) {
+        return jdbc.query("""
+            SELECT d.id, d.name, d.geometry_type, d.placement, d.temporary,
+                   d.hidden, d.frozen, d.period_scoped, d.upload_formats, f.name AS folder
+              FROM layer_definition d JOIN layer_folder f ON f.id = d.folder_id
+             WHERE d.source_type = 'USER'
+               AND (d.temporary IS NOT TRUE OR d.created_by = ?)
+             ORDER BY d.temporary, f.sort_order, d.name
+            """, (rs, i) -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", rs.getInt("id"));
+            m.put("name", rs.getString("name"));
+            m.put("folder", rs.getString("folder"));
+            m.put("geometryType", rs.getString("geometry_type"));
+            m.put("placement", rs.getString("placement"));
+            m.put("temporary", rs.getBoolean("temporary"));
+            m.put("hidden", rs.getBoolean("hidden"));
+            m.put("frozen", rs.getBoolean("frozen"));
+            // Drives whether the import screen asks for a survey period at all.
+            m.put("periodScoped", rs.getBoolean("period_scoped"));
+            m.put("uploadFormats", rs.getString("upload_formats"));
+            return m;
+        }, user);
+    }
+
+    /**
+     * Layers the viewer should offer: user-created plus this user's temporary ones.
+     *
+     * Hidden and frozen layers are both left out — hidden because the user asked
+     * for it off the map, frozen because its data is not used for anything.
+     */
     public List<Map<String, Object>> viewerLayers(String user) {
         return jdbc.query("""
             SELECT d.id, d.name, d.geometry_type, d.temporary, d.created_by, f.name AS folder
               FROM layer_definition d JOIN layer_folder f ON f.id = d.folder_id
              WHERE d.source_type = 'USER'
+               AND d.hidden IS NOT TRUE
+               AND d.frozen IS NOT TRUE
                AND (d.temporary IS NOT TRUE OR d.created_by = ?)
              ORDER BY d.temporary NULLS FIRST, f.sort_order, d.name
             """, (rs, i) -> {

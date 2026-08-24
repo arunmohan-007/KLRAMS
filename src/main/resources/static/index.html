@@ -261,6 +261,23 @@
   .out.ok{background:#e7f6ef;color:var(--accent-d);border-color:#bfe6d4}
   .out.err{background:#fcebea;color:#a3302a;border-color:#f3c6c2}
 
+  /* ---------- user-layer column mapping ---------- */
+  .ul-map{margin-top:14px;border:1px solid var(--hair);border-radius:11px;padding:14px;background:#fafcff}
+  .ul-map-h{font-weight:700;font-size:13.5px;margin-bottom:10px}
+  .ul-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .ul-tbl th{text-align:left;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);font-weight:700;padding:6px 8px;border-bottom:1px solid var(--hair)}
+  .ul-tbl td{padding:7px 8px;border-bottom:1px solid #eef2f8;vertical-align:middle}
+  .ul-tbl tr:last-child td{border-bottom:0}
+  .ul-tbl select{width:100%;max-width:none;margin:0;padding:6px 8px;font-size:12.5px}
+  .ul-pin{display:inline-block;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+    color:#7a4bd0;background:#f0e9fd;border:1px solid #ddcdf7;border-radius:5px;padding:2px 6px;margin-left:5px}
+  .ul-req{color:#a3302a;font-weight:700}
+  .ul-sample{color:var(--muted);font-family:var(--mono,ui-monospace,monospace);font-size:11px;
+    max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ul-ck{display:flex;align-items:center;gap:8px;margin:12px 0;font-size:13px}
+  .ul-ck input{width:auto;margin:0}
+
   /* ---------- upload log table ---------- */
   .logwrap{border-radius:var(--r-md);box-shadow:var(--sh-sm);border-color:var(--hair)}
   .logtbl th{background:#f3f6fc}
@@ -1163,6 +1180,12 @@ const HUB=[
   {id:'video',cat:'Survey Videos',icon:'film',types:[
     {id:'vid-zip',label:'Video files',fmt:'MP4/MOV files · resumable'},
     {id:'vid-cat',label:'Video catalogue',fmt:'CSV file'}
+  ]},
+  /* Layers defined in Layer Management. Their data is loaded here, alongside
+     every other dataset, rather than on the screen that defines them. */
+  {id:'userlayers',cat:'User Layers',icon:'layers',types:[
+    {id:'ul-import',label:'Import into a layer',fmt:'Shapefile & ZIP / GeoJSON / CSV'},
+    {id:'ul-temp',label:'Temporary layer from a file',fmt:'Shapefile & ZIP / GeoJSON / CSV'}
   ]}
 ];
 let curCat=HUB[0].id, curType=null;
@@ -1198,6 +1221,10 @@ function selectType(id){
   curType=id;renderTypes();
   const t=findType(id);
   document.getElementById('fmtList').innerHTML=hubRow(true,hubIcon('doc'),t?t.fmt:'',"",false);
+  /* User-layer panels build themselves — their content depends on which layers
+     exist and what columns the chosen file turns out to have, so they cannot be
+     a static string in PANELS. */
+  if(id==='ul-import'||id==='ul-temp'){ULC.show(id);wireTemplateWizards();return;}
   document.getElementById('paramBody').innerHTML=PANELS[id]||'<div class="hub-empty">No importer.</div>';
   if(id==='traffic')trfState();
   if(document.getElementById('spSel'))spFillSel();
@@ -1567,6 +1594,7 @@ renderCats();
 selectCat(HUB[0].id);
 switchTab('count');
 </script>
+  <script src="/js/console-user-layers.js?v=3"></script>
   <script src="/js/launcher.js"></script>
   <script src="/js/role-gate.js" defer></script>
 </body>

@@ -45,11 +45,18 @@
       .replace(/"/g, '&quot;');
   }
 
-  function msg(text, ok) {
+  /**
+   * Show a status line.
+   *
+   * `html` is opt-in and only ever passed a string this file composed itself —
+   * server messages and layer names always go through the textContent path, so
+   * a layer named with a tag cannot inject anything.
+   */
+  function msg(text, ok, html) {
     var el = document.getElementById('msg');
     el.className = 'msg ' + (ok ? 'ok' : 'err');
-    el.textContent = text;
-    if (ok) setTimeout(function () { el.className = 'msg'; }, 4000);
+    if (html) el.innerHTML = text; else el.textContent = text;
+    if (ok) setTimeout(function () { el.className = 'msg'; }, 6000);
   }
 
   /* ------------------------------------------------------------------
@@ -124,6 +131,15 @@
     if (l.temporary) {
       chips.push('<span class="chip tmp">Temporary</span>');
     }
+    if (l.frozen) {
+      chips.push('<span class="chip frz">Frozen — data not in use</span>');
+    }
+    if (l.hidden) {
+      chips.push('<span class="chip hid">Hidden from map</span>');
+    }
+    if (l.periodScoped) {
+      chips.push('<span class="chip per">Survey period</span>');
+    }
     if (l.sourceType === 'SYSTEM_GENERATED') {
       chips.push('<span class="chip">Computed' + (l.derivedFrom ? ' from ' + esc(l.derivedFrom) : '') + '</span>');
     } else if (l.uploadFormats && l.uploadFormats.length) {
@@ -144,19 +160,24 @@
     // Attributes are viewable on every layer, including protected ones — seeing
     // what fields a layer carries is not an edit, and it is the main reason to
     // open this screen at all.
+    /* This screen defines layers; it does not load them. Importing lives in the
+       Data Console alongside every other dataset's import, so there is one place
+       to go to put data in the system rather than two with different rules. */
     var acts = '<button class="btn ghost sm" onclick="AD.open(' + l.id + ')">Attributes</button>';
-    // Only user layers load through this module — every built-in has its own
-    // import pipeline in the Data Console, and offering a second way in here
-    // would be two doors to the same table with different rules.
-    if (l.sourceType === 'USER') {
-      acts += '<button class="btn ghost sm" data-requires="admin" onclick="LI.open(' + l.id +
-        ',' + JSON.stringify(l.name) + ')">Import data</button>';
-    }
     if (l.editable) {
       acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.rename(' + l.id + ')">Rename</button>';
     }
+    /* User layers are permanent. Hide takes it off the map; Freeze stops its
+       data being used anywhere. Both are reversible, which is why neither is
+       styled as a destructive action. */
+    if (l.stateChangeable) {
+      acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.hide(' + l.id + ',' +
+        (!l.hidden) + ')">' + (l.hidden ? 'Show layer' : 'Hide layer') + '</button>';
+      acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.freeze(' + l.id + ',' +
+        (!l.frozen) + ')">' + (l.frozen ? 'Unfreeze data' : 'Freeze data') + '</button>';
+    }
     if (l.deletable) {
-      acts += '<button class="btn danger sm" data-requires="admin" onclick="LM.remove(' + l.id + ')">Delete</button>';
+      acts += '<button class="btn danger sm" data-requires="admin" onclick="LM.remove(' + l.id + ')">Discard</button>';
     }
 
     return '<div class="lyr">' +
@@ -214,27 +235,58 @@
       .catch(function (e) { msg(e.message); });
   }
 
+  /** Take a layer off the map, or put it back. Its data is untouched. */
+  function hide(id, on) {
+    post('/api/layers/' + id + '/hidden', { hidden: on })
+      .then(function () {
+        msg(on ? 'Layer hidden from the map. Its data is still live and still counted.'
+               : 'Layer is back on the map.', true);
+        load();
+      })
+      .catch(function (e) { msg(e.message); });
+  }
+
   /**
-   * Delete is two decisions, asked separately.
+   * Freeze or thaw a layer's data.
    *
-   * Retiring the definition is reversible-ish; dropping the table is not, so
-   * the table is kept unless the user explicitly says otherwise. Anything
-   * holding uploaded features asks the second question with the count in it —
-   * "delete this layer" should never quietly mean "destroy 4,000 rows".
+   * Freezing is the consequential one, so it asks — not because it destroys
+   * anything, but because everything downstream stops seeing the data and that
+   * is easy to forget you did.
+   */
+  function freeze(id, on) {
+    var l = findLayer(id);
+    if (!l) return;
+    if (on && !confirm('Freeze "' + l.name + '"?\n\n' +
+        'Its data stops being used anywhere — not drawn, not exported, not ' +
+        'available to import into. Nothing is deleted, and you can unfreeze it ' +
+        'at any time.')) return;
+
+    post('/api/layers/' + id + '/frozen', { frozen: on })
+      .then(function () {
+        msg(on ? 'Data frozen. Nothing will use this layer until it is unfrozen.'
+               : 'Data unfrozen and back in use.', true);
+        load();
+      })
+      .catch(function (e) { msg(e.message); });
+  }
+
+  /**
+   * Discard a temporary layer.
+   *
+   * Only reachable for temporary layers — permanent user layers have no delete
+   * at all, and the server refuses one regardless. A temporary layer is scratch
+   * by definition, so this drops its data with it rather than leaving an orphan
+   * table nobody will ever look for.
    */
   function remove(id) {
     var l = findLayer(id);
     if (!l) return;
-    if (!confirm('Remove the layer "' + l.name + '" from the registry?')) return;
+    if (!confirm('Discard the temporary layer "' + l.name + '"' +
+        (l.features ? ' and its ' + Number(l.features).toLocaleString() + ' features' : '') +
+        '?\n\nThis cannot be undone.')) return;
 
-    var purge = false;
-    if (l.features > 0) {
-      purge = confirm('This layer holds ' + Number(l.features).toLocaleString() + ' features.\n\n' +
-        'OK — also delete the stored data permanently.\n' +
-        'Cancel — keep the data in the database (recoverable).');
-    }
-    post('/api/layers/' + id + (purge ? '?purge=true' : ''), null, 'DELETE')
-      .then(function () { msg(purge ? 'Layer and its data deleted.' : 'Layer removed; its data was kept.', true); load(); })
+    post('/api/layers/' + id + '?purge=true', null, 'DELETE')
+      .then(function () { msg('Temporary layer discarded.', true); load(); })
       .catch(function (e) { msg(e.message); });
   }
 
@@ -267,7 +319,7 @@
     document.getElementById('wLng').value = '';
     document.getElementById('wSection').value = '';
     document.getElementById('wChainage').value = '';
-    document.getElementById('wTemp').checked = false;
+    document.getElementById('wPeriod').checked = false;
     document.querySelectorAll('#veil input[type=radio],#veil input[type=checkbox]')
       .forEach(function (i) { i.checked = false; });
     document.querySelectorAll('#veil .opt').forEach(function (o) { o.classList.remove('sel'); });
@@ -407,7 +459,7 @@
       placement: placementValue(),
       uploadFormats: formats(),
       attributeMapping: val('attr') === 'yes',
-      temporary: document.getElementById('wTemp').checked,
+      periodScoped: document.getElementById('wPeriod').checked,
       latField: document.getElementById('wLat').value.trim(),
       lngField: document.getElementById('wLng').value.trim(),
       sectionField: document.getElementById('wSection').value.trim(),
@@ -419,14 +471,11 @@
       .then(function (d) {
         closeWizard();
         load();
-        // Creating a layer is almost always the first half of "get this file on
-        // the map", so the import step is offered straight away rather than
-        // leaving the user to find the button on the row they just made.
-        if (window.LI) {
-          setTimeout(function () { LI.open(d.id, d.name); }, 150);
-        }
-        msg('Layer "' + d.name + '" created' +
-            (d.attributeMapping ? ' — its attributes are ready in the Attribute Data module.' : '.'), true);
+        // Data goes in from the Data Console, not from here, so the message
+        // says where to go next rather than opening an importer on this screen.
+        msg('Layer "' + esc(d.name) + '" created. Load its data from the ' +
+            '<a href="/" style="color:inherit;text-decoration:underline">Data Console</a>' +
+            ' → Import → User Layers.', true, true);
       })
       .catch(function (e) { msg(e.message); })
       .then(function () { btn.disabled = false; });
@@ -447,7 +496,7 @@
     if (step === 3) syncStep3();
   });
 
-  window.LM = { rename: rename, remove: remove, reload: load };
+  window.LM = { rename: rename, remove: remove, hide: hide, freeze: freeze, reload: load };
   window.openWizard = openWizard;
   window.closeWizard = closeWizard;
   window.newFolder = newFolder;

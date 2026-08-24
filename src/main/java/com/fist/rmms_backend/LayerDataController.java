@@ -68,8 +68,9 @@ public class LayerDataController {
                 for (Object o : l) geoms.add(o == null ? null : String.valueOf(o));
             }
             boolean replace = Boolean.TRUE.equals(body.get("replace"));
-            return ResponseEntity.ok(
-                    data.importRows(layerId, str(body.get("dataset")), mapping, rows, geoms, replace));
+            Integer periodId = (body.get("periodId") instanceof Number n) ? n.intValue() : null;
+            return ResponseEntity.ok(data.importRows(
+                    layerId, str(body.get("dataset")), mapping, rows, geoms, replace, periodId));
         } catch (Exception e) {
             return fail("import", e);
         }
@@ -77,11 +78,30 @@ public class LayerDataController {
 
     /** The layer's features, for the viewer. */
     @GetMapping(value = "/{layerId}/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<?> geojson(@PathVariable int layerId) {
+    public ResponseEntity<?> geojson(@PathVariable int layerId,
+                                     @RequestParam(value = "period_id", required = false) Integer periodId) {
         try {
-            return ResponseEntity.ok(data.geojson(layerId));
+            return ResponseEntity.ok(data.geojson(layerId, periodId));
         } catch (Exception e) {
             return fail("layer geojson", e);
+        }
+    }
+
+    /**
+     * Layers the Console can import into: every live user layer, plus this
+     * user's temporary ones.
+     *
+     * Frozen layers are listed but flagged, rather than hidden. The Console is
+     * where someone goes to fix that, so silently omitting a layer they know
+     * exists would be the unhelpful answer.
+     */
+    @GetMapping("/import-targets")
+    public ResponseEntity<?> importTargets(Authentication auth) {
+        try {
+            String user = (auth == null) ? "unknown" : auth.getName();
+            return ResponseEntity.ok(Map.of("layers", data.importTargets(user)));
+        } catch (Exception e) {
+            return fail("import targets", e);
         }
     }
 

@@ -127,6 +127,30 @@ public class LayerRegistryService {
            own table so every path (attributes, import, viewer) treats it the
            same and none of them need a special case. */
         jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS temporary boolean NOT NULL DEFAULT false");
+
+        /* Hidden and frozen replace deletion for user layers, which are permanent.
+           They are two different statements and deliberately independent:
+             hidden — "do not draw this on the map". The data is live and every
+                      dashboard, export and query still counts it.
+             frozen — "do not use this data for ANYTHING". Not drawn, not tiled,
+                      not served, not importable into. The rows stay on disk so
+                      the decision is reversible, which is the whole reason this
+                      exists instead of a DELETE.
+           A frozen layer is therefore also effectively hidden; hiding one does
+           not freeze it. */
+        jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS hidden boolean NOT NULL DEFAULT false");
+        jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS frozen boolean NOT NULL DEFAULT false");
+        jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS frozen_at timestamp");
+
+        /* Whether this layer's data belongs to a survey cycle.
+           Deliberately per-layer rather than assumed for all of them: a
+           contractor's condition survey is re-collected every cycle and must not
+           overwrite the last one, but a street-lighting inventory is just a list
+           of what exists and has no cycle at all. road_assets already draws
+           exactly this line — survey types carry period_id, bridges and culverts
+           leave it NULL — so this follows a rule the schema already has rather
+           than inventing a second one. */
+        jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS period_scoped boolean NOT NULL DEFAULT false");
     }
 
     /* ------------------------------------------------------------------
@@ -429,9 +453,15 @@ public class LayerRegistryService {
             m.put("lngField", rs.getString("lng_field"));
             m.put("notes", rs.getString("notes"));
             m.put("temporary", rs.getBoolean("temporary"));
+            m.put("hidden", rs.getBoolean("hidden"));
+            m.put("frozen", rs.getBoolean("frozen"));
+            m.put("periodScoped", rs.getBoolean("period_scoped"));
             // Derived, never stored — see the class comment.
             m.put("editable", "USER".equals(sourceType) || "EDITABLE_BUILT_IN".equals(sourceType));
-            m.put("deletable", "USER".equals(sourceType));
+            // User layers are permanent: they are hidden or frozen, never deleted.
+            // Only a temporary layer can be discarded outright.
+            m.put("deletable", "USER".equals(sourceType) && rs.getBoolean("temporary"));
+            m.put("stateChangeable", "USER".equals(sourceType));
             m.put("importable", !"SYSTEM_GENERATED".equals(sourceType));
             m.put("features", featureCount(rs.getString("layer_key"), rs.getString("physical_table")));
             return m;
@@ -542,8 +572,8 @@ public class LayerRegistryService {
             INSERT INTO layer_definition
                 (layer_key, folder_id, name, geometry_type, placement, source_type,
                  upload_formats, attribute_mapping, section_field, chainage_field,
-                 lat_field, lng_field, sort_order, created_by, temporary)
-            VALUES (?,?,?,?,?,'USER',?,?,?,?,?,?,500,?,?)
+                 lat_field, lng_field, sort_order, created_by, temporary, period_scoped)
+            VALUES (?,?,?,?,?,'USER',?,?,?,?,?,?,500,?,?,?)
             RETURNING id
             """, Integer.class,
             key, folderId, name.trim(), geometry, placement,
@@ -552,7 +582,7 @@ public class LayerRegistryService {
             "LINEAR_REFERENCE".equals(placement) ? str(body.get("chainageField")) : null,
             "LATLNG".equals(placement) ? str(body.get("latField")) : null,
             "LATLNG".equals(placement) ? str(body.get("lngField")) : null,
-            user, temporary);
+            user, temporary, Boolean.TRUE.equals(body.get("periodScoped")));
 
         String table = USER_TABLE_PREFIX + id + "_" + slug(name);
         if (table.length() > 55) table = table.substring(0, 55);
@@ -637,18 +667,53 @@ public class LayerRegistryService {
     }
 
     /**
-     * Delete a user layer.
+     * Hide or show a layer on the map.
      *
-     * Soft by default: the definition is retired but the physical table is left
-     * in place, because runtime DDL plus an immediate DROP is an easy way to
-     * lose uploaded data with no undo. {@code purge=true} is the deliberate
-     * second step that actually drops it.
+     * Presentation only: the data stays live, and every dashboard, export and
+     * query still counts it. This is the "I don't want to see it" switch, not
+     * the "pretend it isn't there" one — see {@link #setFrozen}.
+     */
+    public void setHidden(int id, boolean hidden) {
+        requireUserLayer(id);
+        jdbc.update("UPDATE layer_definition SET hidden = ? WHERE id = ?", hidden, id);
+    }
+
+    /**
+     * Freeze or thaw a layer's data.
+     *
+     * Frozen means the data is not used for anything: not drawn, not tiled, not
+     * served as GeoJSON, and not importable into. The rows are left untouched on
+     * disk, so it is fully reversible — which is the point of freezing rather
+     * than deleting a layer the user has declared permanent.
+     */
+    public void setFrozen(int id, boolean frozen) {
+        requireUserLayer(id);
+        jdbc.update("UPDATE layer_definition SET frozen = ?, frozen_at = ? WHERE id = ?",
+                frozen, frozen ? new java.sql.Timestamp(System.currentTimeMillis()) : null, id);
+    }
+
+    private void requireUserLayer(int id) {
+        String sourceType = sourceTypeOf(id);
+        if (!"USER".equals(sourceType)) throw new ProtectedLayerException(sourceType);
+    }
+
+    /**
+     * Discard a TEMPORARY layer.
+     *
+     * Permanent user layers are never deleted — they are hidden or frozen — so
+     * this refuses anything that is not temporary. A temporary layer is scratch
+     * by definition, so its table goes with it when purge is asked for.
      */
     @Transactional
     public void deleteLayer(int id, boolean purge) {
         String sourceType = sourceTypeOf(id);
         if (!"USER".equals(sourceType)) {
             throw new ProtectedLayerException(sourceType);
+        }
+        Boolean temp = jdbc.queryForObject(
+                "SELECT temporary FROM layer_definition WHERE id = ?", Boolean.class, id);
+        if (!Boolean.TRUE.equals(temp)) {
+            throw new ProtectedLayerException("PERMANENT_USER");
         }
         String table = jdbc.queryForObject(
                 "SELECT physical_table FROM layer_definition WHERE id = ?", String.class, id);
@@ -798,6 +863,9 @@ public class LayerRegistryService {
                 case "BUILT_IN" -> "This is a core KLRAMS layer with its own import pipeline. "
                         + "It cannot be edited or deleted from Layer Management.";
                 case "EDITABLE_BUILT_IN" -> "This core layer can be renamed but not deleted.";
+                case "PERMANENT_USER" -> "User layers are permanent and are not deleted. "
+                        + "Hide it to take it off the map, or freeze it to stop its data being "
+                        + "used anywhere — both are reversible.";
                 default -> "This layer is protected.";
             });
         }

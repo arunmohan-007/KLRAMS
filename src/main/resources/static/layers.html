@@ -147,6 +147,9 @@
     font-family:var(--body);font-size:13px;color:var(--text)}
   .ck input{width:auto;accent-color:var(--violet)}
   .chip.tmp{color:#ffd28a;border-color:rgba(255,166,48,.4);background:rgba(255,166,48,.1)}
+  .chip.frz{color:#9fd8f5;border-color:rgba(72,199,232,.45);background:rgba(72,199,232,.1)}
+  .chip.hid{color:var(--muted-2);border-color:var(--edge);background:rgba(147,163,187,.08)}
+  .chip.per{color:#c7b6f5;border-color:rgba(138,104,230,.4);background:rgba(138,104,230,.1)}
 
   /* ── data import ──────────────────────────────────────── */
   .drop{border:1.5px dashed var(--edge);border-radius:14px;padding:38px 24px;text-align:center;
@@ -282,10 +285,11 @@
         </div>
       </div>
       <div class="fld" style="border-top:1px solid var(--edge-soft);padding-top:16px">
-        <label class="ck"><input type="checkbox" id="wTemp"> Temporary layer</label>
-        <div class="hint">A temporary layer is visible only to you and is meant for one-off analysis
-        &mdash; drop a file on the map, look at it, clear it. It behaves like any other layer
-        otherwise, and you can delete it in one action when you are done.</div>
+        <label class="ck"><input type="checkbox" id="wPeriod"> This layer's data belongs to a survey period</label>
+        <div class="hint">Tick this for data that is re-collected each survey cycle &mdash; every import
+        is then stored against the period you choose, so a new cycle never overwrites the last and
+        older cycles stay viewable in the Survey Archive. Leave it clear for a standing inventory
+        (signs, lighting, land parcels) that simply is what it is.</div>
       </div>
       <div class="hint" id="wSummary" style="border-top:1px solid var(--edge-soft);padding-top:14px;margin-top:4px"></div>
     </div>
@@ -330,23 +334,8 @@
   </div>
 </div>
 
-<!-- ── data import ───────────────────────────────────────────── -->
-<div class="veil" id="impVeil">
-  <div class="modal wide">
-    <h2 id="impTitle">Import data</h2>
-    <div class="mst" id="impStep">Step 1 of 3 · Choose a file</div>
-    <div id="impMsg" class="msg"></div>
-    <div id="impBody"></div>
-    <div class="mact" id="impFoot">
-      <span></span>
-      <button class="btn ghost" onclick="LI.close()">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
 <script src="/js/role-gate.js" defer></script>
-<script src="/js/layer-management.js?v=3" defer></script>
+<script src="/js/layer-management.js?v=4" defer></script>
 <script src="/js/attribute-data.js?v=1" defer></script>
 </body>
 </html>

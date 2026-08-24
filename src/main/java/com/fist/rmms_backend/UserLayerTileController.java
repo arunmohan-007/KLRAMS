@@ -7,6 +7,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -40,6 +41,7 @@ public class UserLayerTileController {
                                        @PathVariable int z,
                                        @PathVariable int x,
                                        @PathVariable int y,
+                                       @RequestParam(value = "period_id", required = false) Integer periodId,
                                        Authentication auth,
                                        @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         TileCoordinate coord;
@@ -50,7 +52,7 @@ public class UserLayerTileController {
         }
 
         String user = (auth == null) ? "unknown" : auth.getName();
-        byte[] body = tiles.tile(layerId, coord, user);
+        byte[] body = tiles.tile(layerId, coord, user, periodId);
         if (body == null) return ResponseEntity.noContent().build();
 
         String tag = GeoJsonResponse.contentTag(body);

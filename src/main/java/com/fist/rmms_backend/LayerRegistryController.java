@@ -81,9 +81,34 @@ public class LayerRegistryController {
         }
     }
 
+    /** Take a layer off the map, or put it back. The data stays live either way. */
+    @PostMapping("/{id}/hidden")
+    public ResponseEntity<?> hidden(@PathVariable int id, @RequestBody Map<String, Object> body) {
+        try {
+            layers.setHidden(id, Boolean.TRUE.equals(body.get("hidden")));
+            return ok();
+        } catch (Exception e) {
+            return fail("hide layer", e);
+        }
+    }
+
     /**
-     * Retire a user layer. {@code ?purge=true} additionally drops its table —
-     * the deliberate second step, so a mis-click cannot destroy uploaded data.
+     * Freeze or thaw a layer's data. Frozen data is not drawn, tiled, served or
+     * importable into — but is kept, so the decision can be undone.
+     */
+    @PostMapping("/{id}/frozen")
+    public ResponseEntity<?> frozen(@PathVariable int id, @RequestBody Map<String, Object> body) {
+        try {
+            layers.setFrozen(id, Boolean.TRUE.equals(body.get("frozen")));
+            return ok();
+        } catch (Exception e) {
+            return fail("freeze layer", e);
+        }
+    }
+
+    /**
+     * Discard a temporary layer. {@code ?purge=true} also drops its table.
+     * Permanent user layers are refused — they are hidden or frozen instead.
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable int id,

@@ -41,16 +41,19 @@ public class UserLayerTileService {
     private static final Pattern SAFE_TABLE = Pattern.compile("^ul_[0-9]+_[a-z0-9_]{1,40}$");
 
     private final JdbcTemplate jdbc;
+    private final SurveyPeriodService periods;
 
     private final int extent;
     private final int buffer;
     private final int maxZoom;
 
     public UserLayerTileService(JdbcTemplate jdbc,
+                                SurveyPeriodService periods,
                                 @Value("${app.tile.extent:4096}") int extent,
                                 @Value("${app.tile.buffer:64}") int buffer,
                                 @Value("${app.tile.max-zoom:20}") int maxZoom) {
         this.jdbc = jdbc;
+        this.periods = periods;
         this.extent = extent;
         this.buffer = buffer;
         this.maxZoom = maxZoom;
@@ -71,15 +74,20 @@ public class UserLayerTileService {
      * here. Without it, a temporary layer would be hidden from the panel but
      * still readable by anyone who guessed the URL.
      */
-    byte[] tile(int layerId, TileCoordinate t, String user) {
+    byte[] tile(int layerId, TileCoordinate t, String user, Integer requestedPeriodId) {
         Map<String, Object> row;
         try {
             row = jdbc.queryForMap(
-                    "SELECT physical_table, temporary, created_by FROM layer_definition "
-                  + "WHERE id = ? AND source_type = 'USER'", layerId);
+                    "SELECT physical_table, temporary, created_by, frozen, period_scoped "
+                  + "FROM layer_definition WHERE id = ? AND source_type = 'USER'", layerId);
         } catch (Exception e) {
             return null;      // no such user layer
         }
+
+        // Frozen data is not used for anything, and that includes tiles — the
+        // check belongs here and not only in the layer list, or a frozen layer
+        // would still paint for anyone whose style already held its source.
+        if (Boolean.TRUE.equals(row.get("frozen"))) return null;
 
         Object tableObj = row.get("physical_table");
         if (tableObj == null) return null;
@@ -94,8 +102,12 @@ public class UserLayerTileService {
         Boolean built = jdbc.queryForObject("SELECT to_regclass(?) IS NOT NULL", Boolean.class, table);
         if (!Boolean.TRUE.equals(built)) return null;
 
-        byte[] tile = jdbc.queryForObject(sql(table), byte[].class,
-                t.z(), t.x(), t.y(), extent, buffer, extent);
+        boolean scoped = Boolean.TRUE.equals(row.get("period_scoped"));
+        byte[] tile = scoped
+                ? jdbc.queryForObject(sql(table, true), byte[].class,
+                        t.z(), t.x(), t.y(), extent, buffer, periods.resolve(requestedPeriodId), extent)
+                : jdbc.queryForObject(sql(table, false), byte[].class,
+                        t.z(), t.x(), t.y(), extent, buffer, extent);
 
         return (tile == null || tile.length == 0) ? null : tile;
     }
@@ -110,7 +122,7 @@ public class UserLayerTileService {
      * client, which is what the popup wants anyway. {@code lane_avgs} in
      * {@link IriTileService} already ships as text for the same reason.
      */
-    private static String sql(String table) {
+    private static String sql(String table, boolean periodScoped) {
         return """
             WITH bounds AS (
                 SELECT merc, ST_Transform(merc, 4326) AS wgs
@@ -123,9 +135,10 @@ public class UserLayerTileService {
                     ST_AsMVTGeom(ST_Transform(t.geom, 3857), b.merc, ?, ?, true) AS geom
                 FROM %s t, bounds b
                 WHERE t.geom IS NOT NULL
+                  %s
                   AND t.geom && b.wgs
             )
-            """.formatted(table)
+            """.formatted(table, periodScoped ? "AND t.period_id = ?" : "")
             + "SELECT ST_AsMVT(src, '" + LAYER_NAME + "', ?, 'geom') FROM src WHERE geom IS NOT NULL";
     }
 }
