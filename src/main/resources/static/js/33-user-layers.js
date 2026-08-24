@@ -114,8 +114,16 @@
     });
   }
 
+  function tilesOn() { return typeof TILES_ON !== 'undefined' && TILES_ON; }
+
   /**
-   * Fetch the features and build the layers, once.
+   * Build the layers, once.
+   *
+   * Default render path is the vector tile at
+   * /api/layer-data/{id}/tiles/{z}/{x}/{y}.mvt, the same as every other
+   * paint layer in the viewer; ?tiles=0 falls back to the GeoJSON
+   * endpoint, which is also what export and analysis still use. In tile
+   * mode nothing is preloaded — MapLibre asks for the tiles it needs.
    *
    * All three geometry kinds get a layer rather than only the one the
    * layer declares, because a "Point" layer whose CSV failed to place a
@@ -126,10 +134,25 @@
   function ensure(layer, i) {
     if (LOADED[layer.id]) return Promise.resolve();
     LOADED[layer.id] = true;
+    return tilesOn() ? ensureTiles(layer, i) : ensureGeoJson(layer, i);
+  }
 
+  function ensureTiles(layer, i) {
     var src = 'ul-' + layer.id;
-    var col = colorFor(i);
+    if (map.getSource(src)) return Promise.resolve();
+    map.addSource(src, {
+      type: 'vector',
+      tiles: [location.origin + '/api/layer-data/' + layer.id + '/tiles/{z}/{x}/{y}.mvt'],
+      minzoom: 0,
+      maxzoom: 20
+    });
+    addPaintLayers(layer, i, src, UserLayerTileLayer);
+    setStatus(layer, 'vector tiles');
+    return Promise.resolve();
+  }
 
+  function ensureGeoJson(layer, i) {
+    var src = 'ul-' + layer.id;
     return fetch('/api/layer-data/' + layer.id + '/geojson', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (gj) {
@@ -139,48 +162,60 @@
           return;
         }
         if (map.getSource(src)) { map.getSource(src).setData(gj); return; }
-
         map.addSource(src, { type: 'geojson', data: gj, generateId: true });
-
-        var before = (typeof KLLayers !== 'undefined' && KLLayers.beforeId)
-          ? KLLayers.beforeId(KLLayers.Z.SELECTION - 1) : undefined;
-
-        map.addLayer({
-          id: src + '-fill', type: 'fill', source: src,
-          filter: ['match', ['geometry-type'], ['Polygon', 'MultiPolygon'], true, false],
-          layout: { visibility: 'none' },
-          paint: { 'fill-color': col, 'fill-opacity': 0.28, 'fill-outline-color': col }
-        }, before);
-
-        map.addLayer({
-          id: src + '-line', type: 'line', source: src,
-          filter: ['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false],
-          layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            'line-color': col,
-            'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2, 16, 6]
-          }
-        }, before);
-
-        map.addLayer({
-          id: src + '-pt', type: 'circle', source: src,
-          filter: ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false],
-          layout: { visibility: 'none' },
-          paint: {
-            'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 3.5, 16, 8],
-            'circle-color': col,
-            'circle-stroke-width': 1.4,
-            'circle-stroke-color': '#0b1322'
-          }
-        }, before);
-
-        ids(layer.id).forEach(function (id) { bindPopup(id, layer); });
+        addPaintLayers(layer, i, src, null);
         setStatus(layer, gj.features.length.toLocaleString() + ' features');
       })
       .catch(function () {
         LOADED[layer.id] = false;
         setStatus(layer, 'could not load');
       });
+  }
+
+  /** The MVT layer name the tile service writes; null for a GeoJSON source. */
+  var UserLayerTileLayer = 'features';
+
+  function addPaintLayers(layer, i, src, sourceLayer) {
+    var col = colorFor(i);
+    var before = (typeof KLLayers !== 'undefined' && KLLayers.beforeId)
+      ? KLLayers.beforeId(KLLayers.Z.SELECTION - 1) : undefined;
+
+    function spec(o) {
+      o.source = src;
+      if (sourceLayer) o['source-layer'] = sourceLayer;
+      return o;
+    }
+
+    map.addLayer(spec({
+      id: src + '-fill', type: 'fill',
+      filter: ['match', ['geometry-type'], ['Polygon', 'MultiPolygon'], true, false],
+      layout: { visibility: 'none' },
+      paint: { 'fill-color': col, 'fill-opacity': 0.28, 'fill-outline-color': col }
+    }), before);
+
+    map.addLayer(spec({
+      id: src + '-line', type: 'line',
+      filter: ['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false],
+      layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': col,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2, 16, 6]
+      }
+    }), before);
+
+    map.addLayer(spec({
+      id: src + '-pt', type: 'circle',
+      filter: ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false],
+      layout: { visibility: 'none' },
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 3.5, 16, 8],
+        'circle-color': col,
+        'circle-stroke-width': 1.4,
+        'circle-stroke-color': '#0b1322'
+      }
+    }), before);
+
+    ids(layer.id).forEach(function (id) { bindPopup(id, layer); });
   }
 
   function setStatus(layer, text) {
@@ -208,7 +243,7 @@
     map.on('click', layerId, function (e) {
       var f = e.features && e.features[0];
       if (!f) return;
-      var p = f.properties || {};
+      var p = props(f);
       var all = Object.keys(p).filter(function (k) {
         return p[k] != null && String(p[k]).trim() !== '';
       });
@@ -243,6 +278,25 @@
     });
     map.on('mouseenter', layerId, function () { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', layerId, function () { map.getCanvas().style.cursor = ''; });
+  }
+
+  /**
+   * A feature's attributes, whichever source it came from.
+   *
+   * MVT properties must be flat scalars, so the tile ships the whole
+   * attribute bag as one `attrs` JSON string and it is expanded here. A
+   * GeoJSON source already has the keys flattened. Returning the same
+   * shape from both means the popup has one code path.
+   */
+  function props(f) {
+    var p = (f && f.properties) || {};
+    if (typeof p.attrs !== 'string') return p;
+    try {
+      var parsed = JSON.parse(p.attrs);
+      return (parsed && typeof parsed === 'object') ? parsed : p;
+    } catch (e) {
+      return p;
+    }
   }
 
   function esc(s) {
