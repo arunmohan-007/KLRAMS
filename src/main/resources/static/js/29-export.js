@@ -182,7 +182,13 @@ function nameFields(fields){
 }
 /* Sidecars that carry the full names alongside the truncated ones. */
 function fieldMapCsv(fields){
-  var esc=function(v){var s=String(v==null?'':v);return /[",\n\r]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s;};
+  /* Same formula-injection guard as csvBuild() below — a field name is
+     still attacker-settable text (layer/attribute names). */
+  var esc=function(v){
+    var s=String(v==null?'':v);
+    if(/^[=+\-@\t]/.test(s))s="'"+s;
+    return /[",\n\r]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s;
+  };
   var out=['Shapefile_column,Full_name,Type,Width,Decimals'];
   fields.forEach(function(f){
     out.push([f.name,f.key,(f.type==='N'?'Number':'Text'),f.w,f.d].map(esc).join(','));

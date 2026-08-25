@@ -76,6 +76,14 @@ public class SecurityConfig {
                                            LoginAttemptService attempts, UserService users) throws Exception {
         http
             .csrf(c -> c.disable())
+            // Defence in depth beyond Spring Security's defaults (nosniff,
+            // X-Frame-Options: DENY, HSTS on HTTPS requests — the last of
+            // those now actually fires now that application.properties trusts
+            // the proxy's X-Forwarded-Proto). Referrer-Policy stops the full
+            // URL — including any query strings — leaking to third-party
+            // resources the map viewer or public pages happen to link to.
+            .headers(h -> h.referrerPolicy(r -> r.policy(
+                    org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
             // Reject POST /login from a locked-out IP before the password is checked.
             .addFilterBefore(new LoginAttemptFilter(attempts), UsernamePasswordAuthenticationFilter.class)
             // After authorization: block a "must change password" account from every

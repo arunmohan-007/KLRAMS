@@ -89,7 +89,12 @@
     var head='<tr><th class="n">Sl</th><th>Road Name</th><th class="m">Section Label</th><th class="n">Length of Road</th><th class="n">Gap Length</th><th>Direction</th><th>View Video</th></tr>';
     var tb='';
     rows.forEach(function(r,i){
-      var sec=String(r.sec).replace(/'/g,"\\'");
+      /* sec goes inside onclick="nsvViewVideo('...')": JS-string-escape first
+         (backslash, then quote), then HTML-attribute-escape the result too
+         (& < > "), since the section id is free text from a shapefile upload
+         and a bare " in it would otherwise break out of the onclick attribute. */
+      var sec=String(r.sec).replace(/\\/g,'\\\\').replace(/'/g,"\\'")
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       tb+='<tr>'
         +'<td class="n">'+(i+1)+'</td>'
         +'<td>'+(r.name?escH(r.name):'–')+(r.num?' <span style="color:#8a93a3">('+escH(r.num)+')</span>':'')+'</td>'

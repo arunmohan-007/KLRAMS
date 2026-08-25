@@ -10,7 +10,7 @@ function setupSearch(){
   function render(list){
     items=list;active=-1;
     if(!list.length){box.innerHTML='<div class="none">No matching road</div>';box.classList.add('show');return;}
-    box.innerHTML=list.map((p,i)=>{const num=p.Road_Num?(' · No. '+p.Road_Num):'';return `<div class="it" data-i="${i}"><div class="nm">${p.name||p.road}</div><div class="id">${p.road}${num}</div></div>`;}).join('');
+    box.innerHTML=list.map((p,i)=>{const num=p.Road_Num?(' · No. '+escH(String(p.Road_Num))):'';return `<div class="it" data-i="${i}"><div class="nm">${escH(String(p.name||p.road||''))}</div><div class="id">${escH(String(p.road||''))}${num}</div></div>`;}).join('');
     box.classList.add('show');
     box.querySelectorAll('.it').forEach(el=>el.onclick=()=>choose(items[+el.dataset.i]));
   }

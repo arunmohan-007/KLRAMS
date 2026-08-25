@@ -194,7 +194,12 @@ function buildPopup(props,roadId,ch,lane){
   var carriage=loc(['Single_Du','Carriageway','carriageway']);
   var paveW=decodeVal('Pavement Width',loc(['Pavement_W','Pavement_Width','pavement_w']));
   var rtype=decodeVal('Road Type',loc(['Road_Type','RoadType','road_type']));
-  var rid=String(roadId).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  /* rid goes inside onclick="fn('...')" below: JS-string-escape first (backslash,
+     then quote), then HTML-attribute-escape the result too (& < > "), since the
+     road/section id is free text from a shapefile upload and a bare " in it
+     would otherwise break out of the double-quoted onclick attribute. */
+  var rid=String(roadId).replace(/\\/g,'\\\\').replace(/'/g,"\\'")
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
   var H='<div class="klcard">';
   /* header */

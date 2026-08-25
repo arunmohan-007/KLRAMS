@@ -243,9 +243,17 @@ function fillSelects(){
   up.innerHTML=FOLDERS.map(f=>'<option>'+esc(f)+'</option>').join('')||'<option>RMMS Cell</option>';
   par.innerHTML='<option value="">(top level)</option>'+FOLDERS.map(f=>'<option>'+esc(f)+'</option>').join('');
 }
+/* Folder names are free text an ADMIN can set to anything (GoController does
+   no character filtering) and this list is seen by every signed-in role —
+   escaping just the JS-string quote left the surrounding onclick="..." HTML
+   attribute itself breakable by a folder name containing a bare ". Escape
+   the JS string first, then esc() the whole thing again for the attribute
+   it sits inside (esc() only touches & < > ", so the JS backslash-escaping
+   survives untouched). */
+function jsAttr(s){return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"));}
 function renderFolderList(){
   const el=document.getElementById('folderList');
-  el.innerHTML=FOLDERS.map(f=>'<span class="ftag">'+folderSvg()+esc(f)+'<button title="Delete folder" onclick="delFolder(\''+f.replace(/'/g,"\\'")+'\')">&times;</button></span>').join('')||'<span class="hint">No folders.</span>';
+  el.innerHTML=FOLDERS.map(f=>'<span class="ftag">'+folderSvg()+esc(f)+'<button title="Delete folder" onclick="delFolder(\''+jsAttr(f)+'\')">&times;</button></span>').join('')||'<span class="hint">No folders.</span>';
 }
 
 function openGo(id){window.open(API+'/file/'+id,'_blank');}
