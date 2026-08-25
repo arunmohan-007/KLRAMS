@@ -408,7 +408,8 @@ public class AssetController {
                         'properties', jsonb_build_object(
                             'road', section_label,
                             'from_ch', start_chainage,
-                            'to_ch', end_chainage) || COALESCE(attrs,'{}'::jsonb)
+                            'to_ch', end_chainage,
+                            '__id', id) || COALESCE(attrs,'{}'::jsonb)
                     )), '[]'::json))::text
                 FROM road_assets WHERE asset_type = ? AND geom IS NOT NULL
                 """;

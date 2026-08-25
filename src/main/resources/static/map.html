@@ -291,6 +291,52 @@
         <div class="note" style="margin:0">Filters both Composite and Worst-Lane PCI layers.</div>
       </div>
     </details>
+
+    <details class="flt-sec" id="fsecBridge">
+      <summary>Bridge</summary>
+      <div class="flt-lock">The <b>Bridge</b> layer is off. <button class="btn ghost" onclick="enableLayer('showBridge')">Turn on layer</button></div>
+      <div class="flt-body">
+        <div class="eyebrow">Bridge type</div>
+        <select id="brgType" class="full"><option value="">Any type</option></select>
+        <div class="row2"><button class="btn ghost" onclick="applyBridgeFilter()">Apply</button><button class="btn ghost" onclick="clearBridgeFilter()">Clear</button></div>
+        <div class="note" style="margin:0">Shows only bridges of the selected type.</div>
+      </div>
+    </details>
+
+    <details class="flt-sec" id="fsecCulv">
+      <summary>Culvert</summary>
+      <div class="flt-lock">The <b>Culvert</b> layer is off. <button class="btn ghost" onclick="enableLayer('showCulvert')">Turn on layer</button></div>
+      <div class="flt-body">
+        <div class="eyebrow">Culvert type</div>
+        <select id="culvType" class="full"><option value="">Any type</option></select>
+        <div class="row2"><button class="btn ghost" onclick="applyCulvertFilter()">Apply</button><button class="btn ghost" onclick="clearCulvertFilter()">Clear</button></div>
+        <div class="note" style="margin:0">Shows only culverts of the selected type.</div>
+      </div>
+    </details>
+
+    <details class="flt-sec" id="fsecSoil">
+      <summary>Sub-Grade Soil</summary>
+      <div class="flt-lock">The <b>Sub-Grade Soil</b> layer is off. <button class="btn ghost" onclick="enableLayer('showSoil')">Turn on layer</button></div>
+      <div class="flt-body">
+        <div class="eyebrow">Soil type</div>
+        <select id="soilType" class="full"><option value="">Any type</option></select>
+        <div class="eyebrow" style="margin-top:11px">CBR range (%)</div>
+        <div class="row2"><input id="soilCbrMin" type="number" class="full" placeholder="min"><input id="soilCbrMax" type="number" class="full" placeholder="max"></div>
+        <div class="row2"><button class="btn ghost" onclick="applySoilFilter()">Apply</button><button class="btn ghost" onclick="clearSoilFilter()">Clear</button></div>
+        <div class="note" style="margin:0">Shows sub-grade soil points matching the selected type and/or soaked CBR range.</div>
+      </div>
+    </details>
+
+    <details class="flt-sec" id="fsecCore">
+      <summary>Bituminous Core</summary>
+      <div class="flt-lock">The <b>Bituminous Core</b> layer is off. <button class="btn ghost" onclick="enableLayer('showCore')">Turn on layer</button></div>
+      <div class="flt-body">
+        <div class="eyebrow">Total bituminous thickness (mm)</div>
+        <div class="row2"><input id="coreMin" type="number" class="full" placeholder="min"><input id="coreMax" type="number" class="full" placeholder="max"></div>
+        <div class="row2"><button class="btn ghost" onclick="applyCoreFilter()">Apply</button><button class="btn ghost" onclick="clearCoreFilter()">Clear</button></div>
+        <div class="note" style="margin:0">Shows bituminous core points whose total observed bituminous layer thickness falls in the range.</div>
+      </div>
+    </details>
   </section>
 </div>
 
@@ -1029,7 +1075,7 @@
   <script src="js/15-main.js?v=127"></script>
   <script src="js/16-traffic.js?v=171"></script>
   <script src="js/17-measure.js?v=117"></script>
-  <script src="js/18-filters.js?v=119"></script>
+  <script src="js/18-filters.js?v=120"></script>
   <script src="js/19-asset-register.js?v=121"></script>
   <script src="js/20-asset-dashboard.js?v=117"></script>
   <script src="js/21-report-hub.js?v=119"></script>
