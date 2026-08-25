@@ -13,7 +13,21 @@ let REG_CULV_GJ=null, REG_BRID_GJ=null;
 let regTab='road', regSearch='', regClass='', regDistrict='', regAttr='', regAttrVal='', regAttrOp='=';
 
 function regSectionKey(p){ try{var v=pickProp(p,ROAD_KEYS);return (v!=null&&v!=='')?String(v):(p&&p.road!=null?String(p.road):'');}catch(e){return (p&&p.road!=null)?String(p.road):'';} }
-function regAssetId(p){ var v=pickProp(p,ID_KEYS); return (v!=null&&v!=='')?String(v):''; }
+/* The asset's own identifier.
+   Asks the layer's declared attributes first — the culvert layer calls it
+   Asset_ID, the bridge layer "Asset ID", and both list the other spellings —
+   so a district writing it differently is fixed in Attribute Data rather than
+   by extending ID_KEYS here. ID_KEYS stays as the fallback for a feature whose
+   layer declares nothing, and for the catalogue not having loaded yet. */
+function regAssetId(p,type){
+  if(type&&window.AttrCatalog&&AttrCatalog.loaded()){
+    var a=AttrCatalog.fields(type).filter(function(f){return /^asset\s*_?id$/i.test(f.name)||/^asset\s*_?id$/i.test(f.key);})[0];
+    if(a){
+      for(var k in p){ if(ckey(k)===ckey(a.key)&&p[k]!=null&&p[k]!=='')return String(p[k]); }
+    }
+  }
+  var v=pickProp(p,ID_KEYS); return (v!=null&&v!=='')?String(v):'';
+}
 function regNum(v){ return (v!=null&&v!=='')?(isNaN(+v)?v:+v):null; }
 /* Register rows need road METADATA only -- name, class, chainage, district --
    never geometry, so this reads the lightweight RoadsIndex first (cheap even
@@ -42,7 +56,7 @@ function regSubCh(end,start){const x=regNumOrNull(end),y=regNumOrNull(start);if(
 function buildCulvRows(){
   const rows=[]; ((REG_CULV_GJ&&REG_CULV_GJ.features)||[]).forEach(f=>{const p=f.properties||{};const sec=regSectionKey(p);const rp=roadProps(sec);
     const startCh=regNum(pickProp(p,FROM_KEYS)), rdSCh=regNum(rp.Rd_Str_cha);
-    rows.push({sec:sec,name:rp.Road_Name||'',assetId:regAssetId(p),startCh:startCh,rdSCh:rdSCh,district:rp.District||'',cls:rp.Road_Class||'',clsLabel:dec('Road_Class',rp.Road_Class||'')||'',rdChain:regAddCh(rdSCh,startCh)});});
+    rows.push({sec:sec,name:rp.Road_Name||'',assetId:regAssetId(p,'culvert'),startCh:startCh,rdSCh:rdSCh,district:rp.District||'',cls:rp.Road_Class||'',clsLabel:dec('Road_Class',rp.Road_Class||'')||'',rdChain:regAddCh(rdSCh,startCh)});});
   rows.sort((a,b)=>String(a.sec).localeCompare(String(b.sec),undefined,{numeric:true}));
   return rows;
 }
@@ -54,7 +68,7 @@ function bridgeLen(p,geom,sCh,eCh){
 function buildBridRows(){
   const rows=[]; ((REG_BRID_GJ&&REG_BRID_GJ.features)||[]).forEach(f=>{const p=f.properties||{};const sec=regSectionKey(p);const rp=roadProps(sec);
     const sCh=regNum(pickProp(p,FROM_KEYS)),eCh=regNum(pickProp(p,TO_KEYS)),rdSCh=regNum(rp.Rd_Str_cha);
-    rows.push({sec:sec,name:rp.Road_Name||'',assetId:regAssetId(p),startCh:sCh,endCh:eCh,rdSCh:rdSCh,rdECh:regNum(rp.Rd_End_cha),bStartCh:regAddCh(rdSCh,sCh),bEndCh:regAddCh(rdSCh,eCh),length:regSubCh(eCh,sCh),district:rp.District||'',cls:rp.Road_Class||'',clsLabel:dec('Road_Class',rp.Road_Class||'')||''});});
+    rows.push({sec:sec,name:rp.Road_Name||'',assetId:regAssetId(p,'bridge'),startCh:sCh,endCh:eCh,rdSCh:rdSCh,rdECh:regNum(rp.Rd_End_cha),bStartCh:regAddCh(rdSCh,sCh),bEndCh:regAddCh(rdSCh,eCh),length:regSubCh(eCh,sCh),district:rp.District||'',cls:rp.Road_Class||'',clsLabel:dec('Road_Class',rp.Road_Class||'')||''});});
   rows.sort((a,b)=>String(a.sec).localeCompare(String(b.sec),undefined,{numeric:true}));
   return rows;
 }

@@ -52,6 +52,43 @@ public class LayerAttributeController {
         }
     }
 
+    /**
+     * Every layer's attribute labels in one document, for the viewer.
+     *
+     * Separate from {@code /layer/{id}} because the callers are different: that
+     * one serves the Attribute Data screen editing ONE layer, this one serves
+     * every map card and dashboard at once and is fetched on page load, so it
+     * carries only what a label needs and nothing the editor uses.
+     */
+    @GetMapping("/catalog")
+    public ResponseEntity<?> catalog() {
+        try {
+            return ResponseEntity.ok(Map.of("layers", attrs.catalog()));
+        } catch (Exception e) {
+            return fail("attribute catalog", e);
+        }
+    }
+
+    /**
+     * Remember the column names an import was mapped with by hand.
+     *
+     * Posted by the import screen after someone resolves columns automatic
+     * matching could not, so the same district's next file matches on its own.
+     * Body: {@code {dataset, columns: {"<attribute label>": "<their column>"}}}.
+     */
+    @PostMapping("/aliases/learn")
+    public ResponseEntity<?> learnAliases(@RequestBody Map<String, Object> body) {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, String> columns = body.get("columns") instanceof Map<?, ?> m
+                    ? (Map<String, String>) m : Map.of();
+            int n = attrs.learnAliases(String.valueOf(body.get("dataset")), columns);
+            return ResponseEntity.ok(Map.of("ok", true, "learned", n));
+        } catch (Exception e) {
+            return fail("learn column names", e);
+        }
+    }
+
     @GetMapping("/lookups")
     public ResponseEntity<?> lookups() {
         try {

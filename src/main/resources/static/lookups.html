@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>KLRAMS Console · Layer Management — Kerala PWD</title>
+<title>KLRAMS Console · Lookup &amp; Short Code — Kerala PWD</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -185,6 +185,45 @@
   .probs-t{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;
     color:var(--muted-2);margin-bottom:8px}
   .prob{font-family:var(--mono);font-size:11px;color:var(--muted);padding:3px 0}
+
+  /* ---------- Lookup & Short Code ---------- */
+  /* The picker bar: layer, then attribute, then the table below. Kept on one
+     line because it IS the navigation — two choices and you are there. */
+  .lk-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    background:var(--panel-2);border:1px solid var(--edge-soft);border-radius:12px;
+    padding:13px 15px;margin:18px 0 16px}
+  .lk-lbl{margin:0;font-family:var(--mono);font-size:9px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted-2)}
+  .lk-pick{width:auto;min-width:190px;padding:8px 11px;border:1px solid var(--edge);
+    border-radius:9px;font-size:13px;font-family:var(--body);color:var(--text);
+    background:rgba(6,11,20,.55)}
+  .lk-pick.wide{min-width:290px}
+  .lk-pick:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 3px rgba(138,104,230,.15)}
+
+  /* The data-type switch. Coloured only when the lookup is ON, so the state is
+     readable at a glance rather than from the button label. */
+  .lk-state{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    flex-wrap:wrap;border:1px solid var(--edge-soft);border-radius:12px;padding:14px 16px;
+    background:var(--panel-2);margin-bottom:14px}
+  .lk-state.on{border-color:rgba(25,178,119,.35);background:rgba(25,178,119,.05)}
+  .lk-state-t{font-family:var(--disp);font-weight:600;font-size:14px}
+  .lk-state-s{font-size:12px;color:var(--muted-2);margin-top:4px;line-height:1.6;max-width:640px}
+  .lk-state.on .lk-state-s b{color:#a4ecc7}
+  .lk-state-r{display:flex;align-items:center;gap:9px;flex:none}
+
+  .lk-shared{font-size:11.5px;color:var(--muted-2);line-height:1.9;margin-bottom:12px}
+  .lk-use{display:inline-block;font-size:10.5px;color:#9fc7f5;border:1px solid rgba(59,134,230,.3);
+    background:rgba(59,134,230,.07);border-radius:5px;padding:2px 8px;margin:0 5px 4px 0}
+  .lk-head-r{display:flex;align-items:center;gap:9px}
+  .lk-code{font-family:var(--mono);font-size:11.5px;color:#ffd28a;background:rgba(255,166,48,.09);
+    border:1px solid rgba(255,166,48,.25);border-radius:5px;padding:2px 8px}
+  .chip.al{color:var(--muted);border-color:var(--edge);background:transparent;
+    font-family:var(--mono);font-size:9.5px;text-transform:none;letter-spacing:0}
+  /* An inactive value stays listed — stored rows still decode through it — but
+     reads as switched off so it is not mistaken for part of the live list. */
+  .lk-tbl tr.retired td{opacity:.45}
+  .lk-tbl tr.retired:hover td{opacity:.75}
+  .lk-note{font-size:11.5px;color:var(--muted-2);line-height:1.6;margin-top:12px;max-width:720px}
 </style>
 </head>
 <body>
@@ -193,161 +232,25 @@
 
   <div class="top">
     <div class="brand">
-      <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
-      <div class="bk"><div class="t">KLRAMS Console</div><div class="s">Layer Management</div></div>
+      <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h9"/><circle cx="19" cy="17" r="2.4"/></svg></div>
+      <div class="bk"><div class="t">KLRAMS Console</div><div class="s">Lookup &amp; Short Code</div></div>
     </div>
     <div class="top-r">
       <a class="link" href="/">&larr; Console</a>
+      <a class="link" href="/layers.html">Layer Management</a>
       <a class="link" href="/map.html">Map</a>
     </div>
   </div>
 
-  <h1>Layer Management</h1>
-  <p class="sub">Every layer KLRAMS draws, grouped as the map's Layers panel groups them &mdash; how each
-  one's features are placed, what may be uploaded into it, and whether it can be changed. Core and
-  system-generated layers are protected: they are maintained by their own import pipelines or computed
-  from other data.</p>
+  <h1>Lookup &amp; Short Code</h1>
+  <p class="sub">Pick a layer, pick one of its attributes, and set the values that attribute may hold — each with the short code the survey returns use for it. A lookup only takes effect once the attribute’s data type is <b>Lookup</b>, which the switch below sets. Once on, those values are the only ones the attribute accepts, by code or in full, and they are what every map card and report shows.</p>
 
-  <div class="actions" data-requires="admin">
-    <button class="btn" onclick="openWizard()">+ New layer</button>
-    <button class="btn ghost" onclick="newFolder()">+ New folder</button>
-  </div>
-  <div id="msg" class="msg"></div>
+  <div class="msg" id="lkMsg"></div>
 
-  <div id="tree"></div>
+  <div id="lkBody"><div class="empty">Loading…</div></div>
+
 </div>
-
-<!-- ── create-layer wizard ───────────────────────────────────── -->
-<div class="veil" id="veil">
-  <div class="modal">
-    <h2 id="wizTitle">New layer</h2>
-    <div class="mst" id="wStep">Step 1 of 4 &middot; Name and folder</div>
-    <div class="steps"><div class="stp on" data-s="1"></div><div class="stp" data-s="2"></div><div class="stp" data-s="3"></div><div class="stp" data-s="4"></div></div>
-
-    <!-- 1 · identity -->
-    <div class="wpane" data-pane="1">
-      <div class="fld">
-        <label>Layer name</label>
-        <input type="text" id="wName" placeholder="e.g. Street Lighting" autocomplete="off">
-        <div class="hint">Shown in the Layers panel. The database table name is generated from this
-        automatically &mdash; you never name it directly.</div>
-      </div>
-      <div class="fld">
-        <label>Folder</label>
-        <select id="wFolder"></select>
-      </div>
-    </div>
-
-    <!-- 2 · geometry -->
-    <div class="wpane" data-pane="2" style="display:none">
-      <div class="fld">
-        <label>Feature type</label>
-        <div class="opts" id="wGeom">
-          <label class="opt"><input type="radio" name="geom" value="POINT"><span><span class="ot">Point</span><span class="od">A single position &mdash; a sign, a test pit, a station.</span></span></label>
-          <label class="opt"><input type="radio" name="geom" value="LINESTRING"><span><span class="ot">Line</span><span class="od">A stretch along one road &mdash; a guardrail, a bridge span.</span></span></label>
-          <label class="opt"><input type="radio" name="geom" value="MULTILINESTRING"><span><span class="ot">Multi-line</span><span class="od">Several disjoint stretches treated as one feature.</span></span></label>
-          <label class="opt"><input type="radio" name="geom" value="POLYGON"><span><span class="ot">Polygon</span><span class="od">An area &mdash; a zone, a boundary. Needs a shapefile or GeoJSON.</span></span></label>
-        </div>
-      </div>
-    </div>
-
-    <!-- 3 · upload + placement -->
-    <div class="wpane" data-pane="3" style="display:none">
-      <div class="fld">
-        <label>Accepted upload formats</label>
-        <div class="opts" id="wFmt">
-          <label class="opt"><input type="checkbox" value="SHAPEFILE"><span><span class="ot">Shapefile (.zip)</span><span class="od">Carries its own geometry. Parsed in the browser and sent as GeoJSON.</span></span></label>
-          <label class="opt"><input type="checkbox" value="GEOJSON"><span><span class="ot">GeoJSON</span><span class="od">Carries its own geometry.</span></span></label>
-          <label class="opt"><input type="checkbox" value="CSV"><span><span class="ot">CSV</span><span class="od">Carries no geometry &mdash; features must be placed from its columns.</span></span></label>
-        </div>
-      </div>
-      <div class="fld" id="wPlaceWrap" style="display:none">
-        <label>How should CSV rows be placed?</label>
-        <div class="opts" id="wPlace">
-          <label class="opt"><input type="radio" name="place" value="LATLNG"><span><span class="ot">By latitude / longitude</span><span class="od">The CSV carries coordinate columns. Points only.</span></span></label>
-          <label class="opt"><input type="radio" name="place" value="LINEAR_REFERENCE"><span><span class="ot">By linear reference</span><span class="od">Placed on the road centreline from a section label and chainage &mdash; how structures, FWD and traffic stations work.</span></span></label>
-        </div>
-        <div class="hint" id="wPlaceHint"></div>
-      </div>
-      <div class="fld" id="wLatLng" style="display:none">
-        <label>Coordinate columns</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <input type="text" id="wLat" placeholder="Latitude column (e.g. lat)">
-          <input type="text" id="wLng" placeholder="Longitude column (e.g. lng)">
-        </div>
-      </div>
-      <div class="fld" id="wLinear" style="display:none">
-        <label>Reference columns</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <input type="text" id="wSection" placeholder="Section label column">
-          <input type="text" id="wChainage" placeholder="Chainage column">
-        </div>
-        <div class="hint">Rows whose section label does not match a road in the network are rejected at
-        import rather than placed approximately.</div>
-      </div>
-    </div>
-
-    <!-- 4 · attributes -->
-    <div class="wpane" data-pane="4" style="display:none">
-      <div class="fld">
-        <label>Attribute data</label>
-        <div class="opts" id="wAttr">
-          <label class="opt"><input type="radio" name="attr" value="yes"><span><span class="ot">Define attributes for this layer</span><span class="od">The layer gets an entry in the Attribute Data module where you map its columns and set their types. Choose this if the layer carries data beyond its position.</span></span></label>
-          <label class="opt"><input type="radio" name="attr" value="no"><span><span class="ot">Geometry only</span><span class="od">Just the shapes. Attributes can be added later.</span></span></label>
-        </div>
-      </div>
-      <div class="fld" style="border-top:1px solid var(--edge-soft);padding-top:16px">
-        <label class="ck"><input type="checkbox" id="wPeriod"> This layer's data belongs to a survey period</label>
-        <div class="hint">Tick this for data that is re-collected each survey cycle &mdash; every import
-        is then stored against the period you choose, so a new cycle never overwrites the last and
-        older cycles stay viewable in the Survey Archive. Leave it clear for a standing inventory
-        (signs, lighting, land parcels) that simply is what it is.</div>
-      </div>
-      <div class="hint" id="wSummary" style="border-top:1px solid var(--edge-soft);padding-top:14px;margin-top:4px"></div>
-    </div>
-
-    <div class="mact">
-      <button class="btn ghost" id="wBack" onclick="wizBack()">Back</button>
-      <div style="display:flex;gap:10px">
-        <button class="btn ghost" onclick="closeWizard()">Cancel</button>
-        <button class="btn" id="wNext" onclick="wizNext()">Next</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ── attribute data panel ──────────────────────────────────── -->
-<div class="veil" id="attrVeil">
-  <div class="modal wide">
-    <h2 id="attrTitle">Attributes</h2>
-    <div class="mst" id="attrSub"></div>
-    <div id="attrMsg" class="msg"></div>
-    <div id="attrBody"></div>
-    <div class="mact">
-      <span></span>
-      <button class="btn ghost" onclick="AD.close()">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── add / edit one attribute ──────────────────────────────── -->
-<div class="veil" id="afVeil">
-  <div class="modal">
-    <h2 id="afTitle">Edit attribute</h2>
-    <div class="mst">Attribute definition</div>
-    <div id="afBody"></div>
-    <div class="mact">
-      <span></span>
-      <div style="display:flex;gap:10px">
-        <button class="btn ghost" onclick="AD.closeForm()">Cancel</button>
-        <button class="btn" id="afSave">Save</button>
-      </div>
-    </div>
-  </div>
-</div>
-
+<script src="/js/lookup-manager.js?v=4" defer></script>
 <script src="/js/role-gate.js" defer></script>
-<script src="/js/layer-management.js?v=5" defer></script>
-<script src="/js/attribute-data.js?v=3" defer></script>
 </body>
 </html>

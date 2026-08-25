@@ -164,7 +164,9 @@
        Data Console alongside every other dataset's import, so there is one place
        to go to put data in the system rather than two with different rules. */
     var acts = '<button class="btn ghost sm" onclick="AD.open(' + l.id + ')">Attributes</button>';
-    if (l.editable) {
+    // Offered on every layer: a name is a label, and the import panels in the
+    // Data Console take their titles from it.
+    if (l.renamable !== false) {
       acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.rename(' + l.id + ')">Rename</button>';
     }
     /* User layers are permanent. Hide takes it off the map; Freeze stops its
@@ -226,11 +228,11 @@
     if (!l) return;
     var name = prompt('Rename layer', l.name);
     if (!name || name === l.name) return;
-    post('/api/layers/' + id, {
-      name: name,
-      folderId: folderOf(id),
-      uploadFormats: l.uploadFormats || []
-    }, 'PUT')
+    // A core layer takes the name and nothing else — sending it a folder or a
+    // format list would be asking to move things the server will refuse to move.
+    post('/api/layers/' + id, l.editable
+        ? { name: name, folderId: folderOf(id), uploadFormats: l.uploadFormats || [] }
+        : { name: name }, 'PUT')
       .then(function () { msg('Layer renamed.', true); load(); })
       .catch(function (e) { msg(e.message); });
   }

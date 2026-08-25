@@ -26,9 +26,11 @@ import java.util.Set;
 public class ConditionService {
 
     private final JdbcTemplate jdbc;
+    private final LayerAttributeService attributes;
 
-    public ConditionService(JdbcTemplate jdbc) {
+    public ConditionService(JdbcTemplate jdbc, LayerAttributeService attributes) {
         this.jdbc = jdbc;
+        this.attributes = attributes;
     }
 
     @Transactional
@@ -77,10 +79,7 @@ public class ConditionService {
         if (headerLine == null) return 0;
 
         String[] headers = parseCsvLine(headerLine);
-        Map<String, Integer> idx = new HashMap<>();
-        for (int i = 0; i < headers.length; i++) {
-            idx.put(headers[i].trim().replace("\uFEFF", ""), i);
-        }
+        Map<String, Integer> idx = indexHeaders(headers);
 
         final String sql =
             "INSERT INTO condition (survey_type, section_label, xsp, iri, crack, pothole, rutting, " +
@@ -154,10 +153,7 @@ public class ConditionService {
         if (headerLine == null) return rep;
 
         String[] headers = parseCsvLine(headerLine);
-        Map<String, Integer> idx = new HashMap<>();
-        for (int i = 0; i < headers.length; i++) {
-            idx.put(headers[i].trim().replace("\uFEFF", ""), i);
-        }
+        Map<String, Integer> idx = indexHeaders(headers);
 
         Map<String, Integer> seen = new HashMap<>();
         Map<String, double[]> perSection = new HashMap<>();   // section -> {extraRows, extraMetres}
@@ -215,10 +211,7 @@ public class ConditionService {
         if (headerLine == null) return hits;
 
         String[] headers = parseCsvLine(headerLine);
-        Map<String, Integer> idx = new HashMap<>();
-        for (int i = 0; i < headers.length; i++) {
-            idx.put(headers[i].trim().replace("\uFEFF", ""), i);
-        }
+        Map<String, Integer> idx = indexHeaders(headers);
 
         Set<String> sections = new LinkedHashSet<>();
         String line;
@@ -249,8 +242,52 @@ public class ConditionService {
         return n == null ? 0 : n;
     }
 
+    /**
+     * Index a CSV header by the storage key the condition layer declares for
+     * each column, resolved through its alias list — and by the raw header too.
+     *
+     * This used to be an exact string match on the header alone, which meant a
+     * return spelling it "Section Label" rather than "Section_Label" imported
+     * every row with a null section and null readings: no error, just an empty
+     * survey. Districts do not agree on these spellings, so the match now goes
+     * through Attribute Data, where a new one is added without a code change.
+     *
+     * The raw header stays indexed as well, so a database where the registry
+     * never initialised still resolves the canonical spellings the lookups
+     * below ask for. putIfAbsent throughout: on a file that carries both a raw
+     * header and another column aliased to the same key, the leftmost wins,
+     * which is the same column the old exact match would have taken.
+     *
+     * Shared by the importer and by both pre-import guards, so a file that
+     * imports is the same file the duplicate and re-upload checks looked at.
+     */
+    private Map<String, Integer> indexHeaders(String[] headers) {
+        LayerAttributeService.HeaderResolver resolver =
+                attributes.headerResolver("condition", "default");
+        Map<String, Integer> idx = new HashMap<>();
+        for (int i = 0; i < headers.length; i++) {
+            String raw = headers[i].trim().replace("﻿", "");
+            // Normalised, so case, spaces and underscores never have to agree:
+            // "Section_Label", "Section Label" and "section label" are one key,
+            // and the lookups below keep working with no registry at all.
+            idx.putIfAbsent(LayerAttributeService.norm(raw), i);
+            /* The alias list catches what normalising alone cannot — "Label"
+               for the section, "Cracking" for crack.
+
+               Both the storage key and the LABEL are indexed, because the
+               lookups below name the field the way the survey return does
+               (Start_Latitude) while the column is start_lat. Indexing only one
+               of the two would leave half of them unresolvable. */
+            String key = resolver.keyFor(raw);
+            if (key != null) idx.putIfAbsent(LayerAttributeService.norm(key), i);
+            String label = resolver.labelFor(raw);
+            if (label != null) idx.putIfAbsent(LayerAttributeService.norm(label), i);
+        }
+        return idx;
+    }
+
     private static String get(String[] c, Map<String, Integer> idx, String name) {
-        Integer i = idx.get(name);
+        Integer i = idx.get(LayerAttributeService.norm(name));
         if (i == null || i >= c.length) return null;
         String v = c[i].trim();
         return v.isEmpty() ? null : v;

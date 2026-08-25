@@ -63,10 +63,13 @@ public class LayerRegistryService {
 
     private final JdbcTemplate jdbc;
     private final LayerAttributeService attributes;
+    private final LookupService lookups;
 
-    public LayerRegistryService(JdbcTemplate jdbc, LayerAttributeService attributes) {
+    public LayerRegistryService(JdbcTemplate jdbc, LayerAttributeService attributes,
+                                LookupService lookups) {
         this.jdbc = jdbc;
         this.attributes = attributes;
+        this.lookups = lookups;
     }
 
     @PostConstruct
@@ -75,8 +78,12 @@ public class LayerRegistryService {
             ensureSchema();
             seedBuiltIns();
             // Attributes describe the layers seeded above and hold a foreign key
-            // to them, so this must run last rather than on its own lifecycle.
+            // to them, so this must run after them rather than on its own
+            // lifecycle. Lookups then bind THEMSELVES to those attributes, so
+            // they come last of the three — the order is a dependency chain, not
+            // a preference.
             attributes.ensure();
+            lookups.ensure();
         } catch (Exception e) {
             // A registry failure must never stop the app booting — the map and
             // every existing module work fine without Layer Management.
@@ -151,6 +158,12 @@ public class LayerRegistryService {
            leave it NULL — so this follows a rule the schema already has rather
            than inventing a second one. */
         jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS period_scoped boolean NOT NULL DEFAULT false");
+
+        /* The name the seed last wrote. Re-seeding corrects a label only while
+           it still matches this, so a shipped correction reaches an existing
+           database WITHOUT overwriting a name the RMMS cell has chosen — the
+           same rule layer_attribute.seeded_name applies to attribute labels. */
+        jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS seeded_name text");
     }
 
     /* ------------------------------------------------------------------
@@ -377,11 +390,16 @@ public class LayerRegistryService {
             INSERT INTO layer_definition
                 (layer_key, folder_id, name, geometry_type, placement, source_type,
                  upload_formats, attribute_mapping, source_table, derived_from,
-                 section_field, chainage_field, notes, sort_order, created_by)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'system')
+                 section_field, chainage_field, notes, sort_order, created_by, seeded_name)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'system',?)
             ON CONFLICT (layer_key) DO UPDATE
                SET folder_id = EXCLUDED.folder_id,
-                   name = EXCLUDED.name,
+                   -- Label only while nobody has renamed it. Everything else on
+                   -- this row describes the pipeline, which is ours to correct.
+                   name = CASE WHEN layer_definition.seeded_name IS NULL
+                                 OR layer_definition.seeded_name = layer_definition.name
+                               THEN EXCLUDED.name ELSE layer_definition.name END,
+                   seeded_name = EXCLUDED.seeded_name,
                    geometry_type = EXCLUDED.geometry_type,
                    placement = EXCLUDED.placement,
                    source_type = EXCLUDED.source_type,
@@ -397,7 +415,7 @@ public class LayerRegistryService {
             """,
             l.key, folderId, l.name, l.geometry, l.placement, l.sourceType,
             l.uploadFormats, l.attributeMapping, l.sourceTable, l.derivedFrom,
-            l.sectionField, l.chainageField, l.notes, l.sort);
+            l.sectionField, l.chainageField, l.notes, l.sort, l.name);
     }
 
     private Integer folderId(String key) {
@@ -458,6 +476,13 @@ public class LayerRegistryService {
             m.put("periodScoped", rs.getBoolean("period_scoped"));
             // Derived, never stored — see the class comment.
             m.put("editable", "USER".equals(sourceType) || "EDITABLE_BUILT_IN".equals(sourceType));
+            /* Renaming is separate from editing, and allowed on everything.
+               The name is a label; layer_key is the identity every module,
+               tile source and importer actually selects on. The Data Console's
+               import panels take their titles from this name, so locking it
+               would leave a layer called one thing on the map and another on
+               the screen that loads it. */
+            m.put("renamable", true);
             // User layers are permanent: they are hidden or frozen, never deleted.
             // Only a temporary layer can be discarded outright.
             m.put("deletable", "USER".equals(sourceType) && rs.getBoolean("temporary"));
@@ -647,13 +672,34 @@ public class LayerRegistryService {
         }
     }
 
-    /** Rename / re-file / re-configure. Only USER and EDITABLE_BUILT_IN layers qualify. */
+    /**
+     * Rename / re-file / re-configure.
+     *
+     * <h2>Any layer may be RENAMED; only a USER layer may be reconfigured</h2>
+     * A layer's name is a label and nothing more — {@code layer_key} is its
+     * identity, and that is what every module, tile source and importer selects
+     * on. So renaming "Culverts" to "Cross Drainage Works" is safe on a core
+     * layer for exactly the reason renaming an attribute is: nothing reads the
+     * label to find the data.
+     *
+     * It also became necessary. The Data Console's import panels take their
+     * titles from this name, so leaving it locked meant the RMMS cell could see
+     * a layer called one thing on the map and another on the screen that loads
+     * it, with no way to reconcile them.
+     *
+     * What stays protected is everything that describes the PIPELINE — folder,
+     * geometry, placement, accepted formats. Those are facts about how the data
+     * arrives and is drawn, not preferences, and a core layer's are fixed by the
+     * importer that fills it.
+     */
     public void updateLayer(int id, Map<String, Object> body) {
         String sourceType = sourceTypeOf(id);
-        if (!"USER".equals(sourceType) && !"EDITABLE_BUILT_IN".equals(sourceType)) {
-            throw new ProtectedLayerException(sourceType);
-        }
         String name = require(str(body.get("name")), "Layer name is required");
+        if (!"USER".equals(sourceType) && !"EDITABLE_BUILT_IN".equals(sourceType)) {
+            // Label only. Nothing else on the row is the caller's to move.
+            jdbc.update("UPDATE layer_definition SET name = ? WHERE id = ?", name.trim(), id);
+            return;
+        }
         if ("USER".equals(sourceType)) {
             int folderId = folderIdOrThrow(body.get("folderId"));
             List<String> formats = formatsOf(body.get("uploadFormats"));

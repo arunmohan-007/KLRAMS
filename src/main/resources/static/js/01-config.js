@@ -7,6 +7,30 @@
 const GOOD='#2ba66a',FAIR='#FFC400',POOR='#da4b43',NET='#8a99ad',NONE='#b9c2cc';
 const PARAMS=[{key:'iri',label:'IRI',unit:' m/km',fair:2.55,poor:3.30},{key:'crack',label:'Crack',unit:' %',fair:5,poor:15},{key:'pothole',label:'Pothole',unit:' nos/km',fair:1,poor:3},{key:'rutting',label:'Rutting',unit:' mm',fair:5,poor:10},{key:'texture',label:'Texture',unit:' mm',fair:1,poor:3},{key:'patch_work',label:'Patch work',unit:' sqm',fair:5,poor:10},{key:'ravelling',label:'Ravelling',unit:' %',fair:5,poor:10}];
 const PMAP={};PARAMS.forEach(p=>PMAP[p.key]=p);
+/* PARAMS is where every condition label and unit in the viewer comes from —
+   the inspection card, the summary card, the legend, the filters, the PCI
+   report and the dashboards all read it through PMAP — so it is the one place
+   worth pointing at Attribute Data. Once the catalogue arrives, each entry
+   takes the name and unit the RMMS cell set for the matching `condition`
+   column, and a rename on that screen reaches all of them at once.
+
+   The objects are mutated in place, never replaced: modules captured PMAP
+   entries by reference at load time and a reassignment would leave them
+   holding the old ones.
+
+   The Good/Fair/Poor thresholds are deliberately NOT taken from the catalogue.
+   They are the IRC:82-2023 bands — engineering, not naming — and Attribute Data
+   has no business moving them. */
+if(window.AttrCatalog)AttrCatalog.ready().then(function(){
+  PARAMS.forEach(function(p){
+    const m=AttrCatalog.meta('condition',p.key);
+    if(!m)return;
+    if(m.label)p.label=m.label;
+    // The viewer prints unit straight after the number, so it carries the
+    // separating space the catalogue's bare "m/km" does not.
+    if(m.unit)p.unit=' '+m.unit;
+  });
+});
 // decode lookups for shapefile codes
 const LK={
   Road_Class:{SH:'State Highway',MDR:'Major District Road',ODR:'Other District Road',NH:'National Highway'},
@@ -28,7 +52,35 @@ const ROAD_FIELDS=[
   ['Current_Ow','Current owner','Current_Ow'],
   ['PWD_Sec','PWD section'],['CRN','CRN'],['District','District']
 ];
-function dec(group,val){const t=LK[group];const k=String(val).trim();return t&&t[k]?t[k]:val;}
+/* The road inspection card's labels come from Attribute Data too, on the same
+   terms as PARAMS above: name and unit only, mutated in place.
+
+   The unit is taken ONLY for a field with no decode key. A decoded field prints
+   a band of text, not a measurement — Pavement_W renders "≥7 & <10.5 m" — and
+   appending the column's unit to that would produce "≥7 & <10.5 m m". */
+if(window.AttrCatalog)AttrCatalog.ready().then(function(){
+  ROAD_FIELDS.forEach(function(f){
+    const m=AttrCatalog.meta('roads',f[0]);
+    if(!m)return;
+    if(m.label)f[1]=m.label;
+    if(m.unit&&!f[2])f[3]=' '+m.unit;
+  });
+});
+/* Expand a coded road value.
+   Asks the Lookup & Short Code module first — one place the RMMS cell can edit
+   — and falls back to LK above for a code it does not cover and for the moment
+   before the catalogue has loaded. LK stays as that floor rather than being
+   deleted: it is the only decode available if the lookup tables are empty. */
+function dec(group,val){
+  const k=String(val==null?'':val).trim();
+  if(k==='')return val;
+  if(window.AttrCatalog){
+    const full=AttrCatalog.expand('roads',group,k);
+    if(full!=null&&String(full)!==k)return full;
+  }
+  const t=LK[group];
+  return t&&t[k]?t[k]:val;
+}
 let mode='all',filters=[],DATA=null,ROADS={},segsByRoad={},CATALOG={};
 /* Vector-tile mode, default ON. Opt out with ?tiles=0 (kept as an escape
    hatch — no redeploy needed to fall back to the old path if something looks

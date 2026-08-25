@@ -68,11 +68,14 @@ public class AssetController {
 
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
+    private final LayerAttributeService attributes;
     private final ObjectMapper om = new ObjectMapper();
 
-    public AssetController(JdbcTemplate jdbc, SurveyPeriodService periods) {
+    public AssetController(JdbcTemplate jdbc, SurveyPeriodService periods,
+                           LayerAttributeService attributes) {
         this.jdbc = jdbc;
         this.periods = periods;
+        this.attributes = attributes;
     }
 
     private void ensure() {
@@ -218,10 +221,25 @@ public class AssetController {
             for (int i=0;i<cols.length;i++)
                 idx.put(cols[i].trim().toLowerCase().replace("\uFEFF","").replace(' ','_'), i);
 
-            Integer iSec = first(idx, "section_label","section_la","section_label_code","label","road");
-            Integer iStart = first(idx, "start_chainage","start_chiange","start","chainage","chiange","from_chainage","from");
-            Integer iEnd = first(idx, "end_chainage","end_chiange","end","to_chainage",
-                    "to_ch","toch","tochainage","chainage_to","chainageto","end_ch","endch","to");
+            /* Which column is the section label, and which the chainages, is
+               answered by the layer's own attribute list first — the aliases the
+               RMMS cell maintains in Attribute Data. The hard-coded lists below
+               stay as the fallback for a database where the registry never came
+               up, but they are no longer how a new district's spelling gets
+               supported: adding it on that screen is, with no code change. */
+            LayerAttributeService.HeaderResolver headers =
+                    attributes.headerResolver(type, "default");
+
+            Integer iSec = firstNonNull(headers.columnFor(cols, "SECTION_LABEL"),
+                    () -> first(idx, "section_label","section_la","section_label_code","label","road"));
+            Integer iStart = firstNonNull(
+                    // A point layer declares one CHAINAGE, a line layer a
+                    // START_CHAINAGE — ask for whichever this type carries.
+                    headers.columnFor(cols, isLine ? "START_CHAINAGE" : "CHAINAGE"),
+                    () -> first(idx, "start_chainage","start_chiange","start","chainage","chiange","from_chainage","from"));
+            Integer iEnd = firstNonNull(headers.columnFor(cols, "END_CHAINAGE"),
+                    () -> first(idx, "end_chainage","end_chiange","end","to_chainage",
+                    "to_ch","toch","tochainage","chainage_to","chainageto","end_ch","endch","to"));
             if (iSec == null || iStart == null)
                 { r.put("status","error"); r.put("message","CSV must have Section_Label and "+(isLine?"Start_Chainage/From and End_Chainage/To":"Chainage")); return r; }
             if (isLine && iEnd == null)
@@ -255,11 +273,25 @@ public class AssetController {
                         jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ?", type, sec);
                     }
                 }
-                // keep every column as attrs
+                /* Keep every column as attrs, under the storage key the layer
+                   declares for it rather than under whatever this file's header
+                   happened to say. That is what makes "Section_Label" from
+                   Malappuram and "Section Label" from Idukki one field instead
+                   of two, so a card, a filter or a dashboard that finds the
+                   value in one district finds it in all of them.
+
+                   A header the layer does not recognise keeps its own name. It
+                   is a real value someone recorded, and dropping it or forcing
+                   it into a neighbouring key would lose or corrupt data; stored
+                   under its own header it is visible, and the next boot's
+                   discovery pass turns it into an attribute of its own. */
                 Map<String,String> attrs = new LinkedHashMap<>();
                 for (int i=0;i<cols.length && i<c.length;i++) {
                     String v = c[i].trim();
-                    if (!v.isEmpty()) attrs.put(cols[i].trim(), v);
+                    if (v.isEmpty()) continue;
+                    String col = cols[i].trim();
+                    String key = headers.keyFor(col);
+                    attrs.put(key != null ? key : col, v);
                 }
                 // Every asset type is placed by linear reference ONLY — Section_Label
                 // + chainage must resolve to a road, same as traffic stations. Any
@@ -532,6 +564,16 @@ public class AssetController {
         r.put("status", "exists");
         r.put("existing", hits);
         return r;
+    }
+
+    /**
+     * The registry's answer, or the built-in fallback if it has none.
+     *
+     * The fallback is a supplier so the hard-coded alias scan does not run at
+     * all when the registry already resolved the column.
+     */
+    private static Integer firstNonNull(Integer preferred, java.util.function.Supplier<Integer> fallback) {
+        return preferred != null ? preferred : fallback.get();
     }
 
     private static Integer first(Map<String,Integer> idx, String... names) {

@@ -78,16 +78,17 @@ public class UserLayerTileService {
         Map<String, Object> row;
         try {
             row = jdbc.queryForMap(
-                    "SELECT physical_table, temporary, created_by, frozen, period_scoped "
+                    "SELECT physical_table, temporary, created_by, frozen, hidden, period_scoped "
                   + "FROM layer_definition WHERE id = ? AND source_type = 'USER'", layerId);
         } catch (Exception e) {
             return null;      // no such user layer
         }
 
-        // Frozen data is not used for anything, and that includes tiles — the
-        // check belongs here and not only in the layer list, or a frozen layer
-        // would still paint for anyone whose style already held its source.
-        if (Boolean.TRUE.equals(row.get("frozen"))) return null;
+        // Frozen data is not used for anything, and hidden data is not drawn on
+        // the map — both include tiles. The check belongs here and not only in
+        // the layer list, or a frozen/hidden layer would still paint for anyone
+        // whose style already held its source.
+        if (Boolean.TRUE.equals(row.get("frozen")) || Boolean.TRUE.equals(row.get("hidden"))) return null;
 
         Object tableObj = row.get("physical_table");
         if (tableObj == null) return null;

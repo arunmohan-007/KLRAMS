@@ -8,6 +8,12 @@
  * Traffic has TWO datasets (stations and counts), so the panel is built around
  * a dataset list rather than a single table; every other layer simply has one.
  *
+ * Every attribute is editable, including the standard ones of a core layer:
+ * the column list now comes from the RMMS Format-B returns and the RMMS cell is
+ * who decides what each field should be called. Renaming is safe because the
+ * label and the storage are separate — the name is what the map cards and the
+ * dashboards print, while the storage key underneath it never moves.
+ *
  * As in Layer Management, nothing here decides what is protected. `canDelete`
  * and each attribute's `placement` flag arrive from the server, and the API
  * refuses the call regardless of what this file renders.
@@ -113,19 +119,41 @@
 
     html += '<div class="tbl-wrap"><table class="atbl"><thead><tr>' +
       '<th>Name</th><th>Type</th><th>Lookup</th><th>Length</th><th>Unit</th>' +
+      '<th>Accepted column names</th>' +
       '<th>Placement</th><th>Mandatory</th><th>Attribute type</th><th>Status</th><th></th>' +
       '</tr></thead><tbody>' +
       (current().attributes.length
         ? current().attributes.map(rowHtml).join('')
-        : '<tr><td colspan="10" class="empty">No attributes defined yet.</td></tr>') +
+        : '<tr><td colspan="11" class="empty">No attributes defined yet.</td></tr>') +
       '</tbody></table></div>';
 
     document.getElementById('attrBody').innerHTML = html;
   }
 
+  /**
+   * The header spellings an upload may use for this attribute, shown as chips.
+   *
+   * Capped at three with a "+n" tail: FWD alone carries four or five per field
+   * and the full list would push every other column off the screen. The edit
+   * form shows all of them.
+   */
+  function aliasChips(a) {
+    var list = String(a.aliases || '').split(',').filter(function (s) { return s.trim(); });
+    if (!list.length) return '';
+    var shown = list.slice(0, 3).map(function (s) {
+      return '<span class="chip al">' + esc(s.trim()) + '</span>';
+    }).join('');
+    return shown + (list.length > 3
+      ? '<span class="opt" title="' + esc(list.join(', ')) + '">+' + (list.length - 3) + '</span>'
+      : '');
+  }
+
   function rowHtml(a) {
-    var canDelete = state.data.canDeleteAttributes || a.attributeType === 'CUSTOM';
-    return '<tr>' +
+    // Every attribute may be edited and every non-placement one may be removed.
+    // The only lock left is the attribute that places the feature: without it
+    // the layer cannot put anything on the map at all.
+    var retired = a.status !== 'ACTIVE';
+    return '<tr' + (retired ? ' class="retired"' : '') + '>' +
       '<td class="an">' + (a.placement ? '<span class="pin" title="Places the feature">◆</span> ' : '') +
         esc(a.name) + '<span class="sk">' + esc(a.storageKey) + '</span></td>' +
       '<td>' + esc(a.dataType.charAt(0) + a.dataType.slice(1).toLowerCase()) +
@@ -133,17 +161,17 @@
       '<td>' + (a.lookupKey ? '<span class="chip lk">' + esc(a.lookupKey) + '</span>' : '') + '</td>' +
       '<td>' + (a.length == null ? '' : a.length) + '</td>' +
       '<td>' + esc(a.unit || '') + '</td>' +
+      '<td class="alz">' + aliasChips(a) + '</td>' +
       '<td>' + (a.placement ? '<span class="chip pl">' + esc(ROLE_LABEL[a.role]) + '</span>' : '') + '</td>' +
       '<td>' + (a.mandatory ? '<span class="chip mn">Required</span>' : '<span class="opt">Optional</span>') + '</td>' +
       '<td>' + (a.attributeType === 'CUSTOM' ? '<span class="chip cu">Custom</span>' : 'Standard') + '</td>' +
       '<td><span class="badge ' + (a.status === 'ACTIVE' ? 'ok' : 'off') + '">' + esc(a.status) + '</span></td>' +
       '<td class="acts" data-requires="admin">' +
         '<button class="ic" title="Edit" onclick="AD.edit(' + a.id + ')">✎</button>' +
-        (canDelete && !a.placement
-          ? '<button class="ic del" title="Delete" onclick="AD.remove(' + a.id + ')">🗑</button>'
-          : '<span class="ic lock" title="' +
-            (a.placement ? 'Places the feature — cannot be deleted'
-                         : 'Standard attribute of a protected layer') + '">🔒</span>') +
+        (a.placement
+          ? '<span class="ic lock" title="Places the feature — give the role to another ' +
+            'attribute before removing it">🔒</span>'
+          : '<button class="ic del" title="Remove" onclick="AD.remove(' + a.id + ')">🗑</button>') +
       '</td></tr>';
   }
 
@@ -212,6 +240,19 @@
         (a && a.mandatory ? ' checked' : '') + '> Mandatory</label>' +
         '<div class="hint">A mandatory attribute must be matched to a column at import. ' +
         'An optional one may be left unmapped, and rows whose value does not fit the type are skipped.</div></div>' +
+      '<div class="fld"><label>Accepted column names</label>' +
+        '<input type="text" id="afAliases" value="' + esc(a ? (a.aliases || '') : '') + '"' +
+        ' placeholder="Section_Label, Section Label, Label">' +
+        '<div class="hint">Comma separated. Districts do not spell their headers the same way — ' +
+        'list every spelling seen in a survey return here and they all resolve to this one ' +
+        'attribute. Case, spaces and underscores are ignored when matching.</div></div>' +
+      (a ? '<div class="fld"><label>Status</label><select id="afStatus">' +
+        ['ACTIVE', 'RETIRED'].map(function (s) {
+          return '<option value="' + s + '"' + (a.status === s ? ' selected' : '') + '>' +
+            (s === 'ACTIVE' ? 'Active' : 'Retired') + '</option>';
+        }).join('') + '</select>' +
+        '<div class="hint">A retired attribute is no longer mapped at import and is greyed out ' +
+        'on this screen. Stored values are left untouched, so retiring is reversible.</div></div>' : '') +
       '<div class="fld" id="afLookupWrap" style="display:none"><label>Lookup set</label>' +
         '<input type="text" id="afLookup" value="' + esc(a ? (a.lookupKey || '') : '') + '"' +
         ' placeholder="leave blank to create one named after this attribute">' +
@@ -259,7 +300,9 @@
       unit: document.getElementById('afUnit').value.trim(),
       role: roleSel ? roleSel.value : 'NONE',
       mandatory: document.getElementById('afReq').checked,
-      lookupKey: (document.getElementById('afLookup') || {}).value || ''
+      lookupKey: (document.getElementById('afLookup') || {}).value || '',
+      aliases: document.getElementById('afAliases').value.trim(),
+      status: (document.getElementById('afStatus') || {}).value || 'ACTIVE'
     };
     if (!body.name) return msg('Give the attribute a name.');
 
@@ -276,13 +319,26 @@
     }).catch(function (e) { msg(e.message); });
   }
 
+  /**
+   * Remove an attribute.
+   *
+   * A standard attribute is retired rather than deleted — it is part of the
+   * declared column list and the next restart would put it straight back — so
+   * the prompt says which of the two is about to happen instead of promising a
+   * delete that undoes itself.
+   */
   function remove(id) {
     var a = findAttr(id);
     if (!a) return;
-    if (!confirm('Delete the attribute "' + a.name + '"? Stored values for it are left untouched.')) return;
+    var custom = a.attributeType === 'CUSTOM';
+    if (!confirm(custom
+        ? 'Delete the custom attribute "' + a.name + '"? Stored values for it are left untouched.'
+        : '"' + a.name + '" is a standard column of this layer, so it will be retired rather ' +
+          'than deleted: it stops being mapped at import and is greyed out here. Stored values ' +
+          'are left untouched and you can set it back to Active at any time.')) return;
     api('/api/attributes/' + id, null, 'DELETE')
       .then(function () {
-        msg('Attribute deleted.', true);
+        msg(custom ? 'Attribute deleted.' : 'Attribute retired.', true);
         return api('/api/attributes/layer/' + state.layerId);
       })
       .then(function (d) { state.data = d; render(); })

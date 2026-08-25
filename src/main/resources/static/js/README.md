@@ -4,6 +4,7 @@ The viewer logic was previously one inline script in `map.html`. It is now split
 
 | # | File | Responsibility |
 |---|------|----------------|
+| 00 | `js/00-attr-catalog.js` | The attribute label catalogue: one fetch of `/api/attributes/catalog` giving every layer's column list as Attribute Data has it (label, unit, type, accepted column names), so a rename on that screen reaches the map cards. Loads first and never blocks — a lookup returns null when it has not loaded and the caller keeps its own fallback. |
 | 01 | `js/01-config.js` | Constants, shapefile decode tables, road-detail fields, and shared application state. |
 | 02 | `js/02-map-core.js` | MapLibre map creation, navigation/scale controls, and the base-map switcher. |
 | 02b | `js/02b-layer-registry.js` | One declared home for every map layer: source, owning toggle, lazy loader, and draw order. Currently **inert** — it describes layers and exposes an API, but every layer is still created and toggled by the module that owns it. |

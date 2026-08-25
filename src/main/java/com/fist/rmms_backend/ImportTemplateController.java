@@ -56,9 +56,14 @@ public class ImportTemplateController {
     }
 
     private final JdbcTemplate jdbc;
+    private final LayerAttributeService attributes;
+    private final LookupService lookups;
 
-    public ImportTemplateController(JdbcTemplate jdbc) {
+    public ImportTemplateController(JdbcTemplate jdbc, LayerAttributeService attributes,
+                                    LookupService lookups) {
         this.jdbc = jdbc;
+        this.attributes = attributes;
+        this.lookups = lookups;
     }
 
     @PostConstruct
@@ -227,9 +232,38 @@ public class ImportTemplateController {
 
     @GetMapping("/{id}/sample")
     public ResponseEntity<byte[]> sample(@PathVariable int id) {
-        Map<String, Object> t = jdbc.queryForMap("SELECT name FROM import_templates WHERE id = ?", id);
+        Map<String, Object> t = jdbc.queryForMap(
+            "SELECT name, dataset_key, builtin FROM import_templates WHERE id = ?", id);
         List<Map<String, Object>> cols = jdbc.queryForList(
             "SELECT csv_column, example FROM import_template_columns WHERE template_id = ? ORDER BY sort, id", id);
+
+        /* Same rule as validate(): a template the RMMS cell built themselves is
+           theirs, but a built-in one no longer decides anything — the layer's
+           attributes do. Handing a surveyor a six-column sample while the
+           mapping window expects seventeen is how a "correct" file comes back
+           with eleven columns the system did not ask for. */
+        if (Boolean.TRUE.equals(t.get("builtin"))) {
+            List<Map<String, Object>> declared = attributes.importColumns(str(t.get("dataset_key")));
+            if (!declared.isEmpty()) {
+                Map<String, String> examples = new LinkedHashMap<>();
+                for (Map<String, Object> c : cols) {
+                    examples.put(norm(str(c.get("csv_column"))), str(c.get("example")));
+                }
+                List<Map<String, Object>> out = new ArrayList<>();
+                for (Map<String, Object> d : declared) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    String label = str(d.get("field_name"));
+                    m.put("csv_column", label);
+                    // Reuse the seeded example where the two lists overlap, so a
+                    // column that already had a realistic sample value keeps it.
+                    String ex = examples.get(norm(label));
+                    if (ex == null) ex = examples.get(norm(str(d.get("storage_key"))));
+                    m.put("example", ex != null ? ex : exampleFor(str(d.get("data_type"))));
+                    out.add(m);
+                }
+                cols = out;
+            }
+        }
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < cols.size(); i++) {
             if (i > 0) sb.append(',');
@@ -266,17 +300,43 @@ public class ImportTemplateController {
     public Map<String, Object> validate(@RequestParam("dataset") String dataset,
                                         @RequestParam("file") MultipartFile file) {
         Map<String, Object> r = new LinkedHashMap<>();
+
+        /* Where the expected column list comes from, in priority order:
+             1. a template the RMMS cell BUILT themselves and enabled — an
+                explicit override, so it wins outright;
+             2. the layer's attributes, which is the list Attribute Data shows
+                and the importers actually resolve against;
+             3. the seeded built-in template, for a dataset with no layer
+                (video_catalog) or a database where the registry never came up.
+           Order matters: putting the attributes above the seeded templates is
+           what stops this screen and Attribute Data disagreeing about what a
+           dataset's columns are. */
         List<Map<String, Object>> tpl = jdbc.queryForList("""
-            SELECT id, name FROM import_templates
+            SELECT id, name, builtin FROM import_templates
             WHERE dataset_key = ? AND enabled = true ORDER BY updated_at DESC LIMIT 1
             """, dataset);
-        if (tpl.isEmpty()) { r.put("status", "no_template"); return r; }
-        int tid = ((Number) tpl.get(0).get("id")).intValue();
-        r.put("template", tpl.get(0).get("name"));
-        List<Map<String, Object>> cols = jdbc.queryForList("""
-            SELECT field_name, csv_column, data_type, required
-            FROM import_template_columns WHERE template_id = ? ORDER BY sort, id
-            """, tid);
+        boolean custom = !tpl.isEmpty() && !Boolean.TRUE.equals(tpl.get(0).get("builtin"));
+
+        List<Map<String, Object>> cols;
+        if (custom) {
+            r.put("template", tpl.get(0).get("name"));
+            cols = jdbc.queryForList("""
+                SELECT field_name, csv_column, data_type, required
+                FROM import_template_columns WHERE template_id = ? ORDER BY sort, id
+                """, ((Number) tpl.get(0).get("id")).intValue());
+        } else {
+            cols = attributes.importColumns(dataset);
+            if (!cols.isEmpty()) {
+                r.put("template", "Attribute Data · " + dataset);
+            } else if (!tpl.isEmpty()) {
+                r.put("template", tpl.get(0).get("name"));
+                cols = jdbc.queryForList("""
+                    SELECT field_name, csv_column, data_type, required
+                    FROM import_template_columns WHERE template_id = ? ORDER BY sort, id
+                    """, ((Number) tpl.get(0).get("id")).intValue());
+            }
+        }
+        if (cols.isEmpty()) { r.put("status", "no_template"); return r; }
         try {
             BufferedReader br = new BufferedReader(new InputStreamReader(
                 new ByteArrayInputStream(file.getBytes()), StandardCharsets.UTF_8));
@@ -291,24 +351,70 @@ public class ImportTemplateController {
             List<String> missing = new ArrayList<>();
             Map<String, String> rename = new LinkedHashMap<>();   // actual header -> field_name
             Map<Integer, Map<String, Object>> matched = new LinkedHashMap<>(); // header idx -> template col
+            /* Every expected column and the file column it resolved to, matched
+               or not. Returned always, not only when something is wrong: the
+               screen's job is to show WHAT it mapped, and a bare "all columns
+               match" tick gives whoever is importing no way to check that the
+               system understood their file the way they meant it. */
+            List<Map<String, Object>> mapping = new ArrayList<>();
+
             for (Map<String, Object> c : cols) {
                 String field = str(c.get("field_name")), csvCol = str(c.get("csv_column"));
                 Integer i = byNorm.get(norm(csvCol));
                 if (i == null) i = byNorm.get(norm(field));
+                // The accepted column names from Attribute Data. Without this a
+                // district whose return says "Section Label" while the attribute
+                // is labelled "Section_Label" would be told a required column is
+                // missing — even though the importer would have resolved it.
                 if (i == null) {
+                    for (String alias : aliasesOf(c)) {
+                        i = byNorm.get(norm(alias));
+                        if (i != null) break;
+                    }
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("field", field);
+                row.put("storageKey", c.get("storage_key"));
+                row.put("type", c.get("data_type"));
+                row.put("required", Boolean.TRUE.equals(c.get("required")));
+                mapping.add(row);
+
+                if (i == null) {
+                    row.put("column", null);
                     if (Boolean.TRUE.equals(c.get("required"))) missing.add(csvCol);
                     continue;
                 }
                 matched.put(i, c);
                 String actual = header[i].trim().replace("﻿", "");
+                row.put("column", actual);
                 if (field != null && !actual.equals(field)) rename.put(actual, field);
             }
-            // columns in the file that no template column claims (info only —
+            // columns in the file that no expected column claims (info only —
             // asset/geo importers keep them as extra attributes)
             List<String> extra = new ArrayList<>();
             Set<String> claimed = new HashSet<>();
-            for (Map<String, Object> c : cols) { claimed.add(norm(str(c.get("csv_column")))); claimed.add(norm(str(c.get("field_name")))); }
+            for (Map<String, Object> c : cols) {
+                claimed.add(norm(str(c.get("csv_column"))));
+                claimed.add(norm(str(c.get("field_name"))));
+                claimed.add(norm(str(c.get("storage_key"))));
+                for (String alias : aliasesOf(c)) claimed.add(norm(alias));
+            }
             for (String h : header) { String n = norm(h); if (!n.isEmpty() && !claimed.contains(n)) extra.add(h.trim()); }
+
+            /* The permitted values of every coded column in this file, resolved
+               once. Per column rather than per cell: the list is fixed for the
+               whole file, and looking it up per row would put a query inside the
+               parse loop. */
+            Map<Integer, Set<String>> permitted = new HashMap<>();
+            String[] layerTarget = attributes.layerForDataset(dataset);
+            if (layerTarget != null) {
+                for (Map.Entry<Integer, Map<String, Object>> e : matched.entrySet()) {
+                    if (e.getValue().get("lookup_key") == null) continue;
+                    Set<String> ok = lookups.permittedValues(
+                            layerTarget[0], layerTarget[1], str(e.getValue().get("field_name")));
+                    if (ok != null && !ok.isEmpty()) permitted.put(e.getKey(), ok);
+                }
+            }
 
             // cell checks: numbers parse, dates parse, required cells non-blank
             List<Map<String, Object>> errors = new ArrayList<>();
@@ -330,6 +436,13 @@ public class ImportTemplateController {
                         problem = "not a number";
                     } else if ("date".equals(type) && !isDate(v)) {
                         problem = "wrong date format — use " + DATE_FORMAT_HINT;
+                    } else if (permitted.containsKey(i) && !permitted.get(i).contains(norm(v))) {
+                        /* A coded column accepts its short codes and its lookup
+                           values, and nothing else. Without this the restriction
+                           would be something the Lookup screen claims and the
+                           importer ignores, and a typo would land in the data as
+                           a value no card can decode. */
+                        problem = "not one of the permitted values for this attribute";
                     }
                     if (problem != null) {
                         totalErrors++;
@@ -345,6 +458,12 @@ public class ImportTemplateController {
                 }
             }
             r.put("checked_rows", rows);
+            // The mapping goes out on BOTH paths. A file that failed a cell check
+            // still mapped its columns, and hiding that is what leaves someone
+            // guessing whether the failure is their data or our matching.
+            r.put("mapping", mapping);
+            if (!extra.isEmpty()) r.put("extra", extra);
+            if (!rename.isEmpty()) r.put("rename", rename);
             if (!missing.isEmpty() || totalErrors > 0) {
                 r.put("status", "invalid");
                 if (!missing.isEmpty()) r.put("missing", missing);
@@ -352,8 +471,6 @@ public class ImportTemplateController {
                 return r;
             }
             r.put("status", "ok");
-            if (!rename.isEmpty()) r.put("rename", rename);
-            if (!extra.isEmpty()) r.put("extra", extra);
             return r;
         } catch (Exception ex) {
             r.put("status", "error");
@@ -461,6 +578,36 @@ public class ImportTemplateController {
 
     /** field, type, unit, required, example — csv_column starts equal to field. */
     private record Col(String field, String type, String unit, boolean req, String ex) {}
+
+    /**
+     * The accepted column names carried on an expected column, or empty.
+     *
+     * A column sourced from a stored template has none — the aliases live in
+     * Attribute Data — so this quietly returns nothing rather than making every
+     * caller check which source the list came from.
+     */
+    /**
+     * A placeholder for a declared column the seeded templates never had.
+     *
+     * A blank cell would be worse than a wrong one: the sample is what tells a
+     * surveyor what shape a value takes, and a date in particular has exactly
+     * one accepted format that the row has to demonstrate.
+     */
+    private static String exampleFor(String type) {
+        return switch (type == null ? "text" : type) {
+            case "number" -> "0";
+            case "date" -> "15-Apr-2020";
+            default -> "";
+        };
+    }
+
+    private static List<String> aliasesOf(Map<String, Object> col) {
+        String raw = str(col.get("aliases"));
+        if (raw == null || raw.isBlank()) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String a : raw.split(",")) if (!a.isBlank()) out.add(a.trim());
+        return out;
+    }
 
     private void seedDefaults() {
         Long n = jdbc.queryForObject("SELECT count(*) FROM import_templates", Long.class);

@@ -65,17 +65,39 @@ const ASSET_UNITS_SCHEMA={
     {t:'Sub-grade',rows:[['Sub Grade CBR','Sub-grade CBR','%']]}
   ]}
 };
-function _assetUVal(raw,unit){
+/* Render one value.
+   `type` and `key` are optional and only used to expand a short code: the data
+   stores "FLX", the reader wants "Flexible". The code is kept alongside in a
+   muted chip rather than replaced outright — it is what the survey return
+   actually says, and someone checking a file against the map needs to see both. */
+function _assetUVal(raw,unit,type,key){
   if(raw==null||String(raw).trim()==='')return null;
   const s=String(raw).trim();
+  if(type&&key&&window.AttrCatalog){
+    const full=AttrCatalog.expand(type,key,s);
+    /* The chip carries the code only when the stored value IS one. A return
+       that already holds the full word would otherwise render
+       "Major Bridge [Major bridge]" — the same thing twice, differing only in
+       case. Compared normalised so spacing and punctuation do not count as a
+       difference either. */
+    const same=String(full).toLowerCase().replace(/[^a-z0-9]/g,'')===s.toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(full!=null&&!same)return escH(full)+' <span class="kp-code">'+escH(s)+'</span>';
+    if(full!=null&&String(full)!==s)return escH(full);
+  }
   if(unit){const num=Number(s.replace(/,/g,''));if(!isNaN(num))return escH(s)+' <span class="kp-u">'+escH(unit)+'</span>';}
   return escH(s);
 }
-function _assetPrettyKey(k){return String(k).replace(/_/g,' ').replace(/\s+/g,' ').trim();}
+function _assetPrettyKey(k,type){const m=_assetCat(type,k);return m?m.label:String(k).replace(/_/g,' ').replace(/\s+/g,' ').trim();}
+/* The name and unit the RMMS cell set for this field in Attribute Data, or null
+   if the catalogue has no entry (or has not loaded). Asking here first is what
+   makes a rename on that screen show up on the map. */
+function _assetCat(type,k){return (window.AttrCatalog&&type)?AttrCatalog.meta(type,k):null;}
 /* derive a friendly label + unit from a raw column name (e.g. "...Thickness mm"
    → {label:"... Thickness", unit:"mm"}). Only pulls units that are explicitly
-   present in the name, so we never invent an incorrect unit. */
-function _assetKeyMeta(k){
+   present in the name, so we never invent an incorrect unit. Used only for the
+   columns the catalogue does not describe. */
+function _assetKeyMeta(k,type){
+  const cat=_assetCat(type,k);if(cat&&cat.label)return cat;
   let key=String(k).replace(/_/g,' ').replace(/\s+/g,' ').trim();let unit='';
   if(/\bgm\s?cc\b/i.test(key)){unit='g/cc';key=key.replace(/\bgm\s?cc\b/i,'');}
   else if(/\bmm\b/i.test(key)){unit='mm';key=key.replace(/\bmm\b/i,'');}
@@ -88,6 +110,7 @@ function assetProPopup(lngLat,p,type,label){
   const sch=ASSET_UNITS_SCHEMA[type];
   const rdv=pickProp(p,ROAD_KEYS),road=(rdv!=null?rdv:p.road)||'';
   const lane=p[sch.lane]||'';
+  const laneTxt=lane?(window.AttrCatalog?AttrCatalog.expand(type,sch.lane,lane):lane):'';
   const handled={};
   Object.keys(p).forEach(k=>{const c=ckey(k);if(k.charAt(0)==='_'||ROAD_KEYS.indexOf(c)>=0||FROM_KEYS.indexOf(c)>=0||TO_KEYS.indexOf(c)>=0)handled[k]=1;});
   ['from_ch','to_ch','Chainage','Date',sch.lane,'Section Label','Section Label Code','Section Start Date'].forEach(k=>{handled[k]=1;});
@@ -97,22 +120,27 @@ function assetProPopup(lngLat,p,type,label){
   else if(f!=null)chTxt=escH(f)+' m';
   else if(p.Chainage!=null&&p.Chainage!=='')chTxt=escH(p.Chainage)+' m';
   let h='<div class="klpop asset-klpop">';
-  h+='<div class="kp-head"><div class="kp-name">'+escH(label)+'</div><div class="kp-meta">'+(lane?'<span class="kp-chip">'+escH(lane)+'</span>':'')+(road?'<span class="kp-sec">'+escH(road)+'</span>':'')+'</div></div>';
+  h+='<div class="kp-head"><div class="kp-name">'+escH(label)+'</div><div class="kp-meta">'+(lane?'<span class="kp-chip" title="'+escH(lane)+'">'+escH(laneTxt)+'</span>':'')+(road?'<span class="kp-sec">'+escH(road)+'</span>':'')+'</div></div>';
   let loc='';
   if(chTxt)loc+='<div class="kp-attr"><span class="kp-k">Chainage</span><span class="kp-v">'+chTxt+'</span></div>';
   if(p.Date)loc+='<div class="kp-attr"><span class="kp-k">Test date</span><span class="kp-v">'+escH(p.Date)+'</span></div>';
   if(loc)h+='<div class="kp-block"><div class="kp-eyebrow">Location</div><div class="kp-attrs">'+loc+'</div></div>';
+  /* The schema's own label and unit are the fallback, not the answer: a field
+     the RMMS cell has renamed in Attribute Data shows under their name here.
+     The schema still decides the grouping and the order, which is the part it
+     knows and the catalogue does not. */
+  const rowMeta=r=>{const c=_assetCat(type,r[0]);return c&&c.label?{l:c.label,u:c.unit||r[2]}:{l:r[1],u:r[2]};};
   sch.groups.forEach(g=>{
     g.rows.forEach(r=>{handled[r[0]]=1;});
     if(g.grid){
-      let cells='';g.rows.forEach(r=>{const v=_assetUVal(p[r[0]],r[2]);if(v==null)return;cells+='<div class="kp-gcell"><span class="kp-gk">'+escH(r[1])+'</span><span class="kp-gv">'+v+'</span></div>';});
+      let cells='';g.rows.forEach(r=>{const m=rowMeta(r);const v=_assetUVal(p[r[0]],m.u,type,r[0]);if(v==null)return;cells+='<div class="kp-gcell"><span class="kp-gk">'+escH(m.l)+'</span><span class="kp-gv">'+v+'</span></div>';});
       if(cells)h+='<div class="kp-block"><div class="kp-eyebrow">'+escH(g.t)+'</div><div class="kp-grid">'+cells+'</div></div>';
     }else{
-      let rows='';g.rows.forEach(r=>{const v=_assetUVal(p[r[0]],r[2]);if(v==null)return;rows+='<div class="kp-attr"><span class="kp-k">'+escH(r[1])+'</span><span class="kp-v">'+v+'</span></div>';});
+      let rows='';g.rows.forEach(r=>{const m=rowMeta(r);const v=_assetUVal(p[r[0]],m.u,type,r[0]);if(v==null)return;rows+='<div class="kp-attr"><span class="kp-k">'+escH(m.l)+'</span><span class="kp-v">'+v+'</span></div>';});
       if(rows)h+='<div class="kp-block"><div class="kp-eyebrow">'+escH(g.t)+'</div><div class="kp-attrs">'+rows+'</div></div>';
     }
   });
-  let extra='';Object.keys(p).forEach(k=>{if(handled[k])return;const v=p[k];if(v==null||v==='')return;extra+='<div class="kp-attr"><span class="kp-k">'+escH(_assetPrettyKey(k))+'</span><span class="kp-v">'+escH(v)+'</span></div>';});
+  let extra='';Object.keys(p).forEach(k=>{if(handled[k])return;const v=p[k];if(v==null||v==='')return;const m=_assetKeyMeta(k,type);extra+='<div class="kp-attr"><span class="kp-k">'+escH(m.label||k)+'</span><span class="kp-v">'+(_assetUVal(v,m.unit,type,k)||escH(v))+'</span></div>';});
   if(extra)h+='<div class="kp-block"><div class="kp-eyebrow">Additional</div><div class="kp-attrs">'+extra+'</div></div>';
   h+='</div>';
   klPopup(lngLat,h);
@@ -141,7 +169,7 @@ function assetPopup(lngLat,p,label,type){
   if(p.Date)loc+='<div class="kp-attr"><span class="kp-k">Date</span><span class="kp-v">'+escH(p.Date)+'</span></div>';
   if(loc)h+='<div class="kp-block"><div class="kp-eyebrow">Location</div><div class="kp-attrs">'+loc+'</div></div>';
   let rows='';
-  Object.keys(p).forEach(k=>{if(skip[k])return;const v=p[k];if(v==null||v==='')return;const meta=_assetKeyMeta(k);rows+='<div class="kp-attr"><span class="kp-k">'+escH(meta.label||k)+'</span><span class="kp-v">'+(_assetUVal(v,meta.unit)||escH(v))+'</span></div>';});
+  Object.keys(p).forEach(k=>{if(skip[k])return;const v=p[k];if(v==null||v==='')return;const meta=_assetKeyMeta(k,type);rows+='<div class="kp-attr"><span class="kp-k">'+escH(meta.label||k)+'</span><span class="kp-v">'+(_assetUVal(v,meta.unit,type,k)||escH(v))+'</span></div>';});
   if(rows)h+='<div class="kp-block"><div class="kp-eyebrow">'+(isFwd?'Details':'Attributes')+'</div><div class="kp-attrs">'+rows+'</div></div>';
   if(defl.length)h+='<div class="kp-block"><div class="kp-eyebrow">Deflections'+(sc===1000?' · microns':'')+'</div><div class="kp-grid">'+defl.map(d=>'<div class="kp-gcell"><span class="kp-gk">D'+d[0]+'</span><span class="kp-gv">'+escH(sc===1000?Math.round(+d[1]*sc):d[1])+'</span></div>').join('')+'</div></div>';
   h+='</div>';

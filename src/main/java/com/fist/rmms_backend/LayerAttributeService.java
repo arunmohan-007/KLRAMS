@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -115,6 +116,18 @@ public class LayerAttributeService {
         jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS layer_attribute_key_ux "
                 + "ON layer_attribute(layer_id, dataset_key, storage_key)");
 
+        /* The header spellings an upload may use for this attribute, comma
+           separated. Districts do not agree on them ("Section_Label" in the
+           Malappuram returns, "Section Label" in the Idukki ones), so the
+           importer matches on this list rather than on the label alone. */
+        jdbc.execute("ALTER TABLE layer_attribute ADD COLUMN IF NOT EXISTS aliases text");
+
+        /* The label the catalogue last wrote. Re-seeding corrects a label only
+           while it still matches this, which is what lets a shipped correction
+           reach an existing database WITHOUT overwriting a name the RMMS cell
+           has since chosen. Once they rename an attribute, it is theirs. */
+        jdbc.execute("ALTER TABLE layer_attribute ADD COLUMN IF NOT EXISTS seeded_name text");
+
         /* Lookups get their own tables here rather than in the Lookup module,
            because an attribute may reference a set before that module is built
            and a dangling reference would be worse than an empty set. */
@@ -149,12 +162,22 @@ public class LayerAttributeService {
        ------------------------------------------------------------------ */
 
     /**
-     * Describe the attributes every existing layer already has.
+     * Describe the attributes every layer carries.
      *
-     * Only ever ADDS: an attribute the user has since renamed, marked mandatory
-     * or retired is left exactly as they left it, because the seed matches on
-     * {@code storage_key} and skips anything already present. That is what makes
-     * this safe to re-run on every boot.
+     * Two passes, in this order and for this reason:
+     * <ol>
+     *   <li>{@link LayerAttributeCatalog} — the declared column list of the RMMS
+     *       Format-B returns. Runs first so the canonical label and storage key
+     *       win, and so a layer with no data yet is still fully described.</li>
+     *   <li>Discovery — the columns and jsonb keys actually present. Picks up
+     *       anything the catalogue does not predict, so a district that ships an
+     *       extra column still sees it.</li>
+     * </ol>
+     *
+     * Additive by {@code storage_key}: an attribute that already exists is never
+     * re-inserted, and its label is corrected only while the RMMS cell has not
+     * renamed it (see {@code seeded_name}). That is what makes this safe to
+     * re-run on every boot.
      */
     private void seedFromExistingData() {
         jdbc.query("SELECT id, layer_key, source_table, source_type, placement, geometry_type "
@@ -176,8 +199,16 @@ public class LayerAttributeService {
 
     private void seedLayer(int layerId, String key, String table,
                            String sourceType, String placement, String geometry) {
-        if (countFor(layerId, "default") > 0) return;   // already described
+        // The declared catalogue first, every boot — this is a top-up, not a
+        // one-shot, so a layer described before a column was catalogued gains it
+        // on the next restart instead of staying permanently short.
+        for (String ds : LayerAttributeCatalog.datasetsOf(key)) {
+            seedFromCatalog(layerId, key, ds);
+        }
 
+        // Discovery only fills the gaps the catalogue leaves. A layer the
+        // catalogue fully describes still runs it, so an unexpected column in a
+        // district's return is picked up rather than silently dropped.
         switch (key) {
             case "roads", "full_road_network", "condition", "traffic_stations" ->
                     seedFromColumns(layerId, table, placement, geometry);
@@ -188,10 +219,13 @@ public class LayerAttributeService {
             case "traffic_stations_counts" -> { /* handled below */ }
 
             case "fwd", "bridge", "culvert", "furniture_line", "furniture_point",
-                 "subgrade", "bituminous_core", "pavement_crust" ->
+                 "subgrade", "bituminous_core", "pavement_crust" -> {
+                    // Before discovery, so rows imported under an older spelling
+                    // are folded onto the canonical key and discovery does not
+                    // then re-create the old spelling as its own attribute.
+                    canonicaliseStoredKeys(key);
                     seedFromAssetAttrs(layerId, key, placement, geometry);
-
-            case "boundary_district", "boundary_constituency" -> seedBoundary(layerId);
+            }
 
             default -> {
                 // System-generated layers describe what they expose, not what is
@@ -199,19 +233,110 @@ public class LayerAttributeService {
                 if ("SYSTEM_GENERATED".equals(sourceType)) seedDerived(layerId, key);
             }
         }
+    }
 
-        if ("traffic_stations".equals(key) && countFor(layerId, "counts") == 0) {
-            seedTrafficCounts(layerId);
+    /**
+     * Write the declared column list of one layer dataset.
+     *
+     * Insert is additive — {@code ON CONFLICT DO NOTHING} on the storage key —
+     * so this only ever gains columns. The label is a separate UPDATE guarded on
+     * {@code seeded_name}, which is what lets a corrected label ship with a
+     * restart while an attribute the RMMS cell has renamed keeps their name.
+     */
+    private void seedFromCatalog(int layerId, String layerKey, String dataset) {
+        int sort = 10;
+        for (LayerAttributeCatalog.Attr a : LayerAttributeCatalog.forLayer(layerKey, dataset)) {
+            insert(layerId, dataset, a.name(), a.storageKey(), a.dataType(), null,
+                    a.unit(), a.role(), a.mandatory(), "STANDARD", sort,
+                    aliasCsv(a));
+            sort += 10;
+        }
+        mergeDuplicates(layerId, dataset, layerKey);
+    }
+
+    /**
+     * Fold pre-catalogue duplicates into the attribute that now owns them.
+     *
+     * The discovery seed that ran before this catalogue existed created one
+     * attribute per spelling it found, so a layer can already hold "Section
+     * Label" beside "section_label" and "Start Chiange" beside "start_chainage".
+     * Left alone they are not merely untidy: two attributes claiming the same
+     * placement role make BOTH of them un-editable, because
+     * {@link #assertRoleFree} refuses to save either while the other holds it.
+     *
+     * A duplicate is deleted, not retired: it describes the same field as the
+     * attribute that absorbs it, whose alias list now covers its spelling, so
+     * every stored value still resolves — to one name instead of two. Only rows
+     * the RMMS cell has not touched go: a renamed one is theirs, and a CUSTOM one
+     * was never ours to reconcile.
+     */
+    private void mergeDuplicates(int layerId, String dataset, String layerKey) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT id, storage_key, name, seeded_name FROM layer_attribute "
+              + "WHERE layer_id = ? AND dataset_key = ? AND attribute_type = 'STANDARD'",
+                layerId, dataset);
+
+        for (LayerAttributeCatalog.Attr a : LayerAttributeCatalog.forLayer(layerKey, dataset)) {
+            Set<String> owned = new HashSet<>();
+            for (String alias : aliasCsv(a).split(",")) owned.add(norm(alias));
+
+            for (Map<String, Object> r : rows) {
+                String key = String.valueOf(r.get("storage_key"));
+                // Compared verbatim, NOT normalised: "Section Label" and
+                // "section_label" are the exact pair this has to separate, and
+                // normalising first makes the duplicate look like the canonical
+                // row and skip itself.
+                if (key.equals(a.storageKey()) || !owned.contains(norm(key))) continue;
+                Object seeded = r.get("seeded_name");
+                boolean untouched = seeded == null || seeded.equals(r.get("name"));
+                if (!untouched) continue;
+                jdbc.update("DELETE FROM layer_attribute WHERE id = ?", r.get("id"));
+                log.info("Merged duplicate attribute \"{}\" into \"{}\" on layer {}",
+                        key, a.storageKey(), layerKey);
+            }
         }
     }
 
-    /** Layers whose fields are real columns: read them from the catalogue. */
+    /**
+     * The accepted header spellings for a declared attribute.
+     *
+     * The label itself leads the list: a file whose header already matches the
+     * canonical name is the common case, and the importer resolves this one
+     * string rather than special-casing the name outside the alias list.
+     */
+    private static String aliasCsv(LayerAttributeCatalog.Attr a) {
+        List<String> all = new ArrayList<>();
+        // Deduped on the NORMALISED form, because that is how the list is
+        // matched: "Section Label" and "Section_Label" are one spelling to the
+        // importer, so listing both only makes the column harder to read.
+        Set<String> seen = new HashSet<>();
+        for (String s : concat(a.name(), a.storageKey(), a.aliases())) {
+            if (s != null && !s.isBlank() && seen.add(norm(s))) all.add(s.trim());
+        }
+        return String.join(",", all);
+    }
+
+    private static List<String> concat(String first, String second, List<String> rest) {
+        List<String> out = new ArrayList<>();
+        out.add(first);
+        out.add(second);
+        out.addAll(rest);
+        return out;
+    }
+
+    /**
+     * Layers whose fields are real columns: read the rest from the catalogue.
+     *
+     * Runs after {@link #seedFromCatalog}, so a column the catalogue already
+     * named keeps that name and only the unpredicted ones fall back to the
+     * mechanical {@link #prettify} guess.
+     */
     private void seedFromColumns(int layerId, String table, String placement, String geometry) {
         if (table == null || !SAFE_TABLE.matcher(table).matches()) return;
         List<Map<String, Object>> cols = jdbc.queryForList(
                 "SELECT column_name, data_type, character_maximum_length "
               + "FROM information_schema.columns WHERE table_name = ? ORDER BY ordinal_position", table);
-        int sort = 10;
+        int sort = 500;
         for (Map<String, Object> c : cols) {
             String col = String.valueOf(c.get("column_name"));
             if (col.equals("id") || col.equals("geom") || col.equals("attrs")) continue;
@@ -220,19 +345,69 @@ public class LayerAttributeService {
             String type = role.endsWith("CHAINAGE") ? "DECIMAL"
                         : "SECTION_LABEL".equals(role) ? "STRING"
                         : sqlTypeToAttrType(String.valueOf(c.get("data_type")));
-            insert(layerId, "default", prettify(col), col, type, len, null,
-                    role, false, "STANDARD", sort);
+            // The road network is whatever the last shapefile import created and
+            // DBF truncates every field name to 10 characters, so its columns can
+            // only be labelled from the catalogue's lookup, never declared.
+            String declared = LayerAttributeCatalog.roadLabel(col);
+            insert(layerId, "default", declared != null ? declared : prettify(col), col,
+                    type, len, LayerAttributeCatalog.roadUnit(col),
+                    role, false, "STANDARD", sort, declared);
             sort += 10;
         }
         markPlacementMandatory(layerId, "default");
     }
 
-    /** road_assets-backed layers: the attribute names are the jsonb keys in use. */
+    /**
+     * Rewrite already-stored {@code attrs} keys onto the canonical storage key.
+     *
+     * The importer now writes every column under the key its layer declares, but
+     * rows loaded before that still carry whatever their file's header said. Two
+     * districts of the same layer would then answer to two different keys —
+     * {@code Section_Label} for Malappuram, {@code Section Label} for Idukki —
+     * and a card or filter that finds the value in one would miss it in the
+     * other. This closes that gap for the rows already on disk, so the layer is
+     * consistent rather than split by import date.
+     *
+     * Values are untouched: only the key moves. A row that already holds the
+     * canonical key is skipped, so a partially-migrated layer cannot have a
+     * newer value overwritten by an older alias.
+     *
+     * Runs on every boot and is cheap after the first: the {@code jsonb_exists}
+     * guard means a migrated layer matches no rows at all.
+     */
+    private void canonicaliseStoredKeys(String assetType) {
+        for (LayerAttributeCatalog.Attr a : LayerAttributeCatalog.forLayer(assetType, "default")) {
+            String canonical = a.storageKey();
+            for (String alias : aliasCsv(a).split(",")) {
+                if (alias.isBlank() || alias.equals(canonical)) continue;
+                try {
+                    int n = jdbc.update("""
+                        UPDATE road_assets
+                           SET attrs = (attrs - ?) || jsonb_build_object(?, attrs -> ?)
+                         WHERE asset_type = ?
+                           AND jsonb_exists(attrs, ?)
+                           AND NOT jsonb_exists(attrs, ?)
+                        """, alias, canonical, alias, assetType, alias, canonical);
+                    if (n > 0) {
+                        log.info("Canonicalised {} row(s) of {}: attrs key \"{}\" -> \"{}\"",
+                                n, assetType, alias, canonical);
+                    }
+                } catch (Exception e) {
+                    // One key that will not move must not stop the others, and
+                    // must never stop the app booting.
+                    log.warn("Could not canonicalise attrs key \"{}\" on {}: {}",
+                            alias, assetType, e.toString());
+                }
+            }
+        }
+    }
+
+    /** road_assets-backed layers: pick up any jsonb key the catalogue did not declare. */
     private void seedFromAssetAttrs(int layerId, String assetType, String placement, String geometry) {
         List<String> keys = jdbc.queryForList(
                 "SELECT DISTINCT k FROM road_assets, jsonb_object_keys(attrs) AS k "
               + "WHERE asset_type = ? ORDER BY k", String.class, assetType);
-        int sort = 10;
+        int sort = 500;
         for (String k : keys) {
             String role = roleFor(k, placement, geometry);
             // The role decides the type, not the name. FWD's chainage columns are
@@ -242,32 +417,18 @@ public class LayerAttributeService {
             String type = role.endsWith("CHAINAGE") ? "DECIMAL"
                         : "SECTION_LABEL".equals(role) ? "STRING"
                         : guessTypeFromName(k);
-            insert(layerId, "default", k, k, type, null, null, role, false, "STANDARD", sort);
+            // A jsonb key that the catalogue already declares under a different
+            // storage key (a district's alternative spelling) would otherwise be
+            // inserted a second time as its own attribute.
+            if (aliasOwner(layerId, "default", k) != null) continue;
+            insert(layerId, "default", k, k, type, null, null, role, false,
+                    "STANDARD", sort, k);
             sort += 10;
         }
         // A layer with no rows yet still needs its placement attributes, or it
         // could never be imported into in the first place.
         ensurePlacementAttributes(layerId, "default", placement, geometry);
         markPlacementMandatory(layerId, "default");
-    }
-
-    /** The second traffic dataset: the counts recorded at each station. */
-    private void seedTrafficCounts(int layerId) {
-        insert(layerId, "counts", "Station Name", "name", "STRING", 100, null,
-                "NONE", true, "STANDARD", 10);
-        insert(layerId, "counts", "Survey Date", "date", "DATE", null, null,
-                "NONE", false, "STANDARD", 20);
-        insert(layerId, "counts", "Vehicle Class", "vehicle_class", "STRING", 60, null,
-                "NONE", false, "STANDARD", 30);
-        insert(layerId, "counts", "Count", "count", "INTEGER", null, null,
-                "NONE", false, "STANDARD", 40);
-    }
-
-    private void seedBoundary(int layerId) {
-        insert(layerId, "default", "Boundary Type", "type", "STRING", 40, null,
-                "NONE", true, "STANDARD", 10);
-        insert(layerId, "default", "Name", "name", "STRING", 255, null,
-                "NONE", false, "STANDARD", 20);
     }
 
     private void seedDerived(int layerId, String key) {
@@ -385,7 +546,6 @@ public class LayerAttributeService {
               + "attribute_mapping FROM layer_definition WHERE id = ?", layerId);
 
         String sourceType = String.valueOf(layer.get("source_type"));
-        boolean protectedLayer = !"USER".equals(sourceType);
 
         List<String> datasets = jdbc.queryForList(
                 "SELECT DISTINCT dataset_key FROM layer_attribute WHERE layer_id = ? "
@@ -408,9 +568,21 @@ public class LayerAttributeService {
         m.put("placement", layer.get("placement"));
         m.put("geometryType", layer.get("geometry_type"));
         m.put("attributeMapping", layer.get("attribute_mapping"));
-        // Protected layers keep their standard attributes: custom ones may still
-        // be added (that is additive and harmless), but nothing may be deleted.
-        m.put("canDeleteAttributes", !protectedLayer);
+        /* Every attribute of every layer is editable, including the standard
+           ones of a core layer. The protection that used to live here was a
+           guess at which fields the RMMS cell would want fixed; they are the
+           ones who know, so the screen is opened up and the rules are theirs to
+           set once the real column list has been through their hands.
+
+           Renaming stays safe regardless of what they change, because a label
+           and its storage are separate: `name` is what the map cards, the
+           dashboards and the import screen show, while `storage_key` is the
+           column or jsonb key the value actually lives in and is never moved by
+           a rename on a core layer.
+
+           Deleting a standard attribute retires it rather than dropping the row
+           — see deleteAttribute() for why. */
+        m.put("canDeleteAttributes", true);
         m.put("canAddCustom", true);
         m.put("dateFormat", DATE_FORMAT);
         m.put("datasets", out);
@@ -441,6 +613,10 @@ public class LayerAttributeService {
             a.put("role", rs.getString("role"));
             a.put("attributeType", rs.getString("attribute_type"));
             a.put("status", rs.getString("status"));
+            // The header spellings an upload may use for this attribute. Shown
+            // on the screen and editable, because the list only stays correct if
+            // whoever receives a district's file can add the spelling it used.
+            a.put("aliases", rs.getString("aliases"));
             // A placement attribute cannot be deleted or have its role cleared:
             // without it the layer becomes unimportable.
             a.put("placement", !"NONE".equals(rs.getString("role")));
@@ -469,7 +645,7 @@ public class LayerAttributeService {
         Integer id = insert(layerId, dataset, name.trim(), storage, type,
                 intOf(body.get("length")), str(body.get("unit"), null),
                 role, Boolean.TRUE.equals(body.get("mandatory")) || !"NONE".equals(role),
-                "CUSTOM", 900);
+                "CUSTOM", 900, str(body.get("aliases"), null));
         if ("LOOKUP".equals(type)) {
             jdbc.update("UPDATE layer_attribute SET lookup_key = ? WHERE id = ?",
                     lookupKeyFor(body, name), id);
@@ -523,25 +699,64 @@ public class LayerAttributeService {
         jdbc.update("""
             UPDATE layer_attribute
                SET name = ?, data_type = ?, length = ?, unit = ?, role = ?, mandatory = ?,
-                   lookup_key = ?, status = ?
+                   lookup_key = ?, status = ?, aliases = ?
              WHERE id = ?
             """, name.trim(), type, intOf(body.get("length")), str(body.get("unit"), null),
             role, mandatory,
             "LOOKUP".equals(type) ? lookupKeyFor(body, name) : null,
-            str(body.get("status"), "ACTIVE"), attrId);
+            str(body.get("status"), "ACTIVE"),
+            str(body.get("aliases"), str(cur.get("aliases"), null)), attrId);
 
-        // Only a CUSTOM attribute on a jsonb-backed layer owns its storage key,
-        // so only that case renames stored data.
+        /* Only a CUSTOM attribute on a jsonb-backed layer owns its storage key,
+           so only that case renames stored data. A STANDARD attribute keeps its
+           column or jsonb key whatever it is renamed to, which is the property
+           that makes renaming safe: every dashboard, report and card reads the
+           storage key (the FWD dashboard matches attrs keys against 'd0',
+           'airtemp' and so on; the condition dashboards select real columns),
+           and none of them has ever read the label. Move the label and they do
+           not notice; move the storage and they all break at once. */
         String newKey = slug(name);
         if (!newKey.equals(oldKey) && "CUSTOM".equals(String.valueOf(cur.get("attribute_type")))) {
             String table = jsonbTableFor(cur);
-            if (table != null && !exists(layerId, dataset, newKey)) {
+            /* Normalised, not exact. road_assets is one shared bag, and the
+               readers above match keys with punctuation and case stripped — so a
+               custom attribute renamed to "D 0" would slug to "d_0", collide
+               with the standard "D0" under that comparison, and start feeding
+               the deflection dashboard. Refusing the storage move (the label
+               still changes) keeps a rename incapable of reaching a reader. */
+            if (table != null && keyOwner(layerId, dataset, newKey, attrId) == null) {
                 renameJsonbKey(table, cur.get("layer_key"), oldKey, newKey);
                 jdbc.update("UPDATE layer_attribute SET storage_key = ? WHERE id = ?", newKey, attrId);
             }
         }
     }
 
+    /** The id of another attribute whose storage key collides with {@code key}, or null. */
+    private Integer keyOwner(int layerId, String dataset, String key, int exceptId) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT id, storage_key FROM layer_attribute "
+              + "WHERE layer_id = ? AND dataset_key = ? AND id <> ?", layerId, dataset, exceptId);
+        String want = norm(key);
+        for (Map<String, Object> r : rows) {
+            if (want.equals(norm(String.valueOf(r.get("storage_key"))))) {
+                return (Integer) r.get("id");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Remove an attribute from the layer.
+     *
+     * A CUSTOM attribute is dropped outright — nothing re-creates it, so the row
+     * can go. A STANDARD one is RETIRED instead: it is declared in
+     * {@link LayerAttributeCatalog} or discovered from live data, so the next
+     * boot's seed would simply put it back, and a delete that quietly undoes
+     * itself on restart is worse than one that says what it did. Retired means
+     * the same thing everywhere it matters — {@link #importSpec} drops it, so it
+     * is no longer mapped at import, and the screen greys it out — and it is
+     * reversible by setting the status back to Active.
+     */
     @Transactional
     public void deleteAttribute(int attrId) {
         Map<String, Object> cur = jdbc.queryForMap(
@@ -549,19 +764,19 @@ public class LayerAttributeService {
               + "FROM layer_attribute a JOIN layer_definition d ON d.id = a.layer_id "
               + "WHERE a.id = ?", attrId);
 
-        if (!"USER".equals(String.valueOf(cur.get("source_type")))
-                && !"CUSTOM".equals(String.valueOf(cur.get("attribute_type")))) {
-            throw new ProtectedAttributeException(
-                    "\"" + cur.get("name") + "\" is a standard attribute of a protected layer. "
-                    + "Standard attributes cannot be deleted — you can mark it inactive instead.");
-        }
+        // The one attribute that cannot go: without it the layer has no way to
+        // place a feature, so the import it is removed from would fail outright.
         if (!"NONE".equals(String.valueOf(cur.get("role")))) {
             throw new ProtectedAttributeException(
                     "\"" + cur.get("name") + "\" places this layer's features ("
                     + roleLabel(String.valueOf(cur.get("role")))
-                    + ") and cannot be deleted.");
+                    + "). Give the role to another attribute first, then remove it.");
         }
-        jdbc.update("DELETE FROM layer_attribute WHERE id = ?", attrId);
+        if ("CUSTOM".equals(String.valueOf(cur.get("attribute_type")))) {
+            jdbc.update("DELETE FROM layer_attribute WHERE id = ?", attrId);
+        } else {
+            jdbc.update("UPDATE layer_attribute SET status = 'RETIRED' WHERE id = ?", attrId);
+        }
     }
 
     /* ------------------------------------------------------------------
@@ -578,7 +793,8 @@ public class LayerAttributeService {
      */
     public List<Map<String, Object>> importSpec(int layerId, String dataset) {
         return jdbc.query("""
-            SELECT name, storage_key, data_type, mandatory, role, lookup_key, date_format
+            SELECT name, storage_key, data_type, mandatory, role, lookup_key, date_format,
+                   unit, aliases
               FROM layer_attribute
              WHERE layer_id = ? AND dataset_key = ? AND status = 'ACTIVE'
              ORDER BY sort_order, id
@@ -591,8 +807,322 @@ public class LayerAttributeService {
             m.put("role", rs.getString("role"));
             m.put("lookupKey", rs.getString("lookup_key"));
             m.put("dateFormat", rs.getString("date_format"));
+            m.put("unit", rs.getString("unit"));
+            m.put("aliases", rs.getString("aliases"));
             return m;
         }, layerId, dataset == null ? "default" : dataset);
+    }
+
+    /* ------------------------------------------------------------------
+       Import header resolution
+       ------------------------------------------------------------------ */
+
+    /**
+     * The importer dataset keys of {@link ImportTemplateController} mapped onto
+     * the layer and dataset that declares their columns.
+     *
+     * Two names for one thing is the situation this removes. The import screen
+     * has always spoken in dataset keys ("bridge", "traffic_counts") while the
+     * registry speaks in layer keys, and each kept its own idea of what columns
+     * that dataset has — the seeded bridge template listed six, the catalogue
+     * declares seventeen. The mapping window checked a file against the six, so
+     * a perfectly good return had eleven of its columns reported as "extra".
+     * With this table the screen and Attribute Data answer from one list.
+     *
+     * {@code video_catalog} is absent on purpose: it is a list of files to
+     * attach, not a map layer, so it has no attributes and keeps its template.
+     */
+    private static final Map<String, String[]> IMPORT_DATASETS = Map.ofEntries(
+            Map.entry("condition",        new String[]{"condition", "default"}),
+            Map.entry("bridge",           new String[]{"bridge", "default"}),
+            Map.entry("culvert",          new String[]{"culvert", "default"}),
+            Map.entry("furniture_line",   new String[]{"furniture_line", "default"}),
+            Map.entry("furniture_point",  new String[]{"furniture_point", "default"}),
+            Map.entry("subgrade",         new String[]{"subgrade", "default"}),
+            Map.entry("bituminous_core",  new String[]{"bituminous_core", "default"}),
+            Map.entry("pavement_crust",   new String[]{"pavement_crust", "default"}),
+            Map.entry("fwd",              new String[]{"fwd", "default"}),
+            Map.entry("traffic_stations", new String[]{"traffic_stations", "default"}),
+            Map.entry("traffic_counts",   new String[]{"traffic_stations", "counts"}));
+
+    /** The layer and dataset behind an import dataset key, or null if it has none. */
+    public String[] layerForDataset(String datasetKey) {
+        return IMPORT_DATASETS.get(datasetKey);
+    }
+
+    /**
+     * Record the column names someone mapped by hand as accepted spellings.
+     *
+     * Automatic matching only reaches a header that resembles the attribute or
+     * one of its known spellings. A district that calls the section "Rd Ref" is
+     * beyond any guess, so the import screen lets it be mapped by hand — and
+     * this is what stops that being a chore repeated for every file they ever
+     * send: the mapping made once becomes an alias, and the next file matches on
+     * its own.
+     *
+     * Additive and idempotent. An alias already held, in any spelling that
+     * normalises the same, is not added twice, and nothing is ever removed —
+     * removing one is an edit, and edits belong on the Attribute Data screen
+     * where they can be seen.
+     *
+     * @param byField attribute LABEL -> the file's column name
+     * @return how many attributes gained a spelling
+     */
+    @Transactional
+    public int learnAliases(String datasetKey, Map<String, String> byField) {
+        String[] target = IMPORT_DATASETS.get(datasetKey);
+        if (target == null || byField == null || byField.isEmpty()) return 0;
+
+        int learned = 0;
+        for (Map.Entry<String, String> e : byField.entrySet()) {
+            String label = e.getKey(), column = e.getValue();
+            if (label == null || column == null || column.isBlank()) continue;
+
+            List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT a.id, a.aliases FROM layer_attribute a
+                  JOIN layer_definition d ON d.id = a.layer_id
+                 WHERE d.layer_key = ? AND a.dataset_key = ? AND a.name = ?
+                 LIMIT 1
+                """, target[0], target[1], label);
+            if (rows.isEmpty()) continue;
+
+            String current = str(rows.get(0).get("aliases"), "");
+            boolean held = false;
+            for (String a : current.split(",")) {
+                if (norm(a).equals(norm(column))) { held = true; break; }
+            }
+            if (held) continue;
+
+            String updated = current.isBlank() ? column.trim() : current + "," + column.trim();
+            jdbc.update("UPDATE layer_attribute SET aliases = ? WHERE id = ?",
+                    updated, rows.get(0).get("id"));
+            learned++;
+            log.info("Learned column name \"{}\" for attribute \"{}\" on {}",
+                    column.trim(), label, datasetKey);
+        }
+        return learned;
+    }
+
+    /**
+     * One import dataset's columns, shaped the way the mapping window already
+     * consumes {@code import_template_columns}.
+     *
+     * Returned in that shape deliberately: the validator's matching, cell-type
+     * checking and error reporting are all fine as they are and did not need to
+     * change — only where the column list comes from did. Anything the registry
+     * cannot answer for falls back to the stored template.
+     *
+     * Retired attributes are excluded, so retiring one on the Attribute Data
+     * screen really does stop it being mapped at import.
+     */
+    public List<Map<String, Object>> importColumns(String datasetKey) {
+        String[] target = IMPORT_DATASETS.get(datasetKey);
+        if (target == null) return List.of();
+        try {
+            return jdbc.query("""
+                SELECT a.name, a.storage_key, a.data_type, a.mandatory, a.aliases, a.lookup_key
+                  FROM layer_attribute a
+                  JOIN layer_definition d ON d.id = a.layer_id
+                 WHERE d.layer_key = ? AND a.dataset_key = ? AND a.status = 'ACTIVE'
+                 ORDER BY a.sort_order, a.id
+                """, (rs, i) -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                // field_name is the LABEL, not the storage key: it is what the
+                // screen shows and what the header is rewritten to, and the
+                // importers resolve either one anyway.
+                m.put("field_name", rs.getString("name"));
+                m.put("csv_column", rs.getString("name"));
+                m.put("storage_key", rs.getString("storage_key"));
+                m.put("data_type", switch (String.valueOf(rs.getString("data_type"))) {
+                    case "DECIMAL", "INTEGER" -> "number";
+                    case "DATE" -> "date";
+                    default -> "text";
+                });
+                m.put("required", rs.getBoolean("mandatory"));
+                m.put("aliases", rs.getString("aliases"));
+                // Carried so the validator can enforce a coded column: a LOOKUP
+                // attribute permits its codes and values and nothing else.
+                m.put("lookup_key", rs.getString("lookup_key"));
+                return m;
+            }, target[0], target[1]);
+        } catch (Exception e) {
+            log.warn("Could not read import columns for dataset {} — the stored template "
+                    + "will be used instead: {}", datasetKey, e.toString());
+            return List.of();
+        }
+    }
+
+    /**
+     * Build the thing an importer needs to read a district's file: a map from
+     * whatever the header says to the storage key this layer keeps that field
+     * under, plus which header carries each placement role.
+     *
+     * Read once per upload rather than per row or per column — the alias lists
+     * are small and fixed for the duration of a file, and a per-cell lookup
+     * would put a query inside the parse loop.
+     *
+     * Returns an EMPTY resolver, never null, if the layer has no attributes or
+     * the registry failed to initialise. Every caller then falls back to its own
+     * hard-coded alias list, so an import can still run on a database where
+     * Layer Management never came up.
+     */
+    public HeaderResolver headerResolver(String layerKey, String dataset) {
+        Map<String, String> byHeader = new LinkedHashMap<>();
+        Map<String, String> labelByKey = new LinkedHashMap<>();
+        Map<String, String> byRole = new LinkedHashMap<>();
+        try {
+            jdbc.query("""
+                SELECT a.name, a.storage_key, a.role, a.aliases
+                  FROM layer_attribute a
+                  JOIN layer_definition d ON d.id = a.layer_id
+                 WHERE d.layer_key = ? AND a.dataset_key = ? AND a.status = 'ACTIVE'
+                 ORDER BY a.sort_order, a.id
+                """, rs -> {
+                String storage = rs.getString("storage_key");
+                String role = rs.getString("role");
+                if (role != null && !"NONE".equals(role)) byRole.putIfAbsent(role, storage);
+                labelByKey.putIfAbsent(storage, rs.getString("name"));
+                // Storage key and label first, then the aliases. putIfAbsent, so
+                // the attribute that owns a spelling keeps it when a later one
+                // lists the same string as an alias.
+                byHeader.putIfAbsent(norm(storage), storage);
+                byHeader.putIfAbsent(norm(rs.getString("name")), storage);
+                String aliases = rs.getString("aliases");
+                if (aliases != null) {
+                    for (String alias : aliases.split(",")) {
+                        if (!alias.isBlank()) byHeader.putIfAbsent(norm(alias), storage);
+                    }
+                }
+            }, layerKey, dataset == null ? "default" : dataset);
+        } catch (Exception e) {
+            log.warn("Could not build the header resolver for layer {} — the importer will "
+                    + "fall back to its built-in aliases: {}", layerKey, e.toString());
+        }
+        return new HeaderResolver(byHeader, labelByKey, byRole);
+    }
+
+    /**
+     * One upload's header mapping.
+     *
+     * Deliberately immutable and free of a JdbcTemplate: an importer holds it
+     * across a whole file, and nothing it answers should be able to change
+     * halfway through parsing one.
+     */
+    public static final class HeaderResolver {
+
+        private final Map<String, String> byHeader;
+        private final Map<String, String> labelByKey;
+        private final Map<String, String> byRole;
+
+        HeaderResolver(Map<String, String> byHeader, Map<String, String> labelByKey,
+                       Map<String, String> byRole) {
+            this.byHeader = byHeader;
+            this.labelByKey = labelByKey;
+            this.byRole = byRole;
+        }
+
+        public boolean isEmpty() {
+            return byHeader.isEmpty();
+        }
+
+        /**
+         * The label of the attribute that owns {@code header}, or null.
+         *
+         * Needed by the column-backed importers, which look their fields up by
+         * the label rather than the storage key — {@code condition} keeps
+         * latitude in {@code start_lat} but the survey return, and therefore the
+         * code reading it, calls the field {@code Start_Latitude}. Normalising
+         * cannot bridge those two, so the label has to be indexed alongside.
+         */
+        public String labelFor(String header) {
+            String key = keyFor(header);
+            return key == null ? null : labelByKey.get(key);
+        }
+
+        /**
+         * The storage key this layer keeps {@code header} under, or null if the
+         * layer does not recognise it.
+         *
+         * Null is the honest answer and callers must handle it: a column nobody
+         * declared is still worth storing under its own name, so the caller
+         * keeps the raw header rather than dropping the value.
+         */
+        public String keyFor(String header) {
+            return byHeader.get(norm(header));
+        }
+
+        /** The storage key of the attribute holding a placement role, or null. */
+        public String roleKey(String role) {
+            return byRole.get(role);
+        }
+
+        /**
+         * The index of the column carrying a placement role, or null.
+         *
+         * Resolved through the alias list, which is the whole point: a district
+         * that spells the section column differently is fixed by adding that
+         * spelling in Attribute Data, with no code change and no re-import of
+         * everyone else's files.
+         */
+        public Integer columnFor(String[] headers, String role) {
+            String want = byRole.get(role);
+            if (want == null || headers == null) return null;
+            for (int i = 0; i < headers.length; i++) {
+                if (want.equals(keyFor(headers[i]))) return i;
+            }
+            return null;
+        }
+    }
+
+    /* ------------------------------------------------------------------
+       The catalogue the frontend reads
+       ------------------------------------------------------------------ */
+
+    /**
+     * Every layer's attribute labels, keyed the way the map data is keyed.
+     *
+     * One small response, fetched once when the viewer loads, so that the
+     * inspection cards, the summary cards and the dashboards all print the name
+     * the RMMS cell set in Attribute Data rather than each module's own guess at
+     * what a column should be called. Keeping it to label / unit / type is what
+     * keeps it small enough to fetch eagerly: nothing here is per-feature.
+     *
+     * Aliases are included so a card can resolve a value that a district's file
+     * stored under an older spelling and still show it under the current label.
+     * Retired attributes are included too, marked inactive — a stored row keeps
+     * its value after its attribute is retired, and showing it as a raw jsonb key
+     * would be worse than showing it under the name it used to have.
+     */
+    public Map<String, Object> catalog() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        jdbc.query("""
+            SELECT d.layer_key, a.dataset_key, a.name, a.storage_key, a.data_type,
+                   a.unit, a.role, a.status, a.aliases, a.lookup_key
+              FROM layer_attribute a
+              JOIN layer_definition d ON d.id = a.layer_id
+             ORDER BY d.layer_key, a.dataset_key, a.sort_order, a.id
+            """, rs -> {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> layer = (Map<String, Object>) out.computeIfAbsent(
+                    rs.getString("layer_key"), k -> new LinkedHashMap<String, Object>());
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> list = (List<Map<String, Object>>) layer.computeIfAbsent(
+                    rs.getString("dataset_key"), k -> new ArrayList<Map<String, Object>>());
+            Map<String, Object> a = new LinkedHashMap<>();
+            a.put("name", rs.getString("name"));
+            a.put("key", rs.getString("storage_key"));
+            a.put("type", rs.getString("data_type"));
+            a.put("unit", rs.getString("unit"));
+            a.put("role", rs.getString("role"));
+            a.put("active", "ACTIVE".equals(rs.getString("status")));
+            a.put("aliases", rs.getString("aliases"));
+            // The code list that decodes this attribute's values, if it has one.
+            // Carried here so a card can expand a short code without a second
+            // request per field — see AttrCatalog.expand().
+            a.put("lookupKey", rs.getString("lookup_key"));
+            list.add(a);
+        });
+        return out;
     }
 
     /* ------------------------------------------------------------------
@@ -638,17 +1168,85 @@ public class LayerAttributeService {
     private Integer insert(int layerId, String dataset, String name, String storage,
                            String type, Integer length, String unit, String role,
                            boolean mandatory, String attrType, int sort) {
+        return insert(layerId, dataset, name, storage, type, length, unit, role,
+                mandatory, attrType, sort, null);
+    }
+
+    /**
+     * @param aliases the header spellings an upload may use, comma separated, or
+     *                null for an attribute nobody uploads into. Doubles as the
+     *                "this label came from the catalogue" marker: when it is set,
+     *                {@code seeded_name} records the label so a later correction
+     *                can be applied without overwriting a rename.
+     */
+    private Integer insert(int layerId, String dataset, String name, String storage,
+                           String type, Integer length, String unit, String role,
+                           boolean mandatory, String attrType, int sort, String aliases) {
         List<Integer> ids = jdbc.queryForList("""
             INSERT INTO layer_attribute
                 (layer_id, dataset_key, name, storage_key, data_type, length, unit,
-                 date_format, role, mandatory, attribute_type, sort_order)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                 date_format, role, mandatory, attribute_type, sort_order, aliases, seeded_name)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT (layer_id, dataset_key, storage_key) DO NOTHING
             RETURNING id
             """, Integer.class,
             layerId, dataset, name, storage, type, length, unit,
-            "DATE".equals(type) ? DATE_FORMAT : null, role, mandatory, attrType, sort);
-        return ids.isEmpty() ? null : ids.get(0);
+            "DATE".equals(type) ? DATE_FORMAT : null, role, mandatory, attrType, sort,
+            aliases, aliases == null ? null : name);
+        if (!ids.isEmpty()) return ids.get(0);
+
+        /* The row already existed. Re-seeding is where a shipped correction has
+           to land: the alias list is always refreshed (it is reference data, and
+           a spelling the catalogue learns about helps whatever the attribute is
+           now called), and everything the RMMS cell can see or edit — label,
+           unit, order, type, role — only while the attribute is still exactly as
+           the catalogue left it.
+
+           The order matters as much as the label. The discovery seed that ran
+           before this file listed a layer's fields alphabetically, so subgrade
+           opened on "CBR" and FWD on "D0" rather than on the section label that
+           identifies the row. Those rows carry low sort values, so refreshing
+           only the ones the catalogue itself appended would leave every existing
+           database stuck in alphabetical order forever.
+
+           The type matters as much as the label. A latitude discovered from
+           jsonb was typed String, because a bare key carries no type and the
+           name gives nothing away — but declared it is a Decimal, and a chainage
+           left as String would fail validateRoleType() the first time anyone
+           edited it. So the correction has to reach existing rows, not only new
+           ones, or every database that predates this file keeps the wrong type
+           forever. */
+        if (aliases != null) {
+            // Every SET reads the row as it was before this statement, so the
+            // repeated "untouched" test is one consistent decision across all of
+            // them rather than five that could disagree.
+            String untouched = "seeded_name IS NULL OR seeded_name = name";
+            jdbc.update("""
+                UPDATE layer_attribute
+                   SET aliases = ?,
+                       unit        = CASE WHEN %1$s THEN COALESCE(?, unit) ELSE unit END,
+                       sort_order  = CASE WHEN %1$s THEN ? ELSE sort_order END,
+                       name        = CASE WHEN %1$s THEN ? ELSE name        END,
+                       -- NEVER downgrades a LOOKUP. The catalogue declares these
+                       -- columns STRING because that is what they hold; the
+                       -- Lookup module then types them LOOKUP to switch the code
+                       -- list on. Without this guard the two fight every boot:
+                       -- the catalogue resets the type, bind() will not redo it
+                       -- (the attribute is already bound), and every lookup in
+                       -- the system goes quietly dead on the first restart.
+                       data_type   = CASE WHEN %1$s AND data_type <> 'LOOKUP'
+                                          THEN ? ELSE data_type END,
+                       role        = CASE WHEN %1$s THEN ? ELSE role        END,
+                       mandatory   = CASE WHEN %1$s THEN ? ELSE mandatory   END,
+                       date_format = CASE WHEN %1$s THEN ? ELSE date_format END,
+                       seeded_name = ?
+                 WHERE layer_id = ? AND dataset_key = ? AND storage_key = ?
+                """.formatted(untouched),
+                aliases, unit, sort, name, type, role, mandatory,
+                "DATE".equals(type) ? DATE_FORMAT : null, name,
+                layerId, dataset, storage);
+        }
+        return null;
     }
 
     /**
@@ -717,6 +1315,42 @@ public class LayerAttributeService {
                 + "WHERE layer_id = ? AND dataset_key = ? AND role = ?",
                 Integer.class, layerId, dataset, role);
         return n != null && n > 0;
+    }
+
+    /**
+     * The storage key of the attribute that claims {@code header} as one of its
+     * spellings, or null if none does.
+     *
+     * Matching is on the normalised form ({@link #norm}) so case, spaces,
+     * underscores and punctuation do not have to agree — "Section_Label",
+     * "Section Label" and "section label" are one header, which is precisely the
+     * divergence between districts this exists to absorb.
+     */
+    String aliasOwner(int layerId, String dataset, String header) {
+        String want = norm(header);
+        if (want.isEmpty()) return null;
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT storage_key, name, aliases FROM layer_attribute "
+              + "WHERE layer_id = ? AND dataset_key = ? AND status = 'ACTIVE' "
+              + "ORDER BY sort_order, id", layerId, dataset);
+        for (Map<String, Object> r : rows) {
+            String storage = String.valueOf(r.get("storage_key"));
+            if (want.equals(norm(storage)) || want.equals(norm(String.valueOf(r.get("name"))))) {
+                return storage;
+            }
+            Object aliases = r.get("aliases");
+            if (aliases == null) continue;
+            for (String alias : String.valueOf(aliases).split(",")) {
+                if (want.equals(norm(alias))) return storage;
+            }
+        }
+        return null;
+    }
+
+    /** Case-, space- and punctuation-insensitive header form. */
+    static String norm(String s) {
+        return s == null ? "" : s.replace("﻿", "")
+                .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
     }
 
     private boolean exists(int layerId, String dataset, String storage) {

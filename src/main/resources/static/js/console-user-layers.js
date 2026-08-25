@@ -26,6 +26,20 @@
     mapping: null
   };
 
+  // The folder a temporary layer files under. Resolved by key (not a hard-coded
+  // id) so it survives folder re-seeding or reordering; cached after the first
+  // lookup since the tree rarely changes within a session.
+  var networkFolderId = null;
+  function resolveNetworkFolderId() {
+    if (networkFolderId) return Promise.resolve(networkFolderId);
+    return api('/api/layers/tree').then(function (d) {
+      var f = (d.folders || []).find(function (x) { return x.key === 'network'; });
+      if (!f) throw new Error('Road Network folder not found.');
+      networkFolderId = f.id;
+      return networkFolderId;
+    });
+  }
+
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -104,7 +118,7 @@
      Target list
      ------------------------------------------------------------------ */
 
-  function loadTargets() {
+  function loadTargets(preselect) {
     var sel = document.getElementById('ulTarget');
     if (!sel) return;
     api('/api/layer-data/import-targets')
@@ -123,6 +137,12 @@
             (l.frozen ? ' — frozen' : '') + '</option>';
         }).join('');
         ULC._targets = live;
+        // Preselected from the hub: apply it and describe the layer straight
+        // away, so the panel opens in the state a chooser would have left it.
+        if (preselect) {
+          sel.value = String(preselect);
+          if (sel.value === String(preselect)) pickTarget();
+        }
       })
       .catch(function () {
         sel.innerHTML = '<option value="">Could not load layers</option>';
@@ -235,6 +255,13 @@
   function fromGeoJson(gj) {
     var feats = (gj && gj.features) || [];
     if (!feats.length) return out('That file has no features in it.', false);
+    // wgs84Bad() lives in index.html's inline script (shared by the road /
+    // full-network / boundary importers) — catches a shapefile with no .prj,
+    // or one exported in a projected CRS like UTM metres, before it is
+    // stored as if it were already lat/lng.
+    if (typeof wgs84Bad === 'function' && wgs84Bad(gj)) {
+      return out('This file is not in latitude/longitude (WGS84) — re-export as EPSG:4326.', false);
+    }
     var cols = [];
     feats.slice(0, 200).forEach(function (f) {
       Object.keys((f && f.properties) || {}).forEach(function (k) {
@@ -364,15 +391,17 @@
     var geometryType = st.hasGeometry ? normaliseGeom(st.geomKind) : 'POINT';
     out('Creating layer…');
 
-    api('/api/layers', {
-      name: name,
-      folderId: 1,
-      geometryType: geometryType,
-      placement: st.hasGeometry ? 'GEOMETRY' : 'LATLNG',
-      uploadFormats: st.hasGeometry ? ['SHAPEFILE', 'GEOJSON'] : ['CSV'],
-      attributeMapping: true,
-      temporary: true
-    }, 'POST')
+    resolveNetworkFolderId().then(function (folderId) {
+      return api('/api/layers', {
+        name: name,
+        folderId: folderId,
+        geometryType: geometryType,
+        placement: st.hasGeometry ? 'GEOMETRY' : 'LATLNG',
+        uploadFormats: st.hasGeometry ? ['SHAPEFILE', 'GEOJSON'] : ['CSV'],
+        attributeMapping: true,
+        temporary: true
+      }, 'POST');
+    })
       .then(function (d) {
         st.layerId = d.id;
         st.layerName = d.name;
@@ -443,7 +472,7 @@
     }
     html += '<label class="ul-ck"><input type="checkbox" id="ulReplace"> Replace everything ' +
       'already in this layer</label>' +
-      '<button class="btn" id="ulGo" onclick="ULC.load()">Import ' +
+      '<button class="btn" id="ulGo" onclick="ULC.requestPublish()">Import ' +
       st.rows.length.toLocaleString() + ' rows</button></div>';
 
     document.getElementById('ulStep').innerHTML = html;
@@ -467,28 +496,74 @@
     else out('Ready to import.', true);
   }
 
-  function load() {
+  /* ---------------------- Confirm before publishing ----------------------
+     Import used to run the moment "Import N rows" was clicked. The mapping
+     table confirms the file's columns matched; it does not say what is about
+     to happen to the LAYER — the wrong target picked, or "Replace everything"
+     left ticked from a previous run, was only discoverable after the write.
+     This is the same gate the six built-in importers already have (see
+     wizShowConfirm in index.html): a summary the user has to agree to before
+     anything is written, with the mapping table one Cancel away underneath. */
+  function requestPublish() {
+    var per = document.getElementById('ulPeriodSel');
+    if (st.periodNeeded && per && !per.value) {
+      return out('Select the survey period this data belongs to.', false);
+    }
     var mapping = {};
     document.querySelectorAll('.ul-sel').forEach(function (s) {
       if (s.value) mapping[s.getAttribute('data-key')] = s.value;
     });
-    var go = document.getElementById('ulGo');
-    go.disabled = true;
-    out('Importing ' + st.rows.length.toLocaleString() + ' rows…');
+    var replace = (document.getElementById('ulReplace') || {}).checked;
+    var periodId = per && per.value ? Number(per.value) : null;
+    var periodLabel = per && per.value ? per.options[per.selectedIndex].textContent.trim() : null;
 
-    var per = document.getElementById('ulPeriodSel');
-    if (st.periodNeeded && per && !per.value) {
-      go.disabled = false;
-      return out('Select the survey period this data belongs to.', false);
-    }
+    var d = st.mapping;
+    var filled = Object.keys(mapping).length;
+    var fileInput = document.getElementById('ulFile');
+    var fileName = (fileInput && fileInput.files && fileInput.files[0]) ? fileInput.files[0].name : '';
+    var step = document.getElementById('ulStep');
+    var savedHtml = step.innerHTML;
+
+    var html = '<div class="wiz-confirm"><div class="wc-h">Publish to ' + esc(st.layerName) + '?</div>' +
+      '<ul class="wc-list">' +
+      '<li><b>' + esc(fileName) + '</b> — ' + st.rows.length.toLocaleString() +
+      ' row' + (st.rows.length === 1 ? '' : 's') + '</li>' +
+      '<li><b>' + filled + '</b> of ' + d.mapping.length + ' attributes will receive data</li>' +
+      (d.unmappedFileColumns.length ? ('<li>' + d.unmappedFileColumns.length + ' file column' +
+        (d.unmappedFileColumns.length === 1 ? '' : 's') + ' not in the attribute list — <b>not stored</b>: ' +
+        d.unmappedFileColumns.map(esc).join(', ') + '</li>') : '') +
+      (periodLabel ? ('<li>Survey period: <b>' + esc(periodLabel) + '</b></li>') : '') +
+      (replace
+        ? '<li class="wc-warn">Everything already stored in this layer is replaced by this file.</li>'
+        : '<li>Rows are added by their key; nothing already in the layer is removed.</li>') +
+      '</ul>' +
+      '<div class="wc-act">' +
+      '<button class="btn sm" type="button" id="ulConfirmGo">Confirm &amp; publish</button>' +
+      '<button class="btn sm ghost" type="button" id="ulConfirmCancel">Cancel</button>' +
+      '</div></div>';
+
+    step.innerHTML = html;
+    document.getElementById('ulConfirmGo').onclick = function () { load(mapping, replace, periodId); };
+    document.getElementById('ulConfirmCancel').onclick = function () {
+      step.innerHTML = savedHtml;
+      document.querySelectorAll('.ul-sel').forEach(function (s) { s.addEventListener('change', check); });
+      check();
+    };
+  }
+
+  function load(mapping, replace, periodId) {
+    var step = document.getElementById('ulStep');
+    var go = document.getElementById('ulConfirmGo');
+    if (go) go.disabled = true;
+    out('Importing ' + st.rows.length.toLocaleString() + ' rows…');
 
     api('/api/layer-data/' + st.layerId + '/import', {
       dataset: 'default',
       mapping: mapping,
       rows: st.rows,
       geometries: st.geoms,
-      periodId: per && per.value ? Number(per.value) : null,
-      replace: (document.getElementById('ulReplace') || {}).checked
+      periodId: periodId,
+      replace: replace
     }, 'POST')
       .then(function (r) {
         var h = '&#10003; Imported <b>' + Number(r.loaded).toLocaleString() + '</b> feature' +
@@ -512,7 +587,7 @@
         }
         h += '<div style="margin-top:8px">It is on the map under <b>My layers</b>.</div>';
         out(h, true);
-        document.getElementById('ulStep').innerHTML = '';
+        step.innerHTML = '';
         if (typeof logUpload === 'function') {
           logUpload('user-layer', st.layerName, true, 'Loaded ' + r.loaded + ' features');
         }
@@ -527,18 +602,27 @@
      Hook into the hub
      ------------------------------------------------------------------ */
 
-  function show(typeId) {
+  /**
+   * Open the import panel.
+   *
+   * @param typeId  'ul-import' or 'ul-temp'
+   * @param layerId optional — preselect this layer and skip the chooser.
+   *                The Data Console now lists every user layer as its own
+   *                import entry, so by the time this runs the layer HAS been
+   *                chosen; asking again on the panel would be asking twice.
+   */
+  function show(typeId, layerId) {
     st.mode = (typeId === 'ul-temp') ? 'temp' : 'import';
     st.layerId = null; st.forcedMapping = null;
     st.columns = []; st.rows = []; st.geoms = [];
     var body = document.getElementById('paramBody');
     body.innerHTML = (st.mode === 'temp') ? panelTemp() : panelImport();
-    if (st.mode === 'import') loadTargets();
+    if (st.mode === 'import') loadTargets(layerId);
   }
 
   var ULC = {
     show: show, read: read, pickTarget: pickTarget,
-    createTemp: createTemp, load: load, _targets: []
+    createTemp: createTemp, requestPublish: requestPublish, _targets: []
   };
   window.ULC = ULC;
 })();

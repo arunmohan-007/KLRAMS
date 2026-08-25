@@ -14,12 +14,19 @@
 
   function _prop(p,keys){for(var i=0;i<keys.length;i++){var k=keys[i];if(p&&p[k]!=null&&p[k]!=='')return String(p[k]);}return '';}
   function _num(v){if(v==null||v==='')return null;var n=Number(String(v).replace(/,/g,''));return isNaN(n)?null:n;}
-  function nsvRoadLen(f){
-    var p=f.properties||{};
+  /* Length from a RoadsIndex row (a plain property bag — no geometry). The
+     geometry fallback lives in nsvLenFromGeometry() instead, because the index
+     deliberately carries no coordinates; see hydrateMissingLengths(). */
+  function nsvRoadLen(p){
+    if(!p)return 0;
     var len=_num(p.len);
     if(len==null){var a=_num(p.Rd_Str_cha),b=_num(p.Rd_End_cha);if(a!=null&&b!=null)len=Math.abs(b-a);}
-    if((len==null||len<=0)&&typeof turf!=='undefined'){try{var line=(typeof lineOf==='function')?lineOf(f):null;if(line)len=turf.length(line,{units:'kilometers'})*1000;}catch(e){}}
     return len||0;
+  }
+  /* Last-resort length, measured off a hydrated feature's geometry. */
+  function nsvLenFromGeometry(f){
+    if(!f||typeof turf==='undefined')return 0;
+    try{var line=(typeof lineOf==='function')?lineOf(f):null;return line?turf.length(line,{units:'kilometers'})*1000:0;}catch(e){return 0;}
   }
   /* total surveyed-gap length (metres) for the road, from condition coverage */
   function nsvGapLen(roadId,len){
@@ -28,12 +35,11 @@
   }
   function buildNsvRows(){
     var rows=[];
-    if(typeof CATALOG==='undefined'||typeof ROADS==='undefined')return rows;
+    if(typeof CATALOG==='undefined'||typeof RoadsIndex==='undefined')return rows;
     Object.keys(CATALOG).forEach(function(roadId){
       var entry=CATALOG[roadId];if(!(entry&&entry.file))return;
-      var f=ROADS[roadId];if(!f)return;                       /* only roads present in the network */
-      var p=f.properties||{};
-      var len=nsvRoadLen(f);
+      var p=RoadsIndex.byRoad(roadId);if(!p)return;           /* only roads present in the network */
+      var len=nsvRoadLen(p);
       rows.push({
         sec:roadId,
         name:_prop(p,['Road_Name','name','ROAD_NAME','RoadName']),
@@ -45,6 +51,20 @@
     });
     rows.sort(function(a,b){return String(a.name||a.sec).localeCompare(String(b.name||b.sec),undefined,{numeric:true});});
     return rows;
+  }
+  /* A road whose length is in neither Measrd_Len nor the chainage pair has to be
+     measured off its geometry. Only those roads are fetched, one small request
+     each (usually none at all) — the point of the index is to avoid pulling the
+     whole network's coordinates just to fill a column. */
+  function hydrateMissingLengths(rows){
+    var missing=rows.filter(function(r){return !(r.len>0);});
+    if(!missing.length||typeof RoadsIndex==='undefined')return Promise.resolve(rows);
+    return Promise.all(missing.map(function(r){
+      return RoadsIndex.hydrateFeature(r.sec).then(function(f){
+        r.len=nsvLenFromGeometry(f);
+        r.gap=nsvGapLen(r.sec,r.len);
+      },function(){});
+    })).then(function(){return rows;});
   }
   function nsvFiltered(){
     var rows=NSV_ROWS||[];
@@ -93,14 +113,20 @@
     ['dashboard','pciScreen','condScreen','regScreen','reportHub','climate'].forEach(function(id){var e=document.getElementById(id);if(e)e.classList.remove('open');});
     s.classList.add('open');
     document.getElementById('nsvBody').innerHTML='<div class="dash-loading">Loading survey footage catalogue…</div>';
-    var needRoads=(typeof ROADS==='undefined'||!ROADS||!Object.keys(ROADS).length);
     var needCat=(typeof CATALOG==='undefined'||!Object.keys(CATALOG||{}).length);
     var needSegs=!Segs.collection();   /* gap length needs condition segments */
     Promise.resolve()
-      .then(function(){return (needRoads&&typeof loadRoads==='function')?loadRoads(true):null;})
+      /* Under vector tiles loadRoads() never fills ROADS — it only wires up the
+         tile source — so reading ROADS here left this screen showing "0 roads
+         with footage" even with a full catalogue. RoadsIndex is the geometry-free
+         road metadata (4.0 MB of GeoJSON down to 92 KB) that tile mode already
+         loads at login, so this costs nothing on top and, unlike the full
+         GeoJSON, stays affordable on a slow link. */
+      .then(function(){return (typeof RoadsIndex!=='undefined')?RoadsIndex.ensure():null;})
       .then(function(){return (needCat&&typeof loadCatalog==='function')?loadCatalog():null;})
       .then(function(){return (needSegs&&typeof loadSegments==='function')?loadSegments():null;})
-      .then(function(){NSV_ROWS=buildNsvRows();renderNsv();})
+      .then(function(){return hydrateMissingLengths(buildNsvRows());})
+      .then(function(rows){NSV_ROWS=rows;renderNsv();})
       .catch(function(e){var b=document.getElementById('nsvBody');if(b)b.innerHTML='<div class="dash-loading">Could not load: '+escH((e&&e.message)||e)+'</div>';});
   };
   window.closeNsvScreen=function(){var s=document.getElementById('nsvScreen');if(s)s.classList.remove('open');};
@@ -112,15 +138,20 @@
   window.nsvViewVideo=function(roadId){
     closeNsvScreen();
     if(typeof closeLauncher==='function')closeLauncher();
-    try{
-      var f=ROADS[roadId];
-      if(f&&f.geometry&&typeof maplibregl!=='undefined'&&typeof map!=='undefined'){
-        var b=new maplibregl.LngLatBounds();
-        (function ex(a){if(typeof a[0]==='number')b.extend(a);else a.forEach(ex);})(f.geometry.coordinates);
-        if(!b.isEmpty())map.fitBounds(b,{padding:80,duration:600});
-      }
-    }catch(e){}
-    if(typeof playSurveyFromPopup==='function')setTimeout(function(){playSurveyFromPopup(roadId,0);},240);
+    /* The list no longer pulls every road's geometry, so fetch just this one to
+       frame the map. hydrateFeature() caches into ROADS, so the player's own
+       geometry lookup a moment later is then free rather than a second fetch. */
+    var ready=(typeof RoadsIndex!=='undefined')?RoadsIndex.hydrateFeature(roadId):Promise.resolve(null);
+    ready.then(function(f){
+      try{
+        if(f&&f.geometry&&typeof maplibregl!=='undefined'&&typeof map!=='undefined'){
+          var b=new maplibregl.LngLatBounds();
+          (function ex(a){if(typeof a[0]==='number')b.extend(a);else a.forEach(ex);})(f.geometry.coordinates);
+          if(!b.isEmpty())map.fitBounds(b,{padding:80,duration:600});
+        }
+      }catch(e){}
+      if(typeof playSurveyFromPopup==='function')setTimeout(function(){playSurveyFromPopup(roadId,0);},240);
+    });
   };
 
   /* ---- export (respects the active filter/search) ---- */

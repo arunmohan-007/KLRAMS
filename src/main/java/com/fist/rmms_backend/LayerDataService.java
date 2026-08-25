@@ -374,15 +374,16 @@ public class LayerDataService {
     /**
      * One layer's rows as GeoJSON, for the viewer to draw.
      *
-     * A frozen layer returns nothing. "Frozen" means its data is not used for
-     * anything, and that has to be enforced where the data is READ rather than
-     * only where it is listed — otherwise the layer would vanish from the panel
-     * but still be served to anyone holding its URL.
+     * A frozen or hidden layer returns nothing. "Frozen" means its data is not
+     * used for anything, and "hidden" means the caller asked for it off the
+     * map — either way that has to be enforced where the data is READ rather
+     * than only where it is listed, otherwise the layer would vanish from the
+     * panel but still be served (and drawn) to anyone holding its URL.
      */
     public String geojson(int layerId, Integer requestedPeriodId) {
         Map<String, Object> layer = jdbc.queryForMap(
-                "SELECT physical_table, frozen, period_scoped FROM layer_definition WHERE id = ?", layerId);
-        if (Boolean.TRUE.equals(layer.get("frozen"))) return EMPTY_FC;
+                "SELECT physical_table, frozen, hidden, period_scoped FROM layer_definition WHERE id = ?", layerId);
+        if (Boolean.TRUE.equals(layer.get("frozen")) || Boolean.TRUE.equals(layer.get("hidden"))) return EMPTY_FC;
         String table = String.valueOf(layer.get("physical_table"));
         if (table == null || "null".equals(table) || !SAFE_TABLE.matcher(table).matches()) {
             return EMPTY_FC;

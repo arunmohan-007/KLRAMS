@@ -8,6 +8,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/shpjs@6.1.0/dist/shp.min.js"></script>
+<!-- The attribute catalogue: every layer's column list as Attribute Data has it.
+     Loaded here rather than at the end of the body so its one fetch is already in
+     flight before anyone picks a file to import. -->
+<script src="/js/00-attr-catalog.js?v=1"></script>
 <style>
   :root{--ink:#0e2038;--ink-2:#1b3252;--slate:#eef1f5;--surface:#fff;--hair:#e2e7ee;--muted:#64718a;--text:#1f2a3d;--accent:#16a06b;--accent-d:#0d7a51;--good:#2ba66a;--poor:#da4b43;--mono:"IBM Plex Mono",monospace;--sans:"Inter",system-ui,"Segoe UI",sans-serif;--shadow:0 1px 2px rgba(14,32,56,.06),0 8px 24px rgba(14,32,56,.08)}
   *{box-sizing:border-box}
@@ -88,7 +92,11 @@
   .hub-head svg{color:var(--muted);flex:none}
   .hub-search{margin:10px 12px 2px;padding:7px 11px;border:1px solid var(--hair);border-radius:9px;font-size:13px;font-family:var(--sans);background:#fbfcfe}
   .hub-search:focus{outline:none;border-color:var(--hub-accent);box-shadow:0 0 0 3px rgba(221,107,32,.14)}
-  .hub-list{padding:6px;overflow:auto;max-height:448px}
+  /* No max-height: a fixed cap silently cut the list off once the hub grew
+     past nine categories, so "User Layers" sat below the fold and read as
+     missing. The list is the primary navigation of this screen — it should
+     show what it has and let the PAGE scroll, not hide rows inside itself. */
+  .hub-list{padding:6px}
   .hub-row{display:flex;align-items:center;gap:10px;padding:11px 12px;margin:2px 4px;border-radius:10px;border:1px solid transparent;cursor:pointer;font-size:13.5px;color:var(--text);transition:background .12s}
   .hub-row:hover{background:#f7f9fc}
   .hub-row.active{background:var(--hub-bg);border-color:var(--hub-bd);color:var(--hub-accent);font-weight:600}
@@ -231,7 +239,7 @@
   .hub-head svg{color:var(--muted)}
   .hub-search{margin:10px 12px 2px;border-radius:9px;border-color:var(--hair)}
   .hub-search:focus{border-color:var(--hub-accent)}
-  .hub-list{max-height:440px}
+
   .hub-row{padding:10px 12px;margin:2px 4px;border-radius:10px}
   .hub-row:hover{background:#f2f6fb}
   .hub-row.active{background:var(--hub-bg);border-color:var(--hub-bd);box-shadow:inset 3px 0 0 var(--hub-accent)}
@@ -329,6 +337,42 @@
   .wiz-tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px}
   .wiz-tag.matched{background:#e7f6ef;color:var(--accent-d)}
   .wiz-tag.renamed{background:#e8f1fd;color:var(--blue)}
+  /* Collapsed by default so a 24-column file does not push Upload off the panel;
+     the summary line still states how many attributes matched, which is the part
+     you need at a glance. */
+  .wiz-map{margin:2px 0 10px;border:1px solid var(--hair);border-radius:var(--r-sm,8px);background:#fff}
+  .wiz-map>summary{cursor:pointer;list-style:none;padding:8px 11px;font-size:12px;color:var(--ink);
+    user-select:none;display:flex;align-items:center;gap:6px}
+  .wiz-map>summary::-webkit-details-marker{display:none}
+  .wiz-map>summary::before{content:'B8';color:var(--muted);font-size:10px;transition:transform .15s}
+  .wiz-map[open]>summary::before{transform:rotate(90deg)}
+  .wiz-map>summary:hover{background:#f6f8fb}
+  .wiz-map .wiz-table{margin:0;border-top:1px solid var(--hair)}
+  .wiz-map .wiz-table th{background:#fafbfd}
+  /* An attribute with no column in the file: greyed, so the eye goes to the
+     ones that did map rather than having to read every row. */
+  .wiz-table tr.miss td{opacity:.55}
+  .wiz-tag.same{background:#eef1f5;color:var(--muted)}
+  .wiz-none{font-size:11px;color:var(--muted);font-style:italic}
+  .wiz-req{color:var(--blue);margin-left:3px;font-weight:700}
+  .wiz-unmapped{color:var(--muted)}
+  .wiz-maphint{margin:8px 11px 0}
+  .wiz-map .wiz-table select{width:100%;max-width:none;margin:0;padding:5px 7px;font-size:11.5px}
+  .wiz-manual{padding:10px 11px 12px;border-top:1px solid var(--hair);background:#fafbfd}
+  .wiz-learn{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;
+    color:var(--ink);cursor:pointer;margin-bottom:2px}
+  .wiz-learn input{width:auto;margin:0}
+  .wiz-manual .wiz-sub{margin:0 0 9px}
+  /* Empty until a column is pointed at two attributes; it must sit next to the
+     Apply button, because that is where the eye already is when it fails. */
+  .wiz-maperr:not(:empty){font-size:12px;color:#b4443c;background:#fdeceb;
+    border:1px solid #f3c9c5;border-radius:8px;padding:7px 10px;margin-bottom:9px}
+  .wiz-confirm{border:1px solid var(--hub-bd);background:#fdf9f3;border-radius:10px;padding:12px 14px}
+  .wc-h{font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:8px}
+  .wc-list{margin:0 0 11px;padding-left:18px;font-size:12.5px;line-height:1.7;color:var(--ink)}
+  .wc-list li::marker{color:var(--muted)}
+  .wc-warn{color:var(--hub-accent)}
+  .wc-act{display:flex;gap:9px;flex-wrap:wrap}
   .wiz-tag.extra{background:#eef1f6;color:var(--muted)}
   .wiz-missing{background:#fdf2e9;border:1px solid var(--hub-bd);border-radius:10px;padding:10px 12px;margin:0 0 10px}
   .wiz-missing .wt{font-size:12.5px;font-weight:700;color:var(--hub-accent);margin-bottom:6px}
@@ -718,6 +762,27 @@ async function upAsset(force){
     else{show(out,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
   }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,f.name,false,e.message);}
 }
+/* Coarse WGS84 sanity check for uploaded geometry — catches the classic
+   wrong-CRS mistake: a shapefile with no .prj (shpjs then just assumes the
+   coordinates are already lat/lng) or one exported in a projected CRS like
+   UTM metres. Only the degree RANGE is checked, not location — a file for
+   the wrong region but genuinely in lat/lng still passes, the same
+   trade-off the boundary importer already made before this was pulled out
+   into one shared function. Every geometry stored gets ST_SetSRID(...,4326)
+   server-side with no reprojection, so this browser-side check is the only
+   place a bad projection is ever caught. Sampling the first few features is
+   enough: a CRS mismatch is uniform across the whole file. */
+function wgs84Bad(gj){
+  var bad=false;
+  var walk=function(a){
+    if(bad||!a)return;
+    if(typeof a[0]==='number'){if(Math.abs(a[0])>180||Math.abs(a[1])>90)bad=true;}
+    else a.forEach(walk);
+  };
+  try{((gj&&gj.features)||[]).slice(0,5).forEach(function(f){if(f.geometry&&f.geometry.coordinates)walk(f.geometry.coordinates);});}catch(e){}
+  return bad;
+}
+const WGS84_HINT='This file is not in latitude/longitude (WGS84) — re-export as EPSG:4326.';
 async function upRoads(force){
   const out=document.getElementById('oRoad');
   const f=document.getElementById('roadfile').files[0];
@@ -737,6 +802,7 @@ async function upRoads(force){
     }
     const nf=(gj&&gj.features&&gj.features.length)||0;
     if(!nf){ show(out,false,'Parsed file has 0 features — check the file.'); return; }
+    if(wgs84Bad(gj)){ show(out,false,WGS84_HINT); return; }
     show(out,true,'Uploading '+nf+' features…');
     const r=await fetch('/api/roads/upload?mode='+mode+(force?'&force=true':''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
     const raw=await r.text();
@@ -765,6 +831,7 @@ async function upFullNetwork(){
     let gj; const n=f.name.toLowerCase();
     if(n.endsWith('.zip')){ gj=await shp(await f.arrayBuffer()); if(Array.isArray(gj)) gj={type:'FeatureCollection',features:gj.flatMap(x=>x.features||[])}; }
     else { gj=JSON.parse(await f.text()); }
+    if(wgs84Bad(gj)){ show(out,false,WGS84_HINT); return; }
     const r=await fetch('/api/full-network/upload?mode='+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
     const j=await r.json();
     if(j.status==='ok'){const msg='✓ '+(mode==='replace'?('Replaced network: '+j.inserted+' roads loaded.'):('Updated '+j.updated+', added '+j.inserted+' roads.'))+' Total now '+j.total+'.';show(out,true,msg);logUpload('Full road network',f.name,true,msg);refresh();}
@@ -785,9 +852,7 @@ async function upBoundary(type){
     if(n.endsWith('.zip')){ gj=await shp(await f.arrayBuffer()); if(Array.isArray(gj)) gj={type:'FeatureCollection',features:gj.flatMap(x=>x.features||[])}; }
     else { gj=JSON.parse(await f.text()); }
     const cnt=gj&&gj.features?gj.features.length:0;
-    let bad=false;
-    try{const w=a=>{if(typeof a[0]==='number'){if(Math.abs(a[0])>180||Math.abs(a[1])>90)bad=true;}else a.forEach(w);};(gj.features||[]).slice(0,5).forEach(f=>f.geometry&&f.geometry.coordinates&&w(f.geometry.coordinates));}catch(e){}
-    if(bad){show(out,false,'This file is not in latitude/longitude (WGS84) — re-export as EPSG:4326.');return;}
+    if(wgs84Bad(gj)){show(out,false,WGS84_HINT);return;}
     var url='/api/boundary/'+encodeURIComponent(type)+'?mode='+encodeURIComponent(mode);
     var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
     var j=await r.json();
@@ -817,6 +882,42 @@ const TRF_NONVEH=new Set(['STATION_NAME','TIME','DATE','DURATION_IN_MINUTES','SE
 function trfPad(n){return (n<10?'0':'')+n;}
 /* normalise a header for matching: trim, uppercase, spaces/dots -> underscore */
 function trfNorm(h){return String(h==null?'':h).trim().toUpperCase().replace(/[\s.]+/g,'_');}
+/* ---------- traffic CSV headers, resolved through Attribute Data ----------
+   The traffic importers used to look their columns up by an EXACT header
+   string — idx['Station Name'], idx['Xsp Code'] — so a return writing
+   "Station_Name" or "STATION NAME" was rejected outright, and one writing
+   "Section_Label" imported every station with a blank section (which then
+   failed to place, because a station is positioned by section + chainage).
+
+   These two build the same index the server-side importers do: keyed by the
+   storage key the traffic_stations layer declares, resolved via that layer's
+   accepted column names, with the raw header indexed as well so the lookups
+   still work when the catalogue has not loaded. */
+function trfKey(s){return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,'');}
+function trfIndex(header,dataset){
+  const idx={};
+  header.forEach(function(h,i){
+    const raw=String(h==null?'':h).trim();
+    if(!raw)return;
+    if(idx[trfKey(raw)]===undefined)idx[trfKey(raw)]=i;
+    const a=window.AttrCatalog?AttrCatalog.attr('traffic_stations',raw,dataset):null;
+    if(!a)return;
+    if(idx[trfKey(a.key)]===undefined)idx[trfKey(a.key)]=i;
+    if(idx[trfKey(a.name)]===undefined)idx[trfKey(a.name)]=i;
+  });
+  return idx;
+}
+/* First candidate that the file has, as a column index, or undefined.
+   Callers pass the storage key first and the historic header spellings after,
+   so a database with no catalogue behaves exactly as before. */
+function trfCol(idx){
+  for(let i=1;i<arguments.length;i++){
+    const v=idx[trfKey(arguments[i])];
+    if(v!==undefined)return v;
+  }
+  return undefined;
+}
+function trfCell(r,i){return i===undefined?'':(r[i]==null?'':r[i]);}
 /* numeric cell: tolerate thousands separators and stray spaces */
 function trfNum(v){const n=+String(v==null?'':v).replace(/[, ]/g,'');return isNaN(n)?0:n;}
 /* Date cell — KLRAMS standard dd-mmm-yyyy (15-Apr-2020) only. Numeric formats are
@@ -841,7 +942,27 @@ function trfAggregate(rows,header){
      collected in window.__trfBadDates so the caller can reject the file by name. */
   const bad={rows:0,samples:[],blank:0};window.__trfBadDates=bad;
   const idx={};header.forEach((h,i)=>{const k=trfNorm(h);if(!(k in idx))idx[k]=i;});
-  const veh=[];header.forEach((h,i)=>{const k=trfNorm(h);if(!TRF_NONVEH.has(k)&&idx[k]===i&&k!=='')veh.push({label:String(h).trim(),i:i});});
+  /* Also index by the storage key the counts dataset declares, so a station or
+     date column spelled the way one district writes it still resolves. */
+  const cat=trfIndex(header,'counts');
+  ['name','date','time','direction'].forEach(function(k){
+    const i=cat[trfKey(k)];
+    if(i!==undefined){const n=trfNorm(k==='name'?'STATION_NAME':k);if(!(n in idx))idx[n]=i;}
+  });
+  /* A vehicle class is any column the counts dataset does NOT declare — the
+     declared ones are the survey's own fields (station, date, time, direction).
+     Deriving it that way means adding a field in Attribute Data stops it being
+     counted as a vehicle, instead of needing TRF_NONVEH edited in this file.
+     TRF_NONVEH stays as the floor: it also lists serial numbers and totals,
+     which are not attributes of anything but must never be counted either. */
+  const declared=new Set();
+  if(window.AttrCatalog){
+    header.forEach(function(h){
+      const a=AttrCatalog.attr('traffic_stations',String(h).trim(),'counts');
+      if(a&&a.role!==undefined)declared.add(trfNorm(h));
+    });
+  }
+  const veh=[];header.forEach((h,i)=>{const k=trfNorm(h);if(!TRF_NONVEH.has(k)&&!declared.has(k)&&idx[k]===i&&k!=='')veh.push({label:String(h).trim(),i:i});});
   const out={};
   rows.forEach(r=>{
     const st=String(r[idx['STATION_NAME']]||'').trim();if(!st)return;
@@ -888,7 +1009,12 @@ function trfGetStore(){try{return JSON.parse(localStorage.getItem(TRF_KEY))||{};
 function trfPutStore(o){o.v=1;o.savedAt=new Date().toISOString();try{localStorage.setItem(TRF_KEY,JSON.stringify(o));return true;}catch(e){return false;}}
 async function trfPost(kind,payload,pid){try{const r=await fetch('/api/traffic/'+kind+'?periodId='+pid,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)return null;const j=await r.json();return j.error?null:j;}catch(e){return null;}}
 function trfReadFile(id){return new Promise((res,rej)=>{const f=document.getElementById(id).files[0];if(!f){rej(new Error('Choose a CSV first.'));return;}const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('File read error.'));r.readAsText(f);});}
-async function upTraffic(kind){const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');const _tf=((document.getElementById(kind==='stations'?'trfStn':'trfCnt').files[0])||{}).name||'—';const _pid=spSelVal();if(!_pid){show(out,false,'Select the survey period this data belongs to first (create one under Survey Periods).');return;}const _tds=(kind==='stations'?'Traffic stations':'Traffic counts')+' ['+spName(_pid)+']';try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx={};pr.header.forEach((h,i)=>idx[h]=i);const store=trfGetStore();if(kind==='stations'){if(idx['Station Name']===undefined){show(out,false,'CSV needs a Station Name column.');return;}const _inc=pr.rows.map(r=>({name:r[idx['Station Name']]||'',road:(idx['Description']!==undefined?r[idx['Description']]:'')||'',section:(idx['Section Label']!==undefined?String(r[idx['Section Label']]||'').trim():''),ch:(idx['Chainage']!==undefined&&String(r[idx['Chainage']]).trim()!==''&&!isNaN(+r[idx['Chainage']]))?+r[idx['Chainage']]:null,lat:(idx['Latitude']!==undefined&&!isNaN(+r[idx['Latitude']]))?+r[idx['Latitude']]:null,lng:(idx['Longitude']!==undefined&&!isNaN(+r[idx['Longitude']]))?+r[idx['Longitude']]:null,xsp:(idx['Xsp Code']!==undefined?r[idx['Xsp Code']]:'')||''})).filter(r=>r.name);const _by={};(store.stations||[]).forEach(x=>_by[x.name]=x);_inc.forEach(x=>_by[x.name]=x);store.stations=Object.values(_by);const srv=await trfPost('stations',store.stations,_pid);trfPutStore(store);const _skip=(srv&&srv.skipped_stations)||[];const _skipMsg=_skip.length?(' <b style="color:#e8590c">'+_skip.length+' skipped</b> \u2014 section label not found on any road: '+_skip.map(x=>x.name+' (\u201c'+(x.section||'blank')+'\u201d)').join(', ')+'.'):'';show(out,true,'\u2713 '+(srv?srv.saved:store.stations.length)+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.')+_skipMsg);}else{if(!pr.header.some(h=>trfNorm(h)==='STATION_NAME')){show(out,false,'CSV needs a STATION_NAME column.');return;}if(!pr.header.some(h=>trfNorm(h)==='DATE')){show(out,false,'CSV needs a DATE column, formatted '+TRF_DATE_HINT+'.');return;}const _agg=trfAggregate(pr.rows,pr.header);const _bd=window.__trfBadDates||{rows:0,samples:[],blank:0};
+async function upTraffic(kind){
+  /* Wait for the attribute catalogue before parsing: the header resolver
+     falls back to raw headers without it, so racing the fetch would make an
+     import succeed or fail depending on network timing. */
+  if(window.AttrCatalog){try{await AttrCatalog.ready();}catch(e){}}
+  const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');const _tf=((document.getElementById(kind==='stations'?'trfStn':'trfCnt').files[0])||{}).name||'—';const _pid=spSelVal();if(!_pid){show(out,false,'Select the survey period this data belongs to first (create one under Survey Periods).');return;}const _tds=(kind==='stations'?'Traffic stations':'Traffic counts')+' ['+spName(_pid)+']';try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx=trfIndex(pr.header,kind==='stations'?'default':'counts');const store=trfGetStore();if(kind==='stations'){const cName=trfCol(idx,'name','Station Name','STATION_NAME'),cRoad=trfCol(idx,'road','Description','Road Name'),cSec=trfCol(idx,'section','Section Label','Section_Label'),cCh=trfCol(idx,'chainage','Chainage'),cLat=trfCol(idx,'lat','Latitude'),cLng=trfCol(idx,'lng','Longitude'),cXsp=trfCol(idx,'xsp','Xsp Code','XSP');if(cName===undefined){show(out,false,'CSV needs a Station Name column. Accepted spellings are listed against the Station Name attribute in Layer Management → Traffic Stations → Attributes.');return;}const _num=(r,i)=>{if(i===undefined)return null;const v=String(trfCell(r,i)).trim();return (v===''||isNaN(+v))?null:+v;};const _inc=pr.rows.map(r=>({name:trfCell(r,cName)||'',road:trfCell(r,cRoad)||'',section:String(trfCell(r,cSec)).trim(),ch:_num(r,cCh),lat:_num(r,cLat),lng:_num(r,cLng),xsp:trfCell(r,cXsp)||''})).filter(r=>r.name);const _by={};(store.stations||[]).forEach(x=>_by[x.name]=x);_inc.forEach(x=>_by[x.name]=x);store.stations=Object.values(_by);const srv=await trfPost('stations',store.stations,_pid);trfPutStore(store);const _skip=(srv&&srv.skipped_stations)||[];const _skipMsg=_skip.length?(' <b style="color:#e8590c">'+_skip.length+' skipped</b> \u2014 section label not found on any road: '+_skip.map(x=>x.name+' (\u201c'+(x.section||'blank')+'\u201d)').join(', ')+'.'):'';show(out,true,'\u2713 '+(srv?srv.saved:store.stations.length)+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.')+_skipMsg);}else{if(trfCol(idx,'name','STATION_NAME','Station Name')===undefined){show(out,false,'CSV needs a STATION_NAME column. Accepted spellings are listed against the Station Name attribute in Layer Management → Traffic Stations → Traffic Counts.');return;}if(trfCol(idx,'date','DATE','Survey Date')===undefined){show(out,false,'CSV needs a DATE column, formatted '+TRF_DATE_HINT+'.');return;}const _agg=trfAggregate(pr.rows,pr.header);const _bd=window.__trfBadDates||{rows:0,samples:[],blank:0};
   /* Reject rather than import: a date this file cannot read becomes days=1 for the
      station, which silently multiplies its ADT by the number of survey days. */
   if(_bd.rows){show(out,false,'Not imported — <b>'+_bd.rows+'</b> row(s) have a DATE that is not in the required format '+TRF_DATE_HINT+'. Found: '+_bd.samples.map(s=>'“'+String(s).replace(/</g,'&lt;')+'”').join(', ')+'. Re-export the DATE column in that format and upload again.');return;}
@@ -1194,13 +1320,124 @@ function hubRow(active,ic,label,onclick,chev){
     +'<span class="hub-ic">'+ic+'</span><span class="hub-label">'+escLog(label)+'</span>'
     +(chev!==false?'<span class="hub-chev">›</span>':'')+'</div>';
 }
+/* ---------------- The hub, bound to the layer registry ----------------
+   HUB above is the list of IMPORTERS — each entry drives a real, distinct
+   pipeline (a shapefile reader, a linear-referencing CSV loader, a resumable
+   video uploader), so the entries themselves stay declared here. What was wrong
+   was that everything ABOUT them was declared here too: a layer renamed in
+   Layer Management kept its old name on this screen, a layer frozen there still
+   offered an import panel, and a layer created there had no entry at all.
+
+   So each importer now names the layer it feeds, and the registry supplies the
+   rest: the label, the accepted formats, and whether it should be offered. */
+const HUB_LAYER={
+  'cond-survey':'condition',
+  'road-net':'roads',
+  'full-net':'full_road_network',
+  'as-bridge':'bridge','as-culvert':'culvert',
+  'as-fline':'furniture_line','as-fpoint':'furniture_point',
+  'geo-subgrade':'subgrade','geo-bitcore':'bituminous_core','geo-crust':'pavement_crust',
+  'fwd-survey':'fwd',
+  'traffic':'traffic_stations',
+  'bnd-district':'boundary_district','bnd-constituency':'boundary_constituency'
+};
+/* How the registry's upload_formats read on this screen. Kept here rather than
+   sent by the server because it is wording, not data. */
+function hubFmt(formats){
+  // Accepts either shape: /api/layers/tree splits upload_formats into an array,
+  // /api/layer-data/import-targets passes the stored comma string through.
+  if(typeof formats==='string')formats=formats.split(',');
+  if(!formats||!formats.length)return '';
+  var m={SHAPEFILE:'Shapefile & ZIP',GEOJSON:'GeoJSON',CSV:'CSV file'};
+  return formats.map(function(f){return m[String(f).trim()]||String(f).trim();})
+                .filter(Boolean).join(' / ');
+}
+/* Layers the registry knows, by key — filled once on load. */
+var HUB_REG={};
+
+/* Fold the registry into HUB. Safe to run before or without the fetch: an
+   importer whose layer is missing from the registry is left exactly as
+   declared, so a registry that failed to initialise costs nothing. */
+function hubApplyRegistry(tree){
+  (tree||[]).forEach(function(folder){
+    (folder.layers||[]).forEach(function(l){HUB_REG[l.key]=l;});
+  });
+  HUB.forEach(function(cat){
+    cat.types=cat.types.filter(function(t){
+      var l=HUB_REG[HUB_LAYER[t.id]];
+      if(!l)return true;                       // an action, or an unknown layer
+      /* Frozen means "do not use this data for anything", which has to include
+         adding more of it — offering the panel would invite an import the
+         layer's own state forbids. Not-importable is the system-generated
+         case: there is nothing to upload into. */
+      if(l.frozen||l.importable===false)return false;
+      t.label=l.name||t.label;
+      var fmt=hubFmt(l.uploadFormats);
+      if(fmt)t.fmt=fmt;
+      return true;
+    });
+  });
+}
+
+/* Give every user layer its own entry, under the folder it was filed in.
+   They used to share one "Import into a layer" panel with a dropdown, so a
+   layer someone created was invisible here until you went looking for it in
+   that list. One entry each puts them beside the built-in importers, which is
+   where someone looking to load data would expect to find them. */
+function hubAddUserLayers(targets){
+  var cat=HUB.find(function(c){return c.id==='userlayers';});
+  if(!cat)return;
+  /* Listed INSIDE "User Layers", not as a category per folder. Folder-named
+     categories put a layer called "test" under a heading called
+     "Administrative Boundary", sitting next to the built-in "Boundaries" —
+     two headings that sound like the same thing and are not. Everything made
+     in Layer Management belongs under the one heading that says so; the
+     folder is shown on the row instead. */
+  var made=(targets||[]).filter(function(l){return !l.frozen;}).map(function(l){
+    return {
+      id:'ulx-'+l.id,
+      label:l.name+(l.temporary?' (temporary)':'')+(l.folder?(' — '+l.folder):''),
+      fmt:hubFmt(l.uploadFormats)||'Shapefile & ZIP / GeoJSON / CSV',
+      userLayerId:l.id
+    };
+  });
+  /* The two generic entries stay and stay LAST. "Import into a layer" is the
+     fallback chooser, and "Temporary layer from a file" creates a layer that
+     does not exist yet — so neither can be listed per-layer, and neither
+     should push the real layers down the list. */
+  cat.types=made.concat(cat.types);
+  // A category left with nothing in it is a dead row in the picker.
+  for(var i=HUB.length-1;i>=0;i--)if(!HUB[i].types.length)HUB.splice(i,1);
+}
+
+function hubLoadRegistry(){
+  return Promise.all([
+    fetch('/api/layers/tree',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}),
+    fetch('/api/layer-data/import-targets',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
+  ]).then(function(res){
+    var tree=res[0]&&(res[0].folders||res[0]);
+    hubApplyRegistry(tree);
+    hubAddUserLayers(res[1]&&res[1].layers);
+  }).catch(function(e){
+    // Never block the hub on the registry — every built-in importer works from
+    // its declared entry. But say so: a swallowed error here once left a
+    // category rendered with no types in it and nothing to explain why.
+    console.error('Import hub could not read the layer registry:',e);
+  });
+}
+
 function findType(id){for(const c of HUB){const t=c.types.find(x=>x.id===id);if(t)return t;}return null;}
 function renderCats(){
   const q=(document.getElementById('catSearch').value||'').toLowerCase();
-  document.getElementById('catList').innerHTML=HUB
+  const list=document.getElementById('catList');
+  list.innerHTML=HUB
     .filter(c=>c.cat.toLowerCase().includes(q))
     .map(c=>hubRow(c.id===curCat,hubIcon(c.icon),c.cat,"selectCat('"+c.id+"')")).join('')
     ||'<div class="hub-empty">No matches.</div>';
+  // If the list is ever scrolled — a long search result, a narrow window — the
+  // selected category must still be the one you can see.
+  const on=list.querySelector('.hub-row.active');
+  if(on&&list.scrollHeight>list.clientHeight+2)on.scrollIntoView({block:'nearest'});
 }
 function renderTypes(){
   const c=HUB.find(x=>x.id===curCat);if(!c)return;
@@ -1225,6 +1462,10 @@ function selectType(id){
      exist and what columns the chosen file turns out to have, so they cannot be
      a static string in PANELS. */
   if(id==='ul-import'||id==='ul-temp'){ULC.show(id);wireTemplateWizards();return;}
+  /* A per-layer user entry is the same import panel with its target already
+     chosen — the layer is what you clicked, so asking again would be odd. */
+  var _ut=findType(id);
+  if(_ut&&_ut.userLayerId){ULC.show('ul-import',_ut.userLayerId);wireTemplateWizards();return;}
   document.getElementById('paramBody').innerHTML=PANELS[id]||'<div class="hub-empty">No importer.</div>';
   if(id==='traffic')trfState();
   if(document.getElementById('spSel'))spFillSel();
@@ -1263,6 +1504,80 @@ function wizDatasetKey(inputId){
   var cfg=WIZ_INPUTS[inputId];if(!cfg)return null;
   return typeof cfg.ds==='function'?cfg.ds():cfg.ds;
 }
+/* ---------------------- Confirm before publishing ----------------------
+   The column check tells you the file is sound; it does not tell you what is
+   about to happen to the layer. Upload used to post the moment it was clicked,
+   so an import into the wrong dataset, or into the wrong survey period, was
+   only discoverable afterwards — and these importers REPLACE a section's rows.
+
+   So a passing check now ends in a summary you have to agree to: which layer
+   receives the data, how many rows, how many attributes will be filled, which
+   of your columns are not stored, and which survey period it lands in.
+
+   Intercepted at document level in the capture phase rather than by rewriting
+   each panel's inline onclick: there are six upload buttons across the console
+   and they each call their own up*() function. Capturing here means the gate
+   applies to all of them, and to any added later, without touching one of
+   them. A button whose file never went through a check is not gated — the
+   old path is left exactly as it was. */
+function wizPanelPeriod(){
+  var sel=document.getElementById('spSel');
+  if(!sel||!sel.value)return null;
+  var o=sel.options[sel.selectedIndex];
+  return o?o.textContent.trim():null;
+}
+function wizShowConfirm(inputId,btn){
+  var st=WIZ_STATE[inputId];
+  var box=document.getElementById('wiz_'+inputId);
+  if(!st||!box)return;
+  var j=st.result||{},rows=j.mapping||[];
+  var filled=rows.filter(function(m){return m.column;}).length;
+  var extra=j.extra||[];
+  var kept=WIZ_EXTRA_KEPT.has(st.ds);
+  var period=wizPanelPeriod();
+  var bad=(j.status==='invalid');
+
+  var h='<div class="wiz-confirm"><div class="wc-h">Publish to the '+escLog(st.ds.replace(/_/g,' '))+' layer?</div>'
+    +'<ul class="wc-list">'
+    +'<li><b>'+escLog(st.file.name)+'</b>'+(j.checked_rows!=null?(' — '+j.checked_rows+' row(s) checked'):'')+'</li>'
+    +'<li><b>'+filled+'</b> of '+rows.length+' attributes will receive data</li>'
+    +(extra.length?('<li>'+extra.length+' column'+(extra.length===1?'':'s')+' not in the attribute list — '
+        +(kept?'kept as extra attributes':'<b>not stored</b>')+': '+extra.map(escLog).join(', ')+'</li>'):'')
+    +(period?('<li>Survey period: <b>'+escLog(period)+'</b></li>'):'')
+    +'<li class="wc-warn">Rows are replaced per section — any existing data for the sections in '
+    +'this file is overwritten. You will be asked again if that affects saved records.</li>'
+    +(bad?'<li class="wc-warn"><b>The column check did not pass.</b> You chose to import anyway.</li>':'')
+    +'</ul>'
+    +'<div class="wc-act">'
+    +'<button class="btn sm" type="button" data-wiz-publish>Confirm &amp; publish</button>'
+    +'<button class="btn sm ghost" type="button" data-wiz-cancel>Cancel</button>'
+    +'</div></div>';
+
+  st.savedHtml=box.innerHTML;
+  box.className='wiz-box show';
+  box.innerHTML=h;
+  box.scrollIntoView({block:'center'});
+  box.querySelector('[data-wiz-publish]').onclick=function(){
+    st.confirmed=true;
+    box.innerHTML=st.savedHtml;
+    btn.click();          // second pass: the gate lets it through
+  };
+  box.querySelector('[data-wiz-cancel]').onclick=function(){
+    box.innerHTML=st.savedHtml;
+  };
+}
+document.addEventListener('click',function(ev){
+  var btn=ev.target&&ev.target.closest?ev.target.closest('button[id^="btn_"]'):null;
+  if(!btn)return;
+  var inputId=btn.id.slice(4);
+  if(!WIZ_INPUTS[inputId])return;
+  var st=WIZ_STATE[inputId];
+  if(!st)return;                 // no check ran for this file — old behaviour
+  if(st.confirmed){st.confirmed=false;return;}
+  ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();
+  wizShowConfirm(inputId,btn);
+},true);
+
 function wizSetEnabled(inputId,on){
   var btn=document.getElementById('btn_'+inputId);
   if(btn)btn.disabled=!on;
@@ -1320,8 +1635,23 @@ async function wizRunCheck(inputId,file){
     var headers=splitCsvLine(headerLine).map(function(h){return h.trim();});
     var fd=new FormData();fd.append('dataset',ds);fd.append('file',file);
     var r=await fetch('/api/templates/validate',{method:'POST',credentials:'same-origin',body:fd});
+    /* A dead/expired session doesn't fail this request — Spring Security
+       redirects it to the login page and answers 200 with an HTML document.
+       r.json() on that throws a generic SyntaxError indistinguishable from a
+       real network hiccup, which used to land in the catch below and tell the
+       user "you can still upload" — exactly wrong, since the upload would
+       silently hit the same redirect and never run. Caught here instead, by
+       content type, so the mapping window says what is actually true. */
+    var ct=(r.headers.get('content-type')||'');
+    if(ct.indexOf('json')<0){
+      box.innerHTML='<div class="wiz-hd"><span class="dot warn"></span>Your session appears to have expired.</div>'
+        +'<div class="wiz-sub">The column check got a sign-in page back instead of an answer. '
+        +'Reload this page and sign in again before uploading — uploading now would fail the same way.</div>';
+      wizSetEnabled(inputId,false);
+      return;
+    }
     var j=await r.json();
-    WIZ_STATE[inputId]={file:file,headerLine:headerLine,headers:headers,result:j,ds:ds,overrideErrors:false};
+    WIZ_STATE[inputId]={inputId:inputId,file:file,headerLine:headerLine,headers:headers,result:j,ds:ds,overrideErrors:false};
     wizRender(inputId);
   }catch(e){
     box.innerHTML='<div class="wiz-hd"><span class="dot warn"></span>Could not check columns (' +escLog(e.message)+ ').</div>'
@@ -1330,6 +1660,125 @@ async function wizRunCheck(inputId,file){
   }
 }
 
+/* The mapping window's actual content: every attribute KLRAMS holds for this
+   dataset, and which column of the uploaded file it is taking that value from.
+
+   Shown on every check, matched or not. It used to render only the columns
+   whose header had to be RENAMED, so a file where everything lined up collapsed
+   to a one-line tick with nothing to look at — no use to whoever has to confirm
+   the system read their file the way they meant it.
+
+   EVERY row is a picker, not just the unmatched ones. Automatic matching is a
+   guess: it can miss a column named nothing like the attribute ("Rd Ref" for
+   the section label), and it can just as easily match the wrong one when a file
+   carries two similar headers. Either way the person importing is the one who
+   knows, so any row can be pointed at any column — or set back to "not in my
+   file" — before the upload runs.
+
+   The importer never learns about this. Applying rewrites the file's header
+   line and hands the corrected File to the existing upload path, which is the
+   same route the required-column fix-up already used.
+
+   Collapsed by default via <details>: a clean 24-column FWD file would
+   otherwise push the Upload button off the panel. It opens itself when
+   something needs attention. */
+function wizMappingTable(j,st){
+  var rows=j.mapping||[];
+  if(!rows.length)return '';
+  var unmapped=rows.filter(function(m){return !m.column;}).length;
+  var matched=rows.length-unmapped;
+  var open=(j.status==='invalid')?' open':'';
+  var h='<details class="wiz-map"'+open+'><summary>'
+    +'Attribute mapping — <b>'+matched+'</b> of '+rows.length+' matched'
+    +(unmapped?(' · <span class="wiz-unmapped">'+unmapped+' unmatched</span>'):'')
+    +'</summary>'
+    +'<div class="wiz-sub wiz-maphint">Every row can be changed — pick a different column '
+    +'if the automatic match got one wrong.</div>'
+    +'<table class="wiz-table"><thead><tr>'
+    +'<th>KLRAMS attribute</th><th>Type</th><th>Your column</th></tr></thead><tbody>';
+
+  var headers=st.headers||[];
+  rows.forEach(function(m){
+    var opts='<option value="">— not in my file —</option>'
+      +headers.map(function(hd){
+         return '<option value="'+escLog(hd)+'"'
+           +(m.column&&wizNorm(hd)===wizNorm(m.column)?' selected':'')+'>'+escLog(hd)+'</option>';
+       }).join('');
+    h+='<tr'+(m.column?'':' class="miss"')+'>'
+      +'<td class="src">'+escLog(m.field)+(m.required?'<span class="wiz-req" title="Required">*</span>':'')+'</td>'
+      +'<td class="sample">'+escLog(m.type||'')+'</td>'
+      +'<td><select data-map-field="'+escLog(m.field)+'" data-map-was="'+escLog(m.column||'')+'">'
+      +opts+'</select></td></tr>';
+  });
+  h+='</tbody></table>'
+    +'<div class="wiz-manual">'
+    +'<label class="wiz-learn"><input type="checkbox" data-wiz-learn checked> '
+    +'Remember these column names for next time</label>'
+    +'<div class="wiz-sub">Saves each choice as an accepted column name on that attribute, so '
+    +'the next file from the same source maps itself. Review them any time in '
+    +'Layer Management → Attributes.</div>'
+    +'<div class="wiz-maperr" data-wiz-maperr></div>'
+    +'<button class="btn sm" type="button" onclick="wizApplyMapping(\''+st.inputId+'\')">'
+    +'Apply mapping &amp; recheck</button></div>';
+  return h+'</details>';
+}
+
+/* Apply whatever the pickers now say, by rewriting the file's header line.
+   Only the header changes; not a single data row is touched. */
+function wizApplyMapping(inputId){
+  var st=WIZ_STATE[inputId];if(!st)return;
+  var box=document.getElementById('wiz_'+inputId);
+  var errBox=box.querySelector('[data-wiz-maperr]');
+  var sels=Array.prototype.slice.call(box.querySelectorAll('[data-map-field]'));
+
+  /* chosen column -> attribute label. Two attributes pointed at one column is
+     refused rather than resolved: whichever we picked would silently drop the
+     other, and only the person importing knows which they meant. */
+  var byColumn={},dupes=[];
+  sels.forEach(function(sel){
+    var col=sel.value;if(!col)return;
+    var k=wizNorm(col);
+    if(byColumn[k]){dupes.push(col);return;}
+    byColumn[k]={field:sel.getAttribute('data-map-field'),column:col};
+  });
+  if(dupes.length){
+    if(errBox)errBox.textContent='“'+dupes.join('”, “')+'” is mapped to more than one attribute. '
+      +'Each column can feed only one.';
+    return;
+  }
+  if(errBox)errBox.textContent='';
+
+  /* Assigned attribute labels become the new header names. A column nobody
+     chose keeps its own name unless that name is one of the assigned labels —
+     which would leave two columns claiming the same attribute — so it is
+     prefixed and travels on as an extra column instead. */
+  var assigned={};
+  Object.keys(byColumn).forEach(function(k){assigned[wizNorm(byColumn[k].field)]=1;});
+  var newHeader=st.headers.map(function(hd){
+    var hit=byColumn[wizNorm(hd)];
+    if(hit)return csvCell(hit.field);
+    return csvCell(assigned[wizNorm(hd)]?('x_'+hd):hd);
+  }).join(',');
+
+  /* Learn the spellings BEFORE rechecking, so the recheck reflects them and the
+     user sees the mapping they just made confirmed by the server, not by us. */
+  var learn=box.querySelector('[data-wiz-learn]');
+  var toLearn={};
+  Object.keys(byColumn).forEach(function(k){
+    var e=byColumn[k];
+    if(wizNorm(e.column)!==wizNorm(e.field))toLearn[e.field]=e.column;
+  });
+  box.innerHTML='<div class="wiz-hd"><span class="dot busy"></span>Rechecking…</div>';
+
+  var done=(learn&&learn.checked&&Object.keys(toLearn).length)
+    ? fetch('/api/attributes/aliases/learn',{method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({dataset:st.ds,columns:toLearn})}).catch(function(){})
+    : Promise.resolve();
+
+  done.then(function(){return rewriteCsvHeader(st.file,newHeader);})
+      .then(function(newFile){return wizRunCheck(inputId,newFile);});
+}
 function wizRender(inputId){
   var st=WIZ_STATE[inputId];if(!st)return;
   var box=document.getElementById('wiz_'+inputId);
@@ -1351,15 +1800,14 @@ function wizRender(inputId){
   if(j.status==='invalid'){
     var missing=j.missing||[];
     if(missing.length){
-      html+='<div class="wiz-missing"><div class="wt">This file is missing '+missing.length+' required column'+(missing.length===1?'':'s')+' KLRAMS expects'+(j.template?(' for the "'+escLog(j.template)+'" template'):'')+'. Pick which of your columns it is, or confirm it isn\'t in the file:</div>';
-      missing.forEach(function(f){
-        var guess=wizGuessHeader(f,st.headers);
-        html+='<div class="wiz-missing-row"><label>'+escLog(f)+'</label><select data-missing-field="'+escLog(f)+'">'
-          +'<option value="">— not in my file —</option>'
-          +st.headers.map(function(h){return '<option value="'+escLog(h)+'"'+(h===guess?' selected':'')+'>'+escLog(h)+'</option>';}).join('')
-          +'</select></div>';
-      });
-      html+='</div>';
+      /* The pickers used to live here, for required columns only. Every
+         attribute has one in the mapping table below now, so this states what
+         is wrong and leaves that table as the single place it is fixed — rather
+         than two sets of dropdowns for the same file. */
+      html+='<div class="wiz-missing"><div class="wt">This file has no column for '
+        +missing.length+' required attribute'+(missing.length===1?'':'s')+': <b>'
+        +missing.map(escLog).join('</b>, <b>')+'</b>. Set '+(missing.length===1?'it':'them')
+        +' in the mapping below — pick which of your columns it is, then Apply.</div></div>';
     }
     if(j.errors&&j.errors.length){
       html+='<div class="wiz-errors"><b>'+(j.total_errors||j.errors.length)+' cell value problem'+((j.total_errors||j.errors.length)===1?'':'s')+'</b> in already-matched columns:<ul>'
@@ -1369,10 +1817,7 @@ function wizRender(inputId){
         +'<input type="checkbox" id="wizOverride_'+inputId+'"'+(st.overrideErrors?' checked':'')+'> Import anyway — I\'ll fix the data later</label>'
         +'</div>';
     }
-    if(missing.length){
-      html+='<div class="wiz-actions"><button class="btn sm" type="button" onclick="wizApplyMissing(\''+inputId+'\')">Apply mapping &amp; recheck</button></div>';
-    }
-    box.innerHTML='<div class="wiz-hd"><span class="dot warn"></span>Column check — action needed</div>'+html;
+    box.innerHTML='<div class="wiz-hd"><span class="dot warn"></span>Column check — action needed</div>'+html+wizMappingTable(j,st);
     var ov=document.getElementById('wizOverride_'+inputId);
     if(ov)ov.addEventListener('change',function(){st.overrideErrors=ov.checked;wizSetEnabled(inputId, !missing.length && st.overrideErrors);});
     wizSetEnabled(inputId,false);
@@ -1382,19 +1827,14 @@ function wizRender(inputId){
   // status === 'ok'
   var rename=j.rename||{},extra=j.extra||[];
   var renameKeys=Object.keys(rename);
-  if(renameKeys.length){
-    html+='<table class="wiz-table"><thead><tr><th>Your column</th><th>Sample</th><th>Mapped to</th></tr></thead><tbody>'
-      +renameKeys.map(function(h){
-        return '<tr><td class="src">'+escLog(h)+'</td><td class="sample">—</td><td><span class="wiz-tag renamed">'+escLog(rename[h])+'</span></td></tr>';
-      }).join('')+'</tbody></table>';
-  }
+  html+=wizMappingTable(j,st);
   if(extra.length){
     var kept=WIZ_EXTRA_KEPT.has(st.ds);
-    html+='<div class="wiz-sub"><b>'+extra.length+' extra column'+(extra.length===1?'':'s')+'</b> not in the template ('+extra.map(escLog).join(', ')+') — '
-      +(kept?'kept as extra attributes on each record.':'ignored by this importer.')+'</div>';
+    html+='<div class="wiz-sub"><b>'+extra.length+' extra column'+(extra.length===1?'':'s')+'</b> the system has no attribute for ('+extra.map(escLog).join(', ')+') — '
+      +(kept?'kept as extra attributes on each record.':'not stored by this importer.')+'</div>';
   }
   if(!renameKeys.length&&!extra.length){
-    html+='<div class="wiz-ready">✓ Every column matches'+(j.template?(' the "'+escLog(j.template)+'" template'):'')+'.</div>';
+    html+='<div class="wiz-ready">✓ Every column matches'+(j.template?(' the "'+escLog(j.template)+'" attribute list'):'')+'.</div>';
   }
   box.innerHTML='<div class="wiz-hd"><span class="dot ok"></span>Columns checked'+(j.checked_rows!=null?(' — '+j.checked_rows+' row(s)'):'')+'</div>'+html;
 
@@ -1404,23 +1844,6 @@ function wizRender(inputId){
   }else{
     wizSetEnabled(inputId,true);
   }
-}
-
-function wizApplyMissing(inputId){
-  var st=WIZ_STATE[inputId];if(!st)return;
-  var box=document.getElementById('wiz_'+inputId);
-  var selects=box.querySelectorAll('[data-missing-field]');
-  var mapping={}; // source header -> canonical field name
-  selects.forEach(function(sel){
-    var field=sel.getAttribute('data-missing-field');
-    var chosen=sel.value;
-    if(chosen)mapping[chosen]=field;
-  });
-  var newHeader=st.headers.map(function(h){return csvCell(mapping[h]||h);}).join(',');
-  box.innerHTML='<div class="wiz-hd"><span class="dot busy"></span>Rechecking…</div>';
-  rewriteCsvHeader(st.file,newHeader).then(function(newFile){
-    return wizRunCheck(inputId,newFile);
-  });
 }
 
 function rewriteCsvHeader(file,newHeaderLine){
@@ -1590,11 +2013,15 @@ async function cleanupDelete(type,periodId,btn){
 /* build the hub and land on the Count tab */
 PANELS['bnd-district']=boundaryPanel('district','District boundary');
 PANELS['bnd-constituency']=boundaryPanel('constituency','Constituency boundary');
-renderCats();
-selectCat(HUB[0].id);
+/* The hub is built AFTER the registry answers, so it never renders the
+   declared labels first and then visibly rewrite itself. */
+hubLoadRegistry().then(function(){
+  renderCats();
+  selectCat(HUB[0].id);
+});
 switchTab('count');
 </script>
-  <script src="/js/console-user-layers.js?v=3"></script>
+  <script src="/js/console-user-layers.js?v=5"></script>
   <script src="/js/launcher.js"></script>
   <script src="/js/role-gate.js" defer></script>
 </body>

@@ -612,6 +612,12 @@ select option:disabled{color:var(--k-faint)!important}
 .klpop.asset-klpop::-webkit-scrollbar-thumb,.klpop.trf-klpop::-webkit-scrollbar-thumb{background:#2a3645;border-radius:6px;border:2px solid transparent;background-clip:padding-box}
 .klpop .kp-block:last-child{border-bottom:0!important}
 .klpop .kp-u{font-size:9.5px;color:#8fb3a8;font-weight:600;margin-left:1px}
+/* The short code, kept beside the value it expands to. Muted and monospaced so
+   the readable value leads and the code reads as the reference it is — someone
+   checking a survey return against the map needs to see both. */
+.klpop .kp-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;
+  color:#7d8fa3;background:rgba(125,143,163,.14);border-radius:4px;padding:1px 5px;margin-left:6px;
+  letter-spacing:.03em;vertical-align:1px}
 .klpop .kp-sub{font-size:10px;color:#8fb3a8;font-weight:600;margin-left:6px}
 .klpop .kp-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
 .klpop .kp-gcell{display:flex;align-items:baseline;justify-content:space-between;gap:8px}

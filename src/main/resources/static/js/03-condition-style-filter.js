@@ -18,6 +18,26 @@ function loadThreshDefaults(){let p=PMAP[cb.value];if(!p){p=PARAMS[0];cb.value=p
 function resetThresholds(){loadThreshDefaults();applyColors();}
 function updateBandKey(){const f=document.getElementById('fair').value,po=document.getElementById('poor').value;const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};set('kGood',f);set('kFairLo',f);set('kFairHi',po);set('kPoor',po);}
 loadThreshDefaults();syncCondMetricUI();
+/* The two selectors above are filled from PARAMS at load, but the labels in
+   PARAMS only become the RMMS cell's own once the attribute catalogue arrives
+   (01-config.js). This re-labels what is already on screen when it does.
+
+   Options are RELABELLED, not rebuilt: rebuilding would drop the current
+   selection and, on the Layers-panel mirror, the change listener wired above.
+   Chaining onto the same promise 01-config.js used guarantees this runs after
+   its overlay, because handlers registered later on a promise run later. */
+if(window.AttrCatalog)AttrCatalog.ready().then(function(){
+  [cb,cbHome].forEach(function(sel){
+    if(!sel)return;
+    Array.prototype.forEach.call(sel.options,function(o){
+      const p=PMAP[o.value];if(p)o.textContent=p.label;
+    });
+  });
+  const lbl=document.getElementById('cbLabel'),p=PMAP[cb.value];
+  if(lbl&&p)lbl.textContent=p.label;
+  // Filter rows carry their own copy of the parameter list.
+  if(filters.length)renderFilters();
+});
 function colorExpr(){const p=cb.value,fair=+document.getElementById('fair').value,poor=+document.getElementById('poor').value;return ['case',['==',['coalesce',['get',p],-1],-1],NONE,['step',['get',p],GOOD,fair,FAIR,poor,POOR]];}
 function applyColors(){LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;if(map.getLayer(id))map.setPaintProperty(id,'line-color',laneColorExpr(s.x));});}
 const OPS={'>':'>','>=':'>=','=':'==','<=':'<=','<':'<'};
