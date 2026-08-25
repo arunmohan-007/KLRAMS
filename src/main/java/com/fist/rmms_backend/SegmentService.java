@@ -280,14 +280,13 @@ public class SegmentService {
         // ST_AsGeoJSON(geom, 6): 6-decimal coordinates (~0.1 m) cut the payload size
         // substantially versus the 9-decimal default, with no visible loss for roads.
         //
-        // Flat lane fields (CC_iri … L_CR2) are merged as jsonb rather than more
-        // json_build_object arguments: that function caps at 100 args, and the
-        // existing bag plus 40 flat pairs would overflow. jsonb_strip_nulls keeps
-        // the flat bag aligned with 07-data-loaders.js (which only writes a key
-        // when the value is present) without touching nulls in the base properties
-        // such as unset pci_def_*. lane_vals stays — the PCI engine still reads it.
-        // Derived here so an old database needs no migration and no Build Segments
-        // rerun.
+        // The flat lane fields (CC_iri … L_CR2) used to be merged in here too, but every
+        // client reader of this endpoint (07-data-loaders.js, 08-condition-popup-nsv.js's
+        // _segFlatten) already derives those same 40 keys from lane_vals right after fetch —
+        // SegmentLaneColumns.flatJsonbObject() only earns its keep in SegmentTileService,
+        // where MVT properties must be flat scalars and there is no client-side pass to
+        // derive them from. Sending both here duplicated every lane value on the wire for
+        // no reader that needed it.
         String sql =
             """
             SELECT json_build_object('type','FeatureCollection','features',
@@ -303,12 +302,7 @@ public class SegmentService {
                         'avg_rutting', avg_rutting, 'avg_texture', avg_texture,
                         'avg_patch_work', avg_patch_work, 'avg_ravelling', avg_ravelling,
                         'lane_count', lane_count, 'xsp_list', xsp_list, 'lane_vals', lane_vals,
-                        'pci_def_avg', pci_def_avg, 'pci_def_worst', pci_def_worst)::jsonb
-                        || jsonb_strip_nulls(
-            """
-            + SegmentLaneColumns.flatJsonbObject("s")
-            + """
-                        )
+                        'pci_def_avg', pci_def_avg, 'pci_def_worst', pci_def_worst)
                 )), '[]'::json))::text
             FROM condition_segments s WHERE period_id = ?
             """
