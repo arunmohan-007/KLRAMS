@@ -61,7 +61,23 @@
   .lp td.k{color:var(--muted);white-space:nowrap;padding-right:10px}
   .lp td.v{color:var(--text);font-weight:500}
   .lp .band{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;font-weight:600;color:#fff}
-  @media (max-width:720px){.panel{width:230px}}
+  /* my-location (live GPS) — control button + readout chip */
+  .ll-ctl a{display:flex;align-items:center;justify-content:center;color:#46556e}
+  .ll-ctl a svg{width:17px;height:17px;display:block}
+  .ll-ctl a.on{color:#00a3ff;background:#eaf7ff}
+  .ll-ctl a.seek svg{animation:llspin 1.1s linear infinite}
+  @keyframes llspin{to{transform:rotate(360deg)}}
+  #llChip{position:absolute;left:50%;transform:translateX(-50%);bottom:22px;z-index:900;display:none;
+    align-items:center;gap:10px;padding:6px 13px;border-radius:13px;background:rgba(255,255,255,.96);
+    border:1px solid var(--hair);box-shadow:var(--shadow);color:var(--text);
+    font-family:var(--mono);font-size:11.5px;pointer-events:none;
+    /* the map column can be narrow (small window, wide side panel), so the chip
+       wraps rather than spilling out over the panel */
+    max-width:calc(100% - 12px);flex-wrap:wrap;justify-content:center;text-align:center}
+  #llChip.on{display:flex}
+  #llChip b{color:#0b6fa8;font-weight:600}
+  #llChip .llacc{color:var(--muted)}
+  @media (max-width:720px){.panel{width:230px}#llChip{bottom:14px;font-size:11px;padding:5px 10px;gap:7px}}
 </style>
 </head>
 <body>
@@ -450,6 +466,98 @@ document.getElementById('search').addEventListener('input',function(e){
   st.textContent=hit.length+' match'+(hit.length>1?'es':'');
   try{var b=L.geoJSON({type:'FeatureCollection',features:hit.slice(0,50)}).getBounds();if(b.isValid())map.fitBounds(b,{padding:[30,30]});}catch(_){}
 });
+
+/* ---- My location (live GPS dot) ----
+   Same field tool as the full viewer's GeolocateControl, rebuilt on Leaflet's
+   map.locate({watch:true}): a dot that keeps moving with the device while
+   driving a road, so the condition data underneath can be checked on the
+   ground. Panning the map by hand drops out of follow mode (the dot keeps
+   updating); tapping the button again re-locks onto it.
+   Needs a secure context — browsers refuse geolocation over plain http. */
+var LL_COLOR='#00a3ff';
+var llMarker=null,llHalo=null,llWatching=false,llFollow=false,llBtn=null,llFirstFix=false,llErrTimer=null;
+
+function llChip(){return document.getElementById('llChip');}
+function llShowChip(html){var c=llChip();if(!c)return;c.innerHTML=html;c.classList.add('on');}
+function llHideChip(){var c=llChip();if(c)c.classList.remove('on');}
+
+function llStart(){
+  if(!navigator.geolocation){llFlash('This browser has no location support');return;}
+  llWatching=true;llFollow=true;llFirstFix=true;
+  if(llBtn){llBtn.classList.add('on');llBtn.classList.add('seek');}
+  llShowChip('<span class="llacc">Locating…</span>');
+  map.locate({watch:true,enableHighAccuracy:true,maximumAge:2000,timeout:10000});
+}
+function llStop(){
+  llWatching=false;llFollow=false;
+  map.stopLocate();
+  if(llBtn){llBtn.classList.remove('on');llBtn.classList.remove('seek');}
+  if(llMarker){map.removeLayer(llMarker);llMarker=null;}
+  if(llHalo){map.removeLayer(llHalo);llHalo=null;}
+  llHideChip();
+}
+function llFlash(msg){
+  llShowChip('<span class="llacc">'+esc(msg)+'</span>');
+  clearTimeout(llErrTimer);llErrTimer=setTimeout(llHideChip,6000);
+}
+
+map.on('locationfound',function(e){
+  if(!llWatching)return;
+  if(llBtn)llBtn.classList.remove('seek');
+  clearTimeout(llErrTimer);
+  var acc=isFinite(e.accuracy)?Math.round(e.accuracy):null;
+  /* Accuracy halo first, so the dot draws on top of it. */
+  if(!llHalo){llHalo=L.circle(e.latlng,{radius:acc||0,color:LL_COLOR,weight:1,opacity:.5,fillColor:LL_COLOR,fillOpacity:.12,interactive:false}).addTo(map);}
+  else{llHalo.setLatLng(e.latlng);llHalo.setRadius(acc||0);}
+  if(!llMarker){llMarker=L.circleMarker(e.latlng,{radius:7,color:'#fff',weight:3,fillColor:LL_COLOR,fillOpacity:1,interactive:false}).addTo(map);}
+  else{llMarker.setLatLng(e.latlng);}
+  if(llFollow){
+    if(llFirstFix){map.setView(e.latlng,Math.max(map.getZoom(),16));llFirstFix=false;}
+    else map.panTo(e.latlng,{animate:true,duration:.5});
+  }
+  /* speed is m/s and null when the device cannot derive it (stationary, or a
+     desktop positioned off wifi rather than GPS). */
+  var spd=(e.speed!=null&&isFinite(e.speed)&&e.speed>0.3)?(' · <b>'+(e.speed*3.6).toFixed(0)+'</b> km/h'):'';
+  llShowChip('<span><b>'+e.latlng.lat.toFixed(5)+'</b>, <b>'+e.latlng.lng.toFixed(5)+'</b></span>'+
+    '<span class="llacc">±'+(acc==null?'—':acc+' m')+'</span>'+spd);
+});
+map.on('locationerror',function(e){
+  if(!llWatching)return;
+  if(llBtn)llBtn.classList.remove('seek');
+  /* code 1 = permission denied, 2 = position unavailable, 3 = timeout */
+  var denied=(e&&e.code===1);
+  /* Stop before flashing: llStop() clears the chip, so the message has to be
+     written after it or it is wiped in the same tick. */
+  if(denied)llStop();
+  llFlash(denied?'Location blocked — allow location for this site in the browser'
+                :'No location fix — move to open sky and try again');
+});
+/* Dragging the map means "let me look elsewhere": keep tracking, stop chasing. */
+map.on('dragstart',function(){if(llWatching)llFollow=false;});
+
+var LlControl=L.Control.extend({
+  options:{position:'topleft'},
+  onAdd:function(){
+    var c=L.DomUtil.create('div','leaflet-bar leaflet-control ll-ctl');
+    var a=L.DomUtil.create('a','',c);
+    a.href='#';a.title='My location — live GPS dot that follows you';
+    a.setAttribute('role','button');a.setAttribute('aria-label','My location');
+    a.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'+
+      '<circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="7.5" opacity=".55"/>'+
+      '<path d="M12 1.6v3M12 19.4v3M1.6 12h3M19.4 12h3"/></svg>';
+    llBtn=a;
+    L.DomEvent.disableClickPropagation(c);
+    L.DomEvent.on(a,'click',function(ev){
+      L.DomEvent.preventDefault(ev);
+      if(!llWatching)llStart();
+      else if(!llFollow){llFollow=true;llFirstFix=true;}   /* re-lock onto the dot */
+      else llStop();
+    });
+    return c;
+  }
+});
+map.addControl(new LlControl());
+(function(){var c=L.DomUtil.create('div','');c.id='llChip';map.getContainer().appendChild(c);})();
 
 /* ---- go ---- */
 buildMetric();buildLegend();
