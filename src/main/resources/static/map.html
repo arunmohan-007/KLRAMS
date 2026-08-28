@@ -590,6 +590,16 @@
       @keyframes albIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
       .alb-head{padding:8px 10px 6px;font:600 10.5px Inter,system-ui,sans-serif;letter-spacing:.7px;text-transform:uppercase;color:#7b8da0}
       .alb-sep{padding:10px 10px 5px;margin-top:4px;border-top:1px solid rgba(15,27,46,.08);font:600 10.5px Inter,system-ui,sans-serif;letter-spacing:.7px;text-transform:uppercase;color:#7b8da0}
+      .alb-hint{display:block;margin-top:2px;font:400 10px Inter,system-ui,sans-serif;letter-spacing:.2px;text-transform:none;color:#9aabbd}
+      .alb-row{display:flex;align-items:center;gap:2px;border-radius:10px}
+      .alb-row:hover{background:#f1f5fa}
+      .alb-row .alb-it{flex:1 1 auto;min-width:0}
+      .alb-row .alb-it:hover{background:transparent}
+      .alb-ord{display:flex;align-items:center;gap:2px;flex:0 0 auto;padding-right:6px}
+      .alb-mv{display:flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:1px solid rgba(15,27,46,.14);border-radius:7px;background:#fff;color:#4a5f75;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
+      .alb-mv:hover:not(:disabled){background:#00d4ff;border-color:#00d4ff;color:#fff}
+      .alb-mv:disabled{opacity:.28;cursor:default}
+      .alb-mv svg{width:13px;height:13px}
       .alb-it{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;padding:9px 10px;border:0;border-radius:10px;background:transparent;cursor:pointer;font-family:Inter,system-ui,sans-serif}
       .alb-it:hover{background:#f1f5fa}
       .alb-it.on{background:rgba(0,212,255,.12)}
@@ -1112,7 +1122,7 @@
   <script src="js/02-map-core.js?v=119"></script>
   <script src="js/02b-layer-registry.js?v=4"></script>
   <!-- wraps map.on before any module registers a popup — must stay ahead of them all -->
-  <script src="js/02e-active-layer.js?v=3"></script>
+  <script src="js/02e-active-layer.js?v=4"></script>
   <script src="js/02c-segment-data.js?v=2"></script>
   <script src="js/02d-road-index.js?v=2"></script>
   <script src="js/03-condition-style-filter.js?v=178"></script>

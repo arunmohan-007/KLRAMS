@@ -162,9 +162,106 @@ var KLActive = (function () {
     } catch (e) { return false; }
   }
 
+  /** Render layer ids in the map's real draw order, bottom to top. */
+  function styleOrder() {
+    try {
+      return ((map.getStyle() || {}).layers || []).map(function (l) { return l.id; });
+    } catch (e) { return []; }
+  }
+
+  function depths() {
+    var d = {};
+    styleOrder().forEach(function (id, i) { d[id] = i; });
+    return d;
+  }
+
+  /* Layers that are pinned where they are and must never be dragged around
+     by a reorder: the network's invisible click target has to stay above
+     everything for Video-on-click to keep working, and place names read on
+     top of the map rather than under the boundary they name. Both are
+     transparent or tiny, so their depth is not what the user is judging
+     when they move "Road network" or "District boundary" either. */
+  var PINNED = {};
+  ['roadnet-pick', 'district-label', 'constituency-label'].forEach(function (key) {
+    if (typeof KLLayers === 'undefined' || !KLLayers.get) return;
+    var spec = KLLayers.get(key);
+    if (spec) spec.layers.forEach(function (id) { PINNED[id] = 1; });
+  });
+
+  /**
+   * Every render layer a group owns, not just the ones with a popup.
+   *
+   * GROUPS[].layers only holds layers a module bound a click handler to —
+   * for the road network that is the invisible hit target alone, so moving
+   * it would leave the visible casing and line behind. 02b-layer-registry
+   * knows the full family, so take its list where there is one.
+   */
+  function layersOf(g) {
+    var ids = [];
+    function add(id) { if (!PINNED[id] && ids.indexOf(id) < 0) ids.push(id); }
+    g.layers.forEach(add);
+    if (typeof KLLayers !== 'undefined' && KLLayers.get) {
+      var spec = KLLayers.get(g.key);
+      if (spec) spec.layers.forEach(add);
+    }
+    return ids;
+  }
+
+  /** Topmost layer of a group, as a draw-order index; -1 when none is built. */
+  function depthOf(g, d) {
+    var top = -1;
+    layersOf(g).forEach(function (id) { if (d[id] != null && d[id] > top) top = d[id]; });
+    return top;
+  }
+
+  /* Listed topmost-first, matching what the user sees on the map: the
+     first row is the layer drawn over all the others. The map's own draw
+     order is the only state here — there is no parallel list to keep in
+     step with it. */
   function available() {
+    var d = depths();
     return ORDER.map(function (k) { return GROUPS[k]; })
-      .filter(function (g) { return g && g.layers.some(visible); });
+      .filter(function (g) { return g && g.layers.some(visible); })
+      .map(function (g) { return { g: g, d: depthOf(g, d) }; })
+      .sort(function (a, b) { return b.d - a.d; })
+      .map(function (x) { return x.g; });
+  }
+
+  /**
+   * Move a group one step up or down the draw order (dir -1 = up/nearer
+   * the top). Only the two groups that swap are touched: restacking the
+   * whole list would also lift every listed layer above the ones that are
+   * not listed here — boundary labels, the basemap — which is a bigger
+   * change than the user asked for.
+   */
+  function move(key, dir) {
+    if (typeof map === 'undefined') return;
+    var list = available();
+    var i = -1;
+    for (var n = 0; n < list.length; n++) if (list[n].key === key) i = n;
+    var j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+
+    var upper = dir < 0 ? list[j] : list[i];   // currently drawn on top
+    var lower = dir < 0 ? list[i] : list[j];   // currently drawn beneath
+
+    var order = styleOrder(), d = {};
+    order.forEach(function (id, k) { d[id] = k; });
+    var top = depthOf(upper, d);
+    if (top < 0) return;
+
+    /* Insert before whatever sits directly above `upper`; undefined when
+       it is already the topmost layer, which moveLayer reads as "on top". */
+    var anchor = order[top + 1];
+    layersOf(lower)
+      .filter(function (id) { return d[id] != null; })
+      .sort(function (a, b) { return d[a] - d[b]; })
+      .forEach(function (id) {
+        try { map.moveLayer(id, anchor); } catch (e) { /* layer vanished */ }
+      });
+
+    lastSig = '';
+    render();
   }
 
   function set(key) {
@@ -189,6 +286,13 @@ var KLActive = (function () {
   }
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function ordBtn(key, dir, disabled, title) {
+    return '<button type="button" class="alb-mv" data-move="' + esc(key) + '" data-dir="' + dir + '"' +
+           (disabled ? ' disabled' : '') + ' title="' + esc(title) + '" aria-label="' + esc(title) + '">' +
+           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+           '<path d="' + (dir < 0 ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6') + '"/></svg></button>';
+  }
 
   function render() {
     if (!elBtn) return;
@@ -217,11 +321,16 @@ var KLActive = (function () {
       '</button>';
 
     if (list.length) {
-      h += '<div class="alb-sep">Active layers</div>' +
-        list.map(function (g) {
-          return '<button type="button" class="alb-it' + (active === g.key ? ' on' : '') +
+      h += '<div class="alb-sep">Active layers <span class="alb-hint">top of list draws on top</span></div>' +
+        list.map(function (g, i) {
+          return '<div class="alb-row">' +
+                 '<button type="button" class="alb-it' + (active === g.key ? ' on' : '') +
                  '" data-key="' + esc(g.key) + '">' +
-                 '<span class="alb-nm">' + esc(g.label) + '</span></button>';
+                 '<span class="alb-nm">' + esc(g.label) + '</span></button>' +
+                 '<span class="alb-ord">' +
+                   ordBtn(g.key, -1, i === 0, 'Move up (draw over the layer above)') +
+                   ordBtn(g.key, 1, i === list.length - 1, 'Move down (draw under the layer below)') +
+                 '</span></div>';
         }).join('');
     } else {
       h += '<div class="alb-empty">Switch a layer on in the Layers panel to pick it here.</div>';
@@ -256,7 +365,16 @@ var KLActive = (function () {
     });
 
     elMenu.addEventListener('click', function (e) {
-      var it = e.target.closest && e.target.closest('.alb-it');
+      if (!e.target.closest) return;
+      /* Reordering must not also arm the click-gate, and must leave the
+         menu open so several moves can be made in a row. */
+      var mv = e.target.closest('.alb-mv');
+      if (mv) {
+        e.stopPropagation();
+        move(mv.getAttribute('data-move'), Number(mv.getAttribute('data-dir')));
+        return;
+      }
+      var it = e.target.closest('.alb-it');
       if (!it) return;
       lastSig = '';
       set(it.getAttribute('data-key'));
