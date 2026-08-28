@@ -117,6 +117,7 @@ Large GeoJSON responses (roads, segments, assets) are built once and cached in m
 
 - All CSV parsers handle double-quoted fields correctly (see `parseCsvLine()` implementations)
 - Shapefile parsing happens in the browser (shpjs); backend receives GeoJSON
+- KML/KMZ is read in the browser too (`js/kml-reader.js` — DOMParser for the XML, a zip walk + `DecompressionStream` for the KMZ, no library) and handed on as GeoJSON, so no upload format is stored for it: a layer accepting `GEOJSON` accepts KML. Altitude is dropped, because layer geom columns are 2D `geometry(TYPE,4326)`
 - Government Orders are stored as `bytea` in PostgreSQL (not on disk)
 - Videos are served from disk at `/videos/**` URL mapping
 - PostGIS extension is enabled automatically via `CREATE EXTENSION IF NOT EXISTS postgis`

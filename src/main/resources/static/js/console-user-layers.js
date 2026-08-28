@@ -7,7 +7,8 @@
  *              the coordinate columns, done
  *
  * Both end in the same place: the file is read in the browser (shpjs for a
- * shapefile zip, JSON.parse for GeoJSON, a quote-aware split for CSV), the
+ * shapefile zip, kml-reader.js for KML/KMZ, JSON.parse for GeoJSON, a
+ * quote-aware split for CSV), the
  * server proposes how the file's columns map onto the layer's attributes, the
  * user confirms, and only then are rows written. The mapping step is the point:
  * guessing silently is how an import rejects every row and says nothing.
@@ -89,12 +90,13 @@
       '<div id="ulTargetNote" class="hint"></div></div>' +
       '<div id="ulPeriod"></div>' +
       '<div class="ip-field"><label class="ip-label">Data file</label>' +
-      '<input type="file" id="ulFile" accept=".zip,.geojson,.json,.csv" onchange="ULC.read(this)"></div>' +
+      '<input type="file" id="ulFile" accept=".zip,.geojson,.json,.csv,.kml,.kmz" onchange="ULC.read(this)"></div>' +
       '<div id="ulStep"></div>' +
       '<div class="out" id="ulOut"></div>' +
       '<p class="hint">Shapefile zip needs <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> ' +
-      '(and <code>.prj</code>). A CSV carries no geometry, so the layer places it — by ' +
-      'lat/long or by section label and chainage, whichever it was defined with.</p>';
+      '(and <code>.prj</code>). KML and KMZ come straight from Google Earth. A CSV carries no ' +
+      'geometry, so the layer places it — by lat/long or by section label and chainage, ' +
+      'whichever it was defined with.</p>';
   }
 
   function panelTemp() {
@@ -105,7 +107,8 @@
       '<div class="ip-field"><label class="ip-label">Layer name</label>' +
       '<input type="text" id="ulTempName" placeholder="e.g. Contractor survey — March"></div>' +
       '<div class="ip-field"><label class="ip-label">Data file</label>' +
-      '<input type="file" id="ulFile" accept=".zip,.geojson,.json,.csv" onchange="ULC.read(this)"></div>' +
+      '<input type="file" id="ulFile" accept=".zip,.geojson,.json,.csv,.kml,.kmz" onchange="ULC.read(this)"></div>' +
+      '<div class="hint">Shapefile zip, KML, KMZ, GeoJSON or CSV.</div>' +
       '<div id="ulTempGeo"></div>' +
       '<div id="ulStep"></div>' +
       '<div class="out" id="ulOut"></div>' +
@@ -231,6 +234,7 @@
     if (!file) return;
     var name = file.name.toLowerCase();
     st.columns = []; st.rows = []; st.geoms = []; st.hasGeometry = false; st.mapping = null;
+    st.geomKind = null; st.geomCounts = null;
     document.getElementById('ulStep').innerHTML = '';
     out('Reading ' + esc(file.name) + '…');
 
@@ -242,6 +246,13 @@
         .then(function (b) { return shp(b); })
         .then(function (gj) { fromGeoJson(flatten(gj)); })
         .catch(function (e) { out('Could not read the shapefile: ' + esc(e.message || e), false); });
+    } else if (name.endsWith('.kml') || name.endsWith('.kmz')) {
+      if (typeof KLKml === 'undefined') {
+        return out('KML support is unavailable here — upload a GeoJSON instead.', false);
+      }
+      KLKml.read(file)
+        .then(function (gj) { fromGeoJson(gj); })
+        .catch(function (e) { out('Could not read the KML: ' + esc(e.message || e), false); });
     } else if (name.endsWith('.geojson') || name.endsWith('.json')) {
       file.text().then(function (t) { fromGeoJson(JSON.parse(t)); })
         .catch(function (e) { out('Could not read the GeoJSON: ' + esc(e.message || e), false); });
@@ -249,7 +260,7 @@
       file.text().then(fromCsv)
         .catch(function (e) { out('Could not read the CSV: ' + esc(e.message || e), false); });
     } else {
-      out('Unsupported file type. Use a shapefile (.zip), GeoJSON or CSV.', false);
+      out('Unsupported file type. Use a shapefile (.zip), KML, KMZ, GeoJSON or CSV.', false);
     }
   }
 
@@ -284,12 +295,39 @@
     afterRead(feats.length, geometryKindOf(feats));
   }
 
+  /**
+   * The geometry kind to give the layer, and what else is in the file.
+   *
+   * A layer holds one geometry type, so a file carrying more than one has to
+   * pick — and the majority is the useful answer, not whichever feature happens
+   * to be first. This matters most for KML: a Google Earth file with a hundred
+   * paths and two stray pins would otherwise become a point layer and drop
+   * every path on import. The runner-up counts are handed back so the reader
+   * can say so rather than let it be discovered afterwards.
+   */
   function geometryKindOf(feats) {
-    for (var i = 0; i < feats.length; i++) {
-      var g = feats[i] && feats[i].geometry;
-      if (g && g.type) return g.type.toUpperCase();
+    var counts = {};
+    feats.forEach(function (f) {
+      var g = f && f.geometry;
+      if (!g || !g.type) return;
+      var t = g.type.toUpperCase();
+      if (t === 'GEOMETRYCOLLECTION') return;   // cannot be a layer's own type
+      // Counted as the layer type each geometry would need, not as its own
+      // name, so "3 LineStrings and 2 MultiLineStrings" is not read as two
+      // separate minorities when it is one majority of lines.
+      t = normaliseGeom(t);
+      counts[t] = (counts[t] || 0) + 1;
+    });
+    // A MULTILINESTRING layer takes plain LineStrings too (the import wraps
+    // them in ST_Multi), so when a file has both, the multi type loads all of
+    // them and the plain one would reject half.
+    if (counts.LINESTRING && counts.MULTILINESTRING) {
+      counts.MULTILINESTRING += counts.LINESTRING;
+      delete counts.LINESTRING;
     }
-    return 'POINT';
+    st.geomCounts = counts;
+    var kinds = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
+    return kinds[0] || 'POINT';
   }
 
   function fromCsv(text) {
@@ -329,7 +367,8 @@
   function afterRead(n, geomKind) {
     st.geomKind = geomKind;
     out('Read <b>' + n.toLocaleString() + '</b> row' + (n === 1 ? '' : 's') +
-        ' · <b>' + st.columns.length + '</b> column' + (st.columns.length === 1 ? '' : 's') + '.', true);
+        ' · <b>' + st.columns.length + '</b> column' + (st.columns.length === 1 ? '' : 's') + '.' +
+        mixedGeomNote(), true);
     if (st.mode === 'temp') renderTempGeo();
     else if (!st.layerId) {
       out('Read <b>' + n.toLocaleString() + '</b> row' + (n === 1 ? '' : 's') +
@@ -337,6 +376,26 @@
     } else {
       preview();
     }
+  }
+
+  /**
+   * Said out loud when the file mixes geometry kinds — common in KML, where one
+   * Google Earth document happily holds pins, paths and shapes together. Only
+   * the majority kind can be loaded, and being told that before the import is
+   * far better than counting the rows that went missing after it.
+   */
+  function mixedGeomNote() {
+    var counts = st.geomCounts || {};
+    var kinds = Object.keys(counts);
+    if (kinds.length < 2) return '';
+    var keep = normaliseGeom(st.geomKind);
+    var dropped = kinds.reduce(function (sum, k) {
+      return k === keep ? sum : sum + counts[k];
+    }, 0);
+    return ' This file mixes geometry kinds (' + esc(kinds.join(', ').toLowerCase()) +
+      '); a layer holds one, so <b>' + dropped.toLocaleString() + '</b> feature' +
+      (dropped === 1 ? '' : 's') + ' that are not <b>' + esc(keep.toLowerCase()) +
+      '</b> will not load. Split the file if you need them.';
   }
 
   /* ------------------------------------------------------------------
