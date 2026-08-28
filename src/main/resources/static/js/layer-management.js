@@ -124,6 +124,19 @@
       '</div></div>';
   }
 
+  /**
+   * Whether the signed-in user is allowed to share/unshare or discard THIS
+   * shared layer: its creator, or a SUPER_ADMIN. Mirrors the check
+   * LayerRegistryService.setShared/deleteLayer make server-side — this only
+   * decides whether the button is worth showing.
+   */
+  function canManageSharing(l) {
+    var me = window.RoleGate && window.RoleGate.me;
+    if (!me) return false;
+    if (me.role === 'SUPER_ADMIN') return true;
+    return !!me.username && me.username === l.createdBy;
+  }
+
   function layerHtml(l) {
     var src = SOURCE[l.sourceType] || SOURCE.BUILT_IN;
     var chips = [];
@@ -136,6 +149,9 @@
        the layer. Say what it is built from instead. */
     if (l.temporary) {
       chips.push('<span class="chip tmp">Temporary</span>');
+    }
+    if (l.shared) {
+      chips.push('<span class="chip shr">Shared with everyone</span>');
     }
     if (l.frozen) {
       chips.push('<span class="chip frz">Frozen — data not in use</span>');
@@ -191,7 +207,15 @@
       acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.freeze(' + l.id + ',' +
         (!l.frozen) + ')">' + (l.frozen ? 'Unfreeze data' : 'Freeze data') + '</button>';
     }
-    if (l.deletable) {
+    /* Sharing hands a temporary layer to every signed-in user instead of only
+       its creator. Shown only to whoever the server will actually let flip it
+       — the layer's own creator, or a SUPER_ADMIN — so the button is never
+       offered just to be refused. */
+    if (l.shareable && canManageSharing(l)) {
+      acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.share(' + l.id + ',' +
+        (!l.shared) + ')">' + (l.shared ? 'Unshare' : 'Share with everyone') + '</button>';
+    }
+    if (l.deletable && (!l.shared || canManageSharing(l))) {
       acts += '<button class="btn danger sm" data-requires="admin" onclick="LM.remove(' + l.id + ')">Discard</button>';
     }
 
@@ -302,6 +326,30 @@
 
     post('/api/layers/' + id + '?purge=true', null, 'DELETE')
       .then(function () { msg('Temporary layer discarded.', true); load(); })
+      .catch(function (e) { msg(e.message); });
+  }
+
+  /**
+   * Share (or unshare) a temporary layer with every signed-in user.
+   *
+   * Sharing makes it visible and drawable for everyone, not just its creator —
+   * the server refuses the request unless the caller is the layer's own
+   * creator or a SUPER_ADMIN, same as canManageSharing() decided before
+   * showing the button.
+   */
+  function share(id, on) {
+    var l = findLayer(id);
+    if (!l) return;
+    if (on && !confirm('Share "' + l.name + '" with everyone?\n\n' +
+        'Every signed-in user will be able to see it on the map and import ' +
+        'into it. You (or a super admin) can unshare it again at any time.')) return;
+
+    post('/api/layers/' + id + '/shared', { shared: on })
+      .then(function () {
+        msg(on ? 'Layer shared. Everyone signed in can now see it.'
+               : 'Layer unshared — visible to you only again.', true);
+        load();
+      })
       .catch(function (e) { msg(e.message); });
   }
 
@@ -530,16 +578,19 @@
   }
 
   window.LM = { rename: rename, remove: remove, hide: hide, freeze: freeze,
-                style: style, reload: load };
+                share: share, style: style, reload: load };
   window.openWizard = openWizard;
   window.closeWizard = closeWizard;
   window.newFolder = newFolder;
   window.wizNext = wizNext;
   window.wizBack = wizBack;
 
-  // Re-gate once the role is known; the tree usually renders first.
+  // Re-render once the role (and username, for canManageSharing) is known —
+  // the tree usually renders first, off /api/me's own async fetch, so a
+  // Share/Discard button that only the owner or a super admin should see
+  // would otherwise be decided against a still-empty RoleGate.me.
   var RG = window.RoleGate || (window.RoleGate = {});
-  RG.onReady = function () { gate(document); };
+  RG.onReady = function () { if (TREE.length) render(); };
 
   document.addEventListener('DOMContentLoaded', load);
 })();

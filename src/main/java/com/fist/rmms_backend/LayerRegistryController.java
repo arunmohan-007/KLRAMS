@@ -3,6 +3,7 @@ package com.fist.rmms_backend;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -109,16 +110,43 @@ public class LayerRegistryController {
     /**
      * Discard a temporary layer. {@code ?purge=true} also drops its table.
      * Permanent user layers are refused — they are hidden or frozen instead.
+     * Once a layer is shared, only its creator or a SUPER_ADMIN may discard it.
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable int id,
-                                    @RequestParam(defaultValue = "false") boolean purge) {
+                                    @RequestParam(defaultValue = "false") boolean purge,
+                                    Authentication auth) {
         try {
-            layers.deleteLayer(id, purge);
+            String user = (auth == null) ? "unknown" : auth.getName();
+            layers.deleteLayer(id, purge, user, isSuperAdmin(auth));
             return ok();
         } catch (Exception e) {
             return fail("delete layer", e);
         }
+    }
+
+    /**
+     * Share (or unshare) a temporary layer with every signed-in user.
+     * Only the layer's creator or a SUPER_ADMIN may change this.
+     */
+    @PostMapping("/{id}/shared")
+    public ResponseEntity<?> shared(@PathVariable int id, @RequestBody Map<String, Object> body,
+                                    Authentication auth) {
+        try {
+            String user = (auth == null) ? "unknown" : auth.getName();
+            layers.setShared(id, Boolean.TRUE.equals(body.get("shared")), user, isSuperAdmin(auth));
+            return ok();
+        } catch (Exception e) {
+            return fail("share layer", e);
+        }
+    }
+
+    private static boolean isSuperAdmin(Authentication auth) {
+        if (auth == null) return false;
+        for (GrantedAuthority a : auth.getAuthorities()) {
+            if ("ROLE_SUPER_ADMIN".equals(a.getAuthority())) return true;
+        }
+        return false;
     }
 
     private ResponseEntity<?> ok() {

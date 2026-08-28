@@ -81,7 +81,7 @@ public class UserLayerTileService {
         Map<String, Object> row;
         try {
             row = jdbc.queryForMap(
-                    "SELECT layer_key, physical_table, temporary, created_by, frozen, hidden, "
+                    "SELECT layer_key, physical_table, temporary, created_by, shared, frozen, hidden, "
                   + "period_scoped FROM layer_definition WHERE id = ? AND source_type = 'USER'", layerId);
         } catch (Exception e) {
             return null;      // no such user layer
@@ -99,6 +99,7 @@ public class UserLayerTileService {
         if (!SAFE_TABLE.matcher(table).matches()) return null;
 
         if (Boolean.TRUE.equals(row.get("temporary"))
+                && !Boolean.TRUE.equals(row.get("shared"))
                 && !String.valueOf(row.get("created_by")).equals(user)) {
             return null;
         }

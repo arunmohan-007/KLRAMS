@@ -455,12 +455,12 @@ public class LayerDataService {
     public List<Map<String, Object>> importTargets(String user) {
         return jdbc.query("""
             SELECT d.id, d.layer_key, d.name, d.geometry_type, d.placement, d.temporary,
-                   d.hidden, d.frozen, d.period_scoped, d.upload_formats, f.name AS folder,
-                   (s.layer_key IS NOT NULL) AS styled
+                   d.hidden, d.frozen, d.period_scoped, d.upload_formats, d.shared, d.created_by,
+                   f.name AS folder, (s.layer_key IS NOT NULL) AS styled
               FROM layer_definition d JOIN layer_folder f ON f.id = d.folder_id
               LEFT JOIN layer_style s ON s.layer_key = d.layer_key
              WHERE d.source_type = 'USER'
-               AND (d.temporary IS NOT TRUE OR d.created_by = ?)
+               AND (d.temporary IS NOT TRUE OR d.created_by = ? OR d.shared = true)
              ORDER BY d.temporary, f.sort_order, d.name
             """, (rs, i) -> {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -482,25 +482,28 @@ public class LayerDataService {
             // Drives whether the import screen asks for a survey period at all.
             m.put("periodScoped", rs.getBoolean("period_scoped"));
             m.put("uploadFormats", rs.getString("upload_formats"));
+            m.put("shared", rs.getBoolean("shared"));
+            m.put("mine", user.equals(rs.getString("created_by")));
             return m;
         }, user);
     }
 
     /**
-     * Layers the viewer should offer: user-created plus this user's temporary ones.
+     * Layers the viewer should offer: user-created plus this user's temporary
+     * ones, plus any temporary layer someone has shared with everyone.
      *
      * Hidden and frozen layers are both left out — hidden because the user asked
      * for it off the map, frozen because its data is not used for anything.
      */
     public List<Map<String, Object>> viewerLayers(String user) {
         return jdbc.query("""
-            SELECT d.id, d.layer_key, d.name, d.geometry_type, d.temporary, d.created_by,
+            SELECT d.id, d.layer_key, d.name, d.geometry_type, d.temporary, d.created_by, d.shared,
                    f.name AS folder
               FROM layer_definition d JOIN layer_folder f ON f.id = d.folder_id
              WHERE d.source_type = 'USER'
                AND d.hidden IS NOT TRUE
                AND d.frozen IS NOT TRUE
-               AND (d.temporary IS NOT TRUE OR d.created_by = ?)
+               AND (d.temporary IS NOT TRUE OR d.created_by = ? OR d.shared = true)
              ORDER BY d.temporary NULLS FIRST, f.sort_order, d.name
             """, (rs, i) -> {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -511,6 +514,14 @@ public class LayerDataService {
             m.put("name", rs.getString("name"));
             m.put("geometryType", rs.getString("geometry_type"));
             m.put("temporary", rs.getBoolean("temporary"));
+            m.put("shared", rs.getBoolean("shared"));
+            // Whether THIS caller may discard it straight from the map — their
+            // own layer, always; a shared one only if they are also its creator.
+            // A super admin can discard any of them too, but the map viewer has
+            // no notion of role, so that half of the rule is re-checked and
+            // enforced server-side by LayerRegistryService.deleteLayer — this
+            // flag only decides whether the button is worth showing at all.
+            m.put("mine", user.equals(rs.getString("created_by")));
             m.put("folder", rs.getString("folder"));
             return m;
         }, user);

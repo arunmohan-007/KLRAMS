@@ -76,14 +76,26 @@
         '<span class="lname">' +
           '<span class="ldot" style="background:' + colorFor(i) + '"></span>' +
           esc(l.name) +
-          (l.temporary ? ' <span class="r2-hint">temporary</span>' : '') +
+          (l.temporary ? ' <span class="r2-hint">' + (l.shared ? 'temporary · shared' : 'temporary') + '</span>' : '') +
         '</span>' +
-        '<input type="checkbox" id="showUL' + l.id + '">';
+        '<input type="checkbox" id="showUL' + l.id + '">' +
+        /* Discard right from the map, not just Layer Management — the point of
+           a temporary layer is to look at it once and throw it away, and going
+           to a separate admin screen to do that is the friction that leaves
+           scratch layers piling up. Only offered for a layer this list already
+           says is "mine" (see LayerDataService.viewerLayers); the server is the
+           real guard either way — see LayerRegistryService.deleteLayer. */
+        (l.temporary && l.mine
+          ? '<button class="ul-del" title="Discard this temporary layer" aria-label="Discard">&times;</button>'
+          : '');
       grp.appendChild(row);
 
       row.querySelector('input').addEventListener('change', function (e) {
         toggle(l, i, e.target.checked);
       });
+
+      var del = row.querySelector('.ul-del');
+      if (del) del.addEventListener('click', function (e) { e.preventDefault(); discard(l); });
     });
 
     if (note) {
@@ -93,6 +105,31 @@
       pane.appendChild(title);
       pane.appendChild(grp);
     }
+  }
+
+  /**
+   * Discard a temporary layer straight from the map.
+   *
+   * Same endpoint Layer Management's "Discard" button calls, with the same
+   * server-side guard: only the layer's own creator (or a super admin, from
+   * Layer Management) can actually delete it — see
+   * LayerRegistryService.deleteLayer. purge=true so the table goes with it,
+   * matching what "temporary" promises.
+   */
+  function discard(layer) {
+    if (!confirm('Discard the temporary layer "' + layer.name + '"?\n\nThis cannot be undone.')) return;
+    fetch('/api/layers/' + layer.id + '?purge=true', { method: 'DELETE', credentials: 'same-origin' })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok) throw new Error((d && d.error) || 'Could not discard the layer.');
+      }); })
+      .then(function () {
+        setVis(layer.id, 'none');
+        ids(layer.id).forEach(function (id) { try { if (map.getLayer(id)) map.removeLayer(id); } catch (e) {} });
+        try { if (map.getSource('ul-' + layer.id)) map.removeSource('ul-' + layer.id); } catch (e) {}
+        delete LOADED[layer.id];
+        refresh();
+      })
+      .catch(function (e) { alert(e.message); });
   }
 
   /* ------------------------------------------------------------------

@@ -115,11 +115,11 @@ function trafficPopupHTML(props){
     dirs.sort().forEach(dir=>{h+='<div class="kp-attr"><span class="kp-k">'+escH(dir)+'</span><span class="kp-v">'+trfN(c.byDir[dir])+' <span class="kp-sub">'+trfN(Math.round((c.byDir[dir]||0)/days))+'/day</span></span></div>';});
     h+='</div></div>';
   }
-  /* vehicle classes — top 5, with the full list on demand (every class + per-day) */
+  /* vehicle classes — top 5, with the full list on demand (avg count per day, not the raw survey-period total) */
   const allCls=Object.keys(c.byClass||{}).map(k=>[k,c.byClass[k]]).sort((a,b)=>b[1]-a[1]);
   if(allCls.length){
-    const clsRow=(nm,val)=>'<div class="kp-attr"><span class="kp-k">'+escH(nm)+'</span><span class="kp-v">'+trfN(val)+'</span></div>';
-    h+='<div class="kp-block"><div class="kp-eyebrow">Top vehicle classes · '+dayNote+'</div><div class="kp-attrs">';
+    const clsRow=(nm,val)=>'<div class="kp-attr"><span class="kp-k">'+escH(nm)+'</span><span class="kp-v">'+trfN(Math.round((val||0)/days))+'</span></div>';
+    h+='<div class="kp-block"><div class="kp-eyebrow">Top vehicle classes · avg count per day</div><div class="kp-attrs">';
     allCls.slice(0,5).forEach(e=>{h+=clsRow(e[0],e[1]);});
     h+='</div>';
     if(allCls.length>5){h+='<details class="trf-allcls"><summary>View all '+allCls.length+' vehicle classes</summary><div class="kp-attrs" style="margin-top:7px">';allCls.forEach(e=>{h+=clsRow(e[0],e[1]);});h+='</div></details>';}

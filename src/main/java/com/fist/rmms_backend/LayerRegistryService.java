@@ -170,6 +170,14 @@ public class LayerRegistryService {
            database WITHOUT overwriting a name the RMMS cell has chosen — the
            same rule layer_attribute.seeded_name applies to attribute labels. */
         jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS seeded_name text");
+
+        /* A shared temporary layer is visible to and tileable for every signed-in
+           user instead of only its creator — the one way a temporary layer can be
+           handed to a colleague rather than staying scratch for one person. Only
+           the owner or a SUPER_ADMIN may flip this (see setShared()); an ordinary
+           ADMIN who is not the owner cannot share, or delete, someone else's
+           layer once it is shared — see deleteLayer(). */
+        jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS shared boolean NOT NULL DEFAULT false");
     }
 
     /* ------------------------------------------------------------------
@@ -480,6 +488,8 @@ public class LayerRegistryService {
             m.put("hidden", rs.getBoolean("hidden"));
             m.put("frozen", rs.getBoolean("frozen"));
             m.put("periodScoped", rs.getBoolean("period_scoped"));
+            m.put("shared", rs.getBoolean("shared"));
+            m.put("createdBy", rs.getString("created_by"));
             // Derived, never stored — see the class comment.
             m.put("editable", "USER".equals(sourceType) || "EDITABLE_BUILT_IN".equals(sourceType));
             /* Renaming is separate from editing, and allowed on everything.
@@ -492,6 +502,9 @@ public class LayerRegistryService {
             // User layers are permanent: they are hidden or frozen, never deleted.
             // Only a temporary layer can be discarded outright.
             m.put("deletable", "USER".equals(sourceType) && rs.getBoolean("temporary"));
+            // Only a temporary layer can be shared — a permanent one is already
+            // visible to everyone.
+            m.put("shareable", "USER".equals(sourceType) && rs.getBoolean("temporary"));
             m.put("stateChangeable", "USER".equals(sourceType));
             m.put("importable", !"SYSTEM_GENERATED".equals(sourceType));
             m.put("features", featureCount(rs.getString("layer_key"), rs.getString("physical_table")));
@@ -760,25 +773,58 @@ public class LayerRegistryService {
     }
 
     /**
+     * Share (or unshare) a TEMPORARY layer with every signed-in user.
+     *
+     * Only the layer's creator or a SUPER_ADMIN may do this — a plain ADMIN who
+     * merely has write access cannot hand out someone else's data. Sharing is
+     * meaningless for a permanent layer (already visible to everyone), so this
+     * refuses anything that is not temporary, same as {@link #deleteLayer}.
+     */
+    public void setShared(int id, boolean shared, String user, boolean superAdmin) {
+        String sourceType = sourceTypeOf(id);
+        if (!"USER".equals(sourceType)) {
+            throw new ProtectedLayerException(sourceType);
+        }
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT temporary, created_by FROM layer_definition WHERE id = ?", id);
+        if (!Boolean.TRUE.equals(row.get("temporary"))) {
+            throw new ProtectedLayerException("PERMANENT_USER");
+        }
+        if (!superAdmin && !String.valueOf(row.get("created_by")).equals(user)) {
+            throw new ProtectedLayerException("NOT_OWNER");
+        }
+        jdbc.update("UPDATE layer_definition SET shared = ? WHERE id = ?", shared, id);
+    }
+
+    /**
      * Discard a TEMPORARY layer.
      *
      * Permanent user layers are never deleted — they are hidden or frozen — so
      * this refuses anything that is not temporary. A temporary layer is scratch
      * by definition, so its table goes with it when purge is asked for.
+     *
+     * <p>A private temporary layer may be discarded by any ADMIN, same as
+     * today — Layer Management is the shared admin console for the whole
+     * registry. Once a layer is SHARED, though, it is treated as someone's
+     * handed-out data rather than the caller's own scratch space, so only its
+     * creator or a SUPER_ADMIN may discard it.
      */
     @Transactional
-    public void deleteLayer(int id, boolean purge) {
+    public void deleteLayer(int id, boolean purge, String user, boolean superAdmin) {
         String sourceType = sourceTypeOf(id);
         if (!"USER".equals(sourceType)) {
             throw new ProtectedLayerException(sourceType);
         }
-        Boolean temp = jdbc.queryForObject(
-                "SELECT temporary FROM layer_definition WHERE id = ?", Boolean.class, id);
-        if (!Boolean.TRUE.equals(temp)) {
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT temporary, created_by, shared, physical_table FROM layer_definition WHERE id = ?", id);
+        if (!Boolean.TRUE.equals(row.get("temporary"))) {
             throw new ProtectedLayerException("PERMANENT_USER");
         }
-        String table = jdbc.queryForObject(
-                "SELECT physical_table FROM layer_definition WHERE id = ?", String.class, id);
+        if (Boolean.TRUE.equals(row.get("shared"))
+                && !superAdmin && !String.valueOf(row.get("created_by")).equals(user)) {
+            throw new ProtectedLayerException("NOT_OWNER");
+        }
+        String table = (String) row.get("physical_table");
         jdbc.update("DELETE FROM layer_definition WHERE id = ?", id);
         if (purge && table != null) {
             // Only ever drops a table this service generated: the prefix check
@@ -933,6 +979,8 @@ public class LayerRegistryService {
                 case "PERMANENT_USER" -> "User layers are permanent and are not deleted. "
                         + "Hide it to take it off the map, or freeze it to stop its data being "
                         + "used anywhere — both are reversible.";
+                case "NOT_OWNER" -> "This layer has been shared with everyone. Only the person who "
+                        + "created it, or a super admin, can unshare or delete it.";
                 default -> "This layer is protected.";
             });
         }

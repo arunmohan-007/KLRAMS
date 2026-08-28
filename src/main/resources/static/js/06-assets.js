@@ -106,11 +106,26 @@ function _assetKeyMeta(k,type){
   else if(/\bkg\b/i.test(key)){unit='kg';key=key.replace(/\bkg\b/i,'');}
   return {label:key.replace(/\s+/g,' ').trim(),unit:unit};
 }
+/* Road badge colour per geotech asset type — matches the layer's own map colour
+   (see ASSETS[]) so the card reads as belonging to that survey at a glance. */
+const ASSET_BADGE_COLOR={subgrade:'#8a4d1f',bituminous_core:'#3a3a3a',pavement_crust:'#b8860b'};
+/* Start/End Location for the road the asset sits on. RoadsIndex (the
+   lightweight, always-loaded /api/roads/index rows — 02d-road-index.js) is
+   the primary source since it's normalised server-side and present even in
+   tile mode; ROADS (the hydrated-on-demand full feature, 07-data-loaders.js)
+   is the fallback for whichever road happens to already be loaded. */
+function _roadLocs(road){
+  if(!road)return{s:null,e:null};
+  const rp=(typeof RoadsIndex!=='undefined'&&RoadsIndex.byRoad(road))||(typeof ROADS!=='undefined'&&ROADS[road]&&ROADS[road].properties)||null;
+  if(!rp)return{s:null,e:null};
+  const strLocKeys=['Rd_Str_Loc','Start_Loc','Start_Location','Strt_Loc','start_location','Str_Loc','StartLoc'];
+  const endLocKeys=['Rd_End_Loc','End_Loc','End_Location','end_location','End_Locn','EndLoc'];
+  const pick=keys=>{for(const k of keys){const v=rp[k];if(v!=null&&String(v).trim()!=='')return String(v).trim();}return null;};
+  return{s:pick(strLocKeys),e:pick(endLocKeys)};
+}
 function assetProPopup(lngLat,p,type,label){
   const sch=ASSET_UNITS_SCHEMA[type];
   const rdv=pickProp(p,ROAD_KEYS),road=(rdv!=null?rdv:p.road)||'';
-  const lane=p[sch.lane]||'';
-  const laneTxt=lane?(window.AttrCatalog?AttrCatalog.expand(type,sch.lane,lane):lane):'';
   const handled={};
   Object.keys(p).forEach(k=>{const c=ckey(k);if(k.charAt(0)==='_'||ROAD_KEYS.indexOf(c)>=0||FROM_KEYS.indexOf(c)>=0||TO_KEYS.indexOf(c)>=0)handled[k]=1;});
   ['from_ch','to_ch','Chainage','Date',sch.lane,'Section Label','Section Label Code','Section Start Date'].forEach(k=>{handled[k]=1;});
@@ -119,12 +134,20 @@ function assetProPopup(lngLat,p,type,label){
   if(f!=null&&t2!=null)chTxt=escH(f)+' – '+escH(t2)+' m';
   else if(f!=null)chTxt=escH(f)+' m';
   else if(p.Chainage!=null&&p.Chainage!=='')chTxt=escH(p.Chainage)+' m';
+  const badgeColor=ASSET_BADGE_COLOR[type]||'#34d399';
   let h='<div class="klpop asset-klpop">';
-  h+='<div class="kp-head"><div class="kp-name">'+escH(label)+'</div><div class="kp-meta">'+(lane?'<span class="kp-chip" title="'+escH(lane)+'">'+escH(laneTxt)+'</span>':'')+(road?'<span class="kp-sec">'+escH(road)+'</span>':'')+'</div></div>';
-  let loc='';
-  if(chTxt)loc+='<div class="kp-attr"><span class="kp-k">Chainage</span><span class="kp-v">'+chTxt+'</span></div>';
-  if(p.Date)loc+='<div class="kp-attr"><span class="kp-k">Test date</span><span class="kp-v">'+escH(p.Date)+'</span></div>';
-  if(loc)h+='<div class="kp-block"><div class="kp-eyebrow">Location</div><div class="kp-attrs">'+loc+'</div></div>';
+  h+='<div class="kp-head"><div class="kp-name">'+escH(label)+'</div>'+(road?'<div class="kp-road-badge" style="background:linear-gradient(135deg,'+badgeColor+',rgba(255,255,255,.15))">'+escH(road)+'</div>':'')+'</div>';
+  const rloc=_roadLocs(road);
+  let locRow='',locAttrs='';
+  if(rloc.s||chTxt||rloc.e){
+    locRow='<div class="kp-locrow">'
+      +(rloc.s?'<span class="kp-dot s"></span><span class="kp-locname">'+escH(rloc.s)+'</span>':'')
+      +(chTxt?(rloc.s?'<span class="kp-arr2">→</span>':'')+'<span class="kp-ch">'+chTxt+'</span>'+(rloc.e?'<span class="kp-arr2">→</span>':''):'')
+      +(rloc.e?'<span class="kp-dot e"></span><span class="kp-locname">'+escH(rloc.e)+'</span>':'')
+      +'</div>';
+  }
+  if(p.Date)locAttrs+='<div class="kp-attr"><span class="kp-k">Test date</span><span class="kp-v">'+escH(p.Date)+'</span></div>';
+  if(locRow||locAttrs)h+='<div class="kp-block"><div class="kp-eyebrow">Location</div>'+locRow+(locAttrs?'<div class="kp-attrs">'+locAttrs+'</div>':'')+'</div>';
   /* The schema's own label and unit are the fallback, not the answer: a field
      the RMMS cell has renamed in Attribute Data shows under their name here.
      The schema still decides the grouping and the order, which is the part it
