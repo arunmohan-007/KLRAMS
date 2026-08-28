@@ -92,6 +92,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(a -> a
                 // public pages + assets (login page needs its JS/CSS to load)
                 .requestMatchers("/welcome.html", "/login.html", "/login", "/favicon.ico",
+                                 "/manifest.webmanifest",
                                  "/img/**", "/js/**", "/css/**").permitAll()
                 // public read-only APIs (Government Orders + About/Contact)
                 .requestMatchers(HttpMethod.GET, "/api/go/folders", "/api/go/docs", "/api/go/file/**", "/api/site/content").permitAll()

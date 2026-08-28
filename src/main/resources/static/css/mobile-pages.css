@@ -1,0 +1,87 @@
+/* ==========================================================================
+   KLRAMS · mobile-pages.css
+   Shared phone pass for the non-map pages (Data Console, Layer Management,
+   Government Orders, Lookups, Users, Site Control, Style Management).
+   Those pages were built desktop-only, so this file works from element and
+   layout selectors rather than page-specific class names.
+   The GIS viewer has its own, richer layer in css/mobile-app.css.
+   ========================================================================== */
+
+@media (pointer:coarse){
+  body{-webkit-tap-highlight-color:transparent}
+  /* under 16px iOS zooms the page on focus and never zooms back out */
+  input,select,textarea{font-size:16px!important}
+  button,.btn,a.btn,select,input[type=checkbox],input[type=radio],label{min-height:38px}
+  input[type=checkbox],input[type=radio]{width:20px;height:20px}
+  button:active,.btn:active{opacity:.72}
+  /* Nav-style anchors across the pages are plain <a> with a page-local class,
+     so they miss the rule above and stay ~30px. Inline links inside prose are
+     deliberately excluded — stretching those would break the paragraphs. */
+  .topbar a,header a,nav a,.top a,.top-r a,.sub a,
+  a.link,a.nav-link,a.signout,a.toplink,a.tbtn,a.console,a.vlink{
+    display:inline-flex;align-items:center;min-height:38px}
+  /* call-to-action links inside notice boxes render as bare inline-flex */
+  .viewonly-note a,.note a,.callout a,.banner a{min-height:36px;display:inline-flex;align-items:center}
+  /* Leaflet ships 30px zoom buttons */
+  .leaflet-touch .leaflet-bar a,.leaflet-bar a{
+    width:44px!important;height:44px!important;line-height:44px!important;font-size:20px!important}
+}
+
+@media (max-width:820px){
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  body{
+    padding-left:env(safe-area-inset-left,0px);
+    padding-right:env(safe-area-inset-right,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    overflow-x:hidden}
+
+  /* Desktop page shells are pinned to fixed pixel widths and centred; on a
+     phone that forces a sideways scroll of the whole document. */
+  .wrap,.shell,.container,.page,.sec,.card,.pane,.panel,.hub,.out,main{
+    max-width:100%!important;box-sizing:border-box}
+  .wrap,.shell,.container,.page{padding-left:12px!important;padding-right:12px!important}
+  img,svg,canvas,video,iframe{max-width:100%;height:auto}
+
+  /* every multi-column grid becomes a single column */
+  [class]{--x:0}
+  .stats,.hub,.grid,.form-grid,.frow,.opts,.go-list,.row2,.cards{
+    grid-template-columns:1fr!important}
+  #statGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+
+  /* header rows stop overflowing and let the actions wrap onto a second line */
+  .topbar,.top,.head-row,.folder-head,.reg-bar,.sub,header{
+    flex-wrap:wrap!important;gap:8px!important;row-gap:8px!important}
+  /* these action clusters are flex-shrink:0 on desktop, which is what pushes
+     the header past the viewport edge instead of wrapping */
+  .top-r,.brand,.toplink{flex-shrink:1!important;min-width:0;flex-wrap:wrap!important}
+  .brand .s,.bk .s{overflow:hidden;text-overflow:ellipsis}
+
+  /* Wide report tables: scroll the table sideways instead of squeezing every
+     column into an unreadable sliver. display:block is what makes a <table>
+     scrollable without a wrapper element in the markup. */
+  table,.tbl,.tblwrap{display:block;overflow-x:auto!important;overflow-y:visible!important;
+    -webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;white-space:nowrap;max-width:100%}
+  table th,table td{padding:8px 10px!important}
+  /* .tblwrap tables carry min-width:560px so they keep their column layout
+     inside the scroller instead of collapsing */
+  .tblwrap .tbl{display:table!important;overflow:visible!important}
+
+  /* forms stack; inputs go full width */
+  input[type=text],input[type=search],input[type=number],input[type=password],
+  input[type=date],select,textarea,.inp,.ip-field{
+    width:100%!important;max-width:100%!important;box-sizing:border-box}
+  .fld,.opt,.ip-label,.ip-title{width:auto!important}
+
+  /* buttons: full-width primary actions read as app buttons, never as 2px pills */
+  .btn{padding:11px 16px!important}
+
+  /* NSV video page: the 380px video pane and its controls sit side by side on
+     desktop, which is wider than a phone on its own. Stack them. */
+  #bar{flex-direction:column!important;height:auto!important;max-height:58vh;overflow-y:auto}
+  #videoWrap{width:100%!important;height:32vh!important;flex:0 0 auto!important}
+
+  /* modal / drawer style overlays fill the screen */
+  .veil,.modal,.dlg,.overlay{padding:0!important}
+  .modal>*,.dlg>*{max-width:100%!important;width:100%!important;
+    border-radius:16px 16px 0 0!important;max-height:92vh!important;overflow-y:auto}
+}

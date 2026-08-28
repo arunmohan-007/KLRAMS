@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
 <title>KLRAMS · Kerala Road Asset Management System</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a0f1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KLRAMS">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -1727,3 +1735,8 @@ html body #fpanes.hidden{display:none!important}
      css/klrams-dark.css (loaded in <head> after app.css). -->
 </body>
 </html>
+<!-- Mobile app layer. Deliberately last: the phone overrides above live in an
+     inline <style> mid-document, so a <head> link would lose every !important
+     tie against them. -->
+<link rel="stylesheet" href="css/mobile-app.css?v=3">
+<script src="js/mobile-app.js?v=2"></script>
