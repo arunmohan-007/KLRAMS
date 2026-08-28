@@ -283,11 +283,16 @@ var KLActive = (function () {
       map.on('idle', schedule);
       map.on('data', schedule);
     }
-    /* Ticking a layer on in the panel is the other half of it: the
-       toggle fires before its layers exist, so this catches the state a
-       beat later. */
+    /* Ticking a layer off is immediate: its visibility flips synchronously
+       in the same handler that fires this 'change', so the chip can drop
+       it right away rather than leaving a just-switched-off layer looking
+       "active" for the length of the debounce.
+
+       Ticking a layer on is not: the toggle fires before its layers
+       exist, so on top of the immediate render this also catches the
+       state a beat later once loading finishes. */
     var pane = document.getElementById('pane-layers');
-    if (pane) pane.addEventListener('change', function () { setTimeout(schedule, 400); });
+    if (pane) pane.addEventListener('change', function () { render(); setTimeout(schedule, 400); });
     lastSig = '';
     render();
   }
