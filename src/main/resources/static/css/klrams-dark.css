@@ -414,6 +414,34 @@ select option:disabled{color:var(--k-faint)!important}
 .mrow .mghost:hover{background:var(--k-elev2)!important}
 .mnote{color:var(--k-faint)!important}
 
+/* ---------- chainage locator ---------- */
+#chlRoadList{
+  background:var(--k-panel)!important;border:1px solid var(--k-line)!important;
+  box-shadow:0 10px 26px rgba(0,0,0,.5)!important;
+}
+#chlRoadList .lit{border-bottom:1px solid var(--k-line)!important}
+#chlRoadList .lit:hover{background:rgba(45,212,191,.08)!important}
+#chlRoadList .lit .pin{color:var(--k-accent)!important}
+#chlRoadList .lit .nm{color:var(--k-text)!important}
+#chlRoadList .lit .meta{color:var(--k-muted)!important}
+#chlRoadList .lit .tp{color:var(--k-accent)!important;background:rgba(45,212,191,.1)!important}
+#chlRoadList .lnone{color:var(--k-muted)!important}
+.chl-range{color:var(--k-muted)!important}
+.chl-range b{color:var(--k-text)!important}
+.mout .mtime b{color:#fff!important}
+.mout .chres{border-top-color:var(--k-line)!important}
+.mout .chres-s{color:#fff!important}
+.mout .chres-m{color:var(--k-text)!important}
+.mout .chres-c{color:var(--k-muted)!important}
+.chpin-tag{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;box-shadow:0 3px 10px rgba(0,0,0,.55)!important}
+.chpin-tag span{color:var(--k-muted)!important}
+.chpop{color:var(--k-text)!important}
+.chpop-h{color:#fff!important}
+.chpop-h span{color:var(--k-muted)!important}
+.chpop-r{border-top-color:var(--k-line)!important}
+.chpop-r>span{color:var(--k-muted)!important}
+.chpop-r b{color:#fff!important}
+
 /* ---------- filter accordion ---------- */
 #pane-filter details.flt-sec{
   background:var(--k-panel)!important;border:1px solid var(--k-line)!important;
