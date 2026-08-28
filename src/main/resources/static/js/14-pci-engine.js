@@ -162,13 +162,19 @@ function renderPciSummary(d){const el=document.getElementById('pciSummary');if(!
   function rw(lab,v){if(v==null)return '<div class="rec" style="margin-top:5px">'+lab+': \u2013</div>';const b=pciBand(v);return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px"><span class="big" style="font-size:22px">'+v.toFixed(1)+'</span><span class="band" style="margin-left:0;background:'+b.color+'">'+b.label+'</span><span class="rec" style="margin:0">'+lab+'</span></div>';}
   el.innerHTML='<div class="pci-summary"><div class="eyebrow" style="margin:0 0 2px">Network average PCI</div>'+rw('Composite',d.avg)+rw('Worst-Lane',d.worst)+'<div class="rec" style="margin-top:7px">'+(d.nA||0)+' of '+(d.total||0)+' segments scored</div></div>';}
 function pciPopup(lngLat,props,basis){
-  basis=basis||'avg';const prop=(basis==='worst')?'pci_worst':'pci_avg';
-  const v=+props[prop];const b=(v>=0)?pciBand(v):null;
+  basis=basis||'avg';
+  /* segPCI(), not props.pci_avg/pci_worst directly: those flat properties are
+     only ever stamped in GeoJSON mode (generatePCI). In tile mode (default)
+     the feature carries pci_def_avg/pci_def_worst instead, and reading the
+     wrong key silently showed "No PCI at this segment" on every click. */
+  const vRaw=segPCI(props,basis);const v=(vRaw!=null&&!isNaN(vRaw))?vRaw:-1;
+  const b=(v>=0)?pciBand(v):null;
   const rep=pciRepr(props,basis);
   let rows='';PCI_PARAMS.forEach(pp=>{const raw=rep.dist[pp.key];const has=!(raw==null||raw==='');const I=has?indIndex(pp.key,+raw):null;rows+='<tr><td class="k">'+pp.label+'</td><td class="v">'+(has?(+(+raw).toFixed(2)):'\u2013')+(I==null?'':' \u2192 '+I.toFixed(0))+'</td></tr>';});
   const laneNote=(basis==='worst'&&rep.lane)?(' &middot; worst lane '+rep.lane):((basis!=='worst'&&rep.lane&&rep.lane.indexOf(',')>=0)?(' &middot; avg of '+rep.lane):'');
   const head=b?('<div style="font-size:22px;font-weight:700;color:#0e2038">'+v.toFixed(1)+'<span style="font-size:12px;color:#64718a;font-weight:500"> /100</span> <span style="background:'+b.color+';color:#fff;font-size:11px;font-weight:700;border-radius:20px;padding:2px 9px;margin-left:4px">'+b.label+'</span></div><div style="font-size:11.5px;color:#64718a;margin:3px 0 8px">'+b.rec+'</div>'):'<div style="color:#64718a">No PCI at this segment</div>';
-  const av=+props.pci_avg,wv=+props.pci_worst;
+  const avRaw=segPCI(props,'avg'),wvRaw=segPCI(props,'worst');
+  const av=(avRaw!=null&&!isNaN(avRaw))?avRaw:-1,wv=(wvRaw!=null&&!isNaN(wvRaw))?wvRaw:-1;
   const cmp='<div style="font-size:10.5px;color:#64718a;margin-top:6px;border-top:1px solid #eef1f5;padding-top:5px">Composite <b>'+((av>=0)?av.toFixed(1):'\u2013')+'</b> &middot; Worst-Lane <b>'+((wv>=0)?wv.toFixed(1):'\u2013')+'</b></div>';
   new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML('<div class="pop"><div class="sec">'+pciBasisLabel(basis)+laneNote+' &middot; '+(props.road||'')+'</div>'+head+'<table>'+rows+'</table>'+cmp+'</div>').addTo(map);
 }
