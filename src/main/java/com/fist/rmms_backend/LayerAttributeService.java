@@ -218,6 +218,12 @@ public class LayerAttributeService {
             // shapes, so they get separate attribute sets on one layer.
             case "traffic_stations_counts" -> { /* handled below */ }
 
+            // A boundary's fields are the properties of the features inside its
+            // GeoJSON document, not columns of the one row that holds it — so
+            // they have to be read out of the document itself.
+            case "boundary_district", "boundary_constituency" ->
+                    seedFromBoundaryProps(layerId, key.substring("boundary_".length()));
+
             case "fwd", "bridge", "culvert", "furniture_line", "furniture_point",
                  "subgrade", "bituminous_core", "pavement_crust" -> {
                     // Before discovery, so rows imported under an older spelling
@@ -429,6 +435,75 @@ public class LayerAttributeService {
         // could never be imported into in the first place.
         ensurePlacementAttributes(layerId, "default", placement, geometry);
         markPlacementMandatory(layerId, "default");
+    }
+
+    /**
+     * Discover a boundary layer's fields from the GeoJSON it stores.
+     *
+     * The {@code boundary} table is {@code (type text PRIMARY KEY, geojson
+     * text)} — one whole FeatureCollection per row — so there are no per-feature
+     * columns for {@link #seedFromColumns} to read and no {@code attrs} bag for
+     * {@link #seedFromAssetAttrs}. The fields anyone actually wants to style,
+     * label or filter by are the properties of the features INSIDE the document,
+     * and which ones exist depends entirely on the shapefile that was uploaded:
+     * the district boundary carries DISTRICT, the constituency boundary carries
+     * ac, ac_name, pc, pc_name and state.
+     *
+     * The storage key is the RAW property name, upper-case and all — a map
+     * expression reads {@code ['get', 'DISTRICT']}, so anything tidier here
+     * would name a key no feature holds. Only the label is made readable.
+     *
+     * Nothing is pruned when the query finds no keys: an empty result means the
+     * boundary has not been uploaded yet, which is not evidence that a
+     * previously discovered field has gone away.
+     */
+    private void seedFromBoundaryProps(int layerId, String boundaryType) {
+        List<String> keys;
+        try {
+            keys = jdbc.queryForList("""
+                SELECT DISTINCT k
+                  FROM boundary b,
+                       jsonb_array_elements((b.geojson::jsonb)->'features') f,
+                       jsonb_object_keys(f->'properties') k
+                 WHERE b.type = ?
+                 ORDER BY k
+                """, String.class, boundaryType);
+        } catch (Exception e) {
+            // No boundary table yet, or a document that is not valid JSON.
+            // Neither is worth failing the whole attribute seed over.
+            log.debug("Could not read boundary properties for {}: {}", boundaryType, e.toString());
+            return;
+        }
+        if (keys.isEmpty()) return;
+
+        int sort = 10;
+        for (String k : keys) {
+            String declared = LayerAttributeCatalog.boundaryLabel(k);
+            insert(layerId, "default", declared != null ? declared : prettify(k), k,
+                    guessTypeFromName(k), null, null, "NONE", false, "STANDARD", sort, k);
+            sort += 10;
+        }
+
+        /* Retire the two attributes this layer used to be seeded with.
+           "Boundary Type" (type) and "Name" (name) were declared on the
+           assumption that a boundary has exactly those two fields; neither names
+           a property any feature carries, so both would colour every feature by
+           its fallback and label every one of them blank.
+
+           Retired rather than deleted, and only while nobody has renamed them —
+           the same rule every other correction in this file follows. A retired
+           attribute keeps whatever it was, stays visible on the Attribute Data
+           screen, and can be switched back on if a district ever does upload a
+           boundary whose features really do carry a `name`. */
+        for (String stale : new String[]{"type", "name"}) {
+            if (keys.contains(stale)) continue;
+            jdbc.update("""
+                UPDATE layer_attribute SET status = 'RETIRED'
+                 WHERE layer_id = ? AND dataset_key = 'default' AND storage_key = ?
+                   AND status = 'ACTIVE'
+                   AND (seeded_name IS NULL OR seeded_name = name)
+                """, layerId, stale);
+        }
     }
 
     private void seedDerived(int layerId, String key) {
@@ -831,6 +906,12 @@ public class LayerAttributeService {
      *
      * {@code video_catalog} is absent on purpose: it is a list of files to
      * attach, not a map layer, so it has no attributes and keeps its template.
+     *
+     * The two administrative boundaries are here even though they have no CSV
+     * importer: their upload is a shapefile whose fields are mapped onto these
+     * same attributes in the Console, and the point of mapping a field by hand
+     * is that the next file from the same source does not need it done again —
+     * which is this table's job, not the file format's.
      */
     private static final Map<String, String[]> IMPORT_DATASETS = Map.ofEntries(
             Map.entry("condition",        new String[]{"condition", "default"}),
@@ -843,7 +924,9 @@ public class LayerAttributeService {
             Map.entry("pavement_crust",   new String[]{"pavement_crust", "default"}),
             Map.entry("fwd",              new String[]{"fwd", "default"}),
             Map.entry("traffic_stations", new String[]{"traffic_stations", "default"}),
-            Map.entry("traffic_counts",   new String[]{"traffic_stations", "counts"}));
+            Map.entry("traffic_counts",   new String[]{"traffic_stations", "counts"}),
+            Map.entry("boundary_district",     new String[]{"boundary_district", "default"}),
+            Map.entry("boundary_constituency", new String[]{"boundary_constituency", "default"}));
 
     /** The layer and dataset behind an import dataset key, or null if it has none. */
     public String[] layerForDataset(String datasetKey) {

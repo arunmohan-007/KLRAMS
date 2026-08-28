@@ -170,7 +170,16 @@
         : l.placement === 'LATLNG' ? 'placed by latitude / longitude'
         : 'geometry comes from the file') +
       (l.periodScoped ? ' · stored per survey period' : '') +
-      (l.hidden ? ' · <i>currently hidden from the map</i>' : '');
+      (l.hidden ? ' · <i>currently hidden from the map</i>' : '') +
+      /* Asked for before the file is chosen, not after the import runs: a
+         layer that arrives on the map in the generic fallback colour is the
+         moment nobody comes back to fix it. Choosing colours, an outline and
+         a label needs no data on disk yet — a single colour, a category list
+         typed by hand, or a numeric range all stand on their own — so nothing
+         about styling first is blocked on the import that follows it. Not a
+         hard gate: the import still runs if this is skipped. */
+      (l.styled ? '' : ' · <a href="/style.html" target="_blank" style="color:var(--amber,#ffa630)">' +
+        'Not styled yet — set its colour and label &rarr;</a>');
     renderPeriod(l);
 
     /* Either order has to work. The mapping needs BOTH a target layer and a

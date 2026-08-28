@@ -39,6 +39,12 @@
     USER:              { cls: 'user', text: 'User layer' }
   };
 
+  /* Layers Style & Label Management does not handle — mirrors
+     LayerStyleService.EXCLUDED. Each is coloured by survey parameter and
+     threshold from its own screen in the viewer, so a style row for one would
+     be overwritten by the next keystroke in those threshold boxes. */
+  var UNSTYLABLE = ['condition', 'condition_segments', 'pci_composite', 'pci_worst', 'iri_2km'];
+
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -164,6 +170,13 @@
        Data Console alongside every other dataset's import, so there is one place
        to go to put data in the system rather than two with different rules. */
     var acts = '<button class="btn ghost sm" onclick="AD.open(' + l.id + ')">Attributes</button>';
+    /* Styling is offered on every layer the style module accepts. Condition,
+       PCI and the IRI roll-up are excluded there — they are coloured by survey
+       parameter and threshold from the viewer's own screen — so no button is
+       shown for them rather than one that leads to a layer that is not listed. */
+    if (UNSTYLABLE.indexOf(l.key) < 0) {
+      acts += '<button class="btn ghost sm" onclick="LM.style(\'' + esc(l.key) + '\')">Style</button>';
+    }
     // Offered on every layer: a name is a label, and the import panels in the
     // Data Console take their titles from it.
     if (l.renamable !== false) {
@@ -473,9 +486,15 @@
       .then(function (d) {
         closeWizard();
         load();
-        // Data goes in from the Data Console, not from here, so the message
-        // says where to go next rather than opening an importer on this screen.
-        msg('Layer "' + esc(d.name) + '" created. Load its data from the ' +
+        /* Data goes in from the Data Console, not from here, so the message
+           says where to go next rather than opening an importer on this screen.
+           Style comes BEFORE that on purpose: choosing a colour and a label
+           needs no data on disk, and a layer that first appears on the map in
+           the generic fallback colour is the one nobody comes back to fix. */
+        msg('Layer "' + esc(d.name) + '" created. Next: describe its columns with ' +
+            '<b>Attributes</b> on its row, choose how it should look in ' +
+            '<a href="/style.html" style="color:inherit;text-decoration:underline">Style &amp; Labels</a>, ' +
+            'then load its data from the ' +
             '<a href="/" style="color:inherit;text-decoration:underline">Data Console</a>' +
             ' → Import → User Layers.', true, true);
       })
@@ -498,7 +517,20 @@
     if (step === 3) syncStep3();
   });
 
-  window.LM = { rename: rename, remove: remove, hide: hide, freeze: freeze, reload: load };
+  /**
+   * Open this layer on the Style & Label screen.
+   *
+   * The key travels in the query string so that screen opens with the layer
+   * already selected — coming from a specific row and then having to find it
+   * again in a list of fourteen is the kind of small friction that stops people
+   * setting a style at all.
+   */
+  function style(key) {
+    window.location.href = '/style.html?layer=' + encodeURIComponent(key);
+  }
+
+  window.LM = { rename: rename, remove: remove, hide: hide, freeze: freeze,
+                style: style, reload: load };
   window.openWizard = openWizard;
   window.closeWizard = closeWizard;
   window.newFolder = newFolder;

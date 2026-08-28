@@ -42,6 +42,7 @@ public class UserLayerTileService {
 
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
+    private final LayerStyleService styles;
 
     private final int extent;
     private final int buffer;
@@ -49,11 +50,13 @@ public class UserLayerTileService {
 
     public UserLayerTileService(JdbcTemplate jdbc,
                                 SurveyPeriodService periods,
+                                LayerStyleService styles,
                                 @Value("${app.tile.extent:4096}") int extent,
                                 @Value("${app.tile.buffer:64}") int buffer,
                                 @Value("${app.tile.max-zoom:20}") int maxZoom) {
         this.jdbc = jdbc;
         this.periods = periods;
+        this.styles = styles;
         this.extent = extent;
         this.buffer = buffer;
         this.maxZoom = maxZoom;
@@ -78,8 +81,8 @@ public class UserLayerTileService {
         Map<String, Object> row;
         try {
             row = jdbc.queryForMap(
-                    "SELECT physical_table, temporary, created_by, frozen, hidden, period_scoped "
-                  + "FROM layer_definition WHERE id = ? AND source_type = 'USER'", layerId);
+                    "SELECT layer_key, physical_table, temporary, created_by, frozen, hidden, "
+                  + "period_scoped FROM layer_definition WHERE id = ? AND source_type = 'USER'", layerId);
         } catch (Exception e) {
             return null;      // no such user layer
         }
@@ -104,11 +107,17 @@ public class UserLayerTileService {
         if (!Boolean.TRUE.equals(built)) return null;
 
         boolean scoped = Boolean.TRUE.equals(row.get("period_scoped"));
+        // The attribute this layer is coloured and labelled by, lifted out of
+        // the jsonb bag so a MapLibre expression can read it — see
+        // LayerStyleService.tileKeys(). Both are null for an unstyled layer, in
+        // which case the two columns come back null and cost nothing.
+        String[] keys = styles.tileKeys(String.valueOf(row.get("layer_key")));
         byte[] tile = scoped
                 ? jdbc.queryForObject(sql(table, true), byte[].class,
-                        t.z(), t.x(), t.y(), extent, buffer, periods.resolve(requestedPeriodId), extent)
+                        t.z(), t.x(), t.y(), keys[0], keys[1],
+                        extent, buffer, periods.resolve(requestedPeriodId), extent)
                 : jdbc.queryForObject(sql(table, false), byte[].class,
-                        t.z(), t.x(), t.y(), extent, buffer, extent);
+                        t.z(), t.x(), t.y(), keys[0], keys[1], extent, buffer, extent);
 
         return (tile == null || tile.length == 0) ? null : tile;
     }
@@ -122,6 +131,14 @@ public class UserLayerTileService {
      * layer, the whole bag is emitted as one text property and expanded by the
      * client, which is what the popup wants anyway. {@code lane_avgs} in
      * {@link IriTileService} already ships as text for the same reason.
+     *
+     * <p>The two exceptions are {@code __style} and {@code __label}: the client
+     * CAN read a flat property in a paint expression and cannot read inside the
+     * JSON text, so the one attribute the layer is coloured by and the one it is
+     * labelled with are lifted out alongside. They ride under fixed names so the
+     * attribute is a bind parameter — no key from the style document is ever
+     * concatenated into this SQL. The {@code ::text} cast is what lets a null
+     * key bind at all; without it Postgres cannot infer the parameter's type.
      */
     private static String sql(String table, boolean periodScoped) {
         return """
@@ -133,6 +150,8 @@ public class UserLayerTileService {
                 SELECT
                     t.id,
                     COALESCE(t.attrs, '{}'::jsonb)::text AS attrs,
+                    t.attrs->>(?::text) AS __style,
+                    t.attrs->>(?::text) AS __label,
                     ST_AsMVTGeom(ST_Transform(t.geom, 3857), b.merc, ?, ?, true) AS geom
                 FROM %s t, bounds b
                 WHERE t.geom IS NOT NULL

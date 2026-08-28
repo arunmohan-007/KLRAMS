@@ -85,7 +85,21 @@ function applyNetBasemapStyle(baseName){
     if(byClass&&typeof renderNetLegend==='function')renderNetLegend(null);
   }catch(e){}
 }
-const NAME_KEYS=['NAME','Name','name','DISTRICT','District','district','AC_NAME','LAC_NAME','CONSTITUEN','Constituency','LABEL'];
+/* Every spelling a boundary shapefile might use for "the name of this area",
+   most specific first — featName() takes the first non-empty one and
+   nameExpr() coalesces them in this order.
+
+   The list has to carry each CASE variant separately. nameExpr() compiles to a
+   MapLibre coalesce of ['get', key], and an expression cannot match a property
+   name case-insensitively, so a spelling that is not listed simply is not found.
+
+   ac_name/pc_name are the lower-case keys the constituency boundary actually
+   carries. Only AC_NAME was listed, so every constituency label rendered blank
+   and the popup's title showed no name — the coalesce ran off the end of the
+   list and returned ''. The parliamentary name sits below the assembly one
+   because this layer is the assembly constituency; it is a fallback for a file
+   that carries no AC name at all, not the preferred label. */
+const NAME_KEYS=['NAME','Name','name','DISTRICT','District','district','AC_NAME','Ac_Name','ac_name','LAC_NAME','CONSTITUEN','Constituency','PC_NAME','Pc_Name','pc_name','LABEL'];
 function featName(p){for(const k of NAME_KEYS)if(p&&p[k]!=null&&p[k]!=='')return String(p[k]);return '';}
 function nameExpr(){const e=['coalesce'];NAME_KEYS.forEach(k=>e.push(['get',k]));e.push('');return e;}
 function boundaryPopup(lngLat,p,title,accent){

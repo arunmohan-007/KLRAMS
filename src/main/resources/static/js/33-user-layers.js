@@ -134,6 +134,14 @@
   function ensure(layer, i) {
     if (LOADED[layer.id]) return Promise.resolve();
     LOADED[layer.id] = true;
+    /* Tell the style module which registry key this source belongs to,
+       BEFORE its layers are built. A user layer's map ids (`ul-<id>-*`)
+       and its registry key (a slug of whatever it was named) are two
+       different things and neither can be derived from the other, so
+       34-layer-style.js has no way to pair them on its own — and it has
+       to have the pairing in hand by the time the layers appear, or a
+       saved style would not reach the first one added. */
+    if (window.KLStyle) KLStyle.registerUserLayer('ul-' + layer.id, layer.key);
     return tilesOn() ? ensureTiles(layer, i) : ensureGeoJson(layer, i);
   }
 

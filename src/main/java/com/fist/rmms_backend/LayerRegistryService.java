@@ -64,12 +64,14 @@ public class LayerRegistryService {
     private final JdbcTemplate jdbc;
     private final LayerAttributeService attributes;
     private final LookupService lookups;
+    private final LayerStyleService styles;
 
     public LayerRegistryService(JdbcTemplate jdbc, LayerAttributeService attributes,
-                                LookupService lookups) {
+                                LookupService lookups, LayerStyleService styles) {
         this.jdbc = jdbc;
         this.attributes = attributes;
         this.lookups = lookups;
+        this.styles = styles;
     }
 
     @PostConstruct
@@ -84,6 +86,10 @@ public class LayerRegistryService {
             // a preference.
             attributes.ensure();
             lookups.ensure();
+            // Last of the four: layer_style has a foreign key to the layers
+            // seeded above, and its template presets are read against the
+            // attribute list the pass before it just wrote.
+            styles.ensure();
         } catch (Exception e) {
             // A registry failure must never stop the app booting — the map and
             // every existing module work fine without Layer Management.

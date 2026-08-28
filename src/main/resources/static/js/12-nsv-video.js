@@ -326,7 +326,6 @@ function syncHudInfo(){
   var sc=document.getElementById('hudStartCh');if(sc){var t=fch(cur.startCh);if(t){sc.textContent='Start CH '+t;sc.style.display='';}else sc.style.display='none';}
   var ec=document.getElementById('hudEndCh');if(ec){var t2=fch(cur.endCh);if(t2){ec.textContent='End CH '+t2;ec.style.display='';}else ec.style.display='none';}
 }
-function pciBand2(p){if(p==null||isNaN(p))return null;if(p>=85)return{l:'Good',c:'#2ba66a'};if(p>=70)return{l:'Satisfactory',c:'#86c232'};if(p>=55)return{l:'Fair',c:'#f2c200'};if(p>=40)return{l:'Poor',c:'#e8843c'};return{l:'Very Poor',c:'#e24b4a'};}
 function _pciFrom(c,keys){if(!c)return null;for(var i=0;i<keys.length;i++){if(c[keys[i]]!=null&&c[keys[i]]!=='')return +c[keys[i]];}return null;}
 function _pciCard(eye,v){
   var ok=(v!=null&&v>=0);

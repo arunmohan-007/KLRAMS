@@ -42,6 +42,7 @@ public class AssetTileService {
 
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
+    private final LayerStyleService styles;
 
     private final int extent;
     private final int buffer;
@@ -49,11 +50,13 @@ public class AssetTileService {
 
     public AssetTileService(JdbcTemplate jdbc,
                              SurveyPeriodService periods,
+                             LayerStyleService styles,
                              @Value("${app.tile.extent:4096}") int extent,
                              @Value("${app.tile.buffer:64}") int buffer,
                              @Value("${app.tile.max-zoom:20}") int maxZoom) {
         this.jdbc = jdbc;
         this.periods = periods;
+        this.styles = styles;
         this.extent = extent;
         this.buffer = buffer;
         this.maxZoom = maxZoom;
@@ -129,6 +132,8 @@ public class AssetTileService {
                         a.start_chainage  AS from_ch,
                         a.end_chainage    AS to_ch,
                         a.attrs::text     AS attrs_json,
+                        a.attrs->>(?::text) AS __style,
+                        a.attrs->>(?::text) AS __label,
                         ST_AsMVTGeom(ST_Transform(a.geom, 3857), b.merc, ?, ?, true) AS geom
                     FROM road_assets a, bounds b
                     WHERE a.asset_type = ?
@@ -141,9 +146,17 @@ public class AssetTileService {
                 """
                 + "SELECT ST_AsMVT(src, '" + LAYER_NAME + "', ?, 'geom') FROM src WHERE geom IS NOT NULL";
 
+        /* The attribute this asset type is coloured and labelled by, lifted out
+           of the free-form attrs bag so a paint expression can read it — an MVT
+           property has to be a flat scalar, and attrs_json is a string as far as
+           MapLibre is concerned. Both null for an unstyled type, which costs a
+           pair of null columns and nothing else. */
+        String[] keys = styles.tileKeys(type);
+
         Object[] args = isSurvey
-                ? new Object[]{t.z(), t.x(), t.y(), extent, buffer, type, periods.resolve(requestedPeriodId), extent}
-                : new Object[]{t.z(), t.x(), t.y(), extent, buffer, type, extent};
+                ? new Object[]{t.z(), t.x(), t.y(), keys[0], keys[1], extent, buffer, type,
+                               periods.resolve(requestedPeriodId), extent}
+                : new Object[]{t.z(), t.x(), t.y(), keys[0], keys[1], extent, buffer, type, extent};
 
         byte[] tile = jdbc.queryForObject(sql, byte[].class, args);
 
