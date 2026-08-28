@@ -56,7 +56,13 @@ function wireRoadHandlers(){
   /* The "something else is on top" guard only applies in Auto mode: when the
      user has explicitly made the road network the active layer, an asset or
      PCI line lying over it must not swallow the click (js/02e-active-layer.js). */
-  map.on('click','roadnet-hit',e=>{const _auto=(typeof KLActive==='undefined')||KLActive.isAuto();const _t=_auto?map.queryRenderedFeatures(e.point)[0]:null;if(_t&&/^(as-|pci|trafficstn)/.test(_t.layer.id))return;if(e.features.length){let _lane=null;try{const _cl=CONDLAYERS.filter(id=>map.getLayer(id));if(_cl.length){const _lf=map.queryRenderedFeatures(e.point,{layers:_cl});if(_lf&&_lf.length){const _m=/^seg-(.+)$/.exec(_lf[0].layer.id);if(_m)_lane=_m[1];}}}catch(_e){}onPick(e.features[0].properties.road,e.lngLat,_lane);}});
+  map.on('click','roadnet-hit',e=>{const _auto=(typeof KLActive==='undefined')||KLActive.isAuto();
+    /* Belt-and-suspenders: KLActive's map.on wrapper already gates this handler
+       to the 'roadnet' group, but picking "Road condition" specifically must
+       show ONLY condition data, not the full multi-tab card — so check again
+       here explicitly rather than trust the gate alone. */
+    if(!_auto&&typeof KLActive!=='undefined'&&KLActive.get()!=='roadnet')return;
+    const _t=_auto?map.queryRenderedFeatures(e.point)[0]:null;if(_t&&/^(as-|pci|trafficstn)/.test(_t.layer.id))return;if(e.features.length){let _lane=null;try{const _cl=CONDLAYERS.filter(id=>map.getLayer(id));if(_cl.length){const _lf=map.queryRenderedFeatures(e.point,{layers:_cl});if(_lf&&_lf.length){const _m=/^seg-(.+)$/.exec(_lf[0].layer.id);if(_m)_lane=_m[1];}}}catch(_e){}onPick(e.features[0].properties.road,e.lngLat,_lane);}});
   map.on('mouseenter','roadnet-hit',()=>map.getCanvas().style.cursor='pointer');
   map.on('mouseleave','roadnet-hit',()=>map.getCanvas().style.cursor='');
 }
@@ -197,7 +203,23 @@ function laneColorExpr(xsp){const p=cb.value,fair=+document.getElementById('fair
 function addCondLayers(){if(map.getLayer('seg-CC'))return;/* create the lane layers already matching the showCond toggle, so a background
    preload (toggle off) never flashes the condition colours on before
    KLLayers.syncLazyLayers() runs. */
-const _cv=((document.getElementById('showCond')||{}).checked)?'visible':'none';LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;const _l={id:id,type:'line',source:'segs',filter:condLaneFilter(s.x),layout:{'line-cap':'round','visibility':_cv},paint:{'line-color':laneColorExpr(s.x),'line-width':CONDWIDTH,'line-offset':laneOffset(s.off)}};if(TILES_ON)_l['source-layer']=SEG_TILE_LAYER;map.addLayer(_l);map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='');});}
+const _cv=((document.getElementById('showCond')||{}).checked)?'visible':'none';LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;const _l={id:id,type:'line',source:'segs',filter:condLaneFilter(s.x),layout:{'line-cap':'round','visibility':_cv},paint:{'line-color':laneColorExpr(s.x),'line-width':CONDWIDTH,'line-offset':laneOffset(s.off)}};if(TILES_ON)_l['source-layer']=SEG_TILE_LAYER;map.addLayer(_l);map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='');
+    /* Build — the Active Map Layers picker lists "Road condition" (KLActive
+       groups every seg-* layer under it, since addCondLayers wires their
+       mouseenter/mouseleave through the same gate), but until now nothing
+       ever bound a CLICK handler to a seg-* layer: the popup only ever came
+       from 'roadnet-hit', which KLActive files under "Road network". Picking
+       "Road condition" specifically therefore blocked its own click — the
+       gate let roadnet-hit's handler run only for the 'roadnet' group, and
+       there was no 'condition' handler to take its place, so the click went
+       nowhere. In Auto mode roadnet-hit already opens the popup (and looks
+       up the clicked lane itself), so skip here to avoid firing twice. */
+    map.on('click',id,e=>{
+      if(typeof KLActive==='undefined'||KLActive.isAuto())return;
+      if(!e.features.length)return;
+      onPick(e.features[0].properties.road,e.lngLat,s.x,'condition');
+    });
+  });}
 /* Create the `segs` source and its lane layers.
 
    In tile mode this runs WITHOUT any download: the source is a tile template

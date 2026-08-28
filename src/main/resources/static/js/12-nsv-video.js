@@ -38,7 +38,7 @@ function updateRouteLabel(){
   if(has){var s=cur.startLoc||'\u2014',e=cur.endLoc||'\u2014';var A=(dir==='rev')?e:s,B=(dir==='rev')?s:e;html='<span class="rt-a">'+escH(A)+'</span><span class="rt-arrow">\u2192</span><span class="rt-b">'+escH(B)+'</span>';ttl=((dir==='rev')?'Back':'Front')+' direction: '+A+' \u2192 '+B;}
   ['dRoute','hudRoute'].forEach(function(id){var el=document.getElementById(id);if(!el)return;if(html==='\u2014'){el.textContent='\u2014';el.removeAttribute('title');}else{el.innerHTML=html;el.title=ttl;}});
 }
-function onPick(roadId,lngLat,lane){
+function onPick(roadId,lngLat,lane,scope){
   const feature=ROADS[roadId];
   /* In tile mode ROADS starts empty and stays sparse -- populated only for
      roads someone has actually clicked. A click on a road no one has hydrated
@@ -46,7 +46,7 @@ function onPick(roadId,lngLat,lane){
      geometry (RoadsIndex.hydrateFeature, /api/roads/one/geojson) and re-enters
      once it has it, rather than dropping the click on the floor. */
   if(!feature){
-    if(typeof RoadsIndex!=='undefined'){RoadsIndex.hydrateFeature(roadId).then(f=>{if(f)onPick(roadId,lngLat,lane);});}
+    if(typeof RoadsIndex!=='undefined'){RoadsIndex.hydrateFeature(roadId).then(f=>{if(f)onPick(roadId,lngLat,lane,scope);});}
     return;
   }
   const name=feature.properties.name||roadId,len=parseFloat(feature.properties.len)||0;
@@ -55,7 +55,7 @@ function onPick(roadId,lngLat,lane){
   const frac=geoLenKm>0?snap.properties.location/geoLenKm:0,chainage=frac*len;lastChainage=chainage;
   const videoMode=document.getElementById('videoMode').checked;
   if(!videoMode){
-    if(typeof openInspector==='function'){openInspector(feature.properties,roadId,chainage,lane);}
+    if(typeof openInspector==='function'){openInspector(feature.properties,roadId,chainage,lane,scope);}
     else if(typeof showInspector==='function'){showInspector(buildPopup(feature.properties,roadId,chainage,lane),roadId);}
     else{new maplibregl.Popup({maxWidth:'300px'}).setLngLat(lngLat).setHTML(buildPopup(feature.properties,roadId,chainage,lane)).addTo(map);}
     return;

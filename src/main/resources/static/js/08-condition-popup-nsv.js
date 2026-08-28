@@ -172,6 +172,77 @@ function klTab(btn,id){
   card.querySelectorAll('.kc-pane').forEach(function(p){p.classList.toggle('on',p.id===id);});
   var sc=card.querySelector('.kc-panes');if(sc)sc.scrollTop=0;
 }
+/* Condition-data pane content only (matrix + PCI at chainage) — shared by the
+   full tabbed inspector and the condition-only popup (Active Map Layers ==
+   "Road condition"), so the two views cannot drift apart. */
+function condPaneInner(props,roadId,ch){
+  var esc=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+  var c=condAt(roadId,ch);
+  var H='<div class="kc-condhead">At '+Math.round(ch).toLocaleString()+' m'+(c&&c.xsp_list?' &middot; '+esc(c.xsp_list):'')+'</div>';
+  if(c){
+    var lv=null;try{lv=(typeof c.lane_vals==='string')?JSON.parse(c.lane_vals):c.lane_vals;}catch(e){}
+    var lanes=lv?Object.keys(lv).sort():[];
+    var metrics=[['iri','IRI','m/km'],['crack','Cracking','%'],['pothole','Pothole','nos/km'],['rutting','Rut Depth','mm'],['ravelling','Ravelling','%'],['texture','Texture Depth','mm'],['patch_work','Patch Work','sqm']]
+      .filter(function(m){return c['avg_'+m[0]]!=null||c[m[0]]!=null;});
+    var cellCol=function(mk,x){return (x!=null&&typeof PMAP!=='undefined'&&PMAP[mk])?rating(mk,x):'';};
+    H+='<table class="kc-ctbl"><tr><th class="mh">Metric</th>';
+    if(lanes.length)lanes.forEach(function(L){H+='<th>'+esc(L)+'</th>';});
+    H+='<th class="avg">Avg</th></tr>';
+    metrics.forEach(function(m){
+      var mk=m[0];H+='<tr><td class="mk">'+m[1]+(m[2]?'<span class="u"> '+m[2]+'</span>':'')+'</td>';
+      if(lanes.length)lanes.forEach(function(L){var x=(lv[L]&&lv[L][mk]!=null)?+lv[L][mk]:null;var col=cellCol(mk,x);H+='<td'+(col?(' style="background:'+col+'2e"'):'')+'>'+(x!=null?(+x).toFixed(2):'–')+'</td>';});
+      var av=(c['avg_'+mk]!=null)?+c['avg_'+mk]:(c[mk]!=null?+c[mk]:null);var acol=cellCol(mk,av);
+      H+='<td class="avgc"'+(acol?(' style="background:'+acol+'2e"'):'')+'>'+(av!=null?av.toFixed(2):'–')+'</td></tr>';
+    });
+    H+='</table>';
+    /* PCI from the same segment row as the matrix (segPCI / pci_def_*). Do NOT wait
+       on KL.pci alone — that store can lag behind segsByRoad for up to 1.2s because
+       KL.sync is throttled, which falsely flashed "PCI not linked" on first click. */
+    var pciC=null,pciW=null;
+    if(typeof segPCI==='function'){
+      try{var _va=segPCI(c,'avg');if(_va!=null&&!isNaN(_va))pciC=Math.round(_va*10)/10;}catch(e){}
+      try{var _vw=segPCI(c,'worst');if(_vw!=null&&!isNaN(_vw))pciW=Math.round(_vw*10)/10;}catch(e){}
+    }
+    if(pciC==null||pciW==null){
+      var _pr=(window.KL&&KL.pci)?KL.pci(roadId,ch):null;
+      if(_pr){if(pciC==null)pciC=_pr.comp;if(pciW==null)pciW=_pr.worst;}
+    }
+    if(pciC==null)pciC=pciOf(props,c);
+    if(pciW==null){var _wks=['pci_def_worst','pci_worst','worst_pci','worst_lane_pci'];for(var _wi=0;_wi<_wks.length;_wi++){if(c[_wks[_wi]]!=null&&c[_wks[_wi]]!==''){var _wn=+c[_wks[_wi]];if(!isNaN(_wn)&&_wn>=0){pciW=_wn;break;}}}}
+    H+='<div class="kc-pcirow">';
+    if(pciC!=null){var b=pciBand(pciC);H+='<div class="kc-pci"><span class="pl">Composite PCI</span><span class="pv" style="color:'+b.c+'">'+Math.round(pciC)+'</span></div>';}
+    if(pciW!=null){var b2=pciBand(pciW);H+='<div class="kc-pci"><span class="pl">Worst-lane PCI</span><span class="pv" style="color:'+b2.c+'">'+Math.round(pciW)+'</span></div>';}
+    if(pciC==null&&pciW==null)H+='<div class="kc-pend" style="margin:0">PCI not linked at this chainage</div>';
+    H+='</div>';
+  }else if(_inspCtx&&_inspCtx.loadingSegs){
+    H+='<div class="kc-pend" style="margin:0">Loading condition &amp; PCI…</div>';
+  }else{H+='<div class="kp-none">No survey done at this chainage.</div>';}
+  return H;
+}
+/* Condition-only card: Active Map Layers == "Road condition" answers a click
+   with condition data alone, not the full multi-tab road inspector — no
+   Profile/Chainage/FWD/Survey tabs, since the user picked that layer
+   specifically to see condition readings, not the whole road record. */
+function buildCondOnlyPopup(props,roadId,ch,lane){
+  var esc=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+  var loc=function(keys){return (typeof nsvLoc==='function')?nsvLoc(props,keys):(function(){for(var i=0;i<keys.length;i++){var k=keys[i];if(props&&props[k]!=null&&props[k]!=='')return String(props[k]);}return '';})();};
+  var name=props.name||props.Road_Name||loc(['Road_Name'])||roadId||'';
+  var clsRaw=loc(['Road_Class','ROAD_CLASS','RoadClass','Class']);
+  var cls=clsRaw?clsRaw.toString().toUpperCase():'';
+  var clsKey=(cls.indexOf('MDR')>=0?'mdr':cls.indexOf('ODR')>=0?'odr':cls.indexOf('NH')>=0?'nh':'sh');
+  var rnum=loc(['Road_Num','Road_No','RoadNumber','road_num','ROAD_NUM']);
+  if(!rnum && roadId){var mm=String(roadId).match(/\/(SH|MDR|ODR|NH)\/0*(\d+)/i);if(mm)rnum=mm[2];}
+  var district=loc(['District','district','Dist','DISTRICT','Distrct']);
+  var H='<div class="klcard">';
+  H+='<div class="kc-head"><div class="kc-back" onclick="hideInspector()">&#8249;&nbsp; All roads</div>'+
+     '<div class="kc-name">'+esc(name)+'</div><div class="kc-meta">'+
+     '<span class="kc-chip '+clsKey+'">'+esc(cls||'SH')+(rnum?(' '+esc(rnum)):'')+'</span>'+
+     '<span class="kc-sec">'+esc(roadId||props.road||'')+'</span>'+
+     (district?'<span class="kc-pin">&#9678; '+esc(district)+'</span>':'')+'</div></div>';
+  H+='<div class="kc-panes"><div class="kc-pane on" id="tab-cond">'+condPaneInner(props,roadId,ch)+'</div></div>';
+  H+='</div>';
+  return H;
+}
 function buildPopup(props,roadId,ch,lane){
   var esc=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
   var loc=function(keys){return (typeof nsvLoc==='function')?nsvLoc(props,keys):(function(){for(var i=0;i<keys.length;i++){var k=keys[i];if(props&&props[k]!=null&&props[k]!=='')return String(props[k]);}return '';})();};
@@ -259,47 +330,7 @@ function buildPopup(props,roadId,ch,lane){
   H+='</div>';
 
   /* ---- Condition Data pane (matrix + PCI at chainage) ---- */
-  H+='<div class="kc-pane on" id="tab-cond">';
-  H+='<div class="kc-condhead">At '+Math.round(ch).toLocaleString()+' m'+(c&&c.xsp_list?' &middot; '+esc(c.xsp_list):'')+'</div>';
-  if(c){
-    var lv=null;try{lv=(typeof c.lane_vals==='string')?JSON.parse(c.lane_vals):c.lane_vals;}catch(e){}
-    var lanes=lv?Object.keys(lv).sort():[];
-    var metrics=[['iri','IRI','m/km'],['crack','Cracking','%'],['pothole','Pothole','nos/km'],['rutting','Rut Depth','mm'],['ravelling','Ravelling','%'],['texture','Texture Depth','mm'],['patch_work','Patch Work','sqm']]
-      .filter(function(m){return c['avg_'+m[0]]!=null||c[m[0]]!=null;});
-    var cellCol=function(mk,x){return (x!=null&&typeof PMAP!=='undefined'&&PMAP[mk])?rating(mk,x):'';};
-    H+='<table class="kc-ctbl"><tr><th class="mh">Metric</th>';
-    if(lanes.length)lanes.forEach(function(L){H+='<th>'+esc(L)+'</th>';});
-    H+='<th class="avg">Avg</th></tr>';
-    metrics.forEach(function(m){
-      var mk=m[0];H+='<tr><td class="mk">'+m[1]+(m[2]?'<span class="u"> '+m[2]+'</span>':'')+'</td>';
-      if(lanes.length)lanes.forEach(function(L){var x=(lv[L]&&lv[L][mk]!=null)?+lv[L][mk]:null;var col=cellCol(mk,x);H+='<td'+(col?(' style="background:'+col+'2e"'):'')+'>'+(x!=null?(+x).toFixed(2):'\u2013')+'</td>';});
-      var av=(c['avg_'+mk]!=null)?+c['avg_'+mk]:(c[mk]!=null?+c[mk]:null);var acol=cellCol(mk,av);
-      H+='<td class="avgc"'+(acol?(' style="background:'+acol+'2e"'):'')+'>'+(av!=null?av.toFixed(2):'\u2013')+'</td></tr>';
-    });
-    H+='</table>';
-    /* PCI from the same segment row as the matrix (segPCI / pci_def_*). Do NOT wait
-       on KL.pci alone — that store can lag behind segsByRoad for up to 1.2s because
-       KL.sync is throttled, which falsely flashed "PCI not linked" on first click. */
-    var pciC=null,pciW=null;
-    if(typeof segPCI==='function'){
-      try{var _va=segPCI(c,'avg');if(_va!=null&&!isNaN(_va))pciC=Math.round(_va*10)/10;}catch(e){}
-      try{var _vw=segPCI(c,'worst');if(_vw!=null&&!isNaN(_vw))pciW=Math.round(_vw*10)/10;}catch(e){}
-    }
-    if(pciC==null||pciW==null){
-      var _pr=(window.KL&&KL.pci)?KL.pci(roadId,ch):null;
-      if(_pr){if(pciC==null)pciC=_pr.comp;if(pciW==null)pciW=_pr.worst;}
-    }
-    if(pciC==null)pciC=pciOf(props,c);
-    if(pciW==null){var _wks=['pci_def_worst','pci_worst','worst_pci','worst_lane_pci'];for(var _wi=0;_wi<_wks.length;_wi++){if(c[_wks[_wi]]!=null&&c[_wks[_wi]]!==''){var _wn=+c[_wks[_wi]];if(!isNaN(_wn)&&_wn>=0){pciW=_wn;break;}}}}
-    H+='<div class="kc-pcirow">';
-    if(pciC!=null){var b=pciBand(pciC);H+='<div class="kc-pci"><span class="pl">Composite PCI</span><span class="pv" style="color:'+b.c+'">'+Math.round(pciC)+'</span></div>';}
-    if(pciW!=null){var b2=pciBand(pciW);H+='<div class="kc-pci"><span class="pl">Worst-lane PCI</span><span class="pv" style="color:'+b2.c+'">'+Math.round(pciW)+'</span></div>';}
-    if(pciC==null&&pciW==null)H+='<div class="kc-pend" style="margin:0">PCI not linked at this chainage</div>';
-    H+='</div>';
-  }else if(_inspCtx&&_inspCtx.loadingSegs){
-    H+='<div class="kc-pend" style="margin:0">Loading condition &amp; PCI\u2026</div>';
-  }else{H+='<div class="kp-none">No survey done at this chainage.</div>';}
-  H+='</div>';
+  H+='<div class="kc-pane on" id="tab-cond">'+condPaneInner(props,roadId,ch)+'</div>';
 
   /* ---- FWD pane (dedicated FWD module, by chainage range, in microns) ---- */
   H+='<div class="kc-pane" id="tab-fwd">';
@@ -406,10 +437,10 @@ var _inspCtx=null;
 /* Open the inspector for a clicked road. Loads condition/PCI/FWD segment data
    on the spot (via ensureSegData) so the card is populated even when the
    Road Condition Data / FWD layer toggles are OFF, then refreshes in place. */
-function openInspector(props,roadId,ch,lane){
+function openInspector(props,roadId,ch,lane,scope){
   var needSegs=!(segsByRoad&&segsByRoad[roadId])&&!(typeof DATA!=='undefined'&&DATA&&DATA.features);
-  _inspCtx={props:props,roadId:roadId,ch:ch,lane:lane,loadingSegs:needSegs};
-  showInspector(buildPopup(props,roadId,ch,lane),roadId);
+  _inspCtx={props:props,roadId:roadId,ch:ch,lane:lane,loadingSegs:needSegs,scope:scope};
+  showInspector(scope==='condition'?buildCondOnlyPopup(props,roadId,ch,lane):buildPopup(props,roadId,ch,lane),roadId);
   var _rf=function(){if(_inspCtx&&_inspCtx.roadId===roadId)refreshInspectorData();};
   /* Per-road, not the whole network: every condition read on this card is
      segsByRoad[roadId] (condAt and the lane table), so pulling all ~33k segments
@@ -421,6 +452,9 @@ function openInspector(props,roadId,ch,lane){
       _rf();
     });}catch(e){if(_inspCtx)_inspCtx.loadingSegs=false;}
   }else if(_inspCtx){_inspCtx.loadingSegs=false;}
+  /* condition-only scope shows just the Condition pane, so skip the FWD/Survey
+     preloads below — they only ever feed tabs this card does not render. */
+  if(scope==='condition')return;
   /* FWD tab: no longer preloaded at login, so pull it here and refresh in place
      the same way the condition data does. FWD.at() returns null until this
      resolves, which just renders the tab without deflection rows until it does. */
@@ -432,6 +466,10 @@ function openInspector(props,roadId,ch,lane){
 function refreshInspectorData(){
   if(!_inspCtx)return;var body=document.getElementById('riBody'),panel=document.getElementById('roadInspector');
   if(!body||!panel||!panel.classList.contains('open'))return;
+  if(_inspCtx.scope==='condition'){
+    body.innerHTML=buildCondOnlyPopup(_inspCtx.props,_inspCtx.roadId,_inspCtx.ch,_inspCtx.lane);
+    return;
+  }
   var act=document.querySelector('#roadInspector .kc-pane.on');var curId=act?act.id:'tab-cond';
   body.innerHTML=buildPopup(_inspCtx.props,_inspCtx.roadId,_inspCtx.ch,_inspCtx.lane);
   var b=document.querySelector('#roadInspector .kc-tab[onclick*="'+curId+'"]');if(b)klTab(b,curId);
