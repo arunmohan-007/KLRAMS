@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>KLRAMS · Data Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -384,6 +384,15 @@
   .wiz-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
   .wiz-ready{font-size:12px;color:var(--accent-d);font-weight:600}
 </style>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a0f1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KLRAMS">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="stylesheet" href="/css/mobile-pages.css?v=3">
 </head>
 <body>
   <div class="topbar">
@@ -675,6 +684,11 @@ const STAT_TILES=[
   {k:'culvert', l:'Culverts', ic:'bridge', tone:'amber'}
 ];
 function escLog(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+/* escLog() is for text BETWEEN tags and deliberately leaves quotes alone. Inside
+   an attribute that is not enough: a column name is whatever the uploaded file
+   says it is — a GeoJSON property key can carry a quote — and one quote would
+   close the attribute and hand the rest of the key to the parser as markup. */
+function escAttr(s){return escLog(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 async function loadSummary(){
   try{
     const res=await fetch('/api/console/summary',{cache:'no-store'});
@@ -838,6 +852,237 @@ async function upFullNetwork(){
     else{show(out,false,'Error: '+(j.message||'upload failed'));logUpload('Full road network',f.name,false,j.message||'upload failed');}
   }catch(e){ show(out,false,'Failed: '+e.message);logUpload('Full road network',f.name,false,e.message); }
 }
+/* ============ Administrative boundary — field mapping ============
+   A boundary arrives as a shapefile or GeoJSON, so its "columns" are the
+   feature properties. That is why these two panels were left out of the CSV
+   mapping window above, and with it out of attribute mapping altogether —
+   and the silence had a cost. The viewer labels a district from the first
+   property it recognises out of a fixed list (NAME / DISTRICT / AC_NAME …),
+   so a file whose field is called DTNAME or KGISDist uploaded perfectly,
+   drew every polygon, and labelled none of them, with nothing on the screen
+   to say why.
+
+   Same three steps as every other importer now: read the file in the
+   browser, ask the layer which of its attributes each field looks like, and
+   let whoever is importing correct that before anything is stored. The
+   chosen fields are renamed to the attribute's label as the file is posted —
+   the GeoJSON equivalent of the header rewrite the CSV path does — and the
+   corrections can be remembered as accepted spellings, so the next file from
+   the same source maps itself.
+
+   The proposal comes from /api/layer-data/{id}/preview, the same endpoint the
+   user-layer importer uses: one definition of "which attribute is this
+   column", not a second one written for boundaries. */
+var BND_STATE={};   // boundary type -> parsed file + its proposed mapping
+
+function bndBox(type){return document.getElementById('bndMap_'+String(type).replace(/[^a-z0-9_]/gi,'_'));}
+function bndParse(file){
+  var n=file.name.toLowerCase();
+  if(n.endsWith('.zip')){
+    return file.arrayBuffer().then(function(b){return shp(b);}).then(function(gj){
+      if(Array.isArray(gj))gj={type:'FeatureCollection',features:gj.flatMap(function(x){return x.features||[];})};
+      return gj;
+    });
+  }
+  return file.text().then(function(t){return JSON.parse(t);});
+}
+/* Every property name the file uses, in the order first seen. Sampled rather
+   than exhaustive: a shapefile's fields come from one DBF header and are
+   identical on every feature, and a hand-built GeoJSON that changes its keys
+   halfway is not a file this mapping could describe anyway. */
+function bndFields(feats){
+  var out=[];
+  feats.slice(0,200).forEach(function(f){
+    Object.keys((f&&f.properties)||{}).forEach(function(k){if(out.indexOf(k)<0)out.push(k);});
+  });
+  return out;
+}
+async function bndOnFile(type){
+  var box=bndBox(type),inp=document.getElementById('bndFile_'+String(type).replace(/[^a-z0-9_]/gi,'_'));
+  delete BND_STATE[type];
+  if(!box)return;
+  var f=inp&&inp.files[0];
+  if(!f){box.className='wiz-box';box.innerHTML='';return;}
+  box.className='wiz-box show';
+  box.innerHTML='<div class="wiz-hd"><span class="dot busy"></span>Reading '+escLog(f.name)+'…</div>';
+  try{
+    var gj=await bndParse(f);
+    var feats=(gj&&gj.features)||[];
+    if(!feats.length)throw new Error('That file has no features in it.');
+    if(wgs84Bad(gj))throw new Error(WGS84_HINT);
+    var fields=bndFields(feats);
+    BND_STATE[type]={gj:gj,feats:feats,fields:fields,file:f.name};
+
+    /* No registry, no mapping — but still an upload. The layer id comes from
+       /api/layers/tree, which the hub loads once and is allowed to fail; a
+       console running without it has always been able to store a boundary,
+       and taking that away over a fields table would be the wrong trade. */
+    var layer=HUB_REG['boundary_'+type];
+    if(!layer||!layer.id){
+      box.innerHTML='<div class="wiz-hd"><span class="dot warn"></span>Read '+feats.length+' feature(s) — field mapping unavailable.</div>'
+        +'<div class="wiz-sub">The layer registry did not load, so this file will be stored with its '
+        +'fields exactly as they are.</div>';
+      return;
+    }
+    var r=await fetch('/api/layer-data/'+layer.id+'/preview',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset:'default',columns:fields})});
+    /* An expired session is answered with the login PAGE, not an error, so
+       content type is what tells the two apart — see wizRunCheck. */
+    if((r.headers.get('content-type')||'').indexOf('json')<0){
+      throw new Error('Your session appears to have expired — reload this page and sign in again.');
+    }
+    var j=await r.json();
+    BND_STATE[type].mapping=(j.mapping||[]);
+    bndRender(type);
+  }catch(e){
+    delete BND_STATE[type];   // upBoundary falls back to reading the file itself
+    box.innerHTML='<div class="wiz-hd"><span class="dot warn"></span>'+escLog(e&&e.message?e.message:String(e))+'</div>';
+  }
+}
+/* First non-blank value for a field, so a picker can be checked at a glance. */
+function bndSample(type,field){
+  var s=BND_STATE[type];if(!s||!field)return '';
+  for(var i=0;i<Math.min(s.feats.length,20);i++){
+    var v=(s.feats[i].properties||{})[field];
+    if(v!=null&&String(v).trim()!=='')return String(v);
+  }
+  return '';
+}
+function bndRender(type){
+  var s=BND_STATE[type],box=bndBox(type);
+  if(!s||!box)return;
+  var rows=s.mapping||[];
+  /* "Boundary Type" is the one attribute no file carries: the boundary table
+     is keyed by it, so it describes the DOCUMENT, and this panel already
+     decided it. Shown as settled rather than hidden — an attribute missing
+     from the list with no explanation reads as an omission. */
+  var pick=rows.filter(function(m){return m.storageKey!=='type';});
+  var fixed=rows.filter(function(m){return m.storageKey==='type';});
+
+  var h='<div class="wiz-hd"><span class="dot ok"></span>Read '+s.feats.length+' feature(s) · '
+    +s.fields.length+' field'+(s.fields.length===1?'':'s')+' in the file</div>'
+    +'<div class="wiz-sub">Every row can be changed — pick a different field if the automatic '
+    +'match got one wrong. The field you choose is stored under the attribute\u2019s name, which is '
+    +'what the map labels and searches by.</div>'
+    +'<table class="wiz-table"><thead><tr><th>KLRAMS attribute</th><th>Your field</th><th>Sample</th>'
+    +'</tr></thead><tbody>';
+
+  fixed.forEach(function(m){
+    h+='<tr><td class="src">'+escLog(m.name)+'</td>'
+      +'<td colspan="2" class="sample">set by this panel — <b>'+escLog(type)+'</b></td></tr>';
+  });
+  pick.forEach(function(m){
+    var opts='<option value="">— not in my file —</option>'
+      +s.fields.map(function(fd){
+        return '<option value="'+escAttr(fd)+'"'+(m.fileColumn===fd?' selected':'')+'>'+escLog(fd)+'</option>';
+      }).join('');
+    h+='<tr'+(m.fileColumn?'':' class="miss"')+'><td class="src">'+escLog(m.name)
+      +(m.mandatory?'<span class="wiz-req" title="Required">*</span>':'')+'</td>'
+      +'<td><select data-bnd-attr="'+escAttr(m.name)+'" data-bnd-key="'+escAttr(m.storageKey)+'" onchange="bndCheck(\''
+      +String(type).replace(/'/g,"\\'")+'\')">'+opts+'</select></td>'
+      +'<td class="sample" data-bnd-sample="'+escAttr(m.name)+'">'+escLog(bndSample(type,m.fileColumn))+'</td></tr>';
+  });
+  h+='</tbody></table>'
+    +'<div class="wiz-maperr" data-bnd-err></div>'
+    +'<div class="wiz-sub" data-bnd-note></div>'
+    +'<label class="wiz-learn"><input type="checkbox" data-bnd-learn checked> '
+    +'Remember these field names for next time</label>'
+    +'<div class="wiz-sub">Saves each choice as an accepted field name on that attribute, so the '
+    +'next file from the same source maps itself. Review them any time in Layer Management → '
+    +'Attributes.</div>';
+  box.className='wiz-box show';
+  box.innerHTML=h;
+  bndCheck(type);
+}
+/* Describe the current pickers: what is matched, what travels through
+   untouched, and — the one that actually bites — an unlabelled boundary. */
+function bndCheck(type){
+  var s=BND_STATE[type],box=bndBox(type);
+  if(!s||!box)return;
+  var sels=Array.prototype.slice.call(box.querySelectorAll('[data-bnd-attr]'));
+  var chosen={},blank=[],blankKeys=[];
+  sels.forEach(function(sel){
+    var attr=sel.getAttribute('data-bnd-attr');
+    var cell=box.querySelector('[data-bnd-sample="'+attr.replace(/["\\]/g,'\\$&')+'"]');
+    if(cell)cell.textContent=bndSample(type,sel.value);
+    if(sel.value)chosen[sel.value]=(chosen[sel.value]||0)+1;
+    else{blank.push(attr);blankKeys.push(sel.getAttribute('data-bnd-key'));}
+  });
+  var dupes=Object.keys(chosen).filter(function(c){return chosen[c]>1;});
+  var err=box.querySelector('[data-bnd-err]');
+  if(err){
+    err.textContent=dupes.length
+      ? '“'+dupes.join('”, “')+'” is mapped to more than one attribute. Each field can feed only one.'
+      : '';
+  }
+  var kept=s.fields.filter(function(fd){return !chosen[fd];});
+  var note=box.querySelector('[data-bnd-note]');
+  if(note){
+    var t=(sels.length-blank.length)+' of '+sels.length+' attribute'+(sels.length===1?'':'s')+' matched.';
+    if(kept.length)t+=' '+kept.length+' other field'+(kept.length===1?'':'s')+' ('+kept.join(', ')
+      +') '+(kept.length===1?'is':'are')+' stored on each feature as '+(kept.length===1?'it is':'they are')+'.';
+    note.textContent=t;
+    /* The label is the whole reason this screen exists — say it plainly rather
+       than leaving a blank row to be noticed. Found by storage key, not by the
+       label "Name", which the RMMS cell is free to rename. */
+    var i=blankKeys.indexOf('name');
+    if(i>=0){
+      note.innerHTML=escLog(t)+'<br><b>No field is mapped to '+escLog(blank[i])+'</b> — the boundary '
+        +'will draw, but every polygon will be unlabelled on the map.';
+    }
+  }
+  var btn=document.getElementById('btnBnd_'+String(type).replace(/[^a-z0-9_]/gi,'_'));
+  if(btn)btn.disabled=dupes.length>0;
+}
+/* Rewrite the parsed file so each mapped field travels under its attribute's
+   name. Only the property NAMES change; not one value is touched. A field
+   nobody chose keeps its own name unless that name is one of the attribute
+   labels — which would leave two properties claiming one attribute — so it is
+   prefixed and carried on as an extra, exactly as the CSV path does. */
+function bndApplyMapping(type){
+  var s=BND_STATE[type],box=bndBox(type);
+  if(!s||!s.mapping||!box)return null;
+  var byAttr={},byField={};
+  Array.prototype.slice.call(box.querySelectorAll('[data-bnd-attr]')).forEach(function(sel){
+    if(!sel.value)return;
+    var attr=sel.getAttribute('data-bnd-attr');
+    if(byField[sel.value])return;      // a duplicate is blocked before this runs
+    byAttr[attr]=sel.value;byField[sel.value]=attr;
+  });
+  s.applied=byAttr;
+  var labels={};Object.keys(byAttr).forEach(function(a){labels[a]=1;});
+  var feats=s.feats.map(function(f){
+    var p=(f&&f.properties)||{},np={};
+    Object.keys(byAttr).forEach(function(a){np[a]=p[byAttr[a]];});
+    Object.keys(p).forEach(function(k){
+      if(byField[k])return;            // already carried under its attribute name
+      np[labels[k]?('x_'+k):k]=p[k];
+    });
+    var nf={};for(var k in f)nf[k]=f[k];
+    nf.properties=np;
+    return nf;
+  });
+  return {type:'FeatureCollection',features:feats};
+}
+/* Hand-made matches become accepted spellings, so the same agency's next file
+   needs none of this done again. Only the ones the system could not have
+   guessed are worth learning, and only after the upload actually landed. */
+function bndLearn(type){
+  var s=BND_STATE[type],box=bndBox(type);
+  if(!s||!s.applied||!box)return Promise.resolve();
+  var learn=box.querySelector('[data-bnd-learn]');
+  if(!learn||!learn.checked)return Promise.resolve();
+  var cols={},any=false;
+  Object.keys(s.applied).forEach(function(attr){
+    var fd=s.applied[attr];
+    if(wizNorm(fd)===wizNorm(attr))return;
+    cols[attr]=fd;any=true;
+  });
+  if(!any)return Promise.resolve();
+  return fetch('/api/attributes/aliases/learn',{method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({dataset:'boundary_'+type,columns:cols})}).catch(function(){});
+}
 async function upBoundary(type){
   var idSafe=String(type).replace(/[^a-z0-9_]/gi,'_');
   const inp=document.getElementById('bndFile_'+idSafe) || document.getElementById(type==='district'?'dist':'cons');
@@ -848,9 +1093,20 @@ async function upBoundary(type){
   var mode=modeEl?modeEl.value:'replace';
   show(out,true,'Reading & uploading…');
   try{
-    let gj; const n=f.name.toLowerCase();
-    if(n.endsWith('.zip')){ gj=await shp(await f.arrayBuffer()); if(Array.isArray(gj)) gj={type:'FeatureCollection',features:gj.flatMap(x=>x.features||[])}; }
-    else { gj=JSON.parse(await f.text()); }
+    /* The file was already read, checked and mapped when it was chosen, so it
+       is not read a second time here — what goes up is that same file with its
+       mapped fields renamed to the attributes they were matched to. The old
+       path stays for the case where the mapping step could not run (no layer
+       registry, an unreadable file): a boundary can always be stored. */
+    let gj;
+    const mapped=bndApplyMapping(type);
+    if(mapped){ gj=mapped; }
+    else if(BND_STATE[type]&&BND_STATE[type].gj){ gj=BND_STATE[type].gj; }
+    else{
+      const n=f.name.toLowerCase();
+      if(n.endsWith('.zip')){ gj=await shp(await f.arrayBuffer()); if(Array.isArray(gj)) gj={type:'FeatureCollection',features:gj.flatMap(x=>x.features||[])}; }
+      else { gj=JSON.parse(await f.text()); }
+    }
     const cnt=gj&&gj.features?gj.features.length:0;
     if(wgs84Bad(gj)){show(out,false,WGS84_HINT);return;}
     var url='/api/boundary/'+encodeURIComponent(type)+'?mode='+encodeURIComponent(mode);
@@ -863,7 +1119,7 @@ async function upBoundary(type){
       } else { show(out,false,'Import cancelled — existing data kept.'); return; }
     }
     const ds=type+' boundary';
-    if(j.status==='ok'){const msg='✓ Saved '+cnt+' feature(s) ('+(j.mode||mode)+').';show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();loadBndStatus(type);}
+    if(j.status==='ok'){const msg='✓ Saved '+cnt+' feature(s) ('+(j.mode||mode)+').';show(out,true,msg);logUpload(ds,f.name,true,msg);bndLearn(type);refresh();loadBndStatus(type);}
     else{show(out,false,'Error: '+(j.message||'upload failed'));logUpload(ds,f.name,false,j.message||'failed');}
   }catch(e){ show(out,false,'Failed: '+e.message);logUpload(type+' boundary',f.name,false,e.message); }
 }
@@ -1254,11 +1510,14 @@ function boundaryPanel(type, label){
   return '<div class="ip-title">'+escLog(label||type)+'</div>'
     +'<p class="ip-sub">Upload as shapefile zip or GeoJSON (WGS84).</p>'
     +'<div class="hint" id="bndStatus_'+idSafe+'" style="margin-bottom:10px">Checking existing data…</div>'
-    +'<div class="ip-field"><label class="ip-label">Shapefile ZIP / GeoJSON</label><input type="file" id="bndFile_'+idSafe+'" accept=".zip,.geojson,.json"></div>'
+    +'<div class="ip-field"><label class="ip-label">Shapefile ZIP / GeoJSON</label>'
+    +'<input type="file" id="bndFile_'+idSafe+'" accept=".zip,.geojson,.json" '
+    +'onchange="bndOnFile(\''+String(type).replace(/'/g,"\\'")+'\')"></div>'
+    +'<div id="bndMap_'+idSafe+'" class="wiz-box"></div>'
     +'<div class="ip-field"><label class="ip-label">If data already exists</label>'
     +'<label style="display:block;margin:4px 0;font-size:13px"><input type="radio" name="bndMode_'+idSafe+'" value="replace" checked> Replace entire layer</label>'
     +'<label style="display:block;margin:4px 0;font-size:13px"><input type="radio" name="bndMode_'+idSafe+'" value="add"> Add / merge features into existing</label></div>'
-    +'<button class="btn" onclick="upBoundary(\''+String(type).replace(/'/g,"\\'")+'\')">Upload</button> '
+    +'<button class="btn" id="btnBnd_'+idSafe+'" onclick="upBoundary(\''+String(type).replace(/'/g,"\\'")+'\')">Upload</button> '
     +'<button class="btn ghost" onclick="removeBoundary(\''+String(type).replace(/'/g,"\\'")+'\')">Remove current data</button>'
     +'<div class="out" id="oBnd_'+idSafe+'"></div>'
     +'<p class="hint">One-time full upload is typical. If data is already here, choose <b>Replace</b> or <b>Add</b>. Shapefile zip needs <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> (and <code>.prj</code>).</p>';
@@ -1701,13 +1960,13 @@ function wizMappingTable(j,st){
   rows.forEach(function(m){
     var opts='<option value="">— not in my file —</option>'
       +headers.map(function(hd){
-         return '<option value="'+escLog(hd)+'"'
+         return '<option value="'+escAttr(hd)+'"'
            +(m.column&&wizNorm(hd)===wizNorm(m.column)?' selected':'')+'>'+escLog(hd)+'</option>';
        }).join('');
     h+='<tr'+(m.column?'':' class="miss"')+'>'
       +'<td class="src">'+escLog(m.field)+(m.required?'<span class="wiz-req" title="Required">*</span>':'')+'</td>'
       +'<td class="sample">'+escLog(m.type||'')+'</td>'
-      +'<td><select data-map-field="'+escLog(m.field)+'" data-map-was="'+escLog(m.column||'')+'">'
+      +'<td><select data-map-field="'+escAttr(m.field)+'" data-map-was="'+escAttr(m.column||'')+'">'
       +opts+'</select></td></tr>';
   });
   h+='</tbody></table>'
@@ -2021,7 +2280,7 @@ hubLoadRegistry().then(function(){
 });
 switchTab('count');
 </script>
-  <script src="/js/console-user-layers.js?v=5"></script>
+  <script src="/js/console-user-layers.js?v=6"></script>
   <script src="/js/launcher.js"></script>
   <script src="/js/role-gate.js" defer></script>
 </body>

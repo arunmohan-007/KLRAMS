@@ -166,8 +166,6 @@ function pciOf(props,c){
   if(c){for(var j=0;j<keys.length;j++){if(c[keys[j]]!=null&&c[keys[j]]!==''){var m=+c[keys[j]];if(!isNaN(m)&&m>=0)return m;}}}
   return null;
 }
-function pciBand(p){if(p>=80)return{l:'Good',c:'#34d399'};if(p>=60)return{l:'Fair',c:'#f2c200'};return{l:'Poor',c:'#e24b4a'};}
-
 function klTab(btn,id){
   var card=btn.closest('.klcard');if(!card)return;
   card.querySelectorAll('.kc-tab').forEach(function(t){t.classList.remove('on');});btn.classList.add('on');

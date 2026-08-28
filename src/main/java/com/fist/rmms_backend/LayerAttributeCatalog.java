@@ -366,12 +366,53 @@ final class LayerAttributeCatalog {
             i("Count", "count", "count", "COUNT", "Volume", "Nos")));
 
         /* ---- Boundaries ----
-           One GeoJSON document per type, so there are exactly two fields. */
-        for (String b : new String[]{"boundary_district", "boundary_constituency"}) {
-            put(b, "default", List.of(
-                new Attr("Boundary Type", "type", "STRING", null, true, "NONE", List.of()),
-                s("Name", "name", "NAME", "District", "Constituency")));
-        }
+           Deliberately NOT declared here, and the correction is worth
+           recording. This used to list two attributes, "Boundary Type" (type)
+           and "Name" (name), on the reasoning that a boundary is one GeoJSON
+           document per type and therefore has exactly two fields.
+
+           Both were wrong. `type` is a COLUMN of the boundary table — the
+           district/constituency discriminator, constant across every feature in
+           the layer — and `name` exists in neither dataset: the district
+           document keys its one field DISTRICT, and the constituency document
+           carries ac, ac_name, pc, pc_name and state. So the two declared
+           attributes named nothing that any feature holds, while the five that
+           do were invisible to every screen that reads this catalogue.
+
+           A boundary's fields are the properties of the features INSIDE its
+           document, and those are whatever the shapefile someone uploaded
+           happened to carry — unknowable here, exactly like the road network's
+           DBF columns. LayerAttributeService discovers them from the stored
+           GeoJSON instead; BOUNDARY_LABELS below only makes the discovered
+           names readable. */
+    }
+
+    /* ------------------------------------------------------------------
+       Boundary labels
+       ------------------------------------------------------------------ */
+
+    /**
+     * Display labels for the property keys the boundary shapefiles carry.
+     *
+     * Same job as {@link #ROAD_LABELS} and the same limits: the column list is
+     * discovered, never declared, so this only replaces the mechanical guess
+     * ("Ac Name", "DISTRICT") with the field's real meaning where the key is
+     * recognised. A key that is not here keeps its prettified name and still
+     * works — the storage key is the raw property either way.
+     */
+    private static final Map<String, String> BOUNDARY_LABELS = new LinkedHashMap<>();
+
+    static {
+        BOUNDARY_LABELS.put("district", "District");
+        BOUNDARY_LABELS.put("ac", "Assembly Constituency No.");
+        BOUNDARY_LABELS.put("ac_name", "Assembly Constituency");
+        BOUNDARY_LABELS.put("pc", "Parliamentary Constituency No.");
+        BOUNDARY_LABELS.put("pc_name", "Parliamentary Constituency");
+        BOUNDARY_LABELS.put("state", "State");
+    }
+
+    static String boundaryLabel(String key) {
+        return key == null ? null : BOUNDARY_LABELS.get(key.toLowerCase(Locale.ROOT));
     }
 
     /* ------------------------------------------------------------------

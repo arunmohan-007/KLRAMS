@@ -29,6 +29,7 @@ public class FwdTileService {
 
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
+    private final LayerStyleService styles;
 
     private final int extent;
     private final int buffer;
@@ -36,11 +37,13 @@ public class FwdTileService {
 
     public FwdTileService(JdbcTemplate jdbc,
                           SurveyPeriodService periods,
+                          LayerStyleService styles,
                           @Value("${app.tile.extent:4096}") int extent,
                           @Value("${app.tile.buffer:64}") int buffer,
                           @Value("${app.tile.max-zoom:20}") int maxZoom) {
         this.jdbc = jdbc;
         this.periods = periods;
+        this.styles = styles;
         this.extent = extent;
         this.buffer = buffer;
         this.maxZoom = maxZoom;
@@ -56,8 +59,12 @@ public class FwdTileService {
         if (!Boolean.TRUE.equals(built)) return null;
 
         int periodId = periods.resolve(requestedPeriodId);
+        // The attribute a saved style colours and labels FWD by, lifted out of
+        // attrs so a paint expression can read it. Null unless someone has
+        // styled the layer, and the D0 colouring above is untouched either way.
+        String[] keys = styles.tileKeys("fwd");
         byte[] tile = jdbc.queryForObject(TILE_SQL, byte[].class,
-                t.z(), t.x(), t.y(), periodId, periodId, extent, buffer, extent);
+                t.z(), t.x(), t.y(), periodId, periodId, keys[0], keys[1], extent, buffer, extent);
 
         return (tile == null || tile.length == 0) ? null : tile;
     }
@@ -113,6 +120,8 @@ public class FwdTileService {
                     c.from_ch,
                     c.to_ch,
                     c.attrs::text   AS attrs_json,
+                    c.attrs->>(?::text) AS __style,
+                    c.attrs->>(?::text) AS __label,
                     s.f             AS __dscale,
                     round(c.d0 * s.f)::int AS __d0,
                     ST_AsMVTGeom(ST_Transform(

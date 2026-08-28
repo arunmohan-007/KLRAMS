@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>KLRAMS · Map (Lite) — no graphics acceleration needed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -79,6 +79,15 @@
   #llChip .llacc{color:var(--muted)}
   @media (max-width:720px){.panel{width:230px}#llChip{bottom:14px;font-size:11px;padding:5px 10px;gap:7px}}
 </style>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a0f1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KLRAMS">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="stylesheet" href="/css/mobile-pages.css?v=3">
 </head>
 <body>
   <div class="topbar">
@@ -565,5 +574,7 @@ Promise.all([loadRoads(),loadSegs()]).then(function(){setStatus('Ready.');})
   .catch(function(){setStatus('Some data could not be loaded — check your connection / sign-in.');});
 </script>
 <script src="/js/role-gate.js" defer></script>
+<link rel="stylesheet" href="/css/mobile-maplite.css?v=4">
+<script src="/js/mobile-maplite.js?v=3"></script>
 </body>
 </html>

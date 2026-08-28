@@ -88,6 +88,15 @@ public class LayerDataService {
      * Matching is on a normalised form (lowercased, non-alphanumerics stripped),
      * so "Section Label", "section_label" and "SECTION-LABEL" all land on the
      * same attribute without needing an alias table to be maintained by hand.
+     *
+     * Where that normalising is not enough, the attribute's accepted spellings
+     * are. A district boundary names its one meaningful field DISTRICT, DTNAME
+     * or KGISDist depending on who exported it, and none of those normalise to
+     * "name" — so the alias list Attribute Data holds is consulted too, in a
+     * second pass. Second, not merged into the first: an alias must never take
+     * a column that another attribute matches by its own name, or a file
+     * carrying both "Name" and "District" would map whichever attribute the
+     * sort order happened to reach first.
      */
     public Map<String, Object> preview(int layerId, String dataset, List<String> fileColumns) {
         List<Map<String, Object>> spec = attributes.importSpec(layerId, dataset);
@@ -110,6 +119,19 @@ public class LayerDataService {
             m.put("fileColumn", match);          // null = unmapped
             m.put("autoMatched", match != null);
             mapping.add(m);
+        }
+
+        for (Map<String, Object> m : mapping) {
+            if (m.get("fileColumn") != null) continue;
+            for (String alias : String.valueOf(m.get("aliases") == null ? "" : m.get("aliases")).split(",")) {
+                if (alias.isBlank()) continue;
+                String match = byNorm.get(norm(alias));
+                if (match == null || used.contains(match)) continue;
+                used.add(match);
+                m.put("fileColumn", match);
+                m.put("autoMatched", true);
+                break;
+            }
         }
 
         List<String> unused = new ArrayList<>();
@@ -432,16 +454,25 @@ public class LayerDataService {
      */
     public List<Map<String, Object>> importTargets(String user) {
         return jdbc.query("""
-            SELECT d.id, d.name, d.geometry_type, d.placement, d.temporary,
-                   d.hidden, d.frozen, d.period_scoped, d.upload_formats, f.name AS folder
+            SELECT d.id, d.layer_key, d.name, d.geometry_type, d.placement, d.temporary,
+                   d.hidden, d.frozen, d.period_scoped, d.upload_formats, f.name AS folder,
+                   (s.layer_key IS NOT NULL) AS styled
               FROM layer_definition d JOIN layer_folder f ON f.id = d.folder_id
+              LEFT JOIN layer_style s ON s.layer_key = d.layer_key
              WHERE d.source_type = 'USER'
                AND (d.temporary IS NOT TRUE OR d.created_by = ?)
              ORDER BY d.temporary, f.sort_order, d.name
             """, (rs, i) -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", rs.getInt("id"));
+            m.put("key", rs.getString("layer_key"));
             m.put("name", rs.getString("name"));
+            /* Whether a style has been set for this layer yet. The import screen
+               asks for one before the first upload — a layer that arrives on the
+               map in the generic fallback colour is the moment nobody comes back
+               to fix it, so the choice is offered while the data is still on its
+               way in. Reported, not enforced: the import still runs. */
+            m.put("styled", rs.getBoolean("styled"));
             m.put("folder", rs.getString("folder"));
             m.put("geometryType", rs.getString("geometry_type"));
             m.put("placement", rs.getString("placement"));
@@ -463,7 +494,8 @@ public class LayerDataService {
      */
     public List<Map<String, Object>> viewerLayers(String user) {
         return jdbc.query("""
-            SELECT d.id, d.name, d.geometry_type, d.temporary, d.created_by, f.name AS folder
+            SELECT d.id, d.layer_key, d.name, d.geometry_type, d.temporary, d.created_by,
+                   f.name AS folder
               FROM layer_definition d JOIN layer_folder f ON f.id = d.folder_id
              WHERE d.source_type = 'USER'
                AND d.hidden IS NOT TRUE
@@ -473,6 +505,9 @@ public class LayerDataService {
             """, (rs, i) -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", rs.getInt("id"));
+            // The identity a saved style is keyed by, so the viewer can pair a
+            // user layer with its style without a second request per layer.
+            m.put("key", rs.getString("layer_key"));
             m.put("name", rs.getString("name"));
             m.put("geometryType", rs.getString("geometry_type"));
             m.put("temporary", rs.getBoolean("temporary"));

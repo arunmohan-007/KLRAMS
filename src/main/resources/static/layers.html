@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>KLRAMS Console · Layer Management — Kerala PWD</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -186,6 +186,15 @@
     color:var(--muted-2);margin-bottom:8px}
   .prob{font-family:var(--mono);font-size:11px;color:var(--muted);padding:3px 0}
 </style>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a0f1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KLRAMS">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="stylesheet" href="/css/mobile-pages.css?v=3">
 </head>
 <body>
 <div class="bg"></div>
@@ -198,6 +207,7 @@
     </div>
     <div class="top-r">
       <a class="link" href="/">&larr; Console</a>
+      <a class="link" href="/style.html">Style &amp; Labels</a>
       <a class="link" href="/map.html">Map</a>
     </div>
   </div>
@@ -347,7 +357,7 @@
 </div>
 
 <script src="/js/role-gate.js" defer></script>
-<script src="/js/layer-management.js?v=5" defer></script>
+<script src="/js/layer-management.js?v=6" defer></script>
 <script src="/js/attribute-data.js?v=3" defer></script>
 </body>
 </html>
