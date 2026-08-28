@@ -114,14 +114,27 @@ const ASSET_BADGE_COLOR={subgrade:'#8a4d1f',bituminous_core:'#3a3a3a',pavement_c
    the primary source since it's normalised server-side and present even in
    tile mode; ROADS (the hydrated-on-demand full feature, 07-data-loaders.js)
    is the fallback for whichever road happens to already be loaded. */
+function _roadIndexRow(road){
+  if(!road)return null;
+  return(typeof RoadsIndex!=='undefined'&&RoadsIndex.byRoad(road))||(typeof ROADS!=='undefined'&&ROADS[road]&&ROADS[road].properties)||null;
+}
 function _roadLocs(road){
-  if(!road)return{s:null,e:null};
-  const rp=(typeof RoadsIndex!=='undefined'&&RoadsIndex.byRoad(road))||(typeof ROADS!=='undefined'&&ROADS[road]&&ROADS[road].properties)||null;
+  const rp=_roadIndexRow(road);
   if(!rp)return{s:null,e:null};
   const strLocKeys=['Rd_Str_Loc','Start_Loc','Start_Location','Strt_Loc','start_location','Str_Loc','StartLoc'];
   const endLocKeys=['Rd_End_Loc','End_Loc','End_Location','end_location','End_Locn','EndLoc'];
   const pick=keys=>{for(const k of keys){const v=rp[k];if(v!=null&&String(v).trim()!=='')return String(v).trim();}return null;};
   return{s:pick(strLocKeys),e:pick(endLocKeys)};
+}
+/* The asset's own "road" property is the Section Label/code (e.g.
+   "KPWD/SH/47/3") — the same identifier ROADS/RoadsIndex are keyed by, not
+   a human-readable name. Look up the road network's own Road Name column
+   for display; fall back to the code when a road has none. */
+function _roadDisplayName(road){
+  const rp=_roadIndexRow(road);
+  const nameKeys=['Road_Name','ROAD_NAME','RoadName','road_name','Name','NAME','name'];
+  if(rp){for(const k of nameKeys){const v=rp[k];if(v!=null&&String(v).trim()!=='')return String(v).trim();}}
+  return road;
 }
 function assetProPopup(lngLat,p,type,label){
   const sch=ASSET_UNITS_SCHEMA[type];
@@ -135,8 +148,12 @@ function assetProPopup(lngLat,p,type,label){
   else if(f!=null)chTxt=escH(f)+' m';
   else if(p.Chainage!=null&&p.Chainage!=='')chTxt=escH(p.Chainage)+' m';
   const badgeColor=ASSET_BADGE_COLOR[type]||'#34d399';
+  const roadName=road?_roadDisplayName(road):'';
   let h='<div class="klpop asset-klpop">';
-  h+='<div class="kp-head"><div class="kp-name">'+escH(label)+'</div>'+(road?'<div class="kp-road-badge" style="background:linear-gradient(135deg,'+badgeColor+',rgba(255,255,255,.15))">'+escH(road)+'</div>':'')+'</div>';
+  h+='<div class="kp-head"><div class="kp-name">'+escH(label)+'</div>'
+    +(roadName?'<div class="kp-road-badge" style="background:linear-gradient(135deg,'+badgeColor+',rgba(255,255,255,.15))">'+escH(roadName)+'</div>':'')
+    +(road?'<div class="kp-sec" style="margin-top:6px">'+escH(road)+'</div>':'')
+    +'</div>';
   const rloc=_roadLocs(road);
   let locRow='',locAttrs='';
   if(rloc.s||chTxt||rloc.e){
