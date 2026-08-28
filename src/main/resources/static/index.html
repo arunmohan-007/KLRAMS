@@ -1569,8 +1569,8 @@ const HUB=[
   /* Layers defined in Layer Management. Their data is loaded here, alongside
      every other dataset, rather than on the screen that defines them. */
   {id:'userlayers',cat:'User Layers',icon:'layers',types:[
-    {id:'ul-import',label:'Import into a layer',fmt:'Shapefile & ZIP / GeoJSON / CSV'},
-    {id:'ul-temp',label:'Temporary layer from a file',fmt:'Shapefile & ZIP / GeoJSON / CSV'}
+    {id:'ul-import',label:'Import into a layer',fmt:'Shapefile & ZIP / KML / KMZ / GeoJSON / CSV'},
+    {id:'ul-temp',label:'Temporary layer from a file',fmt:'Shapefile & ZIP / KML / KMZ / GeoJSON / CSV'}
   ]}
 ];
 let curCat=HUB[0].id, curType=null;
@@ -1607,7 +1607,9 @@ function hubFmt(formats){
   // /api/layer-data/import-targets passes the stored comma string through.
   if(typeof formats==='string')formats=formats.split(',');
   if(!formats||!formats.length)return '';
-  var m={SHAPEFILE:'Shapefile & ZIP',GEOJSON:'GeoJSON',CSV:'CSV file'};
+  // KML/KMZ is converted to GeoJSON in the browser before it is sent, so a
+  // layer that accepts GEOJSON accepts it — there is no separate stored format.
+  var m={SHAPEFILE:'Shapefile & ZIP',GEOJSON:'GeoJSON / KML / KMZ',CSV:'CSV file'};
   return formats.map(function(f){return m[String(f).trim()]||String(f).trim();})
                 .filter(Boolean).join(' / ');
 }
@@ -1656,7 +1658,7 @@ function hubAddUserLayers(targets){
     return {
       id:'ulx-'+l.id,
       label:l.name+(l.temporary?' (temporary)':'')+(l.folder?(' — '+l.folder):''),
-      fmt:hubFmt(l.uploadFormats)||'Shapefile & ZIP / GeoJSON / CSV',
+      fmt:hubFmt(l.uploadFormats)||'Shapefile & ZIP / KML / KMZ / GeoJSON / CSV',
       userLayerId:l.id
     };
   });
@@ -2280,7 +2282,8 @@ hubLoadRegistry().then(function(){
 });
 switchTab('count');
 </script>
-  <script src="/js/console-user-layers.js?v=6"></script>
+  <script src="/js/kml-reader.js?v=1"></script>
+  <script src="/js/console-user-layers.js?v=7"></script>
   <script src="/js/launcher.js"></script>
   <script src="/js/role-gate.js" defer></script>
 </body>
