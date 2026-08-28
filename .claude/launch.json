@@ -19,6 +19,13 @@
       "runtimeArgs": ["-jar", "target/rmms-backend-0.0.1-SNAPSHOT.jar", "--spring.profiles.active=local", "--server.port=8096"],
       "port": 8096,
       "autoPort": false
+    },
+    {
+      "name": "rmms-dev",
+      "runtimeExecutable": "mvnw.cmd",
+      "runtimeArgs": ["-o", "spring-boot:run", "-Dspring-boot.run.arguments=--spring.config.additional-location=optional:file:./application-local.properties --server.port=8097"],
+      "port": 8097,
+      "autoPort": false
     }
   ]
 }

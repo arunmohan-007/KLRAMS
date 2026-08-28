@@ -236,6 +236,21 @@
   }
 
   /**
+   * What a click on this layer shows, as its style document says.
+   *
+   * Read at click time rather than captured when the layer is built: the
+   * styling screen can save a change while the map is open, and KLStyle
+   * repaints without rebuilding the layer. Null for a layer nobody has
+   * styled, and null for a style saved before the popup section existed —
+   * both meaning ALL, which is what this file did before there was a
+   * choice to make.
+   */
+  function popupCfg(layer) {
+    var s = (window.KLStyle && KLStyle.styleFor(layer.key)) || null;
+    return (s && s.popup) || null;
+  }
+
+  /**
    * Popup listing whatever the feature carries.
    *
    * Built on the shared .klpop card the asset and traffic popups already
@@ -243,23 +258,47 @@
    * styling rather than needing its own CSS in two stylesheets.
    *
    * A user layer's fields are not known at build time, so the rows come
-   * from the properties the feature actually has. Capped at 24: an
-   * imported shapefile can carry a hundred columns, and a popup that tall
-   * is unusable.
+   * from the properties the feature actually has — capped at 24, because
+   * an imported shapefile can carry a hundred columns and a popup that
+   * tall is unusable. Where the layer's style names the fields it wants,
+   * those are shown instead and in the order it lists them: a layer
+   * loaded to answer one question should answer it without scrolling.
    */
   function bindPopup(layerId, layer) {
+    /* Named for the active-layer chip before the handler registers, so the
+       user picks it by the name they gave it rather than by its map id.
+       A temporary layer is flagged there too — it is the one kind of layer
+       someone may have several near-identical copies of. */
+    if (window.KLActive) {
+      KLActive.label('ul-' + layer.id, layer.name + (layer.temporary ? ' · temporary' : ''));
+    }
     map.on('click', layerId, function (e) {
       var f = e.features && e.features[0];
       if (!f) return;
+      var cfg = popupCfg(layer) || {};
+      if (cfg.mode === 'NONE') return;
+
       var p = props(f);
-      var all = Object.keys(p).filter(function (k) {
-        return p[k] != null && String(p[k]).trim() !== '';
-      });
-      var keys = all.slice(0, 24);
+      var has = function (k) { return p[k] != null && String(p[k]).trim() !== ''; };
+      var all = Object.keys(p).filter(has);
+      var chosen = (cfg.mode === 'FIELDS' && (cfg.fields || []).length)
+        /* Filtered by what this feature actually holds, not asserted: a
+           chosen field that happens to be empty here is a blank row, and a
+           blank row is not information. */
+        ? cfg.fields.filter(has)
+        : all;
+      var keys = chosen.slice(0, 24);
+
+      /* The heading names the FEATURE when the style says which field
+         identifies it, and the layer name moves down to the chip line:
+         "TVM_STN_021A" tells you what you clicked, while the layer name is
+         already on the switch you turned it on with. */
+      var head = (cfg.title && has(cfg.title)) ? String(p[cfg.title]) : null;
 
       var h = '<div class="klpop asset-klpop">' +
-        '<div class="kp-head"><div class="kp-name">' + esc(layer.name) + '</div>' +
+        '<div class="kp-head"><div class="kp-name">' + esc(head || layer.name) + '</div>' +
         '<div class="kp-meta">' +
+          (head ? '<span class="kp-chip">' + esc(layer.name) + '</span>' : '') +
           (layer.temporary ? '<span class="kp-chip">Temporary</span>' : '') +
         '</div></div>';
 
@@ -275,9 +314,9 @@
              '<div class="kp-attrs"><div class="kp-attr"><span class="kp-k">' +
              'No attribute values on this feature</span></div></div></div>';
       }
-      if (all.length > keys.length) {
+      if (chosen.length > keys.length) {
         h += '<div class="kp-block"><div class="kp-eyebrow">' +
-             (all.length - keys.length) + ' more not shown</div></div>';
+             (chosen.length - keys.length) + ' more not shown</div></div>';
       }
       h += '</div>';
 

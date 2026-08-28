@@ -53,7 +53,10 @@ function roadsStatus(msg,retry){
    on every rebuild would fire onPick twice per click. */
 function wireRoadHandlers(){
   if(_roadsWired)return;_roadsWired=true;
-  map.on('click','roadnet-hit',e=>{const _t=map.queryRenderedFeatures(e.point)[0];if(_t&&/^(as-|pci|trafficstn)/.test(_t.layer.id))return;if(e.features.length){let _lane=null;try{const _cl=CONDLAYERS.filter(id=>map.getLayer(id));if(_cl.length){const _lf=map.queryRenderedFeatures(e.point,{layers:_cl});if(_lf&&_lf.length){const _m=/^seg-(.+)$/.exec(_lf[0].layer.id);if(_m)_lane=_m[1];}}}catch(_e){}onPick(e.features[0].properties.road,e.lngLat,_lane);}});
+  /* The "something else is on top" guard only applies in Auto mode: when the
+     user has explicitly made the road network the active layer, an asset or
+     PCI line lying over it must not swallow the click (js/02e-active-layer.js). */
+  map.on('click','roadnet-hit',e=>{const _auto=(typeof KLActive==='undefined')||KLActive.isAuto();const _t=_auto?map.queryRenderedFeatures(e.point)[0]:null;if(_t&&/^(as-|pci|trafficstn)/.test(_t.layer.id))return;if(e.features.length){let _lane=null;try{const _cl=CONDLAYERS.filter(id=>map.getLayer(id));if(_cl.length){const _lf=map.queryRenderedFeatures(e.point,{layers:_cl});if(_lf&&_lf.length){const _m=/^seg-(.+)$/.exec(_lf[0].layer.id);if(_m)_lane=_m[1];}}}catch(_e){}onPick(e.features[0].properties.road,e.lngLat,_lane);}});
   map.on('mouseenter','roadnet-hit',()=>map.getCanvas().style.cursor='pointer');
   map.on('mouseleave','roadnet-hit',()=>map.getCanvas().style.cursor='');
 }
