@@ -550,6 +550,48 @@
   .mout .mstat b.mbad{font-size:12.5px;color:#b2182b;font-weight:700;font-family:inherit}
   .mout .mtime{margin-top:8px;padding-top:8px;border-top:1px solid #d7e6fb;font-size:12px;color:#33425a;line-height:1.5}
 
+  /* chainage locator — the road box reuses .locsearch, so only the results
+     list, the readout rows and the map pin need their own rules */
+  #chlRoadList{margin-top:7px;background:#fff;border:1px solid var(--hair);border-radius:11px;box-shadow:var(--shadow);overflow:hidden;display:none;max-height:280px;overflow-y:auto}
+  #chlRoadList.show{display:block}
+  #chlRoadList .lit{padding:9px 12px;cursor:pointer;border-bottom:1px solid #f0f2f5;display:flex;gap:10px;align-items:flex-start}
+  #chlRoadList .lit:last-child{border-bottom:0}
+  #chlRoadList .lit:hover{background:var(--slate)}
+  #chlRoadList .lit .pin{flex:0 0 auto;margin-top:2px;color:var(--accent-d)}
+  #chlRoadList .lit .nm{display:block;font-size:13px;font-weight:600;color:var(--text);line-height:1.25}
+  #chlRoadList .lit .meta{display:block;font-size:11.5px;color:var(--muted);margin-top:1px;line-height:1.3}
+  #chlRoadList .lit .tp{font-family:var(--mono);font-size:10px;color:var(--accent-d);background:#e7f6ef;border-radius:5px;padding:1px 6px;margin-left:auto;flex:0 0 auto;white-space:nowrap;align-self:center}
+  #chlRoadList .lnone{padding:10px 12px;font-size:12.5px;color:var(--muted);line-height:1.4}
+  .chl-range{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:8px}
+  .chl-range:empty{display:none}
+  .chl-range b{color:var(--text);font-weight:600}
+  #chlScope:empty{display:none}
+  /* .mout b is a big block headline (the measure readout's total). Inside a
+     prose line it has to fall back to an ordinary inline bold. */
+  .mout .mtime b{display:inline;font-size:12px;font-weight:700;color:#0e2038;font-family:inherit}
+  .mout .chres{margin-top:8px;padding-top:8px;border-top:1px solid #d7e6fb}
+  .mout .chres-s{font-family:var(--mono);font-size:11.5px;font-weight:700;color:#0e2038;word-break:break-all;line-height:1.35}
+  .mout .chres-m{font-size:11.5px;color:#33425a;line-height:1.55;margin-top:3px}
+  .mout .chres-m b{display:inline;font-size:12px;font-family:var(--mono)}
+  .mout .chres-c{font-family:var(--mono);font-size:11px;color:#5c7290;margin-top:2px}
+
+  /* the pin dropped at the located chainage */
+  .chpin{display:flex;flex-direction:column;align-items:center;cursor:pointer}
+  .chpin-tag{margin-bottom:4px;padding:3px 9px 4px;border-radius:8px;background:#0e2038;text-align:center;box-shadow:0 3px 8px rgba(14,32,56,.35);white-space:nowrap}
+  .chpin-tag b{display:block;font:700 12px/1.15 var(--mono);color:#fff;letter-spacing:.3px}
+  .chpin-tag span{display:block;font:600 9.5px/1.2 var(--sans);color:#9fb6d4;margin-top:1px}
+  .chpin-body{position:relative;line-height:0;filter:drop-shadow(0 5px 8px rgba(11,78,168,.4))}
+  .chpin-ic{display:block}
+  .chpin-pulse{position:absolute;left:50%;bottom:-7px;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:rgba(29,111,224,.5);animation:chpulse 2s ease-out infinite}
+  @keyframes chpulse{0%{transform:scale(.35);opacity:.85}70%{transform:scale(2.4);opacity:0}100%{transform:scale(2.4);opacity:0}}
+  @media (prefers-reduced-motion:reduce){.chpin-pulse{animation:none;opacity:.3}}
+  .chpop{font:400 12px/1.45 var(--sans);color:#33425a;min-width:210px}
+  .chpop-h{font:700 14px/1.2 var(--sans);color:#0e2038;margin-bottom:7px}
+  .chpop-h span{font:600 11px var(--mono);color:#5c7290;margin-left:5px}
+  .chpop-r{display:flex;gap:10px;justify-content:space-between;padding:3px 0;border-top:1px solid #eef2f6}
+  .chpop-r>span{flex:0 0 auto;color:#5c7290;font-weight:600;font-size:11px}
+  .chpop-r b{text-align:right;font:600 11.5px var(--mono);color:#0e2038;word-break:break-all;min-width:0}
+
 /* ---- Filter folder (pane-filter) ---- */
 #pane-filter details.flt-sec{border:1px solid var(--line,#e3e8ef);border-radius:10px;margin-bottom:10px;background:#fff;overflow:hidden}
 #pane-filter details.flt-sec[open]{box-shadow:0 1px 3px rgba(14,32,56,.06)}

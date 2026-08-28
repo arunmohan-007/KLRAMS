@@ -354,6 +354,9 @@ function applyNetFilter(){
      — summary tiles all read 0 and road clicks stop firing. */
   window.NET_SCOPE=rows.length?(list&&list.length?new Set(list.map(f=>String((f.properties||{}).road))):new Set()):null;
   if(typeof applyNetScope==='function')applyNetScope();
+  /* The Chainage Locator picks its road from this same scope, so it has to be
+     told when the scope moves under it. */
+  if(typeof chlOnNetScope==='function')chlOnNetScope();
   renderNetScopeCard(list,rows);
   if(_netFitT)clearTimeout(_netFitT);
   if(list&&list.length){const fl=list;_netFitT=setTimeout(()=>fitFeaturesBounds(fl),550);}
