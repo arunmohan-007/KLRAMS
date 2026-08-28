@@ -636,6 +636,15 @@ public class LayerRegistryService {
             attributes.ensureLatLngAttributes(id, "default");
         }
 
+        /* A layer created straight from a file describes itself from that file's
+           header. This is what a temporary layer is created with, and it is the
+           difference between an import that stores the data and one that stores
+           only the shapes: with no attributes there is nothing for the file's
+           columns to map onto, so every one of them is "not in the attribute
+           list" and dropped. Same transaction as the layer, so a layer created
+           from a file can never exist without the columns that file carried. */
+        int adopted = attributes.adoptFileColumns(id, "default", listOf(body.get("fileColumns")));
+
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", id);
         m.put("key", key);
@@ -643,6 +652,7 @@ public class LayerRegistryService {
         m.put("physicalTable", table);
         m.put("attributeMapping", attrMapping);
         m.put("temporary", temporary);
+        m.put("attributes", adopted);
         return m;
     }
 
@@ -885,6 +895,11 @@ public class LayerRegistryService {
         return s.toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9]+", "_")
                 .replaceAll("^_+|_+$", "");
+    }
+
+    /** A JSON array from the request body, or an empty list for anything else. */
+    private static List<?> listOf(Object raw) {
+        return (raw instanceof List<?> l) ? l : List.of();
     }
 
     private static String str(Object o) {

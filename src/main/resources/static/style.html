@@ -155,6 +155,11 @@
   .sw-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 13px;
     border:1px solid var(--edge);border-radius:11px;background:rgba(6,11,20,.35)}
   .sw-row .swt{font-size:13px;font-weight:600}
+  /* The popup's attribute list. Scrolled rather than allowed to run on: a
+     layer imported from a shapefile can carry a hundred of them, and the
+     Save bar underneath has to stay reachable. */
+  .pu-list{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow:auto;padding-right:4px}
+  .pu-list .swd{font-family:var(--mono,ui-monospace,monospace)}
   .sw-row .swd{font-size:11.4px;color:var(--muted-2);margin-top:3px;line-height:1.5}
   .toggle{position:relative;width:42px;height:23px;flex:none;cursor:pointer}
   .toggle input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2}
@@ -366,6 +371,6 @@
 
 <script src="/js/role-gate.js" defer></script>
 <script src="/js/kl-symbols.js?v=1" defer></script>
-<script src="/js/style-management.js?v=4" defer></script>
+<script src="/js/style-management.js?v=5" defer></script>
 </body>
 </html>

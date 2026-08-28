@@ -81,6 +81,8 @@ public class LayerStyleService {
     private static final Set<String> CAPS = Set.of("butt", "round", "square");
     private static final Set<String> JOINS = Set.of("bevel", "round", "miter");
     private static final Set<String> POINT_MODES = Set.of("CIRCLE", "ICON");
+    /** ALL every attribute the feature carries · FIELDS a chosen list · NONE no popup. */
+    private static final Set<String> POPUP_MODES = Set.of("ALL", "FIELDS", "NONE");
     private static final Set<String> FONTS = Set.of("REGULAR", "BOLD", "SEMIBOLD");
     private static final Set<String> TRANSFORMS = Set.of("none", "uppercase", "lowercase");
     private static final Set<String> PLACEMENTS = Set.of("AUTO", "POINT", "LINE", "LINE_CENTER");
@@ -959,6 +961,31 @@ public class LayerStyleService {
         haloOut.put("blur", clamp(num(halo.get("blur")), 0, 6, 0));
         label.put("halo", haloOut);
         out.put("label", label);
+
+        /* ---- popup ----
+           What a click on the layer shows. Presentation, like everything else
+           here, so it belongs in the same document rather than in a table of
+           its own: the viewer already fetches this once and has it in hand by
+           the time anybody clicks.
+
+           ALL is the default and is what every layer did before this section
+           existed, so a style saved without it keeps behaving exactly as it
+           did. FIELDS is for the layer imported straight from a shapefile with
+           forty columns, where the popup is only useful once it has been cut
+           down to the four that were the point of loading it. */
+        Map<String, Object> pu = mapOf(in.get("popup"));
+        Map<String, Object> popup = new LinkedHashMap<>();
+        popup.put("mode", oneOf(str(pu.get("mode")), POPUP_MODES, "ALL"));
+        popup.put("title", str(pu.get("title")));
+        List<String> fields = new ArrayList<>();
+        for (Object o : listOf(pu.get("fields"))) {
+            String field = str(o);
+            if (field == null || field.isBlank() || fields.contains(field)) continue;
+            fields.add(field);
+            if (fields.size() >= 40) break;   // a popup taller than this is unreadable
+        }
+        popup.put("fields", fields);
+        out.put("popup", popup);
 
         /* ---- whole-layer zoom window ---- */
         out.put("minZoom", clamp(num(in.get("minZoom")), 0, 22, 0));
