@@ -6,12 +6,24 @@
  *   ul-temp    make a temporary layer from a file in one step — name it, pick
  *              the coordinate columns, done
  *
- * Both end in the same place: the file is read in the browser (shpjs for a
- * shapefile zip, kml-reader.js for KML/KMZ, JSON.parse for GeoJSON, a
- * quote-aware split for CSV), the
- * server proposes how the file's columns map onto the layer's attributes, the
- * user confirms, and only then are rows written. The mapping step is the point:
- * guessing silently is how an import rejects every row and says nothing.
+ * Both read the file in the browser (shpjs for a shapefile zip, kml-reader.js
+ * for KML/KMZ, JSON.parse for GeoJSON, a quote-aware split for CSV). Where they
+ * part company is what happens next.
+ *
+ *   ul-import  the server proposes how the file's columns map onto the layer's
+ *              attributes, the user confirms, and only then are rows written.
+ *              The mapping step is the point: the layer's attribute list was
+ *              defined by someone else, months ago, and guessing silently is how
+ *              an import rejects every row and says nothing.
+ *
+ *   ul-temp    no mapping step at all. There is nothing to map ONTO — a
+ *              temporary layer is created by this same action, so the file's own
+ *              header IS the attribute list (see adoptFileColumns), every column
+ *              matches itself, and asking the user to confirm that a column
+ *              called SPEED_FLOW maps to the attribute called SPEED_FLOW is a
+ *              question with one answer. What IS worth asking, and is asked
+ *              afterwards while the layer is on screen rather than never, is how
+ *              it should look and what a click on it should show.
  */
 (function () {
   'use strict';
@@ -19,12 +31,14 @@
   var st = {
     mode: null,          // 'import' | 'temp'
     layerId: null,
+    layerKey: null,      // the registry key a style is saved under
     layerName: '',
     columns: [],
     rows: [],
     geoms: [],
     hasGeometry: false,
-    mapping: null
+    mapping: null,
+    stored: []           // [{key, label}] the attributes the import actually filled
   };
 
   // The folder a temporary layer files under. Resolved by key (not a hard-coded
@@ -103,7 +117,8 @@
     return '' +
       '<div class="ip-title">Temporary layer from a file</div>' +
       '<p class="ip-sub">Name it, pick a file, and — for a CSV — say which columns hold the ' +
-      'coordinates. The layer is created and loaded in one step.</p>' +
+      'coordinates. The layer is created and loaded in one step, with no column mapping: ' +
+      'every column in the file is kept under the name the file gives it.</p>' +
       '<div class="ip-field"><label class="ip-label">Layer name</label>' +
       '<input type="text" id="ulTempName" placeholder="e.g. Contractor survey — March"></div>' +
       '<div class="ip-field"><label class="ip-label">Data file</label>' +
@@ -114,7 +129,9 @@
       '<div class="out" id="ulOut"></div>' +
       '<p class="hint">A temporary layer is visible only to you and is meant for one-off ' +
       'analysis. It appears in the map viewer under <b>My layers</b>, and can be discarded in ' +
-      'one action from Layer Management when you are done.</p>';
+      'one action from Layer Management when you are done. Once it is loaded you can set its ' +
+      'colour, its label and what a click on it shows — all of it optional, and all of it ' +
+      'changeable later in <a class="viewer" href="/style.html">Style &amp; Label Management</a>.</p>';
   }
 
   /* ------------------------------------------------------------------
@@ -438,6 +455,51 @@
   }
 
   /**
+   * The attribute type to give each of the file's columns.
+   *
+   * Decided from the VALUES, not from the header: a temporary layer's columns
+   * are whatever someone's file happens to carry, and a name-based guess reads
+   * "LENGTH" as numeric and "MT_AADT" as text with equal confidence. Sampling
+   * the first 200 rows answers it properly.
+   *
+   * The type is not cosmetic. Only a numeric attribute can be given a colour
+   * ramp or a banded range in Style Management, and only a numeric one is
+   * stored as a JSON number rather than a quoted string — so getting it wrong
+   * here is what makes a perfectly good column un-styleable later.
+   *
+   * Dates are deliberately left as text. A file's date format is anybody's
+   * guess, KLRAMS accepts exactly one, and a date stored as the string it
+   * arrived as is honest; a date silently misread is not.
+   */
+  function typeOf(col) {
+    var seen = 0, ints = 0, nums = 0;
+    for (var i = 0; i < st.rows.length && seen < 200; i++) {
+      var v = st.rows[i][col];
+      if (v == null) continue;
+      var s = String(v).trim();
+      if (s === '') continue;
+      seen++;
+      if (typeof v === 'number') { nums++; if (v === Math.floor(v)) ints++; continue; }
+      // Same tolerance the importer's coerce() applies, so a column typed here
+      // as a number is one whose values it will actually accept as numbers.
+      if (!/^[-+]?[0-9,]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?$/.test(s)) continue;
+      var n = Number(s.replace(/,/g, ''));
+      if (isNaN(n)) continue;
+      nums++;
+      if (n === Math.floor(n) && s.indexOf('.') < 0) ints++;
+    }
+    // Every value has to fit. One "N/A" in a column of numbers means the column
+    // is text, and typing it numeric would drop that row's value on import.
+    if (!seen || nums < seen) return 'STRING';
+    return ints === seen ? 'INTEGER' : 'DECIMAL';
+  }
+
+  /** The file's header as the layer's attribute list. */
+  function fileColumns() {
+    return st.columns.map(function (c) { return { name: c, dataType: typeOf(c) }; });
+  }
+
+  /**
    * Create the temporary layer, then import into it.
    *
    * Two calls rather than one endpoint doing both: the layer is a real layer
@@ -467,12 +529,16 @@
         placement: st.hasGeometry ? 'GEOMETRY' : 'LATLNG',
         uploadFormats: st.hasGeometry ? ['SHAPEFILE', 'GEOJSON'] : ['CSV'],
         attributeMapping: true,
-        temporary: true
+        temporary: true,
+        // What removes the mapping step: the layer is created already knowing
+        // every column this file carries, so there is nothing left to match.
+        fileColumns: fileColumns()
       }, 'POST');
     })
       .then(function (d) {
         st.layerId = d.id;
         st.layerName = d.name;
+        st.layerKey = d.key;
         // The layer's own lat/lng attributes are named lat and lng; map the
         // user's chosen columns onto them.
         st.forcedMapping = st.hasGeometry ? {} : { lat: lat, lng: lng };
@@ -498,9 +564,54 @@
         { dataset: 'default', columns: st.columns }, 'POST')
       .then(function (d) {
         st.mapping = d;
+        if (st.mode === 'temp') return autoImport();
         renderMapping();
       })
       .catch(function (e) { out(esc(e.message), false); });
+  }
+
+  /**
+   * The temporary layer's import: no mapping table, no confirmation.
+   *
+   * Both of those exist to protect a layer that already holds data — the wrong
+   * target picked, "Replace everything" left ticked from a previous run. This
+   * layer was created by the click that led here and is empty, so there is
+   * nothing to protect and nobody else's data to overwrite. The preview is
+   * still asked for, because it is the server that says which attribute each
+   * column landed on and this has no business deciding that for itself.
+   */
+  function autoImport() {
+    var forced = st.forcedMapping || {};
+    var claimed = {};
+    Object.keys(forced).forEach(function (k) { if (forced[k]) claimed[forced[k]] = k; });
+
+    var mapping = {}, stored = [], missing = [];
+    (st.mapping.mapping || []).forEach(function (m) {
+      var col = forced[m.storageKey] || m.fileColumn;
+      // A column already stored as a coordinate is not stored a second time
+      // under its own name: picking "Y" as the latitude should give the layer a
+      // Latitude, not a Latitude and a Y holding the same number.
+      if (col && claimed[col] && claimed[col] !== m.storageKey) col = null;
+      if (!col) {
+        if (m.mandatory) missing.push(m.name);
+        return;
+      }
+      mapping[m.storageKey] = col;
+      stored.push({ key: m.storageKey, label: m.name });
+    });
+    st.stored = stored;
+
+    if (missing.length) {
+      return out('Nothing in the file matches <b>' + missing.map(esc).join('</b>, <b>') +
+                 '</b>, which this layer needs to place a feature.', false);
+    }
+
+    /* Normally empty — the layer was built from this very header. A column can
+       still land here if two of them differ only in case or punctuation, since
+       one attribute cannot hold both; said out loud rather than dropped
+       quietly, because "every column is kept" has to be true or corrected. */
+    st.notStored = st.mapping.unmappedFileColumns || [];
+    return load(mapping, false, null);
   }
 
   function renderMapping() {
@@ -653,16 +764,181 @@
           h += '<div style="margin-top:8px;font-family:var(--mono,monospace);font-size:11px">' +
             r.problems.map(esc).join('<br>') + '</div>';
         }
+        if ((st.notStored || []).length) {
+          h += '<div style="margin-top:6px">' + st.notStored.length + ' column(s) could not be ' +
+            'kept as their own field — another column of this file already has that name once ' +
+            'case and punctuation are ignored: ' + st.notStored.map(esc).join(', ') + '.</div>';
+        }
         h += '<div style="margin-top:8px">It is on the map under <b>My layers</b>.</div>';
         out(h, true);
-        step.innerHTML = '';
+        // The temporary layer keeps the panel: appearance is asked for here,
+        // once, while the layer is in front of whoever made it.
+        if (st.mode === 'temp' && st.layerKey) renderAppearance();
+        else step.innerHTML = '';
         if (typeof logUpload === 'function') {
           logUpload('user-layer', st.layerName, true, 'Loaded ' + r.loaded + ' features');
         }
       })
       .catch(function (e) {
-        go.disabled = false;
+        // Absent on the temporary path, which imports without a confirm step.
+        if (go) go.disabled = false;
         out(esc(e.message), false);
+      });
+  }
+
+  /* ------------------------------------------------------------------
+     Appearance and popup — the temporary layer's last step
+     ------------------------------------------------------------------ */
+
+  /* Deliberately the palette 33-user-layers.js draws user layers in, so the
+     swatches offered here are the colours already on the map rather than a
+     second set nobody chose. */
+  var PALETTE = ['#e0529c', '#4dd4ac', '#f2a03d', '#7c8cf8', '#48c7e8', '#c77dff',
+                 '#ef4444', '#22c55e', '#eab308', '#3887be'];
+
+  /**
+   * Offer a colour, a label and a popup, on the layer that was just loaded.
+   *
+   * Offered HERE rather than left to Style Management for one reason: this is
+   * the only moment anybody has the file in mind. A temporary layer is made to
+   * answer one question, and a layer that arrives in the generic fallback
+   * colour with a popup listing all twenty-nine of a shapefile's columns is one
+   * nobody comes back to fix — they scroll past the noise instead.
+   *
+   * Everything on it is optional and everything is changeable afterwards in
+   * Style &amp; Label Management, which is why "Not now" is a real answer and
+   * not a nag: with no style saved the layer keeps the built-in paint and the
+   * popup lists whatever the feature carries, exactly as before.
+   */
+  function renderAppearance() {
+    var step = document.getElementById('ulStep');
+    if (!step) return;
+    var geom = normaliseGeom(st.geomKind);
+    var fields = st.stored || [];
+
+    var opts = function (sel, none) {
+      return '<option value="">' + none + '</option>' + fields.map(function (f) {
+        return '<option value="' + esc(f.key) + '"' + (f.key === sel ? ' selected' : '') +
+               '>' + esc(f.label) + '</option>';
+      }).join('');
+    };
+
+    var sizeLabel = geom === 'POINT' ? 'Point size'
+                  : geom === 'POLYGON' ? 'Fill opacity' : 'Line width';
+    var sizeAttrs = geom === 'POINT' ? 'min="1" max="20" step="0.5" value="5"'
+                  : geom === 'POLYGON' ? 'min="0.05" max="1" step="0.05" value="0.3"'
+                  : 'min="0.5" max="16" step="0.5" value="3"';
+
+    step.innerHTML =
+      '<div class="ul-map"><div class="ul-map-h">Appearance and popup <span class="ul-opt">optional</span></div>' +
+
+      '<div class="ip-field"><label class="ip-label">Colour</label>' +
+      '<div class="ul-sw">' + PALETTE.map(function (c, i) {
+        return '<button type="button" class="ul-swatch' + (i === 0 ? ' on' : '') +
+               '" data-color="' + c + '" style="background:' + c + '" title="' + c + '"></button>';
+      }).join('') +
+      '<input type="color" id="ulStColor" value="' + PALETTE[0] + '" title="Any other colour">' +
+      '</div></div>' +
+
+      '<div class="ip-field"><label class="ip-label">' + sizeLabel + '</label>' +
+      '<input type="number" id="ulStSize" ' + sizeAttrs + '></div>' +
+
+      '<div class="ip-field"><label class="ip-label">Label features with</label>' +
+      '<select id="ulStLabel">' + opts(null, '— no label —') + '</select>' +
+      '<div class="hint" style="margin-top:6px">Written beside each feature on the map.</div></div>' +
+
+      '<div class="ip-field"><label class="ip-label">On click, show</label>' +
+      '<select id="ulStPopup">' +
+        '<option value="ALL">Every column in the file</option>' +
+        '<option value="FIELDS">Only the columns I choose</option>' +
+        '<option value="NONE">Nothing — no popup</option>' +
+      '</select></div>' +
+
+      '<div class="ip-field" id="ulStFieldsBox" style="display:none">' +
+      '<label class="ip-label">Columns in the popup</label>' +
+      '<div class="ul-fields">' + fields.map(function (f) {
+        return '<label class="ul-ck"><input type="checkbox" class="ul-pf" value="' +
+               esc(f.key) + '"> ' + esc(f.label) + '</label>';
+      }).join('') + '</div>' +
+      '<div class="hint" style="margin-top:6px">Shown in the order they appear here.</div></div>' +
+
+      '<div class="ip-field"><label class="ip-label">Popup heading</label>' +
+      '<select id="ulStTitle">' + opts(null, 'The layer name') + '</select></div>' +
+
+      '<div class="wc-act">' +
+      '<button class="btn sm" type="button" id="ulStSave">Save appearance</button>' +
+      '<button class="btn sm ghost" type="button" id="ulStSkip">Not now</button>' +
+      '</div></div>';
+
+    step.querySelectorAll('.ul-swatch').forEach(function (b) {
+      b.addEventListener('click', function () {
+        step.querySelectorAll('.ul-swatch').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        document.getElementById('ulStColor').value = b.getAttribute('data-color');
+      });
+    });
+    // A colour typed into the picker is nobody's swatch any more, so the
+    // selected one is cleared rather than left claiming a colour it is not.
+    document.getElementById('ulStColor').addEventListener('input', function () {
+      step.querySelectorAll('.ul-swatch').forEach(function (x) { x.classList.remove('on'); });
+    });
+    document.getElementById('ulStPopup').addEventListener('change', function (e) {
+      document.getElementById('ulStFieldsBox').style.display =
+        e.target.value === 'FIELDS' ? '' : 'none';
+    });
+    document.getElementById('ulStSave').onclick = saveAppearance;
+    document.getElementById('ulStSkip').onclick = function () { step.innerHTML = ''; };
+  }
+
+  /**
+   * Save the style, keyed by the layer's registry key.
+   *
+   * A partial document on purpose — the server's clean() fills and clamps every
+   * field this does not mention, so the four things asked for here cannot leave
+   * a style half-specified. Failing to save is reported and nothing more: the
+   * data is already in and the layer is already on the map, so a style that did
+   * not take is a cosmetic loss, not a failed import.
+   */
+  function saveAppearance() {
+    var geom = normaliseGeom(st.geomKind);
+    var size = Number((document.getElementById('ulStSize') || {}).value);
+    var label = (document.getElementById('ulStLabel') || {}).value || null;
+    var mode = (document.getElementById('ulStPopup') || {}).value || 'ALL';
+    var title = (document.getElementById('ulStTitle') || {}).value || null;
+
+    var fields = [];
+    document.querySelectorAll('.ul-pf').forEach(function (c) {
+      if (c.checked) fields.push(c.value);
+    });
+    if (mode === 'FIELDS' && !fields.length) {
+      return out('Tick the columns the popup should show, or choose another option.', false);
+    }
+
+    var style = {
+      color: { mode: 'SINGLE', value: document.getElementById('ulStColor').value },
+      label: { on: !!label, attribute: label },
+      popup: { mode: mode, title: title, fields: fields }
+    };
+    if (isNaN(size)) { /* left blank — clean() applies the default for the kind */ }
+    else if (geom === 'POINT') style.point = { radius: size };
+    else if (geom === 'POLYGON') style.fill = { opacity: size };
+    else style.line = { width: size };
+
+    var btn = document.getElementById('ulStSave');
+    if (btn) btn.disabled = true;
+    out('Saving appearance…');
+
+    api('/api/layer-styles/' + encodeURIComponent(st.layerKey), { style: style }, 'PUT')
+      .then(function () {
+        document.getElementById('ulStep').innerHTML = '';
+        out('&#10003; <b>' + esc(st.layerName) + '</b> is loaded and styled. Open the map and ' +
+            'switch it on under <b>My layers</b>.', true);
+      })
+      .catch(function (e) {
+        if (btn) btn.disabled = false;
+        out('The data is loaded, but the appearance could not be saved: ' + esc(e.message) +
+            ' You can set it in <a class="viewer" href="/style.html">Style &amp; Label ' +
+            'Management</a>.', false);
       });
   }
 
@@ -681,8 +957,8 @@
    */
   function show(typeId, layerId) {
     st.mode = (typeId === 'ul-temp') ? 'temp' : 'import';
-    st.layerId = null; st.forcedMapping = null;
-    st.columns = []; st.rows = []; st.geoms = [];
+    st.layerId = null; st.layerKey = null; st.forcedMapping = null;
+    st.columns = []; st.rows = []; st.geoms = []; st.stored = [];
     var body = document.getElementById('paramBody');
     body.innerHTML = (st.mode === 'temp') ? panelTemp() : panelImport();
     if (st.mode === 'import') loadTargets(layerId);

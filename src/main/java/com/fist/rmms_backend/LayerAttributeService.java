@@ -575,6 +575,106 @@ public class LayerAttributeService {
         }
     }
 
+    /**
+     * Adopt a file's own columns as this layer's attributes.
+     *
+     * <h2>Why a layer would have no attribute list of its own</h2>
+     * Every other layer is described BEFORE anything is loaded into it: the
+     * catalogue declares the RMMS returns, and Layer Management describes a
+     * permanent user layer. A temporary layer has neither. It is created and
+     * loaded in one action from whatever file someone happens to be holding, so
+     * there is nobody to ask what its columns should be — and a layer with no
+     * attributes stores no attributes, which is how a 29-column KML used to
+     * import as 15 bare geometries with an empty popup.
+     *
+     * So the file describes the layer. Each column becomes one attribute named
+     * exactly as the header spells it, which is also registered as its alias —
+     * that is what makes {@link LayerDataService#preview} match all of them
+     * automatically, so a temporary layer needs no mapping step at all.
+     *
+     * Additive and order-preserving. A column the layer already knows is
+     * skipped rather than duplicated — the generated {@code lat}/{@code lng} of
+     * a coordinate-placed layer, a second call with the same file, or a header
+     * that differs from one already adopted only in case or punctuation. That
+     * last one is not tidiness: {@link LayerDataService#preview} matches columns
+     * on the same normalised form, so it could only ever fill one of the two
+     * and the second attribute would sit empty on every row.
+     *
+     * @param columns {@code [{name, dataType}]} in file order; a bare string is
+     *                accepted and typed String. Unknown types become String
+     *                rather than failing the import that follows.
+     * @return how many attributes were created
+     */
+    @Transactional
+    public int adoptFileColumns(int layerId, String dataset, List<?> columns) {
+        if (columns == null || columns.isEmpty()) return 0;
+        String ds = dataset == null ? "default" : dataset;
+
+        /* Every spelling the layer already answers to, read ONCE. The per-header
+           lookup this replaces re-read the whole attribute list for each column,
+           which on the 300-column file the cap below allows is 300 queries to
+           learn something that does not change while the loop runs. */
+        Set<String> known = new HashSet<>();
+        Set<String> taken = new HashSet<>();
+        for (Map<String, Object> r : jdbc.queryForList(
+                "SELECT storage_key, name, aliases FROM layer_attribute "
+              + "WHERE layer_id = ? AND dataset_key = ?", layerId, ds)) {
+            known.add(norm(String.valueOf(r.get("storage_key"))));
+            known.add(norm(String.valueOf(r.get("name"))));
+            Object aliases = r.get("aliases");
+            if (aliases == null) continue;
+            for (String alias : String.valueOf(aliases).split(",")) known.add(norm(alias));
+        }
+        known.remove("");   // a header of pure punctuation matches nothing
+
+        int sort = 100, made = 0;
+        for (Object o : columns) {
+            String header = (o instanceof Map<?, ?> m) ? str(m.get("name"), null) : str(o, null);
+            if (header == null) continue;
+            header = header.trim();
+            if (header.length() > 120) header = header.substring(0, 120);
+
+            // Already described — by the placement attributes generated with the
+            // layer, by an earlier call, or by a column adopted a moment ago.
+            // Adding it anyway would give one field two names, one of which
+            // nothing would ever fill.
+            String seen = norm(header);
+            if (!seen.isEmpty() && !known.add(seen)) continue;
+
+            String base = slug(header);
+            if (base.isEmpty()) base = "field";
+            if (base.length() > 50) base = base.substring(0, 50);
+            String storage = base;
+            // "Road Name" and "road_name" are two columns in the file and must
+            // stay two attributes, however identically they slug.
+            for (int n = 2; taken.contains(storage) || exists(layerId, ds, storage); n++) {
+                storage = base + "_" + n;
+            }
+            taken.add(storage);
+
+            String type = "STRING";
+            if (o instanceof Map<?, ?> m) {
+                String asked = str(m.get("dataType"), null);
+                if (asked != null && TYPES.contains(asked.trim().toUpperCase(Locale.ROOT))) {
+                    type = asked.trim().toUpperCase(Locale.ROOT);
+                }
+            }
+            // A lookup needs a code list nobody has defined for a scratch layer,
+            // so the one type that cannot be adopted from a file is refused here
+            // rather than left to produce an attribute with a dangling set.
+            if ("LOOKUP".equals(type)) type = "STRING";
+
+            insert(layerId, ds, header, storage, type, null, null, "NONE", false,
+                    "CUSTOM", sort, header);
+            sort += 10;
+            made++;
+            // A file with more columns than this is a spreadsheet, not a layer;
+            // the cap keeps one pathological upload from filling the registry.
+            if (made >= 300) break;
+        }
+        return made;
+    }
+
     /** Whatever carries a placement role is mandatory by definition. */
     private void markPlacementMandatory(int layerId, String dataset) {
         jdbc.update("UPDATE layer_attribute SET mandatory = true "

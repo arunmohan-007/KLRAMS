@@ -142,6 +142,11 @@
         prefix: '', suffix: '', decimals: null,
         halo: { color: '#0b1322', width: 1.4, blur: 0 }
       },
+      /* What a click on the layer shows. ALL is what every layer did before
+         there was a choice, so it is the default here for the same reason it
+         is the server's: a layer nobody has configured must keep behaving
+         exactly as it did. */
+      popup: { mode: 'ALL', title: null, fields: [] },
       minZoom: 0, maxZoom: 24
     };
   }
@@ -261,6 +266,7 @@
     var isLine = geom === 'LINESTRING' || geom === 'MULTILINESTRING';
     var isPoint = geom === 'POINT';
     var isPoly = geom === 'POLYGON';
+    var isUser = l.sourceType === 'USER';
 
     var badges = [];
     badges.push(l.style ? '<span class="badge styled">Styled</span>' : '<span class="badge plain">Built-in look</span>');
@@ -296,6 +302,12 @@
           (isPoint ? tabBtn('point', 'Symbol') : '') +
           (isPoly ? tabBtn('fill', 'Fill') : '') +
           tabBtn('label', 'Label' + (s.label.on ? ' <span class="tn">on</span>' : '')) +
+          /* Only a user layer. Every built-in draws its own popup — the asset
+             card, the traffic card, the condition card — each written around
+             the fields that layer actually means something with, and none of
+             them reads this document. A Popup tab on `roads` would be a
+             control that quietly does nothing. */
+          (isUser ? tabBtn('popup', 'Popup') : '') +
           tabBtn('advanced', 'Advanced') +
         '</div>' +
 
@@ -304,6 +316,7 @@
         (isPoint ? '<div class="pane' + (TAB === 'point' ? ' on' : '') + '" data-p="point" id="panePoint"></div>' : '') +
         (isPoly ? '<div class="pane' + (TAB === 'fill' ? ' on' : '') + '" data-p="fill" id="paneFill"></div>' : '') +
         '<div class="pane' + (TAB === 'label' ? ' on' : '') + '" data-p="label" id="paneLabel"></div>' +
+        (isUser ? '<div class="pane' + (TAB === 'popup' ? ' on' : '') + '" data-p="popup" id="panePopup"></div>' : '') +
         '<div class="pane' + (TAB === 'advanced' ? ' on' : '') + '" data-p="advanced" id="paneAdvanced"></div>' +
       '</div>' +
 
@@ -336,6 +349,7 @@
     if (isPoint) renderPointPane();
     if (isPoly) renderFillPane();
     renderLabelPane();
+    if (isUser) renderPopupPane();
     renderAdvancedPane();
     renderPreview();
   }
@@ -993,6 +1007,83 @@
   /* ==================================================================
      ADVANCED PANE
      ================================================================== */
+
+  /* ==================================================================
+     POPUP PANE — user layers only
+     ================================================================== */
+
+  /**
+   * What a click on this layer shows.
+   *
+   * The layer that needs this is the one imported straight from a file: a
+   * shapefile carries every column its author had, and the popup that lists
+   * all twenty-nine of them is scrolled past rather than read. Cutting it to
+   * the four that were the point of loading the layer is the difference
+   * between a popup and a data dump.
+   *
+   * The heading is separate from the field list on purpose. It answers "which
+   * feature is this?", which is a different question from "what does it hold"
+   * — and the field chosen for it is not repeated in the rows below.
+   */
+  function renderPopupPane() {
+    var pane = document.getElementById('panePopup');
+    if (!pane) return;
+    var pu = DRAFT.popup || (DRAFT.popup = { mode: 'ALL', title: null, fields: [] });
+    var attrs = styleAttrs();
+
+    pane.innerHTML =
+      '<div class="sect"><div class="sect-t">On click<span class="sd">— what a feature of ' +
+      'this layer shows when it is clicked</span></div>' +
+      segmented('puMode', [
+        { v: 'ALL', t: 'Every attribute' },
+        { v: 'FIELDS', t: 'Chosen attributes' },
+        { v: 'NONE', t: 'No popup' }
+      ], pu.mode) + '</div>' +
+
+      '<div class="sect" id="puFieldsSect" style="' +
+        (pu.mode === 'FIELDS' ? '' : 'display:none') + '">' +
+        '<div class="sect-t">Attributes to show<span class="sd">— in this order</span></div>' +
+        (attrs.length
+          ? '<div class="pu-list">' + attrs.map(function (a) {
+              return '<label class="sw-row"><span><span class="swt">' + esc(a.name) + '</span>' +
+                '<span class="swd">' + esc(a.key) + '</span></span>' +
+                '<span class="toggle"><input type="checkbox" class="pu-f" value="' + esc(a.key) + '"' +
+                ((pu.fields || []).indexOf(a.key) >= 0 ? ' checked' : '') + '><span></span></span></label>';
+            }).join('') + '</div>'
+          : '<div class="sd">This layer has no attributes yet — load a file into it first.</div>') +
+      '</div>' +
+
+      '<div class="sect" id="puTitleSect" style="' +
+        (pu.mode === 'NONE' ? 'display:none' : '') + '">' +
+        '<div class="sect-t">Heading<span class="sd">— names the feature instead of the ' +
+        'layer, if it carries a field that identifies it</span></div>' +
+        '<div class="fgrid"><div class="fld"><label>Heading from</label>' +
+        attrSelect('puTitle', attrs, pu.title, 'The layer name') + '</div></div>' +
+      '</div>';
+
+    wireSegmented('puMode', function (v) {
+      DRAFT.popup.mode = v;
+      document.getElementById('puFieldsSect').style.display = v === 'FIELDS' ? '' : 'none';
+      document.getElementById('puTitleSect').style.display = v === 'NONE' ? 'none' : '';
+      touch();
+    });
+    $all('.pu-f', pane).forEach(function (c) {
+      c.addEventListener('change', function () {
+        // Collected from the checkboxes in pane order rather than pushed and
+        // spliced, so the saved list is always in the order the screen shows —
+        // which is the order the popup then prints them in.
+        DRAFT.popup.fields = $all('.pu-f', pane)
+          .filter(function (x) { return x.checked; })
+          .map(function (x) { return x.value; });
+        touch();
+      });
+    });
+    var t = document.getElementById('puTitle');
+    if (t) t.addEventListener('change', function () {
+      DRAFT.popup.title = t.value || null;
+      touch();
+    });
+  }
 
   function renderAdvancedPane() {
     var pane = document.getElementById('paneAdvanced');
