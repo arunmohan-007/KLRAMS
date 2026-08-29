@@ -64,6 +64,13 @@ final class SegmentLaneColumns {
         return lane + "_" + param;
     }
 
+    /** True if {@code param} is one of the seven surveyed parameters above. The only check a
+     *  request-supplied parameter name has to pass before {@link #flatSelectList(String, String)}
+     *  will build an identifier out of it. */
+    static boolean isParam(String param) {
+        return PARAMS.contains(param);
+    }
+
     /** Presence marker for a lane, e.g. {@code L_CC} — what {@code condLaneFilter()} tests. */
     static String presenceName(String lane) {
         return "L_" + lane;
@@ -92,6 +99,37 @@ final class SegmentLaneColumns {
                 sb.append(", ").append(paramExpr(alias, lane, param))
                   .append(" AS \"").append(col).append('"');
             }
+            String marker = checked(presenceName(lane));
+            sb.append(", ").append(presenceExpr(alias, lane))
+              .append(" AS \"").append(marker).append('"');
+        }
+        return sb.toString();
+    }
+
+    /**
+     * The flat lane projection for ONE parameter: five {@code <lane>_<param>} columns plus the five
+     * presence markers.
+     *
+     * <p>The vector tile uses this rather than {@link #flatSelectList(String)} because the map only
+     * ever paints one parameter at a time — {@code laneColorExpr()} reads
+     * <code>lane + '_' + cb.value</code> — while the full grid is 35 columns. In an MVT the per
+     * feature tag list is the dominant cost at low zoom (33k segments in the two tiles that cover
+     * the default view), so shipping the other 30 columns to draw one of them was most of the
+     * tile. The parameter arrives as {@code ?p=} and the client re-points the source when the
+     * metric changes; the GeoJSON endpoint, which serves analysis rather than paint, still emits
+     * the whole grid.
+     *
+     * @throws IllegalArgumentException if {@code param} is not one of {@link #PARAMS}
+     */
+    static String flatSelectList(String alias, String param) {
+        if (!isParam(param)) {
+            throw new IllegalArgumentException("unknown condition parameter: " + param);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String lane : LANES) {
+            String col = checked(flatName(lane, param));
+            sb.append(", ").append(paramExpr(alias, lane, param))
+              .append(" AS \"").append(col).append('"');
             String marker = checked(presenceName(lane));
             sb.append(", ").append(presenceExpr(alias, lane))
               .append(" AS \"").append(marker).append('"');

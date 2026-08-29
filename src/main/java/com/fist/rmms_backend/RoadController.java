@@ -27,13 +27,15 @@ import java.util.concurrent.TimeUnit;
 public class RoadController {
 
     private final JdbcTemplate jdbc;
+    private final RoadAttrService attrs;
     private volatile String cachedGeojson;
     private volatile String cachedEtag;
     private volatile String cachedIndex;
     private volatile String cachedIndexEtag;
 
-    public RoadController(JdbcTemplate jdbc) {
+    public RoadController(JdbcTemplate jdbc, RoadAttrService attrs) {
         this.jdbc = jdbc;
+        this.attrs = attrs;
     }
 
     /** Builds the caches if they aren't already warm. Called on startup so the first real request
@@ -87,6 +89,10 @@ public class RoadController {
             cachedIndex = null;
             cachedIndexEtag = null;
         }
+        // The colour-by / legend metadata is a read of the same table and goes stale on the same
+        // event, so it is cleared here rather than needing its own refresh call nobody would know
+        // to make.
+        attrs.clearCache();
         return "{\"ok\":true,\"message\":\"road geojson cache cleared\"}";
     }
 

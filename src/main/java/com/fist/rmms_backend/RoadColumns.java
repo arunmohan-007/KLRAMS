@@ -100,11 +100,24 @@ class RoadColumns {
     String selectList(String alias) {
         StringBuilder sb = new StringBuilder();
         for (String c : get()) {
-            if (!c.matches(SAFE_NAME)) {
-                throw new IllegalStateException("unsafe column name from roads schema: " + c);
-            }
-            sb.append(", ").append(alias).append(".\"").append(c).append("\" AS \"").append(c).append('"');
+            sb.append(selectOne(alias, c));
         }
         return sb.toString();
+    }
+
+    /**
+     * One column as a leading-comma SELECT-list fragment, for a projection that names the few
+     * columns it wants rather than taking every one.
+     *
+     * <p>The name is re-checked against {@link #SAFE_NAME} here, next to the interpolation, for the
+     * same reason {@link #selectList} checks it: the caller may have gone through
+     * {@link #isValid} two calls upstream, but this is the line that would build broken — or
+     * injectable — SQL out of a name that does not satisfy it.
+     */
+    String selectOne(String alias, String column) {
+        if (column == null || !column.matches(SAFE_NAME)) {
+            throw new IllegalStateException("unsafe column name from roads schema: " + column);
+        }
+        return ", " + alias + ".\"" + column + "\" AS \"" + column + "\"";
     }
 }

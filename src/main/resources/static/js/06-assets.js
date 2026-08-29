@@ -383,9 +383,21 @@ ASSETS.forEach(a=>{
   });
 });
 renderFwdLegend();
+/* Colouring by an attribute needs two things that are no longer sitting there
+   waiting: the attribute's distinct values (fetched on demand now, not all 29
+   at login — see ensureAttrMeta) and the attribute itself INSIDE the tile
+   (road tiles carry four properties plus whichever column is being painted, so
+   the source has to be re-pointed at ?attr=). Both are async, so paint after
+   they land; picking a second attribute before the first resolves just repaints
+   again, since each call re-reads the select. */
 function applyNetColor(){
   const a=document.getElementById('netColorBy').value;
-  if(map.getLayer('roadnet'))map.setPaintProperty('roadnet','line-color',a==='__class__'?netColor():netColorByExpr(a));
-  renderNetLegend(a==='__class__'?null:a);
+  const attr=(a==='__class__')?null:a;
+  if(typeof refreshRoadTileAttr==='function')refreshRoadTileAttr(attr);
+  const ready=(attr&&typeof ensureAttrMeta==='function')?ensureAttrMeta(attr):Promise.resolve(null);
+  return ready.then(function(){
+    if(map.getLayer('roadnet'))map.setPaintProperty('roadnet','line-color',attr?netColorByExpr(attr):netColor());
+    renderNetLegend(attr);
+  });
 }
 document.getElementById('netColorBy').addEventListener('change',applyNetColor);

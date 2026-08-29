@@ -36,17 +36,24 @@ public class SegmentTileController {
      * One tile of condition segments. Defaults to the active survey period; {@code ?period_id=}
      * selects another, matching the GeoJSON endpoint.
      *
-     * <p>Three outcomes rather than two. A malformed address is a 400 — validated here rather than
-     * left to {@link GlobalExceptionHandler}, which would answer a binary endpoint with a JSON
-     * error body. An address that is valid but holds nothing to draw is a 204, so a client can
-     * tell "off the network" from "something broke". Everything else is the tile, with a weak
-     * ETag so a pan back over ground already visited revalidates to an empty 304.
+     * <p>{@code ?p=} names the condition parameter whose per-lane values the tile carries — the one
+     * the viewer is currently painting. A tile that carried all seven parameters for all five lanes
+     * spent most of its bytes on 30 columns nothing was reading; the client re-points the source
+     * when the metric changes, which costs one viewport of tiles instead of every tile carrying
+     * every metric forever. Defaults to {@code iri}, the metric the viewer opens on.
+     *
+     * <p>Three outcomes rather than two. A malformed address — or an unknown parameter — is a 400,
+     * validated here rather than left to {@link GlobalExceptionHandler}, which would answer a
+     * binary endpoint with a JSON error body. An address that is valid but holds nothing to draw is
+     * a 204, so a client can tell "off the network" from "something broke". Everything else is the
+     * tile, with a weak ETag so a pan back over ground already visited revalidates to an empty 304.
      */
     @GetMapping(value = "/api/segments/tiles/{z}/{x}/{y}.mvt", produces = MVT)
     public ResponseEntity<byte[]> tile(@PathVariable int z,
                                        @PathVariable int x,
                                        @PathVariable int y,
                                        @RequestParam(value = "period_id", required = false) Integer periodId,
+                                       @RequestParam(value = "p", required = false) String param,
                                        @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         TileCoordinate coord;
         try {
@@ -54,8 +61,11 @@ public class SegmentTileController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
+        String p = (param == null || param.isBlank())
+                ? SegmentTileService.DEFAULT_PARAM : param;
+        if (!SegmentLaneColumns.isParam(p)) return ResponseEntity.badRequest().build();
 
-        byte[] body = tiles.tile(coord, periodId);
+        byte[] body = tiles.tile(coord, periodId, p);
         if (body == null) return ResponseEntity.noContent().build();
 
         String tag = GeoJsonResponse.contentTag(body);

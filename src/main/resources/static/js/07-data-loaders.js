@@ -102,12 +102,42 @@ const ROAD_TILE_LAYER='roads';
    asks for the current viewport, and the whole-network questions (search,
    the attribute filter, the asset register) are answered by RoadsIndex
    instead, which is 43x lighter because it carries no geometry at all. */
+/* The road tile carries `road`, `name`, `len` and `Road_Class` — what the popup
+   reads and what every road paint expression reads — plus, when the user is
+   colouring by something else, that one column. It used to carry all 29 roads
+   columns on every road in every tile at every zoom, which in an MVT (where the
+   per-feature tag list dominates) was most of the tile, to draw one of them.
+   Nothing else lost anything: search, the attribute filter's value pickers and
+   the asset register all read RoadsIndex, which is the whole network's
+   attributes without geometry, fetched once per login. */
+function roadTileUrl(attr){
+  return location.origin+'/api/roads/tiles/{z}/{x}/{y}.mvt'
+    +(attr?('?attr='+encodeURIComponent(attr)):'');
+}
+function netColorByAttr(){
+  const sel=document.getElementById('netColorBy');
+  const v=sel?sel.value:'__class__';
+  return (v&&v!=='__class__')?v:null;
+}
+/* Re-point the live source when the colour-by attribute changes. setTiles
+   re-fetches the viewport (a few tiles) rather than the network; a GeoJSON-mode
+   source has no tiles to re-point and is left alone. */
+function refreshRoadTileAttr(attr){
+  if(!TILES_ON)return;
+  const s=map.getSource('roadnet');
+  if(!s||s.type!=='vector'||typeof s.setTiles!=='function')return;
+  const url=roadTileUrl(attr===undefined?netColorByAttr():attr);
+  if(s._klTileUrl===url)return;
+  s._klTileUrl=url;
+  try{s.setTiles([url]);}catch(e){}
+}
 function ensureRoadSource(){
   if(roadsReady())return Promise.resolve();
   teardownRoads();
   map.addSource('roadnet',{type:'vector',
-    tiles:[location.origin+'/api/roads/tiles/{z}/{x}/{y}.mvt'],
+    tiles:[roadTileUrl(netColorByAttr())],
     minzoom:0,maxzoom:16});
+  map.getSource('roadnet')._klTileUrl=roadTileUrl(netColorByAttr());
   const mk=(id,extra)=>Object.assign({id:id,type:'line',source:'roadnet','source-layer':ROAD_TILE_LAYER},extra);
   /* Hit under paint — see renderRoads() note on dark alpha-stacking. */
   map.addLayer(mk('roadnet-hit',{layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#000000','line-opacity':0.01,'line-width':netHitWidth()}}));
@@ -230,12 +260,39 @@ const _cv=((document.getElementById('showCond')||{}).checked)?'visible':'none';L
    promoteId lifts seg_id to the feature id so a future per-segment
    setFeatureState (custom PCI weights) has something stable to key on; without
    it MapLibre assigns its own ids per tile and they do not survive a re-fetch. */
+/* The condition tile carries the lane values for ONE parameter — the metric the
+   Condition legend is currently showing — not all seven. laneColorExpr() only
+   ever reads `lane + '_' + cb.value`, so the other 30 lane columns were paid for
+   on all 33k segments and read on none of them; on the two tiles that cover the
+   default view that was most of the payload. Everything else a rendered feature
+   needs is still there (the seven segment-level maxima the filter tests, both
+   stored PCI scores, the L_* lane markers), and the popup's per-segment detail
+   comes from /api/segments/one as it already did. */
+function condTileParam(){
+  const v=(typeof cb!=='undefined'&&cb)?cb.value:'';
+  return v||'iri';
+}
+function segTileUrl(param){
+  return location.origin+'/api/segments/tiles/{z}/{x}/{y}.mvt?p='+encodeURIComponent(param||condTileParam());
+}
+/* Switching the condition metric re-points the source: one viewport of tiles
+   instead of every tile carrying every metric for the whole session. */
+function refreshSegTileParam(){
+  if(!TILES_ON)return;
+  const s=map.getSource('segs');
+  if(!s||s.type!=='vector'||typeof s.setTiles!=='function')return;
+  const url=segTileUrl();
+  if(s._klTileUrl===url)return;
+  s._klTileUrl=url;
+  try{s.setTiles([url]);}catch(e){}
+}
 function ensureSegSource(){
   if(map.getSource('segs'))return true;
   if(!TILES_ON)return false;                      /* GeoJSON mode builds it in loadSegments */
   map.addSource('segs',{type:'vector',promoteId:'seg_id',
-    tiles:[location.origin+'/api/segments/tiles/{z}/{x}/{y}.mvt'],
+    tiles:[segTileUrl()],
     minzoom:0,maxzoom:16});
+  map.getSource('segs')._klTileUrl=segTileUrl();
   addCondLayers();
   return true;
 }

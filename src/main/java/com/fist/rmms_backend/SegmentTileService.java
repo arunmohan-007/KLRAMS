@@ -4,6 +4,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * Builds Mapbox Vector Tiles for the condition segments, straight out of PostGIS.
  *
@@ -52,6 +55,10 @@ public class SegmentTileService {
         return maxZoom;
     }
 
+    /** The parameter a tile carries lane values for when the client does not name one. Matches the
+     *  condition metric the viewer opens on, so the default URL and the first painted metric agree. */
+    static final String DEFAULT_PARAM = "iri";
+
     /**
      * One tile's worth of condition segments, or {@code null} when there is nothing to draw.
      *
@@ -59,8 +66,10 @@ public class SegmentTileService {
      * client — the segments table has never been built, the period holds no segments, or the tile
      * simply lands off the network — and the controller turns all of them into 204. A zero-byte
      * 200 would be indistinguishable from a corrupt tile.
+     *
+     * @param param which condition parameter's lane values to carry; see {@link #TILE_SQL}
      */
-    byte[] tile(TileCoordinate t, Integer requestedPeriodId) {
+    byte[] tile(TileCoordinate t, Integer requestedPeriodId, String param) {
         Boolean built = jdbc.queryForObject(
                 "SELECT to_regclass('condition_segments') IS NOT NULL", Boolean.class);
         if (!Boolean.TRUE.equals(built)) return null;
@@ -71,7 +80,7 @@ public class SegmentTileService {
 
         int periodId = periods.resolve(requestedPeriodId);
 
-        byte[] tile = jdbc.queryForObject(TILE_SQL, byte[].class,
+        byte[] tile = jdbc.queryForObject(sqlFor(param), byte[].class,
                 t.z(), t.x(), t.y(), extent, buffer, periodId, extent);
 
         // ST_AsMVT over zero surviving rows yields an empty buffer, not NULL — normalise both.
@@ -79,8 +88,21 @@ public class SegmentTileService {
     }
 
     /**
-     * The tile query, assembled once at class load because none of it varies per request —
-     * extent, buffer, period and the tile address are all bound parameters, in that order.
+     * The tile query for one parameter, assembled once per parameter and cached — there are seven
+     * of them and nothing else in the statement varies per request, since extent, buffer, period
+     * and the tile address are all bound parameters, in that order.
+     *
+     * <p>The projection is deliberately NARROWER than the GeoJSON endpoint's, and the difference is
+     * where most of the payload went. A tile feeds paint and filters only: the popup fetches
+     * {@code /api/segments/one} for the clicked road and every whole-network reader (the PCI
+     * report, the CSV export, the network-scope card) goes to {@code /api/segments/geojson}. So a
+     * tile carries {@code seg_id} (the promoteId), {@code road} (the Road-Network scope test), the
+     * seven segment-level maxima the condition filter reads, the two stored PCI scores the PCI
+     * layers paint, and the lane values for the ONE parameter being painted. What it no longer
+     * carries — {@code from_ch}/{@code to_ch}, the seven {@code avg_*}, {@code lane_count},
+     * {@code xsp_list} and the other 30 lane columns — was never read from a rendered feature.
+     * That is 61 properties per feature down to 21, on 33k features in the two tiles that cover the
+     * default view.
      *
      * <p>Two envelopes, and the second one is the reason this is fast. {@code ST_AsMVTGeom} needs
      * the tile in Web Mercator, but {@code condition_segments.geom} is 4326 and its GiST index
@@ -92,7 +114,12 @@ public class SegmentTileService {
      * <p>{@code ST_AsMVTGeom} returns NULL for a feature that clips away to nothing, so the outer
      * query drops those rather than emitting empty features.
      */
-    private static final String TILE_SQL =
+    private final Map<String, String> sqlByParam = new ConcurrentHashMap<>();
+
+    private String sqlFor(String param) {
+        // computeIfAbsent, not a get/put pair: two clients painting different metrics at once must
+        // not race, and flatSelectList throws for a parameter the controller failed to reject.
+        return sqlByParam.computeIfAbsent(param, p ->
             """
             WITH bounds AS (
                 SELECT merc, ST_Transform(merc, 4326) AS wgs
@@ -102,15 +129,10 @@ public class SegmentTileService {
                 SELECT
                     s.seg_id,
                     s.section_label   AS road,
-                    s.start_chainage  AS from_ch,
-                    s.end_chainage    AS to_ch,
                     s.iri, s.crack, s.pothole, s.rutting, s.texture, s.patch_work, s.ravelling,
-                    s.avg_iri, s.avg_crack, s.avg_pothole, s.avg_rutting, s.avg_texture,
-                    s.avg_patch_work, s.avg_ravelling,
-                    s.lane_count, s.xsp_list,
                     s.pci_def_avg, s.pci_def_worst
             """
-            + SegmentLaneColumns.flatSelectList("s")
+            + SegmentLaneColumns.flatSelectList("s", p)
             + """
                     , ST_AsMVTGeom(ST_Transform(s.geom, 3857), b.merc, ?, ?, true) AS geom
                 FROM condition_segments s, bounds b
@@ -118,5 +140,6 @@ public class SegmentTileService {
                   AND s.geom && b.wgs
             )
             """
-            + "SELECT ST_AsMVT(src, '" + LAYER_NAME + "', ?, 'geom') FROM src WHERE geom IS NOT NULL";
+            + "SELECT ST_AsMVT(src, '" + LAYER_NAME + "', ?, 'geom') FROM src WHERE geom IS NOT NULL");
+    }
 }

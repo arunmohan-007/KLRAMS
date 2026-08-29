@@ -12,7 +12,7 @@ PARAMS.forEach(p=>{const o=document.createElement('option');o.value=p.key;o.text
 const cbHome=document.getElementById('condMetricHome');
 if(cbHome){PARAMS.forEach(p=>{const o=document.createElement('option');o.value=p.key;o.textContent=p.label;cbHome.appendChild(o);});}
 function syncCondMetricUI(){if(cbHome&&cbHome.value!==cb.value)cbHome.value=cb.value;}
-function setCondMetric(key){if(!key||key===cb.value){syncCondMetricUI();return;}cb.value=key;loadThreshDefaults();applyColors();syncCondMetricUI();}
+function setCondMetric(key){if(!key||key===cb.value){syncCondMetricUI();return;}cb.value=key;if(typeof refreshSegTileParam==='function')refreshSegTileParam();loadThreshDefaults();applyColors();syncCondMetricUI();}
 if(cbHome)cbHome.addEventListener('change',e=>setCondMetric(e.target.value));
 function loadThreshDefaults(){let p=PMAP[cb.value];if(!p){p=PARAMS[0];cb.value=p.key;}document.getElementById('cbLabel').textContent=p.label;document.getElementById('fair').value=p.fair;document.getElementById('poor').value=p.poor;updateBandKey();}
 function resetThresholds(){loadThreshDefaults();applyColors();}
@@ -74,7 +74,11 @@ function refreshMatchStatsRemote(){
   }).catch(function(){if(seq===_matchSeq&&info)info.textContent='';});
 }
 function applyFilter(){const ex=filterExpr();LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;if(!map.getLayer(id))return;const base=condLaneFilter(s.x);map.setFilter(id,ex?['all',base,ex]:base);});if(TILES_ON){refreshMatchStatsRemote();return;}matchCount();if(_condFitT)clearTimeout(_condFitT);const _fts=matchingFeatures();if(_fts&&_fts.length)_condFitT=setTimeout(()=>fitFeaturesBounds(_fts),550);}
-cb.addEventListener('change',()=>{loadThreshDefaults();applyColors();syncCondMetricUI();});
+/* refreshSegTileParam FIRST: in tile mode the new metric's lane values are not
+   in the tiles yet, so re-point the source before repainting -- otherwise the
+   lanes render as "no data" grey for the moment between the repaint and the
+   tiles landing. */
+cb.addEventListener('change',()=>{if(typeof refreshSegTileParam==='function')refreshSegTileParam();loadThreshDefaults();applyColors();syncCondMetricUI();});
 ['fair','poor'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{applyColors();updateBandKey();}));
 document.getElementById('showRoads').addEventListener('change',e=>{/* Pre-warming the whole condition network here only makes sense in GeoJSON mode,
    where that download happens anyway. In tile mode it is the ONE thing turning

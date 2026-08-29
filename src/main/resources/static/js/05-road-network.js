@@ -56,7 +56,9 @@ function buildAttrMeta(gj){
        alphabetical) is kept for filter dropdowns/datalists, where sorting
        by name is what a user searching for one entry expects. */
     const valuesByFreq=[...distinct.keys()].sort((a,b)=>(distinct.get(b)-distinct.get(a))||a.localeCompare(b));
-    ATTRS[k]={numeric:numeric&&min!==Infinity,min,max,values:[...distinct.keys()].sort(),valuesByFreq};
+    /* _full: this scan already has every value, so ensureAttrMeta() must not
+       go and re-ask the server for what GeoJSON mode has in hand. */
+    ATTRS[k]={numeric:numeric&&min!==Infinity,min,max,values:[...distinct.keys()].sort(),valuesByFreq,_full:true};
   });
   populateColorBySelect();
 }
@@ -75,15 +77,43 @@ function populateColorBySelect(){
    /api/roads/attrs already excludes id/geom and never contains the
    road/name/len aliases (those aren't real columns), so no SKIP_ATTRS
    filtering is needed here the way buildAttrMeta needs it against raw
-   feature properties. */
+   feature properties.
+
+   ONE request, not one per column. This used to fetch /api/roads/attr-meta
+   for every attribute the roads table has -- 29 of them on this schema, each
+   its own round trip and its own full-table GROUP BY -- and loadRoads()
+   Promise.all'd the lot, so the video catalog, the search wiring and the
+   segment preload all queued behind 30 requests before the map was usable.
+   The distinct values are only ever needed for the ONE attribute someone
+   colours by, so /api/roads/attrs (names + numeric flags, which is all the
+   dropdown and the filter UI read) is fetched at login and the values arrive
+   through ensureAttrMeta() on selection. */
 function buildAttrMetaFromServer(){
   return fetch('/api/roads/attrs').then(r=>r.json()).then(list=>{
     ATTRS={};
-    return Promise.all(list.map(a=>
-      fetch('/api/roads/attr-meta?attr='+encodeURIComponent(a.attr))
-        .then(r=>r.json()).then(meta=>{ATTRS[a.attr]=meta;})
-    ));
+    /* Every column gets an entry immediately: applying a saved network filter
+       checks ATTRS[attr] to tell "column I know, values not fetched yet" from
+       "column that has left the schema", and only the second is an error. */
+    (list||[]).forEach(a=>{ATTRS[a.attr]={numeric:!!a.numeric,values:[],valuesByFreq:[],_full:false};});
   }).then(populateColorBySelect);
+}
+/* Fill in one attribute's distinct values (or min/max) on demand, once.
+   Resolves to the ATTRS entry, full or stub -- a failed fetch leaves the stub
+   in place, which colours the network by the default class palette rather
+   than leaving it unpainted. */
+const _attrMetaP={};
+function ensureAttrMeta(attr){
+  const m=ATTRS[attr];
+  if(!m||m._full)return Promise.resolve(m||null);
+  if(_attrMetaP[attr])return _attrMetaP[attr];
+  _attrMetaP[attr]=fetch('/api/roads/attr-meta?attr='+encodeURIComponent(attr))
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+    .then(function(meta){
+      ATTRS[attr]=Object.assign({values:[],valuesByFreq:[]},meta,{_full:true});
+      return ATTRS[attr];
+    })
+    .catch(function(){delete _attrMetaP[attr];return ATTRS[attr];});
+  return _attrMetaP[attr];
 }
 function netColorByExpr(attr){
   const m=ATTRS[attr];
@@ -325,7 +355,11 @@ function netMetaRows(){
   });
 }
 function applyNetFilter(){
-  const ex=netFilterExpr();
+  /* Tile mode passes no attribute expression: the scope wrapper below AND-s in
+     the matched section labels, and that is the whole filter. GeoJSON mode keeps
+     the attribute expression it always had (ROADS carries every column there),
+     with the scope applied on top of it — the same result, evaluated twice. */
+  const ex=TILES_ON?null:netFilterExpr();
   if(map.getLayer('roadnet'))map.setFilter('roadnet',ex);if(map.getLayer('roadnet-casing'))map.setFilter('roadnet-casing',ex);
   const rows=netFilters.filter(f=>f.attr&&f.val!=='');
   let info='',list=null;
@@ -335,24 +369,45 @@ function applyNetFilter(){
      {properties:...} so renderNetScopeCard and everything downstream keeps
      the shape it already expects. Prefer a hydrated ROADS feature when we
      have one so fitFeaturesBounds can still zoom to the match. */
+  /* "The index never arrived" is not the same answer as "nothing matched", and
+     scoping on it is what turns a failed /api/roads/index into a blank map.
+     netMetaRows() returns zero rows only when RoadsIndex is empty AND ROADS is
+     empty — i.e. the metadata this filter is evaluated against was never
+     loaded, so there is no basis to say any road is out of scope. Since the
+     painted road layers scope by section label now (see scopePropFor), an
+     empty scope would hide the whole network rather than filter it. Treat it
+     as "cannot filter yet": leave everything visible and say why.
+     A genuine zero-match (metadata present, nothing satisfies the conditions)
+     is unaffected and still scopes to the empty set, which is correct. */
+  let unavailable=false;
   if(rows.length){
     const meta=netMetaRows();
-    list=meta.filter(p=>{
-      const t=rows.map(r=>nfRowMatches(p,r));
-      return netMode==='all'?t.every(Boolean):t.some(Boolean);
-    }).map(p=>{
-      const road=p.road!=null?String(p.road):'';
-      const full=(typeof ROADS!=='undefined'&&ROADS[road])?ROADS[road]:null;
-      return full||{properties:p};
-    });
-    info=list.length+' of '+meta.length+' roads match';
+    unavailable=!meta.length;
+    if(unavailable){
+      info='Road list unavailable — filter not applied.';
+      if(typeof RoadsIndex!=='undefined'&&RoadsIndex.ensure)RoadsIndex.ensure().then(function(r){
+        /* One retry, and only if it actually came back with rows, so a second
+           failure cannot loop. */
+        if(r&&r.length)applyNetFilter();
+      },function(){});
+    }else{
+      list=meta.filter(p=>{
+        const t=rows.map(r=>nfRowMatches(p,r));
+        return netMode==='all'?t.every(Boolean):t.some(Boolean);
+      }).map(p=>{
+        const road=p.road!=null?String(p.road):'';
+        const full=(typeof ROADS!=='undefined'&&ROADS[road])?ROADS[road]:null;
+        return full||{properties:p};
+      });
+      info=list.length+' of '+meta.length+' roads match';
+    }
   }
   document.getElementById('netMatchInfo').textContent=info;
   /* Build 163 — scope every road-linked layer to the filtered roads.
      list must be checked for .length: an empty array is truthy in JS, and
      `new Set([])` would scope every layer (including roadnet-hit) to nothing
      — summary tiles all read 0 and road clicks stop firing. */
-  window.NET_SCOPE=rows.length?(list&&list.length?new Set(list.map(f=>String((f.properties||{}).road))):new Set()):null;
+  window.NET_SCOPE=(rows.length&&!unavailable)?(list&&list.length?new Set(list.map(f=>String((f.properties||{}).road))):new Set()):null;
   if(typeof applyNetScope==='function')applyNetScope();
   /* The Chainage Locator picks its road from this same scope, so it has to be
      told when the scope moves under it. */
@@ -661,7 +716,12 @@ function scopePropFor(id){
   if(id.indexOf('seg-')===0)return 'road';
   if(id==='pci-avg'||id==='pci-worst')return 'road';
   if(id==='trafficstn-lyr')return 'section';
-  if(id==='roadnet-hit')return 'road';
+  /* The painted road layers scope by section label like every other road-linked
+     layer, rather than by re-testing the filter's attribute on each feature.
+     Same set of roads either way — the match list is computed from RoadsIndex,
+     which holds every road's attributes — but it means a road tile never has to
+     carry the column being filtered on, only the one being coloured by. */
+  if(id==='roadnet'||id==='roadnet-casing'||id==='roadnet-hit')return 'road';
   if(id.indexOf('as-')===0)return '__sec';
   return null;
 }

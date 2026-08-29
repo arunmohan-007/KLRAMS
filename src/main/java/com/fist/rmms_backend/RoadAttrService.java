@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Answers the one question a vector tile genuinely cannot answer for the road network: what are
@@ -32,9 +33,26 @@ public class RoadAttrService {
      *  starts being a wall of colour swatches nobody can read. */
     private static final int MAX_DISTINCT = 400;
 
+    /**
+     * Answered metadata, kept for the process lifetime.
+     *
+     * <p>Every answer here is a full scan of {@code roads} — a {@code GROUP BY} over one column, or
+     * a {@code min}/{@code max} — for a table that only changes on upload, and the viewer asks the
+     * same questions again every time someone re-picks a colour-by attribute. Same cache lifetime
+     * and same invalidation point as {@link RoadController}'s GeoJSON: cleared by
+     * {@code POST /api/roads/geojson/refresh}, which the upload already calls.
+     */
+    private final Map<String, Map<String, Object>> cache = new ConcurrentHashMap<>();
+
     public RoadAttrService(JdbcTemplate jdbc, RoadColumns columns) {
         this.jdbc = jdbc;
         this.columns = columns;
+    }
+
+    /** Drops the cached metadata so the next request re-reads the table. Called after a road
+     *  upload replaces the network. */
+    public void clearCache() {
+        cache.clear();
     }
 
     /** Every colourable attribute, and whether the client should treat it as numeric or
@@ -64,6 +82,8 @@ public class RoadAttrService {
         if (!columns.isValid(attr)) {
             throw new IllegalArgumentException("unknown road attribute: " + attr);
         }
+        Map<String, Object> hit = cache.get(attr);
+        if (hit != null) return hit;
         // Belt and braces: isValid() already restricts attr to a known column name, but the
         // check that matters is the one right next to the interpolation below, not the one two
         // calls upstream — same reasoning as SegmentLaneColumns.checked().
@@ -81,6 +101,7 @@ public class RoadAttrService {
                     out.put("min", lo == null ? null : ((Number) lo).doubleValue());
                     out.put("max", hi == null ? null : ((Number) hi).doubleValue());
                 });
+            cache.put(attr, out);
             return out;
         }
 
@@ -93,6 +114,7 @@ public class RoadAttrService {
             MAX_DISTINCT);
         out.put("valuesByFreq", valuesByFreq);
         out.put("values", valuesByFreq.stream().sorted(String.CASE_INSENSITIVE_ORDER).toList());
+        cache.put(attr, out);
         return out;
     }
 }
