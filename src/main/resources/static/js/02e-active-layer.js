@@ -426,6 +426,10 @@ var KLActive = (function () {
   return {
     isAuto: isAuto,
     allows: allows,
+    /* Every render layer that has a popup bound to it — the one list in the
+       viewer that knows what a click is worth aiming at, including the user
+       layers built at runtime. mobile-app.js uses it for tap tolerance. */
+    layers: function () { return Object.keys(BY_LAYER); },
     label: label,
     set: set,
     get: function () { return active; },
