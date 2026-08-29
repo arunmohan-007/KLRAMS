@@ -287,19 +287,125 @@
     return (s && s.popup) || null;
   }
 
+  function norm(s) {
+    return String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  /** Every spelling one catalogue attribute answers to, widest first. */
+  function namesOf(a, fallback) {
+    if (!a) return [fallback];
+    return [a.key, a.name].concat(String(a.aliases || '').split(','));
+  }
+
   /**
-   * Popup listing whatever the feature carries.
+   * The rows this popup lists, in order, as {key, label, unit, value}.
+   *
+   * The LAYER decides the list, not the clicked feature. Layer Management
+   * is the description of what this layer holds, so a popup built from
+   * Object.keys(properties) disagrees with it twice: it drops any attribute
+   * blank on this particular feature, which reads as "missing" rather than
+   * "empty here", and it prints storage keys, so an attribute renamed in
+   * Layer Management keeps showing its old slug on the map. Both are fixed
+   * by asking the catalogue — the same source every asset and dashboard
+   * card already labels itself from.
+   *
+   * Values are resolved through the attribute's aliases, so a row imported
+   * under an older spelling of a column still fills that column's row.
+   *
+   * The catalogue is fetched once at page load, so a layer created after
+   * the map was opened is not in it. That case falls through to the
+   * feature's own keys below and behaves exactly as this did before.
+   */
+  function popupFields(layer, cfg, p) {
+    var byNorm = {};
+    Object.keys(p).forEach(function (k) {
+      var n = norm(k);
+      if (!(n in byNorm)) byNorm[n] = p[k];
+    });
+
+    var used = {}, out = [];
+    var value = function (names) {
+      for (var i = 0; i < names.length; i++) {
+        var n = norm(names[i]);
+        if (n && n in byNorm) { used[n] = true; return byNorm[n]; }
+      }
+      return null;
+    };
+    var push = function (key, label, unit, v) {
+      out.push({ key: key, label: label || key, unit: unit || '', value: v });
+    };
+
+    /* A style that names its fields is an explicit answer to "what should a
+       click show", so every field it names gets a row — including one this
+       feature leaves blank, which is the difference between "no value" and
+       "the style does not ask for it". */
+    if (cfg.mode === 'FIELDS' && (cfg.fields || []).length) {
+      cfg.fields.forEach(function (k) {
+        var a = window.AttrCatalog ? AttrCatalog.attr(layer.key, k) : null;
+        push(k, a && a.name, a && a.unit, value(namesOf(a, k)));
+      });
+      return out;
+    }
+
+    var cat = (window.AttrCatalog && AttrCatalog.fields(layer.key)) || [];
+    cat.forEach(function (a) {
+      var v = value(namesOf(a, a.key));
+      /* A retired attribute earns a row only where the feature still carries
+         what it recorded — it is no longer part of the layer's description,
+         so an empty one is not a gap anybody is looking for. */
+      if (a.active === false && (v == null || String(v).trim() === '')) return;
+      push(a.key, a.name, a.unit, v);
+    });
+
+    /* Whatever the feature carries that the catalogue does not describe: a
+       column adopted before the layer was described, or the whole feature
+       when the catalogue never loaded. Appended rather than dropped — this
+       is what keeps the popup working with no catalogue at all. */
+    Object.keys(p).forEach(function (k) {
+      var n = norm(k);
+      if (used[n]) return;
+      var v = p[k];
+      if (v == null || String(v).trim() === '') return;
+      used[n] = true;
+      push(k, k, '', v);
+    });
+    return out;
+  }
+
+  /**
+   * One attribute row.
+   *
+   * An empty value is shown as a dash rather than omitted, so the popup and
+   * Layer Management list the same fields in the same order. A coded value
+   * is expanded to what the code stands for, the same as every other card.
+   */
+  function attrRow(layer, r) {
+    var blank = (r.value == null || String(r.value).trim() === '');
+    var v = blank ? '—'
+      : (window.AttrCatalog ? AttrCatalog.expand(layer.key, r.key, r.value) : r.value);
+    return '<div class="kp-attr"><span class="kp-k">' + esc(r.label) + '</span>' +
+           '<span class="kp-v' + (blank ? ' kp-empty' : '') + '">' + esc(v) +
+           (r.unit && !blank ? ' <span class="kp-u">' + esc(r.unit) + '</span>' : '') +
+           '</span></div>';
+  }
+
+  /**
+   * Popup listing what the layer holds.
    *
    * Built on the shared .klpop card the asset and traffic popups already
    * use, so it inherits the dark theme, the scroll behaviour and the tip
    * styling rather than needing its own CSS in two stylesheets.
    *
-   * A user layer's fields are not known at build time, so the rows come
-   * from the properties the feature actually has — capped at 24, because
-   * an imported shapefile can carry a hundred columns and a popup that
-   * tall is unusable. Where the layer's style names the fields it wants,
-   * those are shown instead and in the order it lists them: a layer
-   * loaded to answer one question should answer it without scrolling.
+   * The rows come from popupFields() — the layer's described attributes,
+   * under the names Layer Management gives them. EVERY one of them is
+   * reachable: the first 24 are listed outright and any remainder sits
+   * behind a "show the rest" disclosure, because an imported shapefile can
+   * carry a hundred columns and a popup that tall is unusable — but a
+   * 28-column KML silently losing its last four attributes is worse. The
+   * card already scrolls (.klpop.asset-klpop), so expanding costs nothing.
+   * Where the layer's style names the fields it wants, those are shown
+   * instead and in the order it lists them: a layer loaded to answer one
+   * question should answer it without scrolling.
    */
   function bindPopup(layerId, layer) {
     /* Named for the active-layer chip before the handler registers, so the
@@ -317,14 +423,9 @@
 
       var p = props(f);
       var has = function (k) { return p[k] != null && String(p[k]).trim() !== ''; };
-      var all = Object.keys(p).filter(has);
-      var chosen = (cfg.mode === 'FIELDS' && (cfg.fields || []).length)
-        /* Filtered by what this feature actually holds, not asserted: a
-           chosen field that happens to be empty here is a blank row, and a
-           blank row is not information. */
-        ? cfg.fields.filter(has)
-        : all;
+      var chosen = popupFields(layer, cfg, p);
       var keys = chosen.slice(0, 24);
+      var rest = chosen.slice(24);
 
       /* The heading names the FEATURE when the style says which field
          identifies it, and the layer name moves down to the chip line:
@@ -339,21 +440,23 @@
           (layer.temporary ? '<span class="kp-chip">Temporary</span>' : '') +
         '</div></div>';
 
+      var rows = function (list) {
+        return list.map(function (r) { return attrRow(layer, r); }).join('');
+      };
+
       if (keys.length) {
         h += '<div class="kp-block"><div class="kp-eyebrow">Attributes</div><div class="kp-attrs">' +
-          keys.map(function (k) {
-            return '<div class="kp-attr"><span class="kp-k">' + esc(k) +
-                   '</span><span class="kp-v">' + esc(p[k]) + '</span></div>';
-          }).join('') +
-          '</div></div>';
+          rows(keys) + '</div>' +
+          (rest.length
+            ? '<details class="trf-allcls"><summary>' + rest.length +
+              ' more attribute' + (rest.length === 1 ? '' : 's') + '</summary>' +
+              '<div class="kp-attrs">' + rows(rest) + '</div></details>'
+            : '') +
+          '</div>';
       } else {
         h += '<div class="kp-block"><div class="kp-eyebrow">Attributes</div>' +
              '<div class="kp-attrs"><div class="kp-attr"><span class="kp-k">' +
              'No attribute values on this feature</span></div></div></div>';
-      }
-      if (chosen.length > keys.length) {
-        h += '<div class="kp-block"><div class="kp-eyebrow">' +
-             (chosen.length - keys.length) + ' more not shown</div></div>';
       }
       h += '</div>';
 
