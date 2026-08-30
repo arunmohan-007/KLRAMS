@@ -725,6 +725,10 @@
       .klpop .kp-locname{font-size:11px;color:#e7f3ed;font-weight:600}
       .klpop .kp-block{padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.06)}
       .klpop .kp-eyebrow{font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:#7fb9a6;margin-bottom:8px}
+      /* Traffic popup: Combined / This carriageway tab switch for a grouped station */
+      .klpop .kp-seg{display:flex;gap:6px;padding:10px 14px 0}
+      .klpop .kp-segbtn{flex:1;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#9fcdbd;font:700 10.5px Inter,system-ui,sans-serif;padding:7px 6px;border-radius:8px;cursor:pointer;transition:background .15s,color .15s;text-align:center}
+      .klpop .kp-segbtn.on{background:#34d399;color:#04241a;border-color:#34d399}
       .klpop .kp-chrow{display:flex;align-items:center;gap:8px}
       .klpop .kp-ch{font-size:11px;font-weight:700;color:#dcefe6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);padding:4px 9px;border-radius:7px;font-family:ui-monospace,Menlo,monospace}
       .klpop .kp-arr{color:#34d399;font-weight:800}
@@ -1163,6 +1167,10 @@
 
   <script src="js/00-attr-catalog.js?v=2"></script>
   <script src="js/01-config.js?v=122"></script>
+  <!-- Points the PCI engine, the PCI report's area weighting and the network
+       scope card at the saved Calculation Rules. Must come after 01-config.js
+       (it mutates PARAMS) but nothing waits on it — see the file header. -->
+  <script src="js/00-calc-rules.js?v=2"></script>
   <script src="js/02-map-core.js?v=119"></script>
   <script src="js/02b-layer-registry.js?v=4"></script>
   <!-- wraps map.on before any module registers a popup — must stay ahead of them all -->
@@ -1171,23 +1179,23 @@
   <script src="js/02d-road-index.js?v=2"></script>
   <script src="js/03-condition-style-filter.js?v=185"></script>
   <script src="js/04-geo-helpers-boundaries.js?v=135"></script>
-  <script src="js/05-road-network.js?v=186"></script>
+  <script src="js/05-road-network.js?v=187"></script>
   <script src="js/06-assets.js?v=185"></script>
   <script src="js/07-data-loaders.js?v=185"></script>
-  <script src="js/08-condition-popup-nsv.js?v=170"></script>
-  <script src="js/09-dashboard-core.js?v=123"></script>
-  <script src="js/10-pci-report.js?v=124"></script>
-  <script src="js/11-dashboard-charts.js?v=123"></script>
+  <script src="js/08-condition-popup-nsv.js?v=171"></script>
+  <script src="js/09-dashboard-core.js?v=124"></script>
+  <script src="js/10-pci-report.js?v=125"></script>
+  <script src="js/11-dashboard-charts.js?v=124"></script>
   <script src="js/12-nsv-video.js?v=174"></script>
   <script src="js/13-search.js?v=121"></script>
   <script src="js/14-pci-engine.js?v=175"></script>
   <script src="js/15-main.js?v=127"></script>
-  <script src="js/16-traffic.js?v=172"></script>
+  <script src="js/16-traffic.js?v=175"></script>
   <script src="js/17-measure.js?v=117"></script>
   <script src="js/18-filters.js?v=120"></script>
   <script src="js/19-asset-register.js?v=121"></script>
   <script src="js/20-asset-dashboard.js?v=117"></script>
-  <script src="js/21-report-hub.js?v=119"></script>
+  <script src="js/21-report-hub.js?v=120"></script>
   <script src="js/22-road-merged.js?v=119"></script>
   <script src="js/23-climate.js?v=117"></script>
   <script src="js/24-fwd.js?v=163"></script>
@@ -1196,7 +1204,7 @@
   <script src="js/27-survey-dashboard.js?v=5"></script>
   <script src="js/28-fwd-dashboard.js?v=5"></script>
   <script src="js/31-traffic-dashboard.js?v=3"></script>
-  <script src="js/30-condition-dashboard.js?v=3"></script>
+  <script src="js/30-condition-dashboard.js?v=4"></script>
   <script src="js/29-export.js?v=9"></script>
   <script src="js/32-iri-2km.js?v=5"></script>
   <script src="js/33-user-layers.js?v=7"></script>

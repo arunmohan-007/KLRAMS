@@ -98,33 +98,55 @@ function rhBuildRows(gj){
   rows.sort((a,b)=>String(a.sec).localeCompare(String(b.sec),undefined,{numeric:true}));
   return rows;
 }
-/* Traffic Station & Count rows: one row per station from /api/traffic/store,
-   joined to the road network by Section Label like every other report, with
-   the count object flattened into columns (totals, ADT, peak hour, direction
-   split, vehicle classes). trfCountObj/trfPad come from 16-traffic.js. */
+/* Traffic Station & Count rows: one row per PHYSICAL station from
+   /api/traffic/store, joined to the road network by Section Label like every
+   other report, with the count object flattened into columns (totals, ADT,
+   peak hour, direction split, vehicle classes). trfCountObj/trfPad/
+   trfMergeCounts come from 16-traffic.js.
+
+   A dual-road station is stored as two rows (TVM_STN_021A / …B, one per
+   carriageway); CalcRules.stationGroupMembers folds each group back into one
+   report row with combined figures, exactly like the Traffic Dashboard and
+   TrafficDashboardController.java — so this report's totals reconcile with
+   the dashboard's for the same station. */
 function rhTrafficRows(st){
   const counts=(st&&st.counts)||{};
-  const rows=((st&&st.stations)||[]).map(rec=>{
-    const sec=rec.section||''; const rp=roadProps(sec); const d={};
-    d['Station']=rec.name||'';
-    if(rec.ch!=null&&rec.ch!=='')d['Chainage (m)']=rec.ch;
-    if(rec.xsp)d['XSP']=rec.xsp;
-    if(rec.lat!=null&&rec.lat!=='')d['Lat']=rec.lat;
-    if(rec.lng!=null&&rec.lng!=='')d['Lng']=rec.lng;
-    const c=(typeof trfCountObj==='function')?trfCountObj(counts[rec.name]):counts[rec.name];
+  const stations=(st&&st.stations)||[];
+  const byName={}; stations.forEach(rec=>{if(rec.name)byName[rec.name]=rec;});
+  const seen={}; const groups=[];
+  stations.forEach(rec=>{
+    const nm=rec.name||''; if(!nm)return;
+    const members=(typeof CalcRules!=='undefined'&&CalcRules.stationGroupMembers)?CalcRules.stationGroupMembers(nm):[nm];
+    const gk=members.slice().sort().join('|');
+    if(seen[gk])return;
+    seen[gk]=true;
+    groups.push(members.map(m=>byName[m]).filter(Boolean));
+  });
+  const rows=groups.map(recs=>{
+    const first=recs[0]||{};
+    const sec=first.section||''; const rp=roadProps(sec); const d={};
+    const label=(typeof CalcRules!=='undefined'&&CalcRules.stationLabel)?CalcRules.stationLabel(first.name):(first.name||'');
+    d['Station']=label;
+    if(recs.length>1)d['Carriageways']=recs.map(r=>r.name).join(' + ');
+    if(first.ch!=null&&first.ch!=='')d['Chainage (m)']=first.ch;
+    if(first.xsp)d['XSP']=first.xsp;
+    if(first.lat!=null&&first.lat!=='')d['Lat']=first.lat;
+    if(first.lng!=null&&first.lng!=='')d['Lng']=first.lng;
+    const cList=recs.map(r=>(typeof trfCountObj==='function')?trfCountObj(counts[r.name]):counts[r.name]).filter(Boolean);
+    const c=cList.length?((typeof trfMergeCounts==='function')?trfMergeCounts(cList):cList[0]):null;
     if(c){
       const days=c.days||1;
       if(c.dateMin)d['Survey dates']=c.dateMin+((c.dateMax&&c.dateMax!==c.dateMin)?(' – '+c.dateMax):'');
       d['Survey days']=days;
-      if(c.total!=null){d['Total (veh)']=c.total;d['ADT (veh/day)']=Math.round(c.total/days);}
+      if(c.total!=null){d['Total (veh)']=Math.round(c.total);d['ADT (veh/day)']=Math.round(c.total/days);}
       let pv=null,pt='';
       if(c.peak&&c.peak.both){pv=c.peak.both.v;pt=c.peak.both.t||'';}
       else{const bh=c.byHour||[];let ph=0,phh=-1;for(let i=0;i<24;i++){const a=(+bh[i]||0)/days;if(a>ph){ph=a;phh=i;}}if(phh>=0){pv=Math.round(ph);pt=trfPad(phh)+':00–'+trfPad((phh+1)%24)+':00';}}
       if(pv!=null){d['Peak hour (veh)']=pv;d['Peak hour time']=pt;}
-      Object.keys(c.byDir||{}).sort().forEach(dir=>{d['Dir: '+dir+' (veh)']=c.byDir[dir];});
-      Object.keys(c.byClass||{}).sort().forEach(cl=>{d[cl]=c.byClass[cl];});
+      Object.keys(c.byDir||{}).sort().forEach(dir=>{d['Dir: '+dir+' (veh)']=Math.round(c.byDir[dir]);});
+      Object.keys(c.byClass||{}).sort().forEach(cl=>{d[cl]=Math.round(c.byClass[cl]);});
     }
-    return {sec:sec,road:rp.Road_Name||rec.road||'',pwd:rp.PWD_Sec||'',district:rp.District||'',data:d};
+    return {sec:sec,road:rp.Road_Name||first.road||'',pwd:rp.PWD_Sec||'',district:rp.District||'',data:d};
   });
   rows.sort((a,b)=>String(a.data.Station).localeCompare(String(b.data.Station),undefined,{numeric:true}));
   return rows;

@@ -540,7 +540,10 @@ public class LayerDataService {
      */
     private Object coerce(Object raw, String type) {
         if (raw == null) return null;
-        String s = String.valueOf(raw).trim();
+        // ImportText rather than String.trim(): trim() stops at U+0020 and leaves
+        // a non-breaking space or BOM from a spreadsheet export in place, which
+        // then groups as its own distinct value in every report.
+        String s = ImportText.clean(String.valueOf(raw));
         if (s.isEmpty()) return null;
         return switch (type) {
             case "INTEGER" -> {

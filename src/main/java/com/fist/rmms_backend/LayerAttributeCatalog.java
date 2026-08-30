@@ -2,9 +2,11 @@ package com.fist.rmms_backend;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The declared attribute catalogue: the canonical column list of every KLRAMS
@@ -109,6 +111,43 @@ final class LayerAttributeCatalog {
     };
     private static final String[] POINT_CH_ALIASES = {
         "Chainage", "Start_Chainage", "Start Chainage", "Chiange", "Start Chiange"
+    };
+
+    /**
+     * The classified vehicle types a Format-B traffic count return actually
+     * carries — one column per type, not the generic Vehicle Class/Count pair
+     * declared below (that pair describes a LONG-format return; a classified
+     * count is wide, one column per type per interval). Declaring them is what
+     * lets Attribute Data show, rename and alias them like any other field.
+     * {name, storage key}. Declared here, ahead of the {@code static} block
+     * below that reads it, because a static field initialises in the order it
+     * is written, not the order it is used.
+     */
+    private static final String[][] TRAFFIC_VEHICLE_CLASSES = {
+        {"MULTI AXLE TANDEM TRUCK", "multi_axle_tandem_truck"},
+        {"MINI BUS", "mini_bus"},
+        {"PRIVATE 4W HATCHBACK", "private_4w_hatchback"},
+        {"TRACTOR- TRAILER", "tractor_trailer"},
+        {"LCV 3 TYRES", "lcv_3_tyres"},
+        {"LCV 6 TYRES", "lcv_6_tyres"},
+        {"LCV 4 TYRES", "lcv_4_tyres"},
+        {"PRIVATE 4W SUV", "private_4w_suv"},
+        {"LCV ACE", "lcv_ace"},
+        {"ARMY - AMBULANCE", "army_ambulance"},
+        {"MULTI AXLE TRIDEM TRUCK", "multi_axle_tridem_truck"},
+        {"TRUCK 3 AXLE", "truck_3_axle"},
+        {"TRUCK 2 AXLE", "truck_2_axle"},
+        {"INSTITUTIONAL BUS", "institutional_bus"},
+        {"PRIVATE BUS", "private_bus"},
+        {"KERALA STATE BUS", "kerala_state_bus"},
+        {"BIKE - SCOOTER", "bike_scooter"},
+        {"AUTO RICKSHAW", "auto_rickshaw"},
+        {"TAXI 4W", "taxi_4w"},
+        {"PRIVATE 4W SEDAN", "private_4w_sedan"},
+        {"BICYCLE", "bicycle"},
+        {"ANIMAL HAND DRAWN CART", "animal_hand_drawn_cart"},
+        {"CYCLE RICKSHAW", "cycle_rickshaw"},
+        {"PEDESTRIAN", "pedestrian"}
     };
 
     /* ------------------------------------------------------------------
@@ -356,14 +395,22 @@ final class LayerAttributeCatalog {
            viewer's, not a column list. What is worth declaring is the count
            return's columns, which is what the import screen maps onto — the same
            contract ImportTemplateController's traffic_counts template carries. */
-        put("traffic_stations", "counts", List.of(
+        List<Attr> countsAttrs = new ArrayList<>(List.of(
             new Attr("Station Name", "name", "STRING", null, true, "NONE",
                      List.of("STATION_NAME", "Station_Name", "Station")),
             dt("Date", "date", "DATE", "Survey Date", "Count Date"),
             s("Time", "time", "TIME", "Slot"),
+            i("Duration (min)", "duration_min", "min", "DURATION_IN_MINUTES", "Duration_In_Minutes"),
+            s("Section Label Code", "section_label_code", "SECTION_LABEL_CODE", "Section_Label_Code"),
+            d("Latitude", "lat", "deg", "LATITUDE"),
+            d("Longitude", "lng", "deg", "LONGITUDE"),
+            d("Road Chainage", "road_chainage", "m", "ROAD_CHAINAGE"),
+            s("XSP", "xsp", "XSP", "XSP_Code"),
             s("Direction", "direction", "DIRECTION", "Dir"),
             s("Vehicle Class", "vehicle_class", "VEHICLE_CLASS", "Vehicle Type", "Class"),
             i("Count", "count", "count", "COUNT", "Volume", "Nos")));
+        countsAttrs.addAll(trafficVehicleClassAttrs());
+        put("traffic_stations", "counts", countsAttrs);
 
         /* ---- Boundaries ----
            Deliberately NOT declared here, and the correction is worth
@@ -478,6 +525,29 @@ final class LayerAttributeCatalog {
 
     static String roadUnit(String column) {
         return column == null ? null : ROAD_UNITS.get(column.toLowerCase(Locale.ROOT));
+    }
+
+    /* ------------------------------------------------------------------
+       Traffic counts — classified vehicle types
+       ------------------------------------------------------------------ */
+
+    private static List<Attr> trafficVehicleClassAttrs() {
+        List<Attr> out = new ArrayList<>();
+        for (String[] vc : TRAFFIC_VEHICLE_CLASSES) out.add(i(vc[0], vc[1], null));
+        return out;
+    }
+
+    /**
+     * Storage keys of the classified vehicle-type columns above, so
+     * {@link LayerAttributeService} can flag them {@code vehicle_count = true}
+     * on seed: counted at import (its label folding any alias onto the
+     * canonical vehicle-class name) rather than excluded the way a meta column
+     * (station/date/time/direction) is.
+     */
+    static Set<String> trafficVehicleClassKeys() {
+        Set<String> out = new LinkedHashSet<>();
+        for (String[] vc : TRAFFIC_VEHICLE_CLASSES) out.add(vc[1]);
+        return out;
     }
 
     /* ------------------------------------------------------------------

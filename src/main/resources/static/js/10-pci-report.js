@@ -70,13 +70,17 @@ function pciReportData(basis){
   Segs.all().forEach(f=>{const v=segPCI(f.properties,basis);if(v==null)return;const L=Math.max(0,(+f.properties.to_ch||0)-(+f.properties.from_ch||0))||1;const a=L*pavementWidthM(f.properties.road);segM[pciBand(v).label]=(segM[pciBand(v).label]||0)+L;segTot+=L;segW+=v*a;segAr+=a;});
   return {sections:secs,seg:{m:segM,tot:segTot,w:segW,area:segAr}};
 }
-/* Area weighting: pavement width (m) from the road-network Pavement_W code (1-5).
-   Dual-carriageway correction: a dual road is drawn as TWO centrelines (A/B) but
-   the shapefile's Pavement_W describes the ENTIRE road (e.g. a 4-lane dual gets
-   code 5 on both halves). Each A/B line is only ONE carriageway, so use half the
-   banded width per line — otherwise the road's area is counted twice. */
-var PVMT_W_M={'1':4.5,'2':6.25,'3':8.5,'4':11.5,'5':14};
-function pavementWidthM(sec){var rd=ROADS[sec];var rp=rd&&rd.properties;var code=rp?rp.Pavement_W:null;var w=(code==null||code==='')?7:(PVMT_W_M[String(code).trim()]||7);var dual=rp&&rp.Single_Du!=null&&String(rp.Single_Du).trim().toLowerCase()==='dual';return dual?w/2:w;}
+/* Area weighting: pavement width (m) from the road-network Pavement_W band code.
+   The band metres, the default for a missing code and the dual-carriageway
+   factor all come from the Calculation Rules module (CalcRules.pavementWidthM),
+   which is also what the Condition dashboard's ranking uses server-side — the
+   band table used to be duplicated here and in ConditionDashboardController.
+
+   Dual-carriageway correction: a dual road is drawn as TWO centrelines but the
+   shapefile's Pavement_W describes the ENTIRE road (e.g. a 4-lane dual gets code
+   5 on both halves). Each line is only ONE carriageway, so it is weighted at the
+   dual factor (0.5) of the banded width — otherwise the area counts twice. */
+function pavementWidthM(sec){var rd=ROADS[sec];return CalcRules.pavementWidthM(rd&&rd.properties);}
 function groupBy(secs,field){const g={};secs.forEach(s=>{const k=s[field]||'Unassigned';(g[k]=g[k]||[]).push(s);});return g;}
 function bandDist(secs){const m={};let tot=0;secs.forEach(s=>{if(s.pci==null)return;tot+=s.len;m[s.band.label]=(m[s.band.label]||0)+s.len;});return {m,tot};}
 function stackBar(m,tot){

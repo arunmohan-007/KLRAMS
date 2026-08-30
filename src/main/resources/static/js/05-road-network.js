@@ -594,21 +594,20 @@ function renderNetScopeCard(list,rows){
   const L=list||[];
   /* Network length = sum of the roads' MEASURED length attribute (Measrd_Len
      or similar); falls back to len when no measured-length column exists.
-     Dual-carriageway sections are stored as two rows (Section_La with a
-     trailing A/B, Single_Du='Dual') that both carry the full length of the
-     same physical stretch — summing them raw double-counts it. Group by the
-     base label (A/B stripped for dual rows) and average each dual pair,
-     matching the `corr` CTE in DashboardController.java. */
+     A dual carriageway is stored as two rows that BOTH carry the full length of
+     the same physical stretch, so summing them raw double-counts it. Which rows
+     are one stretch comes from the carriageway groups in the Calculation Rules
+     module (CalcRules.carriagewayKey, which falls back to the old trailing-A/B
+     guess until they load) — the same grouping the `corr` CTE applies in
+     CalcRuleService.java. Each group is counted once, at its members' average. */
   const num=v=>{const n=parseFloat(String(v==null?'':v).replace(/,/g,''));return isNaN(n)?0:n;};
   const corrGroups=new Map();
   L.forEach(f=>{
     const p=f.properties||{};
     const mk=Object.keys(p).find(k=>/meas/i.test(k)&&/len/i.test(k));
     const len=num(mk!=null?p[mk]:p.len)||num(p.len);
-    const isDual=/^dual/i.test(String(p.Single_Du||''));
     const label=String(p.Section_La||'');
-    const baseLabel=(isDual&&/[AB]$/.test(label))?label.slice(0,-1):(label||('__f'+corrGroups.size));
-    const key=(isDual?'D:':'S:')+baseLabel;
+    const key=label?CalcRules.carriagewayKey(label,p.Single_Du):('S:__f'+corrGroups.size);
     if(!corrGroups.has(key))corrGroups.set(key,[]);
     corrGroups.get(key).push(len);
   });
@@ -671,12 +670,12 @@ function renderNetScopeCard(list,rows){
   const AD=(typeof ASSET_DATA!=='undefined')?ASSET_DATA:{};
   [['bridge','#8a5cb8','Bridges'],['culvert','#e07b2a','Culverts'],['fwd','#7b1fa2','FWD points'],['subgrade','#8a4d1f','Soil tests'],['bituminous_core','#5c6470','Bituminous core test']]
     .forEach(t=>{const gj=AD[t[0]];if(gj&&gj.features)tiles.push([t[1],_nscCountIn(gj.features,'__sec'),t[2]]);});
-  /* A dual carriageway's A/B pair (TVM_STN_021A / TVM_STN_021B) is ONE
-     physical station — count distinct base names (trailing A/B after the
-     station number stripped), matching SurveyDashboardController. */
+  /* The two carriageways of one physical station are two rows (TVM_STN_021A /
+     …B) — count each station GROUP once, using the same grouping the server
+     applies (CalcRules.stationKey, with the old A/B guess as its fallback). */
   if(typeof TRAFFIC_STN!=='undefined'&&TRAFFIC_STN.features&&TRAFFIC_STN.features.length){
     const stnSet=new Set();
-    TRAFFIC_STN.features.forEach(f=>{const p=(f&&f.properties)||{};if(!window.NET_SCOPE.has(String(p.section!=null?p.section:'')))return;const nm=String(p.name||'').trim();stnSet.add(nm?nm.replace(/([0-9])[ABab]$/,'$1'):('__anon'+stnSet.size));});
+    TRAFFIC_STN.features.forEach(f=>{const p=(f&&f.properties)||{};if(!window.NET_SCOPE.has(String(p.section!=null?p.section:'')))return;const nm=String(p.name||'').trim();stnSet.add(nm?CalcRules.stationKey(nm):('__anon'+stnSet.size));});
     tiles.push(['#1565c0',stnSet.size,'Traffic stations']);
   }
   document.getElementById('nscStats').innerHTML=tiles.map(t=>'<span class="nsc-stat'+(t[3]?' txt':'')+'" style="--sc:'+t[0]+'"><span class="n">'+t[1]+'</span><span class="l">'+t[2]+'</span></span>').join('');

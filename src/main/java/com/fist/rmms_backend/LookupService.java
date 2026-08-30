@@ -449,6 +449,51 @@ public class LookupService {
      * "no restriction" — distinct from an empty list, which would mean a lookup
      * that permits nothing.
      */
+    /**
+     * The display label for each stored value of one attribute — {@code FLX ->
+     * "Flexible"} — or an empty map when no code list is bound to it.
+     *
+     * This is how a dashboard turns the values it grouped by into something a
+     * reader recognises without holding its own copy of the code list. It groups
+     * on the STORED value (the road network's own attribute) and labels it here,
+     * so a code the list has not got is still counted and still shown, under the
+     * code itself, rather than being folded into an "Other" bucket by a CASE
+     * statement in the query.
+     *
+     * Keyed by the code and by its normalised form, matching {@link #decodeTable}
+     * — a row holding "flx" and a row holding "FLX" are the same pavement.
+     *
+     * {@code storageKey} is the COLUMN the value sits in ("Cons_Type"), not the
+     * attribute's display name ("Construction Type") — a caller here has a query
+     * result in its hand, so the column is what it knows.
+     */
+    public Map<String, String> displayLabels(String layerKey, String dataset, String storageKey) {
+        Map<String, String> out = new LinkedHashMap<>();
+        jdbc.query("""
+            SELECT v.code, v.label
+              FROM layer_attribute a
+              JOIN layer_definition d ON d.id = a.layer_id
+              JOIN lookup_set s ON s.set_key = a.lookup_key
+              JOIN lookup_value v ON v.set_id = s.id
+             WHERE d.layer_key = ? AND a.dataset_key = ? AND a.storage_key = ?
+             ORDER BY v.sort_order, v.id
+            """, rs -> {
+            String code = rs.getString("code"), label = rs.getString("label");
+            out.putIfAbsent(code, label);
+            out.putIfAbsent(norm(code), label);
+        }, layerKey, dataset == null ? "default" : dataset, storageKey);
+        return out;
+    }
+
+    /** {@link #displayLabels} for a value, falling back to the value itself. */
+    public static String label(Map<String, String> labels, String value) {
+        if (value == null) return null;
+        if (labels == null || labels.isEmpty()) return value;
+        String hit = labels.get(value);
+        if (hit == null) hit = labels.get(norm(value));
+        return hit == null ? value : hit;
+    }
+
     public java.util.Set<String> permittedValues(String layerKey, String dataset, String attributeName) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
             SELECT v.code, v.label

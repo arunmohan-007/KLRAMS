@@ -128,6 +128,17 @@ public class LayerAttributeService {
            has since chosen. Once they rename an attribute, it is theirs. */
         jdbc.execute("ALTER TABLE layer_attribute ADD COLUMN IF NOT EXISTS seeded_name text");
 
+        /* Marks a "counts" attribute whose values should be SUMMED at import
+           rather than skipped as a meta column — the classified vehicle-type
+           columns of a wide traffic-count return (Bike - Scooter, Auto
+           Rickshaw, …), as opposed to Station Name/Date/Time/Direction. See
+           index.html's trfAggregate(): an attribute the importer resolves with
+           this flag on is counted under this attribute's canonical name
+           (folding any alias spelling onto it); one it resolves without the
+           flag is excluded; an unresolved column still falls back to being
+           counted under its own raw header, exactly as before this existed. */
+        jdbc.execute("ALTER TABLE layer_attribute ADD COLUMN IF NOT EXISTS vehicle_count boolean NOT NULL DEFAULT false");
+
         /* Lookups get their own tables here rather than in the Lookup module,
            because an attribute may reference a set before that module is built
            and a dangling reference would be worse than an empty set. */
@@ -258,6 +269,21 @@ public class LayerAttributeService {
             sort += 10;
         }
         mergeDuplicates(layerId, dataset, layerKey);
+
+        // The classified vehicle-type columns are inserted like any other
+        // declared attribute above; this is the one thing that sets them
+        // apart — see the vehicle_count column comment in ensureSchema().
+        // Gated on "untouched" like every other seeded correction, so a
+        // column the RMMS cell has since renamed is left exactly as they set it.
+        if ("traffic_stations".equals(layerKey) && "counts".equals(dataset)) {
+            for (String key : LayerAttributeCatalog.trafficVehicleClassKeys()) {
+                jdbc.update("""
+                    UPDATE layer_attribute SET vehicle_count = true
+                     WHERE layer_id = ? AND dataset_key = ? AND storage_key = ?
+                       AND (seeded_name IS NULL OR seeded_name = name)
+                    """, layerId, dataset, key);
+            }
+        }
     }
 
     /**
@@ -788,6 +814,9 @@ public class LayerAttributeService {
             a.put("role", rs.getString("role"));
             a.put("attributeType", rs.getString("attribute_type"));
             a.put("status", rs.getString("status"));
+            // Counted as a vehicle at traffic-count import rather than
+            // skipped as a meta column — see ensureSchema().
+            a.put("vehicleCount", rs.getBoolean("vehicle_count"));
             // The header spellings an upload may use for this attribute. Shown
             // on the screen and editable, because the list only stays correct if
             // whoever receives a district's file can add the spelling it used.
@@ -824,6 +853,9 @@ public class LayerAttributeService {
         if ("LOOKUP".equals(type)) {
             jdbc.update("UPDATE layer_attribute SET lookup_key = ? WHERE id = ?",
                     lookupKeyFor(body, name), id);
+        }
+        if (Boolean.TRUE.equals(body.get("vehicleCount"))) {
+            jdbc.update("UPDATE layer_attribute SET vehicle_count = true WHERE id = ?", id);
         }
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", id);
@@ -870,17 +902,20 @@ public class LayerAttributeService {
         if (!"NONE".equals(role)) assertRoleFree(layerId, dataset, role, attrId);
 
         boolean mandatory = !"NONE".equals(role) || Boolean.TRUE.equals(body.get("mandatory"));
+        boolean vehicleCount = body.containsKey("vehicleCount")
+                ? Boolean.TRUE.equals(body.get("vehicleCount"))
+                : Boolean.TRUE.equals(cur.get("vehicle_count"));
 
         jdbc.update("""
             UPDATE layer_attribute
                SET name = ?, data_type = ?, length = ?, unit = ?, role = ?, mandatory = ?,
-                   lookup_key = ?, status = ?, aliases = ?
+                   lookup_key = ?, status = ?, aliases = ?, vehicle_count = ?
              WHERE id = ?
             """, name.trim(), type, intOf(body.get("length")), str(body.get("unit"), null),
             role, mandatory,
             "LOOKUP".equals(type) ? lookupKeyFor(body, name) : null,
             str(body.get("status"), "ACTIVE"),
-            str(body.get("aliases"), str(cur.get("aliases"), null)), attrId);
+            str(body.get("aliases"), str(cur.get("aliases"), null)), vehicleCount, attrId);
 
         /* Only a CUSTOM attribute on a jsonb-backed layer owns its storage key,
            so only that case renames stored data. A STANDARD attribute keeps its
@@ -1280,7 +1315,7 @@ public class LayerAttributeService {
         Map<String, Object> out = new LinkedHashMap<>();
         jdbc.query("""
             SELECT d.layer_key, a.dataset_key, a.name, a.storage_key, a.data_type,
-                   a.unit, a.role, a.status, a.aliases, a.lookup_key
+                   a.unit, a.role, a.status, a.aliases, a.lookup_key, a.vehicle_count
               FROM layer_attribute a
               JOIN layer_definition d ON d.id = a.layer_id
              ORDER BY d.layer_key, a.dataset_key, a.sort_order, a.id
@@ -1303,6 +1338,10 @@ public class LayerAttributeService {
             // Carried here so a card can expand a short code without a second
             // request per field — see AttrCatalog.expand().
             a.put("lookupKey", rs.getString("lookup_key"));
+            // Read by index.html's trfAggregate() to tell a vehicle-type column
+            // (Bike - Scooter, Auto Rickshaw, …) apart from a meta one (Station
+            // Name, Date, Time, Direction) among this dataset's declared attributes.
+            a.put("vehicleCount", rs.getBoolean("vehicle_count"));
             list.add(a);
         });
         return out;

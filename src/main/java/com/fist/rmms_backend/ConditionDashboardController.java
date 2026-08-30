@@ -1,5 +1,7 @@
 package com.fist.rmms_backend;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -9,8 +11,13 @@ import java.util.*;
  * Condition Dashboard figures — state-wide and district-wise Low / High / Mean
  * for a single raw condition parameter (IRI, cracking, potholes, rutting,
  * texture, patch work, ravelling), split by pavement surface type
- * (Flexible / Cement Concrete / Paver Block, from roads."Cons_Type") and by
- * road class (SH / MDR), for one survey period.
+ * (roads."Cons_Type") and by road class (roads."Road_Class"), for one survey
+ * period.
+ *
+ * Both splits are taken from the road network's own attributes rather than from
+ * a list of expected codes held here, so whatever the network carries is what
+ * the dashboard reports. Codes are expanded for display through the Lookup
+ * &amp; Short Code module.
  *
  * The condition parameters live per stretch in {@code condition_segments}
  * (built by {@link SegmentService}) in two forms:
@@ -27,12 +34,19 @@ import java.util.*;
 @RequestMapping("/api/condition-dashboard")
 public class ConditionDashboardController {
 
+    private static final Logger log = LoggerFactory.getLogger(ConditionDashboardController.class);
+
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
+    private final CalcRuleService rules;
+    private final LookupService lookups;
 
-    public ConditionDashboardController(JdbcTemplate jdbc, SurveyPeriodService periods) {
+    public ConditionDashboardController(JdbcTemplate jdbc, SurveyPeriodService periods,
+                                        CalcRuleService rules, LookupService lookups) {
         this.jdbc = jdbc;
         this.periods = periods;
+        this.rules = rules;
+        this.lookups = lookups;
     }
 
     /* Parameter whitelist — guards the column name that is interpolated into SQL.
@@ -50,31 +64,39 @@ public class ConditionDashboardController {
 
     private static final String DIST =
         "COALESCE(NULLIF(trim(r.\"District\"),''),'(unmapped)')";
-    /* Cons_Type codes -> the three requested surface families (everything else is Other) */
-    private static final String SURFACE =
-        "CASE upper(trim(r.\"Cons_Type\")) " +
-        "  WHEN 'FLX' THEN 'Flexible' " +
-        "  WHEN 'RGD' THEN 'Cement Concrete' " +
-        "  WHEN 'PVB' THEN 'Paver Block' " +
-        "  ELSE 'Other' END";
-    private static final String ROAD_CLASS =
-        "CASE upper(trim(r.\"Road_Class\")) " +
-        "  WHEN 'SH' THEN 'SH' WHEN 'MDR' THEN 'MDR' ELSE 'Other' END";
-    /* Carriageway width in metres from the Pavement_W band code (1-5), matching
-       10-pci-report.js PVMT_W_M; 7 m default when the code is absent. Used to
-       area-weight (area = stretch length × width) the top-roads ranking.
-       Dual-carriageway correction: a dual road is drawn as TWO centrelines (A/B)
-       but Pavement_W describes the ENTIRE road (e.g. a 4-lane dual carries code 5
-       on both halves), so each A/B line gets HALF the banded width — otherwise
-       the road's area is counted twice. */
-    private static final String WIDTH_M =
-        "(CASE trim(r.\"Pavement_W\"::text) " +
-        "   WHEN '1' THEN 4.5 WHEN '2' THEN 6.25 WHEN '3' THEN 8.5 " +
-        "   WHEN '4' THEN 11.5 WHEN '5' THEN 14 ELSE 7 END) " +
-        " * (CASE WHEN lower(trim(r.\"Single_Du\")) = 'dual' THEN 0.5 ELSE 1 END)";
+    /* Pavement surface and road class are ATTRIBUTES OF THE ROAD NETWORK, joined
+       to a condition stretch through its Section_La. This groups on the value the
+       road data actually holds — no CASE statement listing the codes it expects,
+       so a Cons_Type the network starts carrying appears as its own bucket
+       instead of being swept into "Other" by a rule nobody remembered to update.
 
-    private static final List<String> SURFACES = List.of("Flexible", "Cement Concrete", "Paver Block", "Other");
-    private static final List<String> CLASSES  = List.of("SH", "MDR", "Other");
+       The reader still sees "Flexible" rather than FLX: the code is expanded
+       through the Lookup & Short Code module, which is where the meaning of a
+       short code is defined for the whole system (LookupService.displayLabels).
+       A code with no lookup entry is shown as itself — visible and countable,
+       which is what makes a missing entry easy to spot. */
+    private static final String SURFACE =
+        "COALESCE(NULLIF(trim(r.\"Cons_Type\"),''),'(unspecified)')";
+    private static final String ROAD_CLASS =
+        "COALESCE(NULLIF(trim(r.\"Road_Class\"),''),'(unspecified)')";
+
+    /* Carriageway width for the area weighting IS a calculation rule — the metres
+       behind a band code are a constant somebody has to choose, not something the
+       data states. It comes from the Calculation Rules module: the band's metres,
+       and the share of them one centreline of a dual road takes (the band
+       describes the whole road, so counting both halves at full width would count
+       the road's area twice). */
+    private String widthSql() { return rules.widthSql(); }
+
+    /** Stored value -> the label to show for it, for one roads attribute. */
+    private Map<String, String> labelsFor(String attribute) {
+        try {
+            return lookups.displayLabels("roads", "default", attribute);
+        } catch (Exception e) {
+            log.debug("No lookup labels for roads.{}", attribute, e);
+            return Map.of();
+        }
+    }
 
     /** Column for the chosen basis, after validating the parameter. */
     private String valueColumn(String param, String basis) {
@@ -104,6 +126,12 @@ public class ConditionDashboardController {
             "WHERE cs.period_id = ? AND cs." + vcol + " IS NOT NULL AND cs.end_chainage > cs.start_chainage " +
             "GROUP BY 1,2,3", pid);
 
+        /* The buckets are whatever the road network actually holds, in the order
+           the lookup list defines (falling back to alphabetical for a code the
+           list has not got), rather than a fixed set declared up here. */
+        List<String> SURFACES = bucketsIn(rows, "surface", labelsFor("Cons_Type"));
+        List<String> CLASSES  = bucketsIn(rows, "road_class", labelsFor("Road_Class"));
+
         /* Roll the grouped rows up into every view the dashboard needs. */
         Stat stateAll = new Stat();
         Map<String, Stat> stateBySurface = blank(SURFACES);
@@ -120,18 +148,21 @@ public class ConditionDashboardController {
             Stat s = Stat.of(row);
 
             stateAll.merge(s);
-            stateBySurface.get(sf).merge(s);
-            stateByClass.get(cl).merge(s);
-            matrix.computeIfAbsent(sf, k -> blank(CLASSES)).get(cl).merge(s);
+            stateBySurface.computeIfAbsent(sf, k -> new Stat()).merge(s);
+            stateByClass.computeIfAbsent(cl, k -> new Stat()).merge(s);
+            matrix.computeIfAbsent(sf, k -> blank(CLASSES)).computeIfAbsent(cl, k -> new Stat()).merge(s);
             distAll.computeIfAbsent(d, k -> new Stat()).merge(s);
-            distBySurface.computeIfAbsent(d, k -> blank(SURFACES)).get(sf).merge(s);
-            distByClass.computeIfAbsent(d, k -> blank(CLASSES)).get(cl).merge(s);
+            distBySurface.computeIfAbsent(d, k -> blank(SURFACES)).computeIfAbsent(sf, k -> new Stat()).merge(s);
+            distByClass.computeIfAbsent(d, k -> blank(CLASSES)).computeIfAbsent(cl, k -> new Stat()).merge(s);
         }
+
+        Map<String, String> sfLabels = labelsFor("Cons_Type");
+        Map<String, String> clLabels = labelsFor("Road_Class");
 
         Map<String, Object> statewide = new LinkedHashMap<>();
         statewide.put("overall", stateAll.toMap());
-        statewide.put("by_surface", listOf(SURFACES, stateBySurface, "surface"));
-        statewide.put("by_class", listOf(CLASSES, stateByClass, "road_class"));
+        statewide.put("by_surface", listOf(SURFACES, stateBySurface, "surface", sfLabels));
+        statewide.put("by_class", listOf(CLASSES, stateByClass, "road_class", clLabels));
         List<Map<String, Object>> mtx = new ArrayList<>();
         for (String sf : SURFACES) {
             Map<String, Stat> byCl = matrix.getOrDefault(sf, blank(CLASSES));
@@ -139,7 +170,9 @@ public class ConditionDashboardController {
                 if (byCl.get(cl).n == 0) continue;
                 Map<String, Object> m = byCl.get(cl).toMap();
                 m.put("surface", sf);
+                m.put("surface_label", LookupService.label(sfLabels, sf));
                 m.put("road_class", cl);
+                m.put("road_class_label", LookupService.label(clLabels, cl));
                 mtx.add(m);
             }
         }
@@ -151,8 +184,8 @@ public class ConditionDashboardController {
             Map<String, Object> dm = new LinkedHashMap<>();
             dm.put("district", d);
             dm.put("overall", e.getValue().toMap());
-            dm.put("by_surface", listOf(SURFACES, distBySurface.getOrDefault(d, blank(SURFACES)), "surface"));
-            dm.put("by_class", listOf(CLASSES, distByClass.getOrDefault(d, blank(CLASSES)), "road_class"));
+            dm.put("by_surface", listOf(SURFACES, distBySurface.getOrDefault(d, blank(SURFACES)), "surface", sfLabels));
+            dm.put("by_class", listOf(CLASSES, distByClass.getOrDefault(d, blank(CLASSES)), "road_class", clLabels));
             districts.add(dm);
         }
 
@@ -164,6 +197,10 @@ public class ConditionDashboardController {
         res.put("params", paramCatalog());
         res.put("period_id", pid);
         res.putAll(periodMeta(pid));
+        /* The buckets the screen offers as filters: whatever the network holds,
+           already decoded. Sent so the browser never has to know a code list. */
+        res.put("surfaces", catalog(SURFACES, sfLabels));
+        res.put("classes", catalog(CLASSES, clLabels));
         res.put("statewide", statewide);
         res.put("districts", districts);
         return res;
@@ -204,14 +241,16 @@ public class ConditionDashboardController {
         } else if ("(unmapped)".equals(district)) {
             where.append(" AND NULLIF(trim(r.\"District\"),'') IS NULL");
         }
-        String consCode = surfaceCode(surface);
-        if (consCode != null) {
-            where.append(" AND upper(trim(r.\"Cons_Type\")) = ?");
-            args.add(consCode);
+        /* Both filters take the value as the road network stores it — the same
+           value /summary handed out as the bucket key, so a dropdown built from
+           that response round-trips without any translation on either side. */
+        if (surface != null && !surface.isBlank()) {
+            where.append(" AND ").append(SURFACE).append(" = ?");
+            args.add(surface.trim());
         }
-        if (road_class != null && (road_class.equalsIgnoreCase("SH") || road_class.equalsIgnoreCase("MDR"))) {
-            where.append(" AND upper(trim(r.\"Road_Class\")) = ?");
-            args.add(road_class.toUpperCase());
+        if (road_class != null && !road_class.isBlank()) {
+            where.append(" AND ").append(ROAD_CLASS).append(" = ?");
+            args.add(road_class.trim());
         }
 
         Long total = jdbc.queryForObject(
@@ -309,12 +348,13 @@ public class ConditionDashboardController {
             "       MAX(NULLIF(trim(r.\"Road_Num\"::text),'')) AS road_num, " +
             "       string_agg(DISTINCT NULLIF(trim(r.\"Road_Name\"),''), ' · ') AS road_names, " +
             "       string_agg(DISTINCT NULLIF(trim(r.\"District\"),''), ', ') AS districts, " +
-            "       ROUND((SUM(cs." + vcol + " * (cs.end_chainage - cs.start_chainage) * (" + WIDTH_M + ")) / " +
-            "              NULLIF(SUM((cs.end_chainage - cs.start_chainage) * (" + WIDTH_M + ")), 0))::numeric, 2) AS value, " +
+            "       ROUND((SUM(cs." + vcol + " * (cs.end_chainage - cs.start_chainage) * (" + widthSql() + ")) / " +
+            "              NULLIF(SUM((cs.end_chainage - cs.start_chainage) * (" + widthSql() + ")), 0))::numeric, 2) AS value, " +
             "       ROUND(MAX(cs." + vcol + ")::numeric, 2) AS peak, " +
             "       ROUND((SUM((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) / 1000.0)::numeric, 1) AS lane_km, " +
             "       COUNT(*) AS segments " +
             "FROM condition_segments cs JOIN roads r ON r.\"Section_La\" = cs.section_label " +
+            CalcRuleService.RULE_JOINS +
             "WHERE " + where + " " +
             "GROUP BY " + roadKey + " " +
             "ORDER BY value DESC NULLS LAST, lane_km DESC LIMIT ?",
@@ -365,16 +405,6 @@ public class ConditionDashboardController {
 
     /* ---- helpers ---- */
 
-    private static String surfaceCode(String surface) {
-        if (surface == null || surface.isBlank()) return null;
-        return switch (surface.trim().toLowerCase()) {
-            case "flexible" -> "FLX";
-            case "cement concrete", "rigid" -> "RGD";
-            case "paver block" -> "PVB";
-            default -> null;
-        };
-    }
-
     private List<Map<String, Object>> paramCatalog() {
         List<Map<String, Object>> out = new ArrayList<>();
         PARAMS.forEach((k, v) -> {
@@ -415,12 +445,53 @@ public class ConditionDashboardController {
         return m;
     }
 
-    private static List<Map<String, Object>> listOf(List<String> keys, Map<String, Stat> src, String keyName) {
+    /* Rows carry the STORED value as their key so a filter can send it straight
+       back, and the decoded label alongside it so the screen can read "Flexible"
+       without the browser holding its own copy of the code list. */
+    private static List<Map<String, Object>> listOf(List<String> keys, Map<String, Stat> src,
+                                                    String keyName, Map<String, String> labels) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (String k : keys) {
             Stat s = src.getOrDefault(k, new Stat());
             Map<String, Object> m = s.toMap();
             m.put(keyName, k);
+            m.put("label", LookupService.label(labels, k));
+            out.add(m);
+        }
+        return out;
+    }
+
+    /**
+     * The distinct values one grouped column actually holds, ordered by the
+     * lookup list where there is one and alphabetically for anything it does not
+     * name — so a code nobody has defined yet still gets its own bucket at the
+     * end rather than disappearing into a catch-all.
+     */
+    private static List<String> bucketsIn(List<Map<String, Object>> rows, String col,
+                                          Map<String, String> labels) {
+        Set<String> present = new LinkedHashSet<>();
+        for (Map<String, Object> r : rows) {
+            Object v = r.get(col);
+            if (v != null) present.add(String.valueOf(v));
+        }
+        List<String> known = new ArrayList<>(), unknown = new ArrayList<>();
+        for (String v : present) {
+            (labels.containsKey(v) ? known : unknown).add(v);
+        }
+        List<String> order = new ArrayList<>(labels.keySet());
+        known.sort(Comparator.comparingInt(order::indexOf));
+        Collections.sort(unknown);
+        known.addAll(unknown);
+        return known;
+    }
+
+    /** The bucket catalogue the screen builds its filter dropdowns from. */
+    private static List<Map<String, Object>> catalog(List<String> keys, Map<String, String> labels) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String k : keys) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("value", k);
+            m.put("label", LookupService.label(labels, k));
             out.add(m);
         }
         return out;

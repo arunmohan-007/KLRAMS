@@ -162,7 +162,7 @@ function cdPaint(){
     (unit?(' ('+escH(unit)+')'):'')+'</b> per stretch from the '+pName+' survey — taken as the <b>'+cdBasisLabel().toLowerCase()+
     '</b> across the carriageway lanes. <b>Low</b> and <b>High</b> are the minimum and maximum stretch values in the group; '+
     '<b>Mean</b> is length-weighted (a long stretch counts more than a short one). Surface type comes from the road\'s '+
-    'construction type (Flexible / Cement Concrete / Paver Block); other types are grouped as <b>Other</b>. '+
+    'construction type as the road network records it, with short codes expanded through Lookup &amp; Short Code. '+
     'Use <b>Segment list</b> to see individual stretches above or below a chosen value.</div>';
 
   const heading='<div class="cd-scope">Showing <b>'+escH(cdData.param_label)+'</b> · '+cdBasisLabel()+' · '+scopeLbl+
@@ -351,7 +351,10 @@ function cdBreakdownCard(title,rows,keyName,unit){
   let body='';
   rows.forEach(r=>{
     const has=r.segments>0;
-    body+='<tr'+(has?'':' class="cd-empty"')+'><td>'+escH(r[keyName])+'</td>'+
+    /* The server sends the value as the road network stores it (FLX) plus the
+       label the Lookup module expands it to (Flexible). Show the label, keep the
+       value for the filter — no code list lives in this file. */
+    body+='<tr'+(has?'':' class="cd-empty"')+'><td>'+escH(r.label!=null?r.label:r[keyName])+'</td>'+
       '<td class="n">'+cdFmt(r.low)+'</td><td class="n">'+cdFmt(r.high)+'</td>'+
       '<td class="n">'+cdFmt(r.mean)+'</td><td class="n">'+fmtKm(r.lane_km||0)+'</td>'+
       '<td class="n">'+fmtN(r.segments||0)+'</td></tr>';
@@ -369,8 +372,13 @@ function cdShowTable(){cdView='table';cdTbl=null;cdPaintTable();}
 function cdPaintTable(){
   const body=document.getElementById('dashBody');if(!body)return;
   const unit=cdUnit();
-  const surfaces=['','Flexible','Cement Concrete','Paver Block'];
-  const classes=['','SH','MDR'];
+  /* The surface and road-class options are whatever the road network actually
+     holds this period — cdData.surfaces / .classes, each {value,label} — so a
+     construction type the network starts carrying appears here on its own,
+     with no list in the browser to fall out of step with the data. */
+  const optList=(a)=>[{value:'',label:'All'}].concat(a||[]);
+  const surfaces=optList(cdData.surfaces);
+  const classes=optList(cdData.classes);
   const controls='<div class="dcard cd-filter"><div class="dcard-head"><h3>Segment list — '+escH(cdData.param_label)+
     ' '+(cdDistrict?('· '+escH(cdDistrict)):'· State-wide')+'</h3></div>'+
     '<div class="cd-form">'+
@@ -381,8 +389,8 @@ function cdPaintTable(){
         '<option value="lt"'+(cdTblOp==='lt'?' selected':'')+'>&lt; less than</option>'+
       '</select></label>'+
       '<label><input type="number" step="0.01" id="cdVal" placeholder="value" value="'+escH(cdTblValue)+'"> '+escH(unit)+'</label>'+
-      '<label>Surface <select id="cdSurf">'+surfaces.map(s=>'<option value="'+escH(s)+'"'+(s===cdTblSurface?' selected':'')+'>'+(s||'All')+'</option>').join('')+'</select></label>'+
-      '<label>Road class <select id="cdCls">'+classes.map(c=>'<option value="'+escH(c)+'"'+(c===cdTblClass?' selected':'')+'>'+(c||'All')+'</option>').join('')+'</select></label>'+
+      '<label>Surface <select id="cdSurf">'+surfaces.map(s=>'<option value="'+escH(s.value)+'"'+(s.value===cdTblSurface?' selected':'')+'>'+escH(s.label)+'</option>').join('')+'</select></label>'+
+      '<label>Road class <select id="cdCls">'+classes.map(c=>'<option value="'+escH(c.value)+'"'+(c.value===cdTblClass?' selected':'')+'>'+escH(c.label)+'</option>').join('')+'</select></label>'+
       '<button type="button" class="cd-run" onclick="cdRunTable()">Show segments</button>'+
     '</div>'+
     '<div class="sub">Lists stretches from '+escH((cdPeriodObj()||{}).name||'')+' whose '+escH(cdData.param_label)+

@@ -9,53 +9,41 @@ import java.util.stream.Collectors;
 /**
  * Road-network dashboard figures.
  *
- * Dual-carriageway handling: a dual road is drawn as two centrelines whose
- * Section_La differ only by a trailing A/B (e.g. .../1A and .../1B) and whose
- * Single_Du = 'Dual'. Summing raw Measrd_Len would double-count them, so for a
- * dual pair we count the AVERAGE of the two lengths once (grouped by the label
- * with the trailing A/B stripped). Single roads use Measrd_Len as-is.
+ * Carriageway correction: a dual road is drawn as two centrelines that each carry
+ * the FULL length of one physical stretch, so summing raw Measrd_Len would
+ * double-count it. The centrelines belonging to one stretch are named in a
+ * carriageway GROUP maintained in the Calculation Rules module, and a group is
+ * counted once at the AVERAGE of its members' lengths. An ungrouped section uses
+ * its Measrd_Len as-is. (Before that module existed the pairing was guessed from
+ * a trailing A/B in Section_La; the groups were seeded from that guess, so the
+ * figures did not move when it shipped.)
  *
- * Every breakdown (district, class, PWD section, owner) uses this corrected length.
+ * Every breakdown (district, class, PWD section, owner, construction type) groups
+ * on the value the road network STORES and reports this corrected length against
+ * it. Nothing here rewrites an attribute on the way out: an owner spelled two
+ * ways is two rows, which is how the data error gets noticed and fixed at source.
+ * The wording a reader sees comes from the Lookup &amp; Short Code list bound to
+ * that attribute, applied in the browser (js/11-dashboard-charts.js).
+ *
+ * /summary also reports each correction's before and after value under
+ * "corrections". See {@link CalcRuleService}.
  */
 @RestController
 @RequestMapping("/api/dashboard")
 public class DashboardController {
 
     private final JdbcTemplate jdbc;
+    private final CalcRuleService rules;
 
-    public DashboardController(JdbcTemplate jdbc) {
+    public DashboardController(JdbcTemplate jdbc, CalcRuleService rules) {
         this.jdbc = jdbc;
+        this.rules = rules;
     }
 
-    /* A per-corridor corrected-length view, built once and reused by every query.
-       base_label = Section_La with a trailing A or B removed when Single_Du='Dual'.
-       corrected length per corridor:
-         - dual  -> AVG(Measrd_Len) over the A/B rows that share base_label
-         - single-> the row's Measrd_Len
-       Attributes (district/class/section/owner) are taken as the MAX (any) within
-       the corridor — both halves carry the same values. */
-    private static final String CORR =
-        "WITH base AS (" +
-        "  SELECT *, " +
-        "    CASE WHEN lower(\"Single_Du\")='dual' AND \"Section_La\" ~ '[AB]$' " +
-        "         THEN left(\"Section_La\", length(\"Section_La\")-1) " +
-        "         ELSE \"Section_La\" END AS base_label, " +
-        "    lower(\"Single_Du\")='dual' AS is_dual " +
-        "  FROM roads), " +
-        "corr AS (" +
-        "  SELECT base_label, " +
-        "    bool_or(is_dual) AS is_dual, " +
-        "    CASE WHEN bool_or(is_dual) THEN AVG(\"Measrd_Len\"::double precision) " +
-        "         ELSE MAX(\"Measrd_Len\"::double precision) END AS corr_len, " +
-        "    MAX(\"District\")   AS district, " +
-        "    MAX(\"Road_Class\") AS road_class, " +
-        "    MAX(\"Cons_Type\")  AS cons_type, " +
-        "    MAX(\"PWD_Sec\")    AS pwd_sec, " +
-        /* Owner names are entered inconsistently (e.g. "KRFB — PMU" vs "KRFB PMU"):
-           collapse any run of dashes/em-dashes to a single space and squeeze
-           repeated whitespace so both variants group together downstream. */
-        "    MAX(regexp_replace(regexp_replace(trim(\"Current_Ow\"), '[-–—]+', ' ', 'g'), '\\s+', ' ', 'g')) AS current_ow " +
-        "  FROM base GROUP BY base_label) ";
+    /* The per-corridor corrected-length view every query below builds on. It is
+       a JOIN onto the rule tables, not generated SQL, so there is nothing here
+       to invalidate when the rules are edited — the next query simply sees them. */
+    private static final String CORR = CalcRuleService.CORR;
 
     @GetMapping("/summary")
     public Map<String, Object> summary() {
@@ -97,6 +85,16 @@ public class DashboardController {
 
         out.putAll(shMdrCounts(null));
         out.put("sh_mdr_by_district", shMdrByDistrict());
+
+        /* Every correction applied above, with the figure before it and after it,
+           so a reader can see what the rules changed rather than take the totals
+           on trust. Each entry also names where else that rule is used. Failing
+           to build this must not cost the dashboard its numbers. */
+        try {
+            out.put("corrections", rules.effects());
+        } catch (Exception e) {
+            out.put("corrections", List.of());
+        }
         return out;
     }
 
@@ -227,21 +225,8 @@ public class DashboardController {
        Unlike CORR, a corridor is keyed by (district, road_class, road_num,
        road_name, base_label) so every stretch keeps its OWN district — a State
        Highway that runs through several districts is NOT collapsed onto a single
-       one. Dual A/B carriageways still share base_label and are averaged once. */
-    private static final String LONG_CORR =
-        "WITH base AS (" +
-        "  SELECT \"District\" AS district, \"Road_Class\" AS road_class, " +
-        "         \"Road_Num\" AS road_num, \"Road_Name\" AS road_name, " +
-        "         \"Measrd_Len\"::double precision AS len, " +
-        "         lower(\"Single_Du\")='dual' AS is_dual, " +
-        "         CASE WHEN lower(\"Single_Du\")='dual' AND \"Section_La\" ~ '[AB]$' " +
-        "              THEN left(\"Section_La\", length(\"Section_La\")-1) " +
-        "              ELSE \"Section_La\" END AS base_label " +
-        "  FROM roads), " +
-        "corr AS (" +
-        "  SELECT district, road_class, road_num, road_name, " +
-        "    CASE WHEN bool_or(is_dual) THEN AVG(len) ELSE MAX(len) END AS corr_len " +
-        "  FROM base GROUP BY district, road_class, road_num, road_name, base_label) ";
+       one. Carriageway groups still share base_label and are averaged once. */
+    private static final String LONG_CORR = CalcRuleService.LONG_CORR;
 
     /* Longest roads (top 10 by corrected length), overall or within one district.
        SH: the same SH number can run under several Road_Names, so lengths are

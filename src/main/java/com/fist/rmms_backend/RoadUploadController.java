@@ -114,7 +114,10 @@ public class RoadUploadController {
                     Integer cap = colMaxLen.get(k);
                     JsonNode v = p.get(k);
                     if (cap == null || v == null || v.isNull()) continue;
-                    if (v.asText().length() > cap) widen.add(k);
+                    // Measure what will actually be stored — a value that only
+                    // overflows because of trailing spaces does not need the
+                    // column widened, since the insert trims it.
+                    if (ImportText.clean(v.asText()).length() > cap) widen.add(k);
                 }
             }
             for (String k : widen) {
@@ -169,7 +172,12 @@ public class RoadUploadController {
                         try { val = Double.parseDouble(v.asText().trim()); }
                         catch (Exception e) { continue; }
                     } else {
-                        val = v.asText();
+                        /* Text columns are stored as given EXCEPT for whitespace
+                           around the value — see ImportText. An untrimmed value
+                           is indistinguishable on screen from the trimmed one but
+                           groups separately in every dashboard, so it has to be
+                           cleaned here rather than in the queries that read it. */
+                        val = ImportText.clean(v.asText());
                     }
                     names.add('"' + k + '"');
                     vals.add(val);

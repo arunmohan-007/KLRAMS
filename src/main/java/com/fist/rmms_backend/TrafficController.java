@@ -223,9 +223,12 @@ public class TrafficController {
         return Map.of("cleared", true, "stations", a, "counts", b);
     }
 
+    /* Station names and section labels are matched and grouped as strings, so a
+       stray space or newline around one would make it a different station — see
+       ImportText. */
     private String txt(JsonNode n, String f) {
         JsonNode v = n.get(f);
-        return (v == null || v.isNull()) ? null : v.asText();
+        return (v == null || v.isNull()) ? null : ImportText.clean(v.asText());
     }
 
     private Double dbl(JsonNode n, String f) {

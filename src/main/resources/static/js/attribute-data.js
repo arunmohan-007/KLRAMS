@@ -120,11 +120,11 @@
     html += '<div class="tbl-wrap"><table class="atbl"><thead><tr>' +
       '<th>Name</th><th>Type</th><th>Lookup</th><th>Length</th><th>Unit</th>' +
       '<th>Accepted column names</th>' +
-      '<th>Placement</th><th>Mandatory</th><th>Attribute type</th><th>Status</th><th></th>' +
+      '<th>Placement</th><th>Mandatory</th><th>Vehicle count</th><th>Attribute type</th><th>Status</th><th></th>' +
       '</tr></thead><tbody>' +
       (current().attributes.length
         ? current().attributes.map(rowHtml).join('')
-        : '<tr><td colspan="11" class="empty">No attributes defined yet.</td></tr>') +
+        : '<tr><td colspan="12" class="empty">No attributes defined yet.</td></tr>') +
       '</tbody></table></div>';
 
     document.getElementById('attrBody').innerHTML = html;
@@ -164,6 +164,7 @@
       '<td class="alz">' + aliasChips(a) + '</td>' +
       '<td>' + (a.placement ? '<span class="chip pl">' + esc(ROLE_LABEL[a.role]) + '</span>' : '') + '</td>' +
       '<td>' + (a.mandatory ? '<span class="chip mn">Required</span>' : '<span class="opt">Optional</span>') + '</td>' +
+      '<td>' + (a.vehicleCount ? '<span class="chip mn">Counted</span>' : '') + '</td>' +
       '<td>' + (a.attributeType === 'CUSTOM' ? '<span class="chip cu">Custom</span>' : 'Standard') + '</td>' +
       '<td><span class="badge ' + (a.status === 'ACTIVE' ? 'ok' : 'off') + '">' + esc(a.status) + '</span></td>' +
       '<td class="acts" data-requires="admin">' +
@@ -240,6 +241,12 @@
         (a && a.mandatory ? ' checked' : '') + '> Mandatory</label>' +
         '<div class="hint">A mandatory attribute must be matched to a column at import. ' +
         'An optional one may be left unmapped, and rows whose value does not fit the type are skipped.</div></div>' +
+      (state.dataset === 'counts' ? '<div class="fld"><label class="ck"><input type="checkbox" id="afVehCount"' +
+        (a && a.vehicleCount ? ' checked' : '') + '> Vehicle count</label>' +
+        '<div class="hint">This column is one classified vehicle type in a traffic count return ' +
+        '(Bike - Scooter, Auto Rickshaw, …) and its values should be summed into that vehicle class ' +
+        'at import, under this attribute’s name. Leave unchecked for a meta field (station, date, ' +
+        'time, direction) — those are excluded from the count entirely, not summed.</div></div>' : '') +
       '<div class="fld"><label>Accepted column names</label>' +
         '<input type="text" id="afAliases" value="' + esc(a ? (a.aliases || '') : '') + '"' +
         ' placeholder="Section_Label, Section Label, Label">' +
@@ -302,7 +309,8 @@
       mandatory: document.getElementById('afReq').checked,
       lookupKey: (document.getElementById('afLookup') || {}).value || '',
       aliases: document.getElementById('afAliases').value.trim(),
-      status: (document.getElementById('afStatus') || {}).value || 'ACTIVE'
+      status: (document.getElementById('afStatus') || {}).value || 'ACTIVE',
+      vehicleCount: !!(document.getElementById('afVehCount') || {}).checked
     };
     if (!body.name) return msg('Give the attribute a name.');
 
