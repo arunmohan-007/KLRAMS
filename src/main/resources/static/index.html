@@ -1220,20 +1220,31 @@ function trfAggregate(rows,header){
     const i=cat[trfKey(k)];
     if(i!==undefined){const n=trfNorm(k==='name'?'STATION_NAME':k);if(!(n in idx))idx[n]=i;}
   });
-  /* A vehicle class is any column the counts dataset does NOT declare — the
-     declared ones are the survey's own fields (station, date, time, direction).
-     Deriving it that way means adding a field in Attribute Data stops it being
-     counted as a vehicle, instead of needing TRF_NONVEH edited in this file.
-     TRF_NONVEH stays as the floor: it also lists serial numbers and totals,
-     which are not attributes of anything but must never be counted either. */
-  const declared=new Set();
+  /* A vehicle class is any column the counts dataset does NOT declare as a
+     meta field — the declared meta ones are the survey's own fields (station,
+     date, time, direction). Deriving it that way means adding a field in
+     Attribute Data stops it being counted as a vehicle, instead of needing
+     TRF_NONVEH edited in this file. TRF_NONVEH stays as the floor: it also
+     lists serial numbers and totals, which are not attributes of anything but
+     must never be counted either.
+
+     A column Attribute Data has declared and flagged "Vehicle count" (the
+     classified types of a Format-B return — Bike - Scooter, Auto Rickshaw, …)
+     is the one exception: it is still counted, under its CANONICAL name, so a
+     future file spelling the same type differently (an alias added in
+     Attribute Data) folds onto the one class instead of starting a new one. A
+     column nobody has declared at all still falls back to being counted under
+     its own raw header, exactly as before this distinction existed. */
+  const declared=new Set(), vehCanon={};
   if(window.AttrCatalog){
     header.forEach(function(h){
       const a=AttrCatalog.attr('traffic_stations',String(h).trim(),'counts');
-      if(a&&a.role!==undefined)declared.add(trfNorm(h));
+      if(!a)return;
+      if(a.vehicleCount)vehCanon[trfNorm(h)]=a.name;
+      else if(a.role!==undefined)declared.add(trfNorm(h));
     });
   }
-  const veh=[];header.forEach((h,i)=>{const k=trfNorm(h);if(!TRF_NONVEH.has(k)&&!declared.has(k)&&idx[k]===i&&k!=='')veh.push({label:String(h).trim(),i:i});});
+  const veh=[];header.forEach((h,i)=>{const k=trfNorm(h);if(!TRF_NONVEH.has(k)&&!declared.has(k)&&idx[k]===i&&k!=='')veh.push({label:vehCanon[k]||String(h).trim(),i:i});});
   const out={};
   rows.forEach(r=>{
     const st=String(r[idx['STATION_NAME']]||'').trim();if(!st)return;

@@ -8,10 +8,19 @@
 const DPAL=['#15976a','#2a5d9c','#d4a02e','#6b4e9e','#3f9aa3','#c2603f','#5a7d3c','#a8557e','#3b7d8c','#8a93a6'];
 const CLASS_COL={SH:'#15976a',MDR:'#2a5d9c',ODR:'#d4a02e',NH:'#c2603f'};
 const CLASS_SHORT={SH:'State Highway',MDR:'Major Dist. Road',ODR:'Other Dist. Road',NH:'National Highway'};
-/* Construction type: user-facing labels (RGD shown as "Cement Concrete") and colours. */
+/* Construction type: fallback labels and the chart colours.
+   Colours are presentation and stay here. The LABELS do not: what a short code
+   stands for is set once, in Lookup & Short Code, and these maps are only what a
+   code falls back to when that list has no entry for it. They used to be checked
+   FIRST, which quietly overrode the list — editing a lookup value changed the map
+   card but not this chart. */
 const CONS_LBL={FLX:'Flexible',RGD:'Cement Concrete',PVB:'Paver Block',CMP:'Composite',WBM:'WBM',GRV:'Gravel',ERT:'Earthen'};
 const CONS_COL={FLX:'#2a5d9c',RGD:'#c2603f',PVB:'#6b4e9e',CMP:'#3f9aa3',WBM:'#d4a02e',GRV:'#5a7d3c',ERT:'#a8557e'};
-function consLbl(l){return CONS_LBL[l]||dec('Cons_Type',l);}
+/* The lookup list wins; the built-in map is the fallback. dec() returns its
+   input unchanged when the list has nothing for it, which is what we test for. */
+function lblVia(attr,fallback,l){const d=dec(attr,l);return (d!=null&&d!==l)?d:(fallback[l]||l);}
+function consLbl(l){return lblVia('Cons_Type',CONS_LBL,l);}
+function classLbl(l){return lblVia('Road_Class',CLASS_SHORT,l);}
 function consCol(l,i){return CONS_COL[l]||DPAL[i%DPAL.length];}
 function dColor(label,i){return CLASS_COL[label]||DPAL[i%DPAL.length];}
 function escH(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -294,7 +303,7 @@ function ovStateView(d){
     <div class="kpi" style="--kc:#c9762a"><div class="kcap">State Highways</div><div class="kv">${d.sh_total_count||0}<span class="u">nos.</span></div><div class="kl">${d.sh_numbered_count||0} by Road Number${d.sh_unnumbered_count?' + '+d.sh_unnumbered_count+' by Road Name (no Road Number)':''}</div></div>
     <div class="kpi" style="--kc:#6b4e9e"><div class="kcap">Major District Roads</div><div class="kv">${d.mdr_count||0}<span class="u">nos.</span></div><div class="kl">By distinct Road Name</div></div>
   </div>`;
-  const compClass=donutCard('Network by road class','Share of total length by classification',cls,{full:l=>CLASS_SHORT[l]||dec('Road_Class',l)});
+  const compClass=donutCard('Network by road class','Share of total length by classification',cls,{full:classLbl});
   const ownTot=(d.by_owner||[]).reduce((s,r)=>s+(+r.km||0),0);
   const owners=`<div class="dcard"><div class="dcard-head"><h3>Network by current owner</h3><span class="totchip">${fmtKm(ownTot)} km</span></div><div class="sub">Length under each owning agency, ranked</div>${rankedBars(d.by_owner,{full:l=>dec('Current_Ow',l)})}</div>`;
   const comp=`<div class="comp-row">${compClass}${owners}</div>`;
@@ -321,7 +330,7 @@ function ovDistrictView(dd,d){
     <div class="kpi" style="--kc:#c9762a"><div class="kcap">State Highways</div><div class="kv">${dd.sh_total_count||0}<span class="u">nos.</span></div><div class="kl">Roads present here${dd.sh_unnumbered_count?' · incl. '+dd.sh_unnumbered_count+' by name':''} — a road spanning districts also counts elsewhere</div></div>
     <div class="kpi" style="--kc:#6b4e9e"><div class="kcap">Major District Roads</div><div class="kv">${dd.mdr_count||0}<span class="u">nos.</span></div><div class="kl">Distinct Road Names present here</div></div>
   </div>`;
-  const compClass=donutCard('Network by road class',`Share of length by classification — ${escH(name)}`,cls,{full:l=>CLASS_SHORT[l]||dec('Road_Class',l)});
+  const compClass=donutCard('Network by road class',`Share of length by classification — ${escH(name)}`,cls,{full:classLbl});
   const consDonut=donutCard('Network by construction type',`Corrected length by construction type — click a type to list ${escH(name)} sections`,(dd.by_cons_type||[]),{full:consLbl,colorFn:consCol,legendClick:'consShowSections'});
   const comp=`<div class="comp-row">${compClass}${consDonut}</div>`;
   const ownTot=(dd.by_owner||[]).reduce((s,r)=>s+(+r.km||0),0);

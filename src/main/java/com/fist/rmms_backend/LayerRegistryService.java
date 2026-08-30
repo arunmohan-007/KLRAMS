@@ -65,13 +65,18 @@ public class LayerRegistryService {
     private final LayerAttributeService attributes;
     private final LookupService lookups;
     private final LayerStyleService styles;
+    private final CalcRuleService calcRules;
+    private final DataHygieneService hygiene;
 
     public LayerRegistryService(JdbcTemplate jdbc, LayerAttributeService attributes,
-                                LookupService lookups, LayerStyleService styles) {
+                                LookupService lookups, LayerStyleService styles,
+                                CalcRuleService calcRules, DataHygieneService hygiene) {
         this.jdbc = jdbc;
         this.attributes = attributes;
         this.lookups = lookups;
         this.styles = styles;
+        this.calcRules = calcRules;
+        this.hygiene = hygiene;
     }
 
     @PostConstruct
@@ -90,6 +95,16 @@ public class LayerRegistryService {
             // seeded above, and its template presets are read against the
             // attribute list the pass before it just wrote.
             styles.ensure();
+            // Calculation Rules seeds itself from the roads and traffic_stations
+            // tables (turning the old A/B guesses into explicit groups), so it
+            // needs those uploaded and the survey periods migrated first — which
+            // by this point in startup they are.
+            calcRules.ensure();
+            // Last: strip stray whitespace from text already stored, so a value
+            // that differs only by an invisible character stops appearing as two
+            // values in the dashboards and the map's filter pickers. Runs after
+            // the uploads have created their tables.
+            hygiene.ensure();
         } catch (Exception e) {
             // A registry failure must never stop the app booting — the map and
             // every existing module work fine without Layer Management.

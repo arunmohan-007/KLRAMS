@@ -60,16 +60,18 @@ public class SurveyDashboardController {
             "FROM condition c LEFT JOIN roads r ON r.\"Section_La\" = c.section_label " +
             "WHERE c.period_id IS NOT NULL GROUP BY 1, 2");
 
-        /* A dual-carriageway station is stored as two rows whose names differ only
-           by a trailing A/B after the station number (TVM_STN_021A / TVM_STN_021B):
-           count the pair once by grouping on the name with that suffix stripped. */
+        /* The two carriageways of one physical station are stored as two rows
+           (TVM_STN_021A / …B). Which rows belong together is a station group in
+           the Calculation Rules module, so the pair counts once; a station in no
+           group counts as itself. See {@link CalcRuleService}. */
         List<Map<String, Object>> traffic;
         try {
             traffic = jdbc.queryForList(
                 "SELECT district, pid, COUNT(DISTINCT base_name) AS n FROM (" +
                 "  SELECT " + DIST + " AS district, t.period_id AS pid, " +
-                "         regexp_replace(trim(t.name), '([0-9])[ABab]$', '\\1') AS base_name " +
+                "         " + CalcRuleService.stationKeySql("t") + " AS base_name " +
                 "  FROM traffic_stations t LEFT JOIN roads r ON r.\"Section_La\" = t.section" +
+                CalcRuleService.stationJoin("t") +
                 "  WHERE t.period_id IS NOT NULL" +
                 ") x GROUP BY 1, 2");
         } catch (Exception e) {

@@ -137,7 +137,7 @@ public class SegmentService {
                 // worst -> the MAX columns, composite -> the avg_* columns.
                 Map<String, Double> worstFallback = new LinkedHashMap<>();
                 Map<String, Double> avgFallback = new LinkedHashMap<>();
-                for (String key : PciCalculator.WEIGHTS.keySet()) {
+                for (String key : PciCalculator.PARAM_KEYS) {
                     Double max = dbl(rs.getObject(key));
                     Double avg = dbl(rs.getObject("avg_" + key));
                     if (max != null) worstFallback.put(key, max);
@@ -202,7 +202,7 @@ public class SegmentService {
             JsonNode root = json.readTree(raw);
             root.fields().forEachRemaining(lane -> {
                 Map<String, Double> dist = new LinkedHashMap<>();
-                for (String key : PciCalculator.WEIGHTS.keySet()) {
+                for (String key : PciCalculator.PARAM_KEYS) {
                     JsonNode v = lane.getValue().get(key);
                     if (v != null && v.isNumber()) dist.put(key, v.doubleValue());
                 }

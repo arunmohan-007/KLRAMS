@@ -85,8 +85,9 @@ function ensureSummaryData(){
       var done=function(st){
         var by={};(((st||{}).stations)||[]).forEach(function(rec){
           var sec=String(rec.section||'').trim();if(!sec)return;
-          /* A/B station names (e.g. TVM_STN_021A/B) are one physical station */
-          var n=String(rec.name||'').trim().replace(/[AB]$/i,'').toUpperCase();
+          /* The two carriageways of one physical station (TVM_STN_021A/B) count
+             once — grouped as the Calculation Rules module says, not guessed. */
+          var n=CalcRules.stationKey(rec.name).toUpperCase();
           (by[sec]=by[sec]||{})[n||'?']=1;
         });
         _TRF_SUM=by;res();

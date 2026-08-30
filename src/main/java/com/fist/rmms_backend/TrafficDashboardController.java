@@ -24,10 +24,13 @@ import java.util.regex.Pattern;
  *   ADT (avg daily = total ÷ survey days), survey days, date range, the peak
  *   hour, the vehicle-class split (by_class) and the 24-hour profile (by_hour).
  *
- * A dual-carriageway station is stored as an A/B pair (TVM_STN_021A / …B) whose
- * count entries are the two carriageways of the same station — they are merged
- * back into one station here (base name = the number without the A/B suffix),
- * exactly as every other KLRAMS dashboard treats the pair as one station.
+ * A dual-carriageway station is stored as two rows (TVM_STN_021A / …B) whose
+ * count entries are the two carriageways of the same physical station. Which
+ * rows belong together is a station GROUP maintained in the Calculation Rules
+ * module ({@link CalcRuleService}); the members are merged back into one station
+ * here, exactly as every other KLRAMS dashboard treats them. Before that module
+ * the pairing was guessed from the trailing A/B, and the groups were seeded from
+ * that guess, so no count moved when it shipped.
  *
  * District / road attributes are resolved by joining the station's section
  * label to roads."Section_La" (unique per section).
@@ -40,11 +43,13 @@ public class TrafficDashboardController {
 
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
+    private final CalcRuleService rules;
     private final ObjectMapper om = new ObjectMapper();
 
-    public TrafficDashboardController(JdbcTemplate jdbc, SurveyPeriodService periods) {
+    public TrafficDashboardController(JdbcTemplate jdbc, SurveyPeriodService periods, CalcRuleService rules) {
         this.jdbc = jdbc;
         this.periods = periods;
+        this.rules = rules;
     }
 
     @GetMapping("/summary")
@@ -71,6 +76,14 @@ public class TrafficDashboardController {
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("default_period", defaultPeriod);
         res.put("periods", out);
+        /* What the station grouping did: rows in the data before it, physical
+           stations after it — so the count on screen can be reconciled against
+           the raw table without opening the Calculation Rules module. */
+        try {
+            res.put("correction", rules.stationEffect());
+        } catch (Exception e) {
+            log.debug("Station correction figures unavailable", e);
+        }
         return res;
     }
 
@@ -94,13 +107,18 @@ public class TrafficDashboardController {
             return Collections.emptyList();
         }
 
-        // Merge A/B dual-carriageway pairs onto one base station.
+        /* Merge each station group's members onto one physical station. A station
+           in no group is its own station, so an ungrouped import still appears. */
+        Map<String, String> groupOf = rules.stationKeys();
+        Map<String, String> groupNames = rules.stationGroupNames();
         Map<String, Station> byBase = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
             String name = (String) row.get("name");
             if (name == null || name.isBlank()) continue;
-            String base = name.trim().replaceAll("([0-9])[ABab]$", "$1");
-            Station st = byBase.computeIfAbsent(base, k -> new Station(base));
+            String trimmed = name.trim();
+            String key = groupOf.get(trimmed);
+            String label = key == null ? trimmed : groupNames.getOrDefault(key, trimmed);
+            Station st = byBase.computeIfAbsent(key == null ? trimmed : key, k -> new Station(label));
             st.merge(row);
         }
 
@@ -112,7 +130,12 @@ public class TrafficDashboardController {
     /** Accumulator for one (possibly A/B-merged) station. */
     private final class Station {
         final String name;
-        String section, roadName, roadClass, roadNum, district, stnRoad;
+        // A group's members each carry their own carriageway's section label
+        // (KPWD/SH/2/2A, …2B) — kept in insertion order (query is ORDER BY
+        // t.name, so A before B) and joined for display, rather than dropping
+        // every member's label but the first one merge() sees.
+        final Set<String> sections = new LinkedHashSet<>();
+        String roadName, roadClass, roadNum, district, stnRoad;
         double total = 0;
         int days = 0;
         final double[] byHour = new double[24];
@@ -122,7 +145,8 @@ public class TrafficDashboardController {
         Station(String name) { this.name = name; }
 
         void merge(Map<String, Object> row) {
-            if (section == null)   section   = (String) row.get("section");
+            String sec = (String) row.get("section");
+            if (sec != null && !sec.isBlank()) sections.add(sec);
             if (roadName == null)  roadName  = (String) row.get("road_name");
             if (roadClass == null) roadClass = (String) row.get("road_class");
             if (roadNum == null)   roadNum   = (String) row.get("road_num");
@@ -164,7 +188,7 @@ public class TrafficDashboardController {
 
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("name", name);
-            m.put("section", section);
+            m.put("section", String.join(" / ", sections));
             m.put("road", (roadName != null && !roadName.isBlank()) ? roadName
                         : (stnRoad != null && !stnRoad.isBlank() ? stnRoad : name));
             m.put("road_class", roadClass);
