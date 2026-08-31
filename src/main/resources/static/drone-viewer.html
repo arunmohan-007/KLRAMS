@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>KLRAMS · Drone Viewer — Kerala PWD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
+<style>
+  :root{
+    --void:#0b1220; --panel:#101b2e; --panel-2:#0e1726; --edge:#20304c; --edge-soft:#1a2740;
+    --text:#eaf0fa; --muted:#93a3bb; --muted-2:#5f6e86;
+    --green:#19b277; --blue:#3b86e6; --red:#e65b5b; --amber:#ffa630; --violet:#8a68e6; --teal:#2bb3c0;
+    --disp:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden}
+  body{font-family:var(--body);background:var(--void);color:var(--text);-webkit-font-smoothing:antialiased}
+
+  .wrap{display:flex;height:100%}
+  .side{width:352px;flex:none;background:var(--panel-2);border-right:1px solid var(--edge-soft);
+    display:flex;flex-direction:column;overflow:hidden}
+  .map-box{flex:1;position:relative}
+  #map{position:absolute;inset:0}
+
+  .head{padding:15px 17px;border-bottom:1px solid var(--edge-soft);display:flex;align-items:center;gap:11px}
+  .glyph{width:36px;height:36px;border-radius:10px;flex:none;background:linear-gradient(135deg,#a48ef0,#6b4fd0);
+    display:flex;align-items:center;justify-content:center;color:#fff}
+  .glyph svg{width:19px;height:19px}
+  .head .t{font-family:var(--disp);font-weight:700;font-size:14.5px}
+  .head .s{font-family:var(--mono);font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted-2);margin-top:2px}
+  .head a{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--muted);border:1px solid var(--edge);border-radius:999px;padding:6px 12px;text-decoration:none}
+  .head a:hover{color:var(--violet);border-color:rgba(138,104,230,.5)}
+
+  .scroll{flex:1;overflow-y:auto;padding:15px 17px 30px}
+  .scroll::-webkit-scrollbar{width:9px}
+  .scroll::-webkit-scrollbar-thumb{background:rgba(138,104,230,.3);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+
+  .grp{margin-bottom:20px}
+  .grp-t{font-family:var(--mono);font-size:8.5px;letter-spacing:.17em;text-transform:uppercase;
+    color:var(--muted-2);margin-bottom:9px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+
+  .search{position:relative}
+  .search input{width:100%;background:var(--void);border:1px solid var(--edge);color:var(--text);
+    border-radius:9px;padding:10px 12px;font-family:var(--body);font-size:12.5px}
+  .search input:focus{outline:0;border-color:var(--violet)}
+  .results{position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:5px;background:var(--panel);
+    border:1px solid var(--edge);border-radius:10px;max-height:260px;overflow-y:auto;display:none}
+  .results.on{display:block}
+  .res{padding:9px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--edge-soft)}
+  .res:last-child{border-bottom:0}
+  .res:hover{background:rgba(138,104,230,.12)}
+  .res .n{font-weight:600}
+  .res .m{font-family:var(--mono);font-size:10px;color:var(--muted-2);margin-top:2px}
+  .res.busy{color:var(--muted-2);font-style:italic}
+  .hint-line{font-size:10.5px;color:var(--muted-2);line-height:1.55;margin-top:7px}
+  .hint-line .mono{font-family:var(--mono);color:#b39dfb}
+
+  .ds{border:1px solid var(--edge-soft);background:var(--panel);border-radius:12px;padding:11px 12px;margin-bottom:9px}
+  .ds-h{display:flex;align-items:center;gap:9px}
+  .ds-h input[type=checkbox]{width:15px;height:15px;accent-color:var(--violet);flex:none;cursor:pointer}
+  .ds-n{font-size:12.5px;font-weight:600;line-height:1.35;flex:1;min-width:0;word-break:break-word}
+  .ds-k{font-family:var(--mono);font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted-2);margin-top:2px}
+  .ds-b{display:flex;gap:5px;margin-top:9px;flex-wrap:wrap}
+  .mini{cursor:pointer;background:transparent;border:1px solid var(--edge);color:var(--muted);border-radius:6px;
+    padding:4px 8px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;transition:.15s}
+  .mini:hover{color:var(--text);border-color:var(--violet)}
+  .mini.on{color:#fff;background:var(--violet);border-color:transparent}
+  .op{display:flex;align-items:center;gap:8px;margin-top:9px}
+  .op label{font-family:var(--mono);font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted-2);flex:none}
+  .op input[type=range]{flex:1;accent-color:var(--violet)}
+  .op .pct{font-family:var(--mono);font-size:10px;color:var(--muted);width:34px;text-align:right;flex:none}
+
+  .info{margin-top:9px;padding-top:9px;border-top:1px solid var(--edge-soft);display:none}
+  .info.on{display:block}
+  .info .r{display:flex;gap:8px;font-size:11px;padding:2.5px 0;line-height:1.5}
+  .info .r .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--muted-2);flex:none;width:96px;padding-top:2px}
+  .info .r .v{color:var(--text);flex:1;word-break:break-word}
+
+  .row{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:12.5px}
+  .row input[type=checkbox]{width:15px;height:15px;accent-color:var(--violet);cursor:pointer}
+  select{width:100%;background:var(--void);border:1px solid var(--edge);color:var(--text);
+    border-radius:9px;padding:9px 11px;font-family:var(--body);font-size:12.5px}
+  select:focus{outline:0;border-color:var(--violet)}
+
+  .tools{display:flex;gap:6px;flex-wrap:wrap}
+  .tool{cursor:pointer;background:transparent;border:1px solid var(--edge);color:var(--muted);border-radius:8px;
+    padding:8px 11px;font-family:var(--disp);font-size:11.5px;font-weight:600;transition:.15s}
+  .tool:hover{color:var(--text);border-color:var(--violet)}
+  .tool.on{color:#fff;background:linear-gradient(180deg,#9c80ee,#7358d8);border-color:transparent}
+
+  .ramp{margin-top:9px}
+  .ramp-bar{height:9px;border-radius:5px;background:linear-gradient(90deg,#1a9850,#a6d96a,#ffffbf,#fdae61,#d73027)}
+  .ramp-l{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--muted-2);margin-top:4px}
+
+  .empty{color:var(--muted-2);font-size:12px;line-height:1.6;padding:14px 12px;border:1px dashed var(--edge);
+    border-radius:11px;text-align:center}
+  .empty a{color:#b39dfb}
+
+  /* readout floating over the map */
+  .readout{position:absolute;left:12px;bottom:12px;z-index:5;background:rgba(14,23,38,.95);
+    border:1px solid var(--edge);border-radius:11px;padding:11px 14px;font-size:12px;max-width:340px;
+    display:none;line-height:1.6;backdrop-filter:blur(6px)}
+  .readout.on{display:block}
+  .readout .t{font-family:var(--mono);font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:#cdbcff;margin-bottom:6px}
+  .readout .big{font-family:var(--disp);font-size:20px;font-weight:700}
+  .readout .sm{color:var(--muted-2);font-size:11px;margin-top:3px}
+
+  .klpop{font-family:var(--body);font-size:12px;color:var(--text);max-width:270px}
+  .klpop .h{font-family:var(--disp);font-weight:700;font-size:13px;margin-bottom:7px;color:#cdbcff}
+  .klpop .r{display:flex;gap:8px;padding:2px 0;line-height:1.5}
+  .klpop .r .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--muted-2);width:84px;flex:none;padding-top:2px}
+  .maplibregl-popup-content{background:rgba(14,23,38,.97);border:1px solid var(--edge);border-radius:11px;padding:12px 14px}
+  .maplibregl-popup-tip{border-top-color:rgba(14,23,38,.97);border-bottom-color:rgba(14,23,38,.97)}
+  .maplibregl-popup-close-button{color:#b39dfb;font-size:17px;padding:2px 7px}
+
+  @media(max-width:900px){
+    .wrap{flex-direction:column}
+    .side{width:100%;height:46%;border-right:0;border-bottom:1px solid var(--edge-soft)}
+    .map-box{height:54%}
+  }
+</style>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a0f1a">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+</head>
+<body>
+<div class="wrap">
+  <aside class="side">
+    <div class="head">
+      <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.6"/><path d="M12 9.4V6M12 14.6V18M9.4 12H6M14.6 12H18"/><circle cx="4.6" cy="4.6" r="2.1"/><circle cx="19.4" cy="4.6" r="2.1"/><circle cx="4.6" cy="19.4" r="2.1"/><circle cx="19.4" cy="19.4" r="2.1"/><path d="m6.1 6.1 3.4 3.4M17.9 6.1l-3.4 3.4M6.1 17.9l3.4-3.4M17.9 17.9l-3.4-3.4"/></svg></div>
+      <div><div class="t">Drone Viewer</div><div class="s">KLRAMS</div></div>
+      <a href="/drone.html">Console</a>
+    </div>
+
+    <div class="scroll">
+      <div class="grp">
+        <div class="grp-t">Search road</div>
+        <div class="search">
+          <input id="q" type="text" placeholder="Road name, section label or road number" autocomplete="off">
+          <div class="results" id="results"></div>
+        </div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-t">Find a place or coordinates</div>
+        <div class="search">
+          <input id="pq" type="text" placeholder="Kazhakkoottam &nbsp;or&nbsp; 8.5665, 76.8790" autocomplete="off">
+          <div class="results" id="presults"></div>
+        </div>
+        <div class="hint-line">Place names are searched on the basemap. Coordinates jump straight
+          there &mdash; decimal (<span class="mono">8.5665, 76.8790</span>) or
+          degrees (<span class="mono">8&deg;33'59"N 76&deg;52'44"E</span>).</div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-t"><span>Drone datasets</span><span id="ds-count"></span></div>
+        <div id="datasets"><div class="empty">Loading&hellip;</div></div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-t">KLRAMS road network</div>
+        <label class="row"><input type="checkbox" id="roads-on" checked> Show road network</label>
+        <label class="row"><input type="checkbox" id="roads-top"> Draw roads above drone imagery</label>
+      </div>
+
+      <div class="grp">
+        <div class="grp-t">Basemap</div>
+        <select id="basemap">
+          <option value="sat">Satellite imagery</option>
+          <option value="osm">OpenStreetMap</option>
+          <option value="topo">Topographic</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+
+      <div class="grp">
+        <div class="grp-t">Tools</div>
+        <div class="tools">
+          <button class="tool on" id="t-identify">Identify</button>
+          <button class="tool" id="t-dist">Measure distance</button>
+          <button class="tool" id="t-area">Measure area</button>
+          <button class="tool" id="t-clear">Clear</button>
+          <button class="tool" id="t-full">Full screen</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="map-box">
+    <div id="map"></div>
+    <div class="readout" id="readout"></div>
+  </div>
+</div>
+<script src="/js/drone-viewer.js?v=9" defer></script>
+</body>
+</html>
