@@ -28,6 +28,8 @@
   var ROAD_LAYER = 'klrams-roads-line';
   var ROAD_CASING = 'klrams-roads-casing';
   var MEASURE_SOURCE = 'measure';
+  /** Every Nth contour is drawn heavier and labelled; matches DroneContourService. */
+  var CONTOUR_INDEX_EVERY = 5;
 
   var datasets = [];
   var visible = Object.create(null);     // datasetId -> true when drawn
@@ -44,6 +46,9 @@
     container: 'map',
     style: {
       version: 8,
+      // Required before ANY symbol layer can render text, and shared with the main
+      // viewer (js/02-map-core.js) rather than pointed somewhere new.
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: baseSources(),
       layers: Object.keys(BASEMAPS).map(function (k) {
         return { id: 'bm-' + k, type: 'raster', source: 'bm-' + k,
@@ -154,8 +159,14 @@
   function sourceId(d) { return 'drone-src-' + d.id; }
   function layerId(d) { return 'drone-lyr-' + d.id; }
 
+  /** True for a contour set imported from a survey file: lines, not pixels. */
+  function isVector(d) { return d.dataset_type === 'CONTOUR'; }
+
   function showDataset(d) {
     if (visible[d.id]) return;
+    // An imported contour set has no raster pyramid — it IS the vector layer, so it
+    // goes through the same code that draws a DEM's traced contours.
+    if (isVector(d)) { showContours(d); visible[d.id] = true; return; }
     map.addSource(sourceId(d), {
       type: 'raster',
       // build_version in the URL is what makes a re-published dataset a different
@@ -180,6 +191,10 @@
     if (map.getLayer(layerId(d))) map.removeLayer(layerId(d));
     if (map.getSource(sourceId(d))) map.removeSource(sourceId(d));
     delete visible[d.id];
+    // Contours belong to the DEM; leaving them behind would float lines over a
+    // layer that is no longer shown.
+    hideContours(d);
+    if (d.__paintContours) d.__paintContours();
   }
 
   function roadsOnTop() { return document.getElementById('roads-top').checked; }
@@ -187,15 +202,22 @@
   /** Re-stack every visible raster in panel order, then put the roads where asked. */
   function applyOrder() {
     datasets.forEach(function (d) {
-      if (visible[d.id] && map.getLayer(layerId(d))) map.moveLayer(layerId(d));
+      if (visible[d.id] && !isVector(d) && map.getLayer(layerId(d))) map.moveLayer(layerId(d));
     });
     if (map.getLayer(ROAD_CASING)) {
       if (roadsOnTop()) { map.moveLayer(ROAD_CASING); map.moveLayer(ROAD_LAYER); }
       else {
-        var first = datasets.filter(function (d) { return visible[d.id]; })[0];
+        var first = datasets.filter(function (d) { return visible[d.id] && !isVector(d); })[0];
         if (first) { map.moveLayer(ROAD_CASING, layerId(first)); map.moveLayer(ROAD_LAYER, layerId(first)); }
       }
     }
+    // Contours sit above every raster — a contour under its own hillshade is
+    // invisible — but below the measuring overlay, which must stay on top.
+    datasets.forEach(function (d) {
+      if (!contourOn[d.id]) return;
+      if (map.getLayer(contourLine(d))) map.moveLayer(contourLine(d));
+      if (map.getLayer(contourLabel(d))) map.moveLayer(contourLabel(d));
+    });
     ['measure-fill', 'measure-line', 'measure-pt'].forEach(function (id) {
       if (map.getLayer(id)) map.moveLayer(id);
     });
@@ -239,8 +261,7 @@
       names.style.flex = '1';
       names.style.minWidth = '0';
       names.appendChild(el('div', 'ds-n', d.dataset_name));
-      names.appendChild(el('div', 'ds-k',
-        (d.dataset_type === 'DEM' ? 'DEM' : 'Orthomosaic') + ' · ' + d.project_code));
+      names.appendChild(el('div', 'ds-k', kindLabel(d) + ' · ' + d.project_code));
       head.appendChild(names);
       card.appendChild(head);
 
@@ -251,8 +272,15 @@
       var pct = el('span', 'pct', '100%');
       slider.addEventListener('input', function () {
         pct.textContent = slider.value + '%';
-        if (map.getLayer(layerId(d)))
-          map.setPaintProperty(layerId(d), 'raster-opacity', Number(slider.value) / 100);
+        var v = Number(slider.value) / 100;
+        // A contour set is lines, so opacity means the stroke's — including the
+        // labels', which would otherwise stay solid over a faded layer.
+        if (isVector(d)) {
+          if (map.getLayer(contourLine(d))) map.setPaintProperty(contourLine(d), 'line-opacity', v);
+          if (map.getLayer(contourLabel(d))) map.setPaintProperty(contourLabel(d), 'text-opacity', v);
+        } else if (map.getLayer(layerId(d))) {
+          map.setPaintProperty(layerId(d), 'raster-opacity', v);
+        }
       });
       op.appendChild(slider);
       op.appendChild(pct);
@@ -291,7 +319,10 @@
       buildInfo(info, d);
       card.appendChild(info);
 
-      if (d.dataset_type === 'DEM') card.appendChild(elevationRamp(d));
+      if (d.dataset_type === 'DEM') {
+        card.appendChild(elevationRamp(d));
+        card.appendChild(contourPanel(d));
+      }
 
       box.appendChild(card);
     });
@@ -299,6 +330,29 @@
 
   function buildInfo(info, d) {
     var degrees = d.epsg === 4326;
+
+    /* An imported contour set has no pixels, so the raster rows would all read
+       "—". It gets the handful of facts that do apply to it instead. */
+    if (d.dataset_type === 'CONTOUR') {
+      [['Project', d.project_code + ' — ' + d.project_name],
+       ['Road / Location', [d.road_section, d.location].filter(Boolean).join(' · ') || '—'],
+       ['Survey date', fmtDate(d.survey_date)],
+       ['Source', d.format || 'Imported contour lines'],
+       ['Lines', d.contour_count == null ? '—' : String(d.contour_count)],
+       ['Interval', d.contour_interval == null ? 'irregular' : d.contour_interval + ' m'],
+       ['Elevation', d.elevation_min == null ? '—'
+            : num(d.elevation_min, 2) + ' – ' + num(d.elevation_max, 2) + ' m'],
+       ['Extent', num(d.min_x, 5) + ', ' + num(d.min_y, 5) + ' → '
+            + num(d.max_x, 5) + ', ' + num(d.max_y, 5)]
+      ].forEach(function (r) {
+        var row = el('div', 'r');
+        row.appendChild(el('div', 'k', r[0]));
+        row.appendChild(el('div', 'v', r[1] == null ? '—' : String(r[1])));
+        info.appendChild(row);
+      });
+      return;
+    }
+
     var rows = [
       ['Project', d.project_code + ' — ' + d.project_name],
       ['Road / Location', [d.road_section, d.location].filter(Boolean).join(' · ') || '—'],
@@ -308,6 +362,9 @@
       ['Raster size', d.raster_width + ' × ' + d.raster_height + ' px'],
       ['Resolution', num(d.res_x, degrees ? 8 : 3) + (degrees ? '°' : ' m') + ' per pixel'],
       ['File size', fmtBytes(d.file_size)],
+      ['Bands', d.band_count == null ? null : d.band_count + (d.colour_interp ? ' · ' + d.colour_interp : '')],
+      ['Data type', d.data_type],
+      ['NoData', d.no_data == null ? 'none declared' : String(d.no_data)],
       ['Tile zooms', d.min_zoom + ' – ' + d.max_zoom],
       ['Extent', num(d.min_x, 5) + ', ' + num(d.min_y, 5) + ' → ' + num(d.max_x, 5) + ', ' + num(d.max_y, 5)]
     ];
@@ -320,6 +377,282 @@
       row.appendChild(el('div', 'v', r[1] == null ? '—' : String(r[1])));
       info.appendChild(row);
     });
+
+    appendBandTable(info, d);
+  }
+
+  /**
+   * Per-band value ranges.
+   *
+   * <p>Shown because the range is what explains how the image is being drawn: a
+   * 16-bit orthomosaic whose bands top out in the low thousands is not using its
+   * type's full range, and the viewer is stretching it to make it visible. Without
+   * this, "why does my image look like that" has no answer anywhere in the UI.
+   */
+  function appendBandTable(info, d) {
+    var stats;
+    try { stats = JSON.parse(d.band_stats || 'null'); } catch (e) { stats = null; }
+    if (!stats || !stats.length) return;
+
+    var wrap = el('div', 'bands');
+    var head = el('div', 'band-h');
+    ['Band', 'Min', 'Max', 'Displayed'].forEach(function (h) {
+      head.appendChild(el('span', null, h));
+    });
+    wrap.appendChild(head);
+
+    // 8-bit data is drawn as-is; anything else is mapped through the low/high window.
+    var stretched = !!d.data_type && d.data_type.indexOf('8-bit') < 0;
+
+    stats.forEach(function (b) {
+      var row = el('div', 'band-r');
+      row.appendChild(el('span', 'band-n', b.label || ('Band ' + b.band)));
+      row.appendChild(el('span', null, fmtNum(b.min)));
+      row.appendChild(el('span', null, fmtNum(b.max)));
+      row.appendChild(el('span', null,
+        stretched ? fmtNum(b.low) + ' – ' + fmtNum(b.high) : 'as-is'));
+      wrap.appendChild(row);
+    });
+
+    if (stretched) {
+      wrap.appendChild(el('div', 'band-note',
+        'These bands are not 8-bit, so the “Displayed” range is stretched across '
+        + '0–255 for drawing. The stored values are unchanged.'));
+    }
+    info.appendChild(wrap);
+  }
+
+  /** Compact number for the band table: integers plain, fractions to 3 places. */
+  function fmtNum(v) {
+    if (v == null) return '—';
+    var n = Number(v);
+    if (!isFinite(n)) return '—';
+    return n === Math.round(n) ? String(n) : n.toFixed(3);
+  }
+
+  /* ---------------- contours ---------------- */
+
+  var contourOn = Object.create(null);      // datasetId -> true when drawn
+  var contourPoll = null;
+
+  function contourSource(d) { return 'contour-src-' + d.id; }
+  function contourLine(d) { return 'contour-lyr-' + d.id; }
+  function contourLabel(d) { return 'contour-lbl-' + d.id; }
+
+  /**
+   * Draw a DEM's contours.
+   *
+   * <p>Two line layers off one source rather than one with a data-driven width:
+   * index contours want a heavier stroke AND the labels, and MapLibre places labels
+   * per layer. Splitting them is what lets every fifth line carry its height without
+   * the others competing for the same label slots.
+   */
+  function showContours(d) {
+    if (contourOn[d.id]) return;
+    map.addSource(contourSource(d), {
+      type: 'vector',
+      tiles: [location.origin + '/api/drone/datasets/' + d.id + '/contours/tiles/{z}/{x}/{y}.mvt'],
+      minzoom: 0,
+      maxzoom: 22
+    });
+
+    map.addLayer({
+      id: contourLine(d), type: 'line', source: contourSource(d), 'source-layer': 'contours',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': ['case', ['get', 'is_index'], '#f0d27a', '#e0b84a'],
+        /* One zoom interpolation with a case at each stop, not a case wrapping two
+           interpolations — the style spec allows only a single zoom-driven
+           interpolate per expression and rejects the layer outright otherwise. */
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          14, ['case', ['get', 'is_index'], 1.1, 0.5],
+          20, ['case', ['get', 'is_index'], 2.4, 1.1]],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.35, 16, 0.9]
+      }
+    });
+
+    map.addLayer({
+      id: contourLabel(d), type: 'symbol', source: contourSource(d), 'source-layer': 'contours',
+      filter: ['get', 'is_index'],
+      layout: {
+        'symbol-placement': 'line',
+        'text-field': ['concat', ['to-string', ['round', ['get', 'elevation']]], ' m'],
+        'text-size': 10,
+        // Must name a stack the glyph server really has; anything else renders
+        // nothing at all. See the FONTS list in js/34-layer-style.js.
+        'text-font': ['Noto Sans Bold'],
+        // Well apart, so a dense DEM does not turn into a wall of numbers.
+        'symbol-spacing': 220,
+        'text-max-angle': 25,
+        'text-allow-overlap': false
+      },
+      paint: {
+        'text-color': '#ffeaa8',
+        'text-halo-color': 'rgba(8,18,31,0.9)',
+        'text-halo-width': 1.4
+      }
+    });
+
+    contourOn[d.id] = true;
+    applyOrder();
+  }
+
+  function hideContours(d) {
+    if (!contourOn[d.id]) return;
+    [contourLabel(d), contourLine(d)].forEach(function (id) {
+      if (map.getLayer(id)) map.removeLayer(id);
+    });
+    if (map.getSource(contourSource(d))) map.removeSource(contourSource(d));
+    delete contourOn[d.id];
+  }
+
+  /** Redraw a dataset's contours from scratch — used after a re-trace. */
+  function refreshContours(d) {
+    if (!contourOn[d.id]) return;
+    hideContours(d);
+    showContours(d);
+  }
+
+  /**
+   * The contour controls under a DEM: an interval, a trace button, a toggle.
+   *
+   * <p>The interval is asked for rather than guessed. A half-metre contour is right
+   * for a road cross-section and absurd for a hillside, and only the person who
+   * flew it knows which they have.
+   */
+  function contourPanel(d) {
+    var wrap = el('div', 'contour');
+    var head = el('div', 'contour-h');
+    head.appendChild(el('span', null, 'Contours'));
+    var count = el('span', 'contour-c');
+    head.appendChild(count);
+    wrap.appendChild(head);
+
+    var row = el('div', 'contour-row');
+    var input = el('input');
+    input.type = 'number';
+    input.min = '0.05';
+    input.step = '0.5';
+    input.value = d.contour_interval == null ? suggestInterval(d) : String(d.contour_interval);
+    input.title = 'Contour interval in metres';
+    row.appendChild(input);
+    row.appendChild(el('span', 'contour-u', 'm'));
+
+    var make = el('button', 'mini', 'Trace');
+    var toggle = el('button', 'mini', 'Show');
+    var drop = el('button', 'mini', 'Clear');
+    row.appendChild(make);
+    row.appendChild(toggle);
+    row.appendChild(drop);
+    wrap.appendChild(row);
+
+    var note = el('div', 'contour-n');
+    wrap.appendChild(note);
+
+    function paint() {
+      var status = d.contour_status;
+      var n = d.contour_count || 0;
+      count.textContent = n ? n + ' lines' : '';
+      toggle.disabled = !(status === 'READY' && n > 0);
+      drop.disabled = !status;
+      toggle.classList.toggle('on', !!contourOn[d.id]);
+      toggle.textContent = contourOn[d.id] ? 'Hide' : 'Show';
+      make.disabled = status === 'PROCESSING';
+      make.textContent = status === 'PROCESSING' ? 'Tracing…' : 'Trace';
+
+      if (status === 'PROCESSING') note.textContent = 'Tracing contours — this can take a minute.';
+      else if (status === 'FAILED') note.textContent = d.contour_message || 'Tracing failed.';
+      else if (status === 'READY' && n > 0)
+        note.textContent = 'Every ' + CONTOUR_INDEX_EVERY + 'th contour is drawn heavier and labelled.';
+      else note.textContent = '';
+      note.className = 'contour-n' + (status === 'FAILED' ? ' bad' : '');
+    }
+
+    make.addEventListener('click', function () {
+      var interval = Number(input.value);
+      if (!(interval > 0)) { note.className = 'contour-n bad'; note.textContent = 'Enter an interval above zero.'; return; }
+      make.disabled = true;
+      make.textContent = 'Tracing…';
+      fetch('/api/drone/datasets/' + d.id + '/contours', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interval: interval })
+      }).then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.ok === false) throw new Error(j.error || 'Tracing failed.');
+          d.contour_status = 'PROCESSING';
+          paint();
+          pollContours();
+        })
+        .catch(function (e) {
+          note.className = 'contour-n bad';
+          note.textContent = e.message;
+          make.disabled = false;
+          make.textContent = 'Trace';
+        });
+    });
+
+    toggle.addEventListener('click', function () {
+      if (contourOn[d.id]) hideContours(d); else showContours(d);
+      paint();
+    });
+
+    drop.addEventListener('click', function () {
+      hideContours(d);
+      fetch('/api/drone/datasets/' + d.id + '/contours', { method: 'DELETE', credentials: 'same-origin' })
+        .then(function () {
+          d.contour_status = null;
+          d.contour_count = 0;
+          paint();
+        });
+    });
+
+    d.__paintContours = paint;
+    paint();
+    return wrap;
+  }
+
+  /** A starting interval that gives roughly 20 lines over the DEM's range. */
+  function suggestInterval(d) {
+    var lo = Number(d.elevation_min), hi = Number(d.elevation_max);
+    if (!isFinite(lo) || !isFinite(hi) || hi <= lo) return '1';
+    var raw = (hi - lo) / 20;
+    // Round to a value a surveyor would actually use.
+    var steps = [0.1, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100];
+    for (var i = 0; i < steps.length; i++) if (raw <= steps[i]) return String(steps[i]);
+    return String(steps[steps.length - 1]);
+  }
+
+  /** Poll while any DEM is tracing, then stop. Mirrors the console's publish poll. */
+  function pollContours() {
+    if (contourPoll) return;
+    contourPoll = setInterval(function () {
+      var tracing = datasets.filter(function (d) { return d.contour_status === 'PROCESSING'; });
+      if (!tracing.length) { clearInterval(contourPoll); contourPoll = null; return; }
+
+      fetch('/api/drone/published', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (rows) {
+          rows.forEach(function (row) {
+            var d = datasets.filter(function (x) { return x.id === row.id; })[0];
+            if (!d) return;
+            var was = d.contour_status;
+            d.contour_status = row.contour_status;
+            d.contour_count = row.contour_count;
+            d.contour_interval = row.contour_interval;
+            if (d.__paintContours) d.__paintContours();
+            if (was === 'PROCESSING' && row.contour_status === 'READY') refreshContours(d);
+          });
+        })
+        .catch(function () { /* try again on the next tick */ });
+    }, 3000);
+  }
+
+  /** What the card calls this dataset. */
+  function kindLabel(d) {
+    if (d.dataset_type === 'DEM') return 'DEM';
+    if (d.dataset_type === 'CONTOUR') return 'Contours';
+    return 'Orthomosaic';
   }
 
   function elevationRamp(d) {

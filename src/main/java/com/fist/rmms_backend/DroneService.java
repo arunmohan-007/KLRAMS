@@ -37,6 +37,8 @@ public class DroneService {
 
     static final String ORTHO = "ORTHOMOSAIC";
     static final String DEM = "DEM";
+    /** Contours imported from a survey file, as opposed to traced from a DEM. */
+    static final String CONTOUR = "CONTOUR";
 
     /** A dataset's life: uploaded → (publish) processing → published, or failed. */
     static final String UPLOADED = "UPLOADED";
@@ -148,6 +150,34 @@ public class DroneService {
            the schema rather than only in the service, so a second upload of the same
            kind fails loudly instead of leaving two rows the viewer cannot choose
            between. */
+        /* Band-level description of the raster, so the viewer can answer "what is
+           actually in this file" — band count, sample type, colour interpretation
+           and the per-band value range. Added after a 16-bit orthomosaic rendered
+           almost black and none of that was visible anywhere. */
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS band_count integer");
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS data_type text");
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS colour_interp text");
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS band_stats jsonb");
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS no_data double precision");
+
+        /* Contours traced from a DEM. Lines in PostGIS rather than pixels in the
+           DEM's pyramid: a contour is a value to label and query, not a picture. */
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS contour_interval double precision");
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS contour_status text");
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS contour_count integer NOT NULL DEFAULT 0");
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS contour_message text");
+
+        jdbc.execute("""
+            CREATE TABLE IF NOT EXISTS drone_contour (
+                id         serial PRIMARY KEY,
+                dataset_id integer NOT NULL REFERENCES drone_dataset(id) ON DELETE CASCADE,
+                elevation  double precision NOT NULL,
+                is_index   boolean NOT NULL DEFAULT false,
+                geom       geometry(LineString,4326)
+            )""");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS drone_contour_geom_idx ON drone_contour USING GIST (geom)");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS drone_contour_dataset_idx ON drone_contour (dataset_id)");
+
         jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS drone_dataset_project_type_idx "
                 + "ON drone_dataset (project_id, dataset_type)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS drone_dataset_footprint_idx "
@@ -247,6 +277,8 @@ public class DroneService {
             d.format, d.epsg, d.crs_name, d.res_x, d.res_y, d.raster_width, d.raster_height,
             d.min_x, d.min_y, d.max_x, d.max_y, d.elevation_min, d.elevation_max,
             d.status, d.status_message, d.published, d.min_zoom, d.max_zoom, d.build_version,
+            d.band_count, d.data_type, d.colour_interp, d.band_stats::text AS band_stats, d.no_data,
+            d.contour_interval, d.contour_status, d.contour_count, d.contour_message,
             d.created_by, d.created_at, d.updated_at
             """;
 
@@ -290,6 +322,8 @@ public class DroneService {
             SELECT d.id, d.project_id, d.dataset_name, d.dataset_type, d.min_x, d.min_y, d.max_x, d.max_y,
                    d.min_zoom, d.max_zoom, d.build_version, d.elevation_min, d.elevation_max,
                    d.epsg, d.crs_name, d.res_x, d.res_y, d.raster_width, d.raster_height, d.file_size,
+                   d.band_count, d.data_type, d.colour_interp, d.band_stats::text AS band_stats, d.no_data,
+                   d.contour_interval, d.contour_status, d.contour_count,
                    p.project_code, p.project_name, p.location, p.road_section, p.pwd_section, %s
             FROM drone_dataset d JOIN drone_project p ON p.id = d.project_id
             WHERE d.published AND d.status = 'PUBLISHED'
@@ -306,6 +340,8 @@ public class DroneService {
             SELECT (SELECT count(*) FROM drone_project)                                    AS projects,
                    count(*) FILTER (WHERE dataset_type = 'ORTHOMOSAIC')                    AS orthomosaics,
                    count(*) FILTER (WHERE dataset_type = 'DEM')                            AS dems,
+                   count(*) FILTER (WHERE dataset_type = 'CONTOUR')                        AS contour_sets,
+                   COALESCE(sum(contour_count), 0)                                         AS contour_lines,
                    count(*) FILTER (WHERE published AND status = 'PUBLISHED')              AS published,
                    count(*) FILTER (WHERE status = 'PROCESSING')                           AS processing,
                    count(*) FILTER (WHERE status = 'FAILED')                               AS failed,

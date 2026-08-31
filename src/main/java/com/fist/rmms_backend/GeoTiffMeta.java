@@ -39,6 +39,8 @@ final class GeoTiffMeta {
     private static final int IMAGE_WIDTH = 256;
     private static final int IMAGE_LENGTH = 257;
     private static final int BITS_PER_SAMPLE = 258;
+    private static final int PHOTOMETRIC = 262;
+    private static final int COLOR_MAP = 320;
     private static final int SAMPLES_PER_PIXEL = 277;
     private static final int EXTRA_SAMPLES = 338;
     private static final int SAMPLE_FORMAT = 339;
@@ -55,7 +57,17 @@ final class GeoTiffMeta {
     final int bitsPerSample;
     /** TIFF SampleFormat: 1 unsigned int, 2 signed int, 3 IEEE float. */
     final int sampleFormat;
+    /** TIFF PhotometricInterpretation: 0 white-is-zero, 1 black-is-zero, 2 RGB, 3 palette. */
+    final int photometric;
     final boolean hasAlpha;
+    /**
+     * Which band carries alpha, or -1. Taken from ExtraSamples, whose VALUE says what
+     * a band is: 1 associated (premultiplied) alpha, 2 unassociated alpha, 0 simply
+     * "unspecified". Checking only that the tag exists gets this wrong — GDAL writes
+     * {@code ExtraSamples=(0,0)} on a plain 3-band grayscale-plus-extras image, which
+     * has no alpha at all.
+     */
+    final int alphaBand;
     final DroneCrs crs;
     /** NaN when the file declares no nodata value. */
     final double noData;
@@ -67,13 +79,15 @@ final class GeoTiffMeta {
     private final double ia, ib, ic, id, ie, iff;
 
     private GeoTiffMeta(int width, int height, int samplesPerPixel, int bitsPerSample, int sampleFormat,
-                        boolean hasAlpha, DroneCrs crs, double noData, double[] t) {
+                        int photometric, int alphaBand, DroneCrs crs, double noData, double[] t) {
         this.width = width;
         this.height = height;
         this.samplesPerPixel = samplesPerPixel;
         this.bitsPerSample = bitsPerSample;
         this.sampleFormat = sampleFormat;
-        this.hasAlpha = hasAlpha;
+        this.photometric = photometric;
+        this.alphaBand = alphaBand;
+        this.hasAlpha = alphaBand >= 0;
         this.crs = crs;
         this.noData = noData;
         this.ax = t[0]; this.bx = t[1]; this.cx = t[2];
@@ -176,9 +190,29 @@ final class GeoTiffMeta {
             int spp = (int) num(tags, SAMPLES_PER_PIXEL, 1);
             int bps = (int) num(tags, BITS_PER_SAMPLE, 8);
             int fmt = (int) num(tags, SAMPLE_FORMAT, 1);
-            // ExtraSamples present at all means the trailing band is not colour;
-            // value 1 is associated (premultiplied) alpha, 2 is unassociated.
-            boolean alpha = tags.containsKey(EXTRA_SAMPLES) && spp >= 2;
+            // Photometric defaults to RGB for a 3+ band file and black-is-zero
+            // otherwise, matching what a reader assumes when the tag is absent.
+            int photo = (int) num(tags, PHOTOMETRIC, spp >= 3 ? 2 : 1);
+            if (tags.containsKey(COLOR_MAP)) photo = 3;
+
+            /* ExtraSamples describes the bands AFTER the colour ones, in order:
+               1 is associated (premultiplied) alpha, 2 unassociated, 0 "unspecified". */
+            int colourBands = (photo == 2) ? 3 : 1;
+            int alphaBand = -1;
+            double[] extras = doubles(tags, EXTRA_SAMPLES);
+            if (extras != null) {
+                for (int i = 0; i < extras.length; i++) {
+                    if (extras[i] == 1 || extras[i] == 2) { alphaBand = colourBands + i; break; }
+                }
+            }
+            /* Fall back to the count. Plenty of real files label a genuine alpha band
+               "unspecified" — GDAL writes ExtraSamples=0 and records the band's role
+               only in its own colour-interpretation metadata, which is not a TIFF tag.
+               Trusting ExtraSamples alone renders those files' transparent collar as
+               opaque black. A 4th band on an RGB image, or a 2nd on a grayscale one,
+               is alpha by overwhelming convention. */
+            if (alphaBand < 0 && spp == colourBands + 1) alphaBand = colourBands;
+            if (alphaBand >= spp) alphaBand = -1;
 
             double[] transform = affine(tags, height);
             DroneCrs crs = DroneCrs.of(epsg(tags));
@@ -189,7 +223,7 @@ final class GeoTiffMeta {
                 try { nodata = Double.parseDouble(s.trim()); } catch (NumberFormatException ignored) { }
             }
 
-            return new GeoTiffMeta(width, height, spp, bps, fmt, alpha, crs, nodata, transform);
+            return new GeoTiffMeta(width, height, spp, bps, fmt, photo, alphaBand, crs, nodata, transform);
         }
     }
 
@@ -329,14 +363,83 @@ final class GeoTiffMeta {
         return d == null || d.length == 0 ? fallback : d[0];
     }
 
-    /** For the metadata panel: "RGB 8-bit", "Float 32-bit", etc. */
-    String pixelSummary() {
+    /** "Unsigned integer 16-bit", "Float 32-bit", … */
+    String dataType() {
         String kind = switch (sampleFormat) {
             case 3 -> "Float";
             case 2 -> "Signed integer";
             default -> "Unsigned integer";
         };
-        return samplesPerPixel + "-band · " + kind + " " + bitsPerSample + "-bit"
-                + (hasAlpha ? " · with alpha" : "");
+        return kind + " " + bitsPerSample + "-bit";
+    }
+
+    /**
+     * The bands to draw, as source indices: three for colour, or one for grayscale.
+     *
+     * <p>Bands 1-3 become red, green and blue whenever there are three non-alpha
+     * bands to work with — <b>even when PhotometricInterpretation does not say RGB</b>.
+     * A great many real orthomosaics are written as MINISBLACK with three or four
+     * bands, because the exporter recorded each band's role in its own metadata
+     * rather than in the TIFF tag. Believing the tag on those files renders a colour
+     * survey as a grey one built from the red band alone. This is the same default
+     * GDAL and QGIS apply: more than one band means multiband colour, 1-2-3 to
+     * R-G-B.
+     *
+     * <p>A palette image is excluded — its single band is an index into a colour
+     * table, not a channel.
+     */
+    int[] displayBands() {
+        int[] colour = new int[samplesPerPixel];
+        int n = 0;
+        for (int i = 0; i < samplesPerPixel; i++)
+            if (i != alphaBand) colour[n++] = i;
+
+        if (photometric != 3 && n >= 3) return new int[]{colour[0], colour[1], colour[2]};
+        return new int[]{n > 0 ? colour[0] : 0};
+    }
+
+    /** True when {@link #displayBands()} gives three channels rather than grey. */
+    boolean isColour() {
+        return displayBands().length == 3;
+    }
+
+    /** How the bands are read for display: "RGB", "RGB + alpha", "Grayscale", … */
+    String colourInterpretation() {
+        if (photometric == 3) return "Palette";
+
+        int colourBands = samplesPerPixel - (hasAlpha ? 1 : 0);
+        String base;
+        if (isColour()) {
+            // Say so explicitly when the tag disagrees with how it is being drawn —
+            // otherwise the panel claims "grayscale" over a full-colour image.
+            base = photometric == 2 ? "RGB" : "Multiband, bands 1-3 shown as RGB";
+        } else {
+            base = photometric == 0 ? "Grayscale (white is zero)" : "Grayscale";
+        }
+        if (hasAlpha) base += " + alpha";
+        int spare = colourBands - (isColour() ? 3 : 1);
+        if (spare > 0) base += " + " + spare + " further band" + (spare == 1 ? "" : "s");
+        return base;
+    }
+
+    /** Per-band role, for the info panel: Red / Green / Blue / Alpha / Band n. */
+    String[] bandLabels() {
+        String[] out = new String[samplesPerPixel];
+        int[] shown = displayBands();
+        String[] rgb = {"Red", "Green", "Blue"};
+        for (int i = 0; i < samplesPerPixel; i++) {
+            if (i == alphaBand) { out[i] = "Alpha"; continue; }
+            if (photometric == 3) { out[i] = "Palette index"; continue; }
+            String label = null;
+            for (int k = 0; k < shown.length; k++)
+                if (shown[k] == i) label = shown.length == 3 ? rgb[k] : "Gray";
+            out[i] = label != null ? label : "Band " + (i + 1);
+        }
+        return out;
+    }
+
+    /** For the metadata panel: "3-band · Unsigned integer 8-bit · RGB". */
+    String pixelSummary() {
+        return samplesPerPixel + "-band · " + dataType() + " · " + colourInterpretation();
     }
 }

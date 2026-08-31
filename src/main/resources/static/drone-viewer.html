@@ -82,6 +82,16 @@
     color:var(--muted-2);flex:none;width:96px;padding-top:2px}
   .info .r .v{color:var(--text);flex:1;word-break:break-word}
 
+  /* per-band value ranges */
+  .bands{margin-top:10px;padding-top:9px;border-top:1px solid var(--edge-soft)}
+  .band-h,.band-r{display:grid;grid-template-columns:1fr .8fr .8fr 1.2fr;gap:6px;align-items:baseline}
+  .band-h{font-family:var(--mono);font-size:8px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--muted-2);padding-bottom:5px}
+  .band-r{font-family:var(--mono);font-size:10px;color:var(--text);padding:3px 0;
+    border-top:1px solid rgba(32,48,76,.5)}
+  .band-r .band-n{color:#cdbcff}
+  .band-note{font-size:10.5px;color:var(--muted-2);line-height:1.5;margin-top:8px}
+
   .row{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:12.5px}
   .row input[type=checkbox]{width:15px;height:15px;accent-color:var(--violet);cursor:pointer}
   select{width:100%;background:var(--void);border:1px solid var(--edge);color:var(--text);
@@ -93,6 +103,20 @@
     padding:8px 11px;font-family:var(--disp);font-size:11.5px;font-weight:600;transition:.15s}
   .tool:hover{color:var(--text);border-color:var(--violet)}
   .tool.on{color:#fff;background:linear-gradient(180deg,#9c80ee,#7358d8);border-color:transparent}
+
+  /* contour controls under a DEM */
+  .contour{margin-top:10px;padding-top:9px;border-top:1px solid var(--edge-soft)}
+  .contour-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+    font-family:var(--mono);font-size:8.5px;letter-spacing:.15em;text-transform:uppercase;
+    color:var(--muted-2);margin-bottom:7px}
+  .contour-c{color:#f0d27a;letter-spacing:.06em}
+  .contour-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+  .contour-row input{width:62px;background:var(--void);border:1px solid var(--edge);color:var(--text);
+    border-radius:6px;padding:4px 7px;font-family:var(--mono);font-size:11px}
+  .contour-row input:focus{outline:0;border-color:var(--violet)}
+  .contour-u{font-family:var(--mono);font-size:10px;color:var(--muted-2);margin-right:3px}
+  .contour-n{font-size:10.5px;color:var(--muted-2);line-height:1.5;margin-top:7px}
+  .contour-n.bad{color:#ffb4ac}
 
   .ramp{margin-top:9px}
   .ramp-bar{height:9px;border-radius:5px;background:linear-gradient(90deg,#1a9850,#a6d96a,#ffffbf,#fdae61,#d73027)}
@@ -200,6 +224,6 @@
     <div class="readout" id="readout"></div>
   </div>
 </div>
-<script src="/js/drone-viewer.js?v=9" defer></script>
+<script src="/js/drone-viewer.js?v=13" defer></script>
 </body>
 </html>

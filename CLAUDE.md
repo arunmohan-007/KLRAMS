@@ -104,11 +104,36 @@ Every other map layer is PostGIS geometry served as MVT. Drone orthomosaics and 
 - Writes need no new `SecurityConfig` rule — they fall under the blanket `POST/PUT/DELETE /api/**` ADMIN matcher, so view-only accounts can view drone data but not upload or publish it.
 - A drone project's road reference is **Road / Location** (`drone_project.location`) — the stretch the flight covered, e.g. "Ch. 2/400 – 4/900, Vempayam → Thycad". It was called `crn` briefly; `DroneService.ensureSchema()` carries a guarded `ALTER … RENAME COLUMN`.
 
+### Drone contours
+
+Two sources, one table and one map layer:
+
+- **Traced from a DEM** — marching squares in `DroneContourService`, one pass per level, segments chained into polylines. Two things that pure marching squares gets wrong and this guards against: a level coinciding exactly with a sample value makes several segment-ends meet at one grid node and the ring comes apart into arcs (fixed by nudging the level by a part in a billion), and the same coincidence emits zero-length slivers that count as lines but cannot be drawn (filtered by minimum length). `ContourTracingTest` pins both against a ramp, a cone and a nodata hole.
+- **Imported from a survey file** — a `CONTOUR` dataset on the project, alongside its orthomosaic and DEM, so it reuses the whole card/toggle/info machinery. The file is parsed **in the browser** (shpjs for zipped shapefiles, `js/kml-reader.js` for KML/KMZ) and posted as GeoJSON, exactly as the Layer Management importer does it — no shapefile or KML parser on the server. The elevation attribute is auto-detected from the usual names (ELEV, ELEVATION, CONTOUR, LEVEL…) case-insensitively, and the index interval is inferred as the smallest gap between distinct heights.
+
+Contours are **PostGIS LineStrings served as MVT**, not pixels in the DEM's pyramid: a contour is a value to label and query. Simplification is per-zoom in the tile query, not baked in at trace time. Every 5th level is drawn heavier and labelled.
+
+**A symbol layer needs `glyphs` on the style** or MapLibre rejects it outright, and `text-font` must name a stack the glyph server actually serves — see the `FONTS` list in `js/34-layer-style.js` (`Noto Sans Regular/Bold`, `Open Sans Semibold`). Naming any other stack renders nothing at all. Also: only ONE zoom-driven `interpolate` is allowed per expression, so vary width by attribute with a `case` at each zoom stop, not a `case` wrapping two interpolates.
+
 ### Reading road attributes from a map click
 
 A road vector tile carries **only four properties** — `road` (Section_La), `name`, `len` and `Road_Class` — not the other 25 columns, because the per-feature tag list is most of an MVT's weight (see the comment in `RoadTileService.sqlFor`). Anything else a popup wants (District, PWD section, start/end location) must be looked up in `/api/roads/index` by section label; that endpoint carries all columns without geometry and is already loaded once per page. Writing `feature.properties.District` straight off a tile silently yields `undefined` — the Drone Viewer's Identify popup was built that way at first and rendered nearly empty.
 
 Note also that the roads table's own `CRN` column holds the literal string `"CRN"` on every row of the current import, so it is useless for search or display; `Rd_Str_Loc` / `Rd_End_Loc` hold real place names.
+
+### Drone raster rendering: bands, types and display windows
+
+Three rules, each learned from a real file that rendered wrongly:
+
+1. **Never use `BufferedImage.getRGB()` for orthomosaic pixels.** It scales samples by the TYPE's maximum, so a 16-bit raster whose values reach 5 000 draws at 5000/65535 of full brightness — a correct image rendered almost black. It also throws `ArrayIndexOutOfBoundsException` outright on single-band float rasters. `DroneRasterService` reads raw samples via `readRaster` and maps bands itself. Only palette images (photometric 3) go through `getRGB`, because the colour table lives in the decoded image.
+
+2. **Do not trust PhotometricInterpretation to decide colour.** Many real orthomosaics are written MINISBLACK with 3-4 bands because the exporter recorded band roles in its own metadata, not the TIFF tag. `GeoTiffMeta.displayBands()` maps bands 1-3 to R-G-B whenever there are three non-alpha bands, which is what GDAL and QGIS do; believing the tag renders a colour survey in grey from the red band alone. Likewise `ExtraSamples` value 0 means "unspecified", not "alpha" — but a 4th band on an RGB image *is* alpha by convention, while a 4th band on a MINISBLACK image is another measurement (NIR), not transparency.
+
+3. **Anything not 8-bit needs a display window.** `RasterBandStats` measures each band's 2nd/98th percentile and the renderer stretches that across 0-255. Verified against QGIS's own "Stretch to MinMax" on the same file: QGIS reported band maxima 3967/5748/8316, this code computes 3948/5715/8255. 8-bit data is passed through untouched.
+
+**`ImageReadParam.setSourceSubsampling` truncates float samples toward zero.** A DEM in metres only loses its decimals, so it went unnoticed; a reflectance ortho scaled 0..1 becomes uniformly zero. Sampling therefore decodes honest strips and thins them in Java (`DroneRasterService.sampleValues`). This had silently made every float DEM over ~1200 px fail upload with "no usable elevation values".
+
+Re-publishing a dataset re-reads its band metadata, so files uploaded before a fix pick the correction up without being deleted and re-uploaded.
 
 ### Place-name search (`/api/geocode`)
 
