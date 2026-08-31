@@ -121,6 +121,9 @@ public class DroneRasterService {
 
             GeoTiffMeta meta = GeoTiffMeta.read(staging);
             double[] elev = DroneService.DEM.equals(kind) ? sampleElevationRange(staging, meta) : null;
+            // Measured now rather than at publish, so the upload screen can show what
+            // is actually in the file before anyone commits to building tiles from it.
+            RasterBandStats stats = sampleBandStats(staging, meta);
             if (elev != null && elev[0] >= elev[1])
                 throw new IllegalArgumentException(
                         "The DEM contains no usable elevation values — every pixel is nodata.");
@@ -134,8 +137,10 @@ public class DroneRasterService {
                     (project_id, dataset_name, dataset_type, file_name, file_path, file_size, format,
                      epsg, crs_name, res_x, res_y, raster_width, raster_height,
                      min_x, min_y, max_x, max_y, elevation_min, elevation_max,
+                     band_count, data_type, colour_interp, band_stats, no_data,
                      footprint, status, created_by)
                 VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, CAST(? AS jsonb), ?,
                         ST_MakeEnvelope(?, ?, ?, ?, 4326), ?, ?)
                 RETURNING id
                 """, Integer.class,
@@ -143,6 +148,8 @@ public class DroneRasterService {
                     meta.crs.epsg(), meta.crs.label(), meta.resX(), meta.resY(), meta.width, meta.height,
                     b[0], b[1], b[2], b[3],
                     elev == null ? null : elev[0], elev == null ? null : elev[1],
+                    meta.samplesPerPixel, meta.dataType(), meta.colourInterpretation(),
+                    stats.toJson(meta), Double.isNaN(meta.noData) ? null : meta.noData,
                     b[0], b[1], b[2], b[3], DroneService.UPLOADED, user);
 
             Path target = originalFile(id, original);
@@ -262,6 +269,21 @@ public class DroneRasterService {
             elevMax = range[1] > range[0] ? range[1] : range[0] + 1;
         }
 
+        /* The display window for a non-8-bit orthomosaic. Null for 8-bit and for
+           DEMs: 8-bit samples are already display levels, and stretching them would
+           change the colours of every orthomosaic that renders correctly today. */
+        RasterBandStats window = null;
+        if (!dem && needsStretch(meta)) {
+            window = sampleBandStats(file, meta);
+            log.info("Drone dataset {}: {} — stretching bands to their measured range {}",
+                    datasetId, meta.pixelSummary(), window.toJson(meta));
+        }
+
+        /* Re-read the band description on every publish, so a dataset uploaded before
+           a fix to the band logic picks the correction up by being re-published,
+           rather than needing to be deleted and uploaded again. */
+        refreshBandMetadata(datasetId, file, meta, window);
+
         int maxZoom = nativeZoom(meta, bounds);
         int minZoom = overviewZoom(bounds);
 
@@ -273,7 +295,8 @@ public class DroneRasterService {
             int[] range = tileRange(bounds, maxZoom);
             for (int x = range[0]; x <= range[2]; x++) {
                 for (int y = range[1]; y <= range[3]; y++) {
-                    BufferedImage img = renderTile(reading, meta, dem, elevMin, elevMax, maxZoom, x, y);
+                    BufferedImage img = renderTile(reading, meta, dem, elevMin, elevMax,
+                                                   window, maxZoom, x, y);
                     if (img != null) writeTile(tiles, maxZoom, x, y, img);
                 }
             }
@@ -297,6 +320,7 @@ public class DroneRasterService {
     /** One 256px tile, or {@code null} when every pixel of it falls outside the raster. */
     private BufferedImage renderTile(Reading reading, GeoTiffMeta meta, boolean dem,
                                      double elevMin, double elevMax,
+                                     RasterBandStats window,
                                      int z, int tx, int ty) throws IOException {
         double span = 2 * MERCATOR_EXTENT / (1 << z);
         double west = -MERCATOR_EXTENT + tx * span;
@@ -345,10 +369,12 @@ public class DroneRasterService {
                 }
                 out.setRGB(0, py, TILE, 1, row, 0, TILE);
             }
-        } else {
+        } else if (meta.photometric == 3) {
+            /* Palette image: the pixel values are indices into the file's colour map,
+               and only the decoded BufferedImage knows that map. This is the one case
+               where getRGB() is the right call rather than the wrong one. */
             BufferedImage src = reading.readImage(x0, y0, w, h, sub);
             int sw = src.getWidth(), sh = src.getHeight();
-            boolean alpha = src.getColorModel().hasAlpha();
             for (int py = 0; py < TILE; py++) {
                 double my = north - (py + 0.5) * step;
                 for (int px = 0; px < TILE; px++) {
@@ -356,18 +382,75 @@ public class DroneRasterService {
                     int sx = (int) ((p[0] - x0) / sub), sy = (int) ((p[1] - y0) / sub);
                     if (sx < 0 || sy < 0 || sx >= sw || sy >= sh) { row[px] = 0; continue; }
                     int argb = src.getRGB(sx, sy);
-                    // A raster with no alpha band has no way to say "outside the
-                    // flight" other than the black collar the exporter leaves, so
-                    // pure black is treated as nothing to draw.
-                    if (!alpha && (argb & 0xFFFFFF) == 0) { row[px] = 0; continue; }
-                    if (alpha && (argb >>> 24) == 0) { row[px] = 0; continue; }
+                    if ((argb >>> 24) == 0) { row[px] = 0; continue; }
                     row[px] = argb | 0xFF000000;
+                    any = true;
+                }
+                out.setRGB(0, py, TILE, 1, row, 0, TILE);
+            }
+        } else {
+            /* Read raw samples and map the bands explicitly, rather than letting
+               BufferedImage.getRGB() do it. getRGB() converts by dividing by the
+               TYPE's maximum, so a 16-bit raster whose values only reach 4 000 comes
+               out at 4000/65535 of full brightness — a correct picture rendered
+               almost black. Band order is applied here too, so band 1 is red, 2 is
+               green and 3 is blue whatever the decoder thought. */
+            Raster src = reading.readRaster(x0, y0, w, h, sub);
+            int sw = src.getWidth(), sh = src.getHeight(), nb = src.getNumBands();
+            int[] show = meta.displayBands();
+            boolean rgb = show.length == 3 && nb >= 3;
+            int rB = show[0], gB = rgb ? show[1] : show[0], bB = rgb ? show[2] : show[0];
+            int aB = (meta.alphaBand >= 0 && meta.alphaBand < nb) ? meta.alphaBand : -1;
+
+            for (int py = 0; py < TILE; py++) {
+                double my = north - (py + 0.5) * step;
+                for (int px = 0; px < TILE; px++) {
+                    double[] p = sourcePixel(meta, west + (px + 0.5) * step, my);
+                    int sx = (int) ((p[0] - x0) / sub), sy = (int) ((p[1] - y0) / sub);
+                    if (sx < 0 || sy < 0 || sx >= sw || sy >= sh) { row[px] = 0; continue; }
+
+                    if (aB >= 0 && src.getSampleDouble(sx, sy, aB) <= 0) { row[px] = 0; continue; }
+
+                    double r0 = src.getSampleDouble(sx, sy, rB);
+                    if (isNoData(r0, meta)) { row[px] = 0; continue; }
+
+                    int r = level(r0, window, rB);
+                    int g = rgb ? level(src.getSampleDouble(sx, sy, gB), window, gB) : r;
+                    int b = rgb ? level(src.getSampleDouble(sx, sy, bB), window, bB) : r;
+
+                    /* With no alpha band and no declared nodata, the only marker for
+                       "outside the flight" is the black collar exporters leave. */
+                    if (aB < 0 && Double.isNaN(meta.noData) && r == 0 && g == 0 && b == 0) {
+                        row[px] = 0;
+                        continue;
+                    }
+                    row[px] = 0xFF000000 | (r << 16) | (g << 8) | b;
                     any = true;
                 }
                 out.setRGB(0, py, TILE, 1, row, 0, TILE);
             }
         }
         return any ? out : null;
+    }
+
+    /**
+     * One sample to a 0-255 display level.
+     *
+     * <p>8-bit data is passed through untouched — it already IS display levels, and
+     * stretching it would change the colours of every orthomosaic that renders
+     * correctly today. Everything else is mapped through the band's measured display
+     * window; see {@link RasterBandStats} for why that window is percentiles rather
+     * than the raw extremes.
+     */
+    private static int level(double v, RasterBandStats window, int band) {
+        if (window == null || band >= window.bands) {
+            return (int) Math.max(0, Math.min(255, v));
+        }
+        double lo = window.low[band], hi = window.high[band];
+        if (hi <= lo) return 0;
+        double t = (v - lo) / (hi - lo);
+        int out = (int) Math.round(t * 255);
+        return out < 0 ? 0 : (out > 255 ? 255 : out);
     }
 
     /** Web Mercator metres to fractional source pixel. */
@@ -498,21 +581,135 @@ public class DroneRasterService {
      * centimetres. The values drive a colour ramp and a summary line, neither of
      * which is a survey deliverable.
      */
-    private double[] sampleElevationRange(Path file, GeoTiffMeta meta) throws IOException {
-        int step = Math.max(1, (int) Math.ceil(Math.max(meta.width, meta.height) / 1200.0));
+    /**
+     * True when the raster's samples are not already display levels.
+     *
+     * <p>Only unsigned 8-bit data is: 0-255 in, 0-255 out. Every other type — 16-bit,
+     * signed, float — has to be mapped onto the output range, and doing that by the
+     * type's maximum rather than the data's actual range is what renders a 16-bit
+     * orthomosaic almost black.
+     */
+    private static boolean needsStretch(GeoTiffMeta meta) {
+        return !(meta.sampleFormat == 1 && meta.bitsPerSample == 8);
+    }
+
+    /** Roughly how many values per band the samplers aim to collect. */
+    private static final int TARGET_SAMPLES = 400_000;
+    /** Rows decoded in one go while sampling, and how many such strips to visit. */
+    private static final int SAMPLE_STRIP_ROWS = 64;
+    private static final int MAX_SAMPLE_STRIPS = 32;
+
+    /**
+     * Values per band, sampled across the whole raster.
+     *
+     * <p><b>Deliberately does not use {@code ImageReadParam.setSourceSubsampling}.</b>
+     * The JDK's TIFF reader returns an all-zero raster for FLOAT samples whenever
+     * subsampling is set — reading the same region unsubsampled gives the real
+     * values. That silently turned every float DEM larger than the subsampling
+     * threshold into "no usable elevation values" at upload, and would have flattened
+     * the display window of any float orthomosaic to nothing.
+     *
+     * <p>So the raster is decoded honestly, a strip of rows at a time, and thinned in
+     * Java instead. Memory stays bounded by the strip, not by the file.
+     */
+    private double[][] sampleValues(Path file, GeoTiffMeta meta) throws IOException {
+        int bands = meta.samplesPerPixel;
+        int rows = Math.min(SAMPLE_STRIP_ROWS, meta.height);
+        int strips = Math.max(1, Math.min(MAX_SAMPLE_STRIPS, meta.height / rows));
+        int stride = Math.max(1, (strips * rows * meta.width) / TARGET_SAMPLES);
+
+        double[][] out = new double[bands][];
+        int[] n = new int[bands];
+        int cap = Math.max(1024, (strips * rows * meta.width) / stride + strips);
+        for (int b = 0; b < bands; b++) out[b] = new double[cap];
+
         try (Reading r = Reading.open(file)) {
-            Raster raster = r.readRaster(0, 0, meta.width, meta.height, step);
-            double min = Double.MAX_VALUE, max = -Double.MAX_VALUE;
-            for (int y = 0; y < raster.getHeight(); y++) {
-                for (int x = 0; x < raster.getWidth(); x++) {
-                    double v = raster.getSampleDouble(x, y, 0);
-                    if (isNoData(v, meta)) continue;
-                    if (v < min) min = v;
-                    if (v > max) max = v;
+            for (int s = 0; s < strips; s++) {
+                int y0 = (int) ((long) s * (meta.height - rows) / Math.max(1, strips - 1));
+                if (strips == 1) y0 = 0;
+                Raster ras = r.readRaster(0, y0, meta.width, rows, 1);
+                int rw = ras.getWidth(), rh = ras.getHeight();
+                int nb = Math.min(bands, ras.getNumBands());
+                for (int i = 0; i < rw * rh; i += stride) {
+                    int x = i % rw, y = i / rw;
+                    if (y >= rh) break;
+                    for (int b = 0; b < nb; b++) {
+                        if (n[b] < cap) out[b][n[b]++] = ras.getSampleDouble(x, y, b);
+                    }
                 }
             }
-            return min > max ? new double[]{0, 0} : new double[]{min, max};
         }
+        for (int b = 0; b < bands; b++) out[b] = java.util.Arrays.copyOf(out[b], n[b]);
+        return out;
+    }
+
+    /**
+     * Band 0 of the raster as a grid, thinned by {@code step}.
+     *
+     * <p>Reads strips at full resolution and picks every {@code step}-th pixel in
+     * Java, for the reason spelled out on {@link #sampleValues}: asking ImageIO to
+     * subsample truncates float samples, which on a DEM silently discards the
+     * fractional metres that a sub-metre contour interval is made of.
+     *
+     * <p>Nodata comes back as {@link Double#NaN} so callers have one thing to test
+     * rather than a sentinel that varies per file.
+     */
+    double[][] readGrid(Path file, GeoTiffMeta meta, int step) throws IOException {
+        int gw = (meta.width + step - 1) / step;
+        int gh = (meta.height + step - 1) / step;
+        double[][] grid = new double[gh][gw];
+        for (double[] row : grid) java.util.Arrays.fill(row, Double.NaN);
+
+        int stripRows = Math.max(step, Math.min(256, meta.height));
+        try (Reading reading = Reading.open(file)) {
+            for (int y0 = 0; y0 < meta.height; y0 += stripRows) {
+                int rows = Math.min(stripRows, meta.height - y0);
+                Raster ras = reading.readRaster(0, y0, meta.width, rows, 1);
+                for (int gy = (y0 + step - 1) / step; gy < gh; gy++) {
+                    int sy = gy * step - y0;
+                    if (sy < 0 || sy >= ras.getHeight()) continue;
+                    for (int gx = 0; gx < gw; gx++) {
+                        int sx = gx * step;
+                        if (sx >= ras.getWidth()) continue;
+                        double v = ras.getSampleDouble(sx, sy, 0);
+                        grid[gy][gx] = isNoData(v, meta) ? Double.NaN : v;
+                    }
+                }
+            }
+        }
+        return grid;
+    }
+
+    /** Per-band range and display window, from a representative sample of the raster. */
+    RasterBandStats sampleBandStats(Path file, GeoTiffMeta meta) throws IOException {
+        return RasterBandStats.measure(sampleValues(file, meta), meta);
+    }
+
+    /** Write the band description back to the row, measuring it if not already done. */
+    private void refreshBandMetadata(int datasetId, Path file, GeoTiffMeta meta,
+                                     RasterBandStats known) throws IOException {
+        RasterBandStats stats = known != null ? known : sampleBandStats(file, meta);
+        jdbc.update("""
+            UPDATE drone_dataset
+               SET band_count = ?, data_type = ?, colour_interp = ?,
+                   band_stats = CAST(? AS jsonb), no_data = ?, format = ?
+             WHERE id = ?
+            """,
+            meta.samplesPerPixel, meta.dataType(), meta.colourInterpretation(),
+            stats.toJson(meta), Double.isNaN(meta.noData) ? null : meta.noData,
+            meta.pixelSummary(), datasetId);
+    }
+
+    private double[] sampleElevationRange(Path file, GeoTiffMeta meta) throws IOException {
+        double[][] samples = sampleValues(file, meta);
+        if (samples.length == 0) return new double[]{0, 0};
+        double min = Double.MAX_VALUE, max = -Double.MAX_VALUE;
+        for (double v : samples[0]) {
+            if (isNoData(v, meta)) continue;
+            if (v < min) min = v;
+            if (v > max) max = v;
+        }
+        return min > max ? new double[]{0, 0} : new double[]{min, max};
     }
 
     /* ------------------------------------------------------------------

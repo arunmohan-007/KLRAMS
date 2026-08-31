@@ -210,11 +210,17 @@
         <select id="u-type">
           <option value="ORTHOMOSAIC">Orthomosaic</option>
           <option value="DEM">DEM</option>
+          <option value="CONTOUR">Contours (survey file)</option>
         </select>
-        <span class="hint">One orthomosaic and one DEM per project.</span></div>
+        <span class="hint">One of each per project.</span></div>
       <div class="fld"><label>Dataset Name</label><input id="u-name" placeholder="Defaults to the file name" maxlength="160"></div>
-      <div class="fld wide"><label>GeoTIFF File</label><input id="u-file" type="file" accept=".tif,.tiff,image/tiff">
-        <span class="hint">Large files take a while to upload &mdash; leave this page open until it finishes.</span></div>
+      <div class="fld" id="u-elev-fld" style="display:none"><label>Elevation Field</label>
+        <input id="u-elev" placeholder="Detected automatically" maxlength="60">
+        <span class="hint">The attribute holding each contour&rsquo;s height. Left blank, common
+          names (ELEV, ELEVATION, CONTOUR, LEVEL&hellip;) are tried.</span></div>
+      <div class="fld wide"><label id="u-file-l">GeoTIFF File</label>
+        <input id="u-file" type="file" accept=".tif,.tiff,image/tiff">
+        <span class="hint" id="u-file-h">Large files take a while to upload &mdash; leave this page open until it finishes.</span></div>
       <div class="fld wide bar" style="margin-top:0">
         <button class="btn" id="u-go">Upload</button>
         <span class="hint" id="u-status"></span>
@@ -236,7 +242,11 @@
   </div>
 
 </div>
-<script src="/js/drone-console.js?v=2" defer></script>
+<!-- Shapefile and KML are read in the browser and posted as GeoJSON, the same
+     division the Layer Management importer uses; nothing parses them server-side. -->
+<script src="https://unpkg.com/shpjs@6.1.0/dist/shp.min.js"></script>
+<script src="/js/kml-reader.js?v=1"></script>
+<script src="/js/drone-console.js?v=5" defer></script>
 <script src="/js/role-gate.js" defer></script>
 </body>
 </html>

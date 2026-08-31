@@ -43,12 +43,20 @@ import java.util.Map;
 @RequestMapping("/api/drone")
 public class DroneController {
 
+    /** Deepest contour tile served; past this the lines are drawn from the z22 tile. */
+    private static final int CONTOUR_MAX_ZOOM = 22;
+
     private final DroneService drone;
     private final DroneRasterService rasters;
+    private final DroneContourService contours;
+    private final DroneContourTileService contourTiles;
 
-    public DroneController(DroneService drone, DroneRasterService rasters) {
+    public DroneController(DroneService drone, DroneRasterService rasters,
+                           DroneContourService contours, DroneContourTileService contourTiles) {
         this.drone = drone;
         this.rasters = rasters;
+        this.contours = contours;
+        this.contourTiles = contourTiles;
     }
 
     /* ---------------- dashboard ---------------- */
@@ -168,6 +176,96 @@ public class DroneController {
         } catch (Exception e) {
             return fail("drone delete dataset", e);
         }
+    }
+
+    /* ---------------- contours ---------------- */
+
+    /**
+     * Trace contours from a DEM at the given interval, in metres.
+     *
+     * <p>Queued, like publishing: the response says PROCESSING and the dataset's
+     * {@code contour_status} carries the outcome.
+     */
+    @PostMapping("/datasets/{id}/contours")
+    public Map<String, Object> makeContours(@PathVariable int id, @RequestBody Map<String, Object> body) {
+        try {
+            Object raw = body == null ? null : body.get("interval");
+            double interval = raw == null ? 1 : Double.parseDouble(String.valueOf(raw));
+            contours.generate(id, interval);
+            return ok("contour_status", DroneContourService.PENDING);
+        } catch (NumberFormatException e) {
+            return fail("drone contours", new IllegalArgumentException("The interval must be a number."));
+        } catch (Exception e) {
+            return fail("drone contours", e);
+        }
+    }
+
+    /**
+     * Import contour lines from a survey file.
+     *
+     * <p>Takes GeoJSON, not the file itself: shapefiles are unzipped by shpjs in the
+     * browser and KML is read by {@code js/kml-reader.js}, exactly as the Layer
+     * Management importer already does it. That keeps shapefile and KML parsing off
+     * the server entirely.
+     */
+    @PostMapping("/projects/{projectId}/contours/import")
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> importContours(@PathVariable int projectId,
+                                              @RequestBody Map<String, Object> body,
+                                              Authentication auth) {
+        try {
+            Object raw = body.get("features");
+            if (!(raw instanceof List<?> list) || list.isEmpty())
+                throw new IllegalArgumentException("That file contains no features to import.");
+
+            String name = str(body.get("dataset_name"));
+            String file = str(body.get("file_name"));
+            if (name == null) name = file == null ? "Imported contours" : file;
+
+            int id = contours.importFeatures(projectId, name, file == null ? "" : file,
+                    str(body.get("elevation_field")), (List<Map<String, Object>>) list,
+                    auth == null ? null : auth.getName());
+            Map<String, Object> res = ok("id", id);
+            res.put("dataset", drone.dataset(id));
+            return res;
+        } catch (Exception e) {
+            return fail("drone contour import", e);
+        }
+    }
+
+    private static String str(Object v) {
+        String s = v == null ? null : String.valueOf(v).trim();
+        return s == null || s.isEmpty() ? null : s;
+    }
+
+    @DeleteMapping("/datasets/{id}/contours")
+    public Map<String, Object> dropContours(@PathVariable int id) {
+        try {
+            contours.clear(id);
+            return ok("deleted", id);
+        } catch (Exception e) {
+            return fail("drone contours", e);
+        }
+    }
+
+    /**
+     * One tile of a dataset's contours.
+     *
+     * <p>204 for an empty tile, matching the raster endpoint and the rest of the
+     * MVT layers. Not cached as hard as a raster tile: re-tracing at a different
+     * interval replaces the lines in place without a version to bust a cache with,
+     * so a short cache keeps a re-trace visible.
+     */
+    @GetMapping(value = "/datasets/{id}/contours/tiles/{z}/{x}/{y}.mvt",
+                produces = "application/vnd.mapbox-vector-tile")
+    public ResponseEntity<byte[]> contourTile(@PathVariable int id, @PathVariable int z,
+                                              @PathVariable int x, @PathVariable int y) {
+        TileCoordinate t = TileCoordinate.of(z, x, y, CONTOUR_MAX_ZOOM);
+        byte[] tile = contourTiles.tile(id, t);
+        if (tile == null) return ResponseEntity.noContent().build();
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic())
+                .body(tile);
     }
 
     /* ---------------- viewer ---------------- */

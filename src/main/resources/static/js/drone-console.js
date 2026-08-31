@@ -97,6 +97,7 @@
     ['projects', 'Drone Projects', 'vio', 'Survey flights recorded.'],
     ['orthomosaics', 'Orthomosaics', 'info', 'Drone images uploaded.'],
     ['dems', 'DEMs', 'info', 'Elevation models uploaded.'],
+    ['contour_lines', 'Contour lines', 'vio', 'Traced from a DEM or imported.'],
     ['published', 'Published', 'ok', 'Drawn on the Drone Viewer.'],
     ['processing', 'Processing', 'warn', 'Tile build running or queued.'],
     ['failed', 'Failed', 'bad', 'Tile build did not complete.']
@@ -140,7 +141,9 @@
       rows.slice(0, 12).forEach(function (d) {
         var tr = el('tr');
         tr.appendChild(el('td', null, d.dataset_name));
-        tr.appendChild(el('td', null, d.dataset_type === 'DEM' ? 'DEM' : 'Orthomosaic'));
+        tr.appendChild(el('td', null,
+          d.dataset_type === 'DEM' ? 'DEM'
+            : d.dataset_type === 'CONTOUR' ? 'Contours' : 'Orthomosaic'));
         var pc = el('td'); pc.appendChild(el('span', 'code', d.project_code)); tr.appendChild(pc);
         tr.appendChild(el('td', null, fmtBytes(d.file_size)));
         tr.appendChild(el('td', null, d.res_x == null ? '—' : num(d.res_x, 3) + (d.epsg === 4326 ? '°' : ' m')));
@@ -180,7 +183,7 @@
     }
 
     var head = el('thead'), hr = el('tr');
-    ['Project', 'Name', 'Road / Location', 'Survey Date', 'Orthomosaic', 'DEM', 'Action'].forEach(function (h) {
+    ['Project', 'Name', 'Road / Location', 'Survey Date', 'Orthomosaic', 'DEM', 'Contours', 'Action'].forEach(function (h) {
       hr.appendChild(el('th', null, h));
     });
     head.appendChild(hr); t.appendChild(head);
@@ -190,6 +193,7 @@
       var sets = datasetsOf(p);
       var ortho = sets.filter(function (d) { return d.type === 'ORTHOMOSAIC'; })[0];
       var dem = sets.filter(function (d) { return d.type === 'DEM'; })[0];
+      var cont = sets.filter(function (d) { return d.type === 'CONTOUR'; })[0];
 
       var tr = el('tr');
       var c = el('td'); c.appendChild(el('span', 'code', p.project_code)); tr.appendChild(c);
@@ -198,15 +202,16 @@
       tr.appendChild(el('td', null, fmtDate(p.survey_date)));
       tr.appendChild(datasetCell(ortho));
       tr.appendChild(datasetCell(dem));
+      tr.appendChild(datasetCell(cont, 'Not imported'));
       tr.appendChild(projectActions(p, sets));
       body.appendChild(tr);
     });
     t.appendChild(body);
   }
 
-  function datasetCell(d) {
+  function datasetCell(d, emptyText) {
     var td = el('td');
-    if (!d) { td.appendChild(el('span', 'pill none', 'Not uploaded')); return td; }
+    if (!d) { td.appendChild(el('span', 'pill none', emptyText || 'Not uploaded')); return td; }
     td.appendChild(statusPill(d.status, d.published));
     return td;
   }
@@ -330,35 +335,135 @@
 
   var lastUploadedId = null;
 
+  /* ---------------- upload ---------------- */
+
+  var TYPE_UI = {
+    ORTHOMOSAIC: { label: 'GeoTIFF File', accept: '.tif,.tiff,image/tiff',
+                   hint: 'Large files take a while to upload — leave this page open until it finishes.' },
+    DEM:         { label: 'GeoTIFF File', accept: '.tif,.tiff,image/tiff',
+                   hint: 'Large files take a while to upload — leave this page open until it finishes.' },
+    CONTOUR:     { label: 'Contour File', accept: '.zip,.kml,.kmz,.geojson,.json',
+                   hint: 'Zipped shapefile, KML/KMZ or GeoJSON. Lines with a height attribute — '
+                       + 'the file is read here in your browser, so only the contours are sent.' }
+  };
+
+  /** The upload form changes shape with the dataset type. */
+  function syncUploadType() {
+    var type = document.getElementById('u-type').value;
+    var ui = TYPE_UI[type] || TYPE_UI.ORTHOMOSAIC;
+    document.getElementById('u-file-l').textContent = ui.label;
+    document.getElementById('u-file-h').textContent = ui.hint;
+    document.getElementById('u-file').accept = ui.accept;
+    document.getElementById('u-elev-fld').style.display = type === 'CONTOUR' ? '' : 'none';
+  }
+  document.getElementById('u-type').addEventListener('change', syncUploadType);
+  syncUploadType();
+
+  /**
+   * Read a contour file into GeoJSON features, here in the browser.
+   *
+   * <p>Shapefiles go through shpjs and KML through the viewer's own reader — the
+   * same split the Layer Management importer uses, which is why neither format
+   * needs a parser on the server.
+   */
+  function readContourFile(file) {
+    var name = file.name.toLowerCase();
+
+    if (window.KLKml && window.KLKml.handles(name)) {
+      return window.KLKml.read(file).then(featuresOf);
+    }
+    if (name.endsWith('.zip')) {
+      if (!window.shp) return Promise.reject(new Error('The shapefile reader did not load. Reload the page and try again.'));
+      return file.arrayBuffer().then(window.shp).then(featuresOf);
+    }
+    if (name.endsWith('.geojson') || name.endsWith('.json')) {
+      return file.text().then(function (t) { return featuresOf(JSON.parse(t)); });
+    }
+    return Promise.reject(new Error('Contours must be a zipped shapefile, KML, KMZ or GeoJSON.'));
+  }
+
+  /** shpjs returns one collection or an array of them; flatten to features. */
+  function featuresOf(gj) {
+    if (!gj) return [];
+    if (Array.isArray(gj)) {
+      return gj.reduce(function (all, g) { return all.concat(featuresOf(g)); }, []);
+    }
+    if (gj.type === 'FeatureCollection') return gj.features || [];
+    if (gj.type === 'Feature') return [gj];
+    return [];
+  }
+
   document.getElementById('u-go').addEventListener('click', function () {
     var file = document.getElementById('u-file').files[0];
     var projectId = document.getElementById('u-project').value;
+    var type = document.getElementById('u-type').value;
     var status = document.getElementById('u-status');
     if (!projectId) { say('Create a drone project before uploading.', 'err'); return; }
-    if (!file) { say('Choose a GeoTIFF file.', 'err'); return; }
-
-    var fd = new FormData();
-    fd.append('project_id', projectId);
-    fd.append('dataset_type', document.getElementById('u-type').value);
-    fd.append('dataset_name', document.getElementById('u-name').value);
-    fd.append('file', file);
+    if (!file) { say('Choose a file to upload.', 'err'); return; }
 
     var btn = this;
     btn.disabled = true;
-    status.textContent = 'Uploading ' + fmtBytes(file.size) + '…';
     document.getElementById('u-meta').classList.remove('on');
 
-    api('/api/drone/datasets', { method: 'POST', body: fd })
-      .then(function (res) {
+    var work;
+    if (type === 'CONTOUR') {
+      status.textContent = 'Reading ' + file.name + '…';
+      work = readContourFile(file).then(function (features) {
+        if (!features.length) throw new Error('That file contains no features.');
+        status.textContent = 'Sending ' + features.length + ' features…';
+        return jsonPost('/api/drone/projects/' + projectId + '/contours/import', {
+          dataset_name: document.getElementById('u-name').value,
+          file_name: file.name,
+          elevation_field: document.getElementById('u-elev').value,
+          features: features
+        });
+      });
+    } else {
+      var fd = new FormData();
+      fd.append('project_id', projectId);
+      fd.append('dataset_type', type);
+      fd.append('dataset_name', document.getElementById('u-name').value);
+      fd.append('file', file);
+      status.textContent = 'Uploading ' + fmtBytes(file.size) + '…';
+      work = api('/api/drone/datasets', { method: 'POST', body: fd });
+    }
+
+    work.then(function (res) {
         lastUploadedId = res.id;
         status.textContent = 'Uploaded.';
         showMeta(res.dataset);
-        say('Upload accepted. Review the metadata, then publish it to the map.', 'ok');
+        say(type === 'CONTOUR'
+              ? 'Contours imported. They are on the map already — open the Drone Viewer.'
+              : 'Upload accepted. Review the metadata, then publish it to the map.', 'ok');
         return refreshAll();
       })
       .catch(function (e) { status.textContent = ''; say(e.message, 'err'); })
       .finally(function () { btn.disabled = false; });
   });
+
+  /**
+   * "Red 400–1999 · Green 380–1900 · …", or null when the file carries no stats.
+   *
+   * <p>Worth showing on the upload screen rather than only in the viewer: a band
+   * whose values sit in the low thousands tells you straight away that the file is
+   * 16-bit data not using its full range, which is what decides whether the map
+   * needs to stretch it to be visible.
+   */
+  function bandRanges(d) {
+    var stats;
+    try { stats = JSON.parse(d.band_stats || 'null'); } catch (e) { return null; }
+    if (!stats || !stats.length) return null;
+    return stats.map(function (b) {
+      return (b.label || ('Band ' + b.band)) + ' ' + compact(b.min) + '–' + compact(b.max);
+    }).join('  ·  ');
+  }
+
+  function compact(v) {
+    if (v == null) return '—';
+    var n = Number(v);
+    if (!isFinite(n)) return '—';
+    return n === Math.round(n) ? String(n) : n.toFixed(3);
+  }
 
   function showMeta(d) {
     var g = document.getElementById('u-meta-g');
@@ -373,6 +478,11 @@
       ['Resolution', num(d.res_x, degrees ? 8 : 3) + ' × ' + num(d.res_y, degrees ? 8 : 3) +
         (degrees ? '°' : ' m') + ' per pixel'],
       ['Pixel format', d.format],
+      ['Bands', d.band_count == null ? null
+                 : d.band_count + (d.colour_interp ? ' · ' + d.colour_interp : '')],
+      ['Data type', d.data_type],
+      ['NoData value', d.no_data == null ? 'none declared' : String(d.no_data)],
+      ['Band ranges', bandRanges(d)],
       ['Bounding box', num(d.min_x, 6) + ', ' + num(d.min_y, 6) + '  →  ' +
         num(d.max_x, 6) + ', ' + num(d.max_y, 6)],
       ['Upload date', fmtDate(d.created_at)],
