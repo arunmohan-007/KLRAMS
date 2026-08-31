@@ -1,0 +1,342 @@
+package com.fist.rmms_backend;
+
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Reads a GeoTIFF's georeferencing header — the tags that say where on Earth the
+ * pixels are — without decoding a single pixel.
+ *
+ * <p>The JDK's own {@code ImageIO} TIFF plugin decodes the imagery but exposes the
+ * GeoTIFF tags only as raw, undocumented metadata nodes, and no library on the
+ * classpath understands them. This parses the four tags that matter straight out
+ * of the file's first IFD, which is a few hundred bytes of reading no matter how
+ * large the raster is:
+ *
+ * <ul>
+ *   <li>33550 {@code ModelPixelScale} and 33922 {@code ModelTiepoint} — the usual
+ *       north-up pair: one anchor point plus a pixel size.</li>
+ *   <li>34264 {@code ModelTransformation} — the general 4x4 affine, used instead
+ *       of the pair when the raster is rotated. Takes precedence when present.</li>
+ *   <li>34735 {@code GeoKeyDirectory} — carries the EPSG code, as either
+ *       {@code ProjectedCSTypeGeoKey} (3072) or {@code GeographicTypeGeoKey}
+ *       (2048).</li>
+ * </ul>
+ *
+ * <p>BigTIFF (magic 43) is detected and rejected: the JDK reader cannot decode it,
+ * so accepting one here would only defer the failure to publish time, where the
+ * cause would be far less obvious.
+ */
+final class GeoTiffMeta {
+
+    /* TIFF baseline tags */
+    private static final int IMAGE_WIDTH = 256;
+    private static final int IMAGE_LENGTH = 257;
+    private static final int BITS_PER_SAMPLE = 258;
+    private static final int SAMPLES_PER_PIXEL = 277;
+    private static final int EXTRA_SAMPLES = 338;
+    private static final int SAMPLE_FORMAT = 339;
+    /* GeoTIFF + GDAL tags */
+    private static final int MODEL_PIXEL_SCALE = 33550;
+    private static final int MODEL_TIEPOINT = 33922;
+    private static final int MODEL_TRANSFORMATION = 34264;
+    private static final int GEO_KEY_DIRECTORY = 34735;
+    private static final int GDAL_NODATA = 42113;
+
+    final int width;
+    final int height;
+    final int samplesPerPixel;
+    final int bitsPerSample;
+    /** TIFF SampleFormat: 1 unsigned int, 2 signed int, 3 IEEE float. */
+    final int sampleFormat;
+    final boolean hasAlpha;
+    final DroneCrs crs;
+    /** NaN when the file declares no nodata value. */
+    final double noData;
+
+    /* Pixel (column,row) -> model (x,y), as a 6-parameter affine. */
+    private final double ax, bx, cx;
+    private final double ay, by, cy;
+    /* Its inverse, precomputed. */
+    private final double ia, ib, ic, id, ie, iff;
+
+    private GeoTiffMeta(int width, int height, int samplesPerPixel, int bitsPerSample, int sampleFormat,
+                        boolean hasAlpha, DroneCrs crs, double noData, double[] t) {
+        this.width = width;
+        this.height = height;
+        this.samplesPerPixel = samplesPerPixel;
+        this.bitsPerSample = bitsPerSample;
+        this.sampleFormat = sampleFormat;
+        this.hasAlpha = hasAlpha;
+        this.crs = crs;
+        this.noData = noData;
+        this.ax = t[0]; this.bx = t[1]; this.cx = t[2];
+        this.ay = t[3]; this.by = t[4]; this.cy = t[5];
+
+        double det = ax * by - bx * ay;
+        if (det == 0)
+            throw new IllegalArgumentException("The GeoTIFF's georeferencing is degenerate (zero pixel size).");
+        this.ia = by / det;
+        this.ib = -bx / det;
+        this.ic = (bx * cy - by * cx) / det;
+        this.id = -ay / det;
+        this.ie = ax / det;
+        this.iff = (ay * cx - ax * cy) / det;
+    }
+
+    /** Model coordinate at the CENTRE of pixel {@code (col,row)}. */
+    double[] pixelToModel(double col, double row) {
+        double c = col + 0.5, r = row + 0.5;
+        return new double[]{ax * c + bx * r + cx, ay * c + by * r + cy};
+    }
+
+    /** Fractional pixel column/row holding the given model coordinate. */
+    double[] modelToPixel(double x, double y) {
+        return new double[]{ia * x + ib * y + ic - 0.5, id * x + ie * y + iff - 0.5};
+    }
+
+    /** Ground sample distance along each axis, in the CRS's own units. */
+    double resX() {
+        return Math.hypot(ax, ay);
+    }
+
+    double resY() {
+        return Math.hypot(bx, by);
+    }
+
+    /**
+     * WGS84 bounding box {@code {minLon, minLat, maxLon, maxLat}}.
+     *
+     * <p>Built from all four corners rather than two, because a projected raster's
+     * edges are curved in lon/lat: taking only the SW and NE corners would clip a
+     * sliver off the north or south edge of a UTM image.
+     */
+    double[] wgs84Bounds() {
+        double minLon = Double.MAX_VALUE, minLat = Double.MAX_VALUE;
+        double maxLon = -Double.MAX_VALUE, maxLat = -Double.MAX_VALUE;
+        // Corners plus edge midpoints — enough to bound the curvature at any
+        // sane raster size, and free compared with walking every edge pixel.
+        double[][] corners = {{0, 0}, {width, 0}, {0, height}, {width, height},
+                             {width / 2.0, 0}, {width / 2.0, height},
+                             {0, height / 2.0}, {width, height / 2.0}};
+        for (double[] p : corners) {
+            double[] m = pixelToModel(p[0] - 0.5, p[1] - 0.5);
+            double[] ll = crs.toWgs84(m[0], m[1]);
+            minLon = Math.min(minLon, ll[0]); maxLon = Math.max(maxLon, ll[0]);
+            minLat = Math.min(minLat, ll[1]); maxLat = Math.max(maxLat, ll[1]);
+        }
+        return new double[]{minLon, minLat, maxLon, maxLat};
+    }
+
+    /** Ground sample distance in metres, whatever the CRS's units are. */
+    double resolutionMetres() {
+        if (!crs.isGeographic()) return (resX() + resY()) / 2;
+        double[] b = wgs84Bounds();
+        double midLat = Math.toRadians((b[1] + b[3]) / 2);
+        double mPerDegLon = 111320 * Math.cos(midLat);
+        return (resX() * mPerDegLon + resY() * 110540) / 2;
+    }
+
+    /* ------------------------------------------------------------------
+       Parsing
+       ------------------------------------------------------------------ */
+
+    static GeoTiffMeta read(Path file) throws IOException {
+        try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "r")) {
+            byte[] head = new byte[8];
+            raf.readFully(head);
+            ByteOrder order;
+            if (head[0] == 'I' && head[1] == 'I') order = ByteOrder.LITTLE_ENDIAN;
+            else if (head[0] == 'M' && head[1] == 'M') order = ByteOrder.BIG_ENDIAN;
+            else throw new IllegalArgumentException("Not a TIFF file — the file does not start with a TIFF header.");
+
+            ByteBuffer hb = ByteBuffer.wrap(head).order(order);
+            int magic = hb.getShort(2) & 0xFFFF;
+            if (magic == 43)
+                throw new IllegalArgumentException(
+                        "This is a BigTIFF. Re-export it as a standard GeoTIFF "
+                      + "(in GDAL: -co BIGTIFF=NO), or tile the survey into smaller images.");
+            if (magic != 42)
+                throw new IllegalArgumentException("Not a TIFF file — bad magic number " + magic + ".");
+
+            long ifdOffset = hb.getInt(4) & 0xFFFFFFFFL;
+            Map<Integer, Object> tags = readIfd(raf, order, ifdOffset);
+
+            int width = (int) num(tags, IMAGE_WIDTH, -1);
+            int height = (int) num(tags, IMAGE_LENGTH, -1);
+            if (width <= 0 || height <= 0)
+                throw new IllegalArgumentException("The TIFF does not declare a valid image size.");
+
+            int spp = (int) num(tags, SAMPLES_PER_PIXEL, 1);
+            int bps = (int) num(tags, BITS_PER_SAMPLE, 8);
+            int fmt = (int) num(tags, SAMPLE_FORMAT, 1);
+            // ExtraSamples present at all means the trailing band is not colour;
+            // value 1 is associated (premultiplied) alpha, 2 is unassociated.
+            boolean alpha = tags.containsKey(EXTRA_SAMPLES) && spp >= 2;
+
+            double[] transform = affine(tags, height);
+            DroneCrs crs = DroneCrs.of(epsg(tags));
+
+            double nodata = Double.NaN;
+            Object nd = tags.get(GDAL_NODATA);
+            if (nd instanceof String s) {
+                try { nodata = Double.parseDouble(s.trim()); } catch (NumberFormatException ignored) { }
+            }
+
+            return new GeoTiffMeta(width, height, spp, bps, fmt, alpha, crs, nodata, transform);
+        }
+    }
+
+    /** Pixel->model affine, from ModelTransformation if present, else scale + tiepoint. */
+    private static double[] affine(Map<Integer, Object> tags, int height) {
+        double[] m = doubles(tags, MODEL_TRANSFORMATION);
+        if (m != null && m.length >= 16)
+            return new double[]{m[0], m[1], m[3], m[4], m[5], m[7]};
+
+        double[] scale = doubles(tags, MODEL_PIXEL_SCALE);
+        double[] tie = doubles(tags, MODEL_TIEPOINT);
+        if (scale == null || scale.length < 2 || tie == null || tie.length < 6)
+            throw new IllegalArgumentException(
+                    "The file carries no georeferencing — it is a plain TIFF, not a GeoTIFF. "
+                  + "Export it with the coordinate system embedded.");
+
+        // Row indices grow downwards while northings grow upwards, hence -scale[1].
+        double x0 = tie[3] - tie[0] * scale[0];
+        double y0 = tie[4] + tie[1] * scale[1];
+        return new double[]{scale[0], 0, x0, 0, -scale[1], y0};
+    }
+
+    private static int epsg(Map<Integer, Object> tags) {
+        double[] dir = doubles(tags, GEO_KEY_DIRECTORY);
+        if (dir == null || dir.length < 4)
+            throw new IllegalArgumentException(
+                    "The GeoTIFF declares no coordinate system. Re-export it with the CRS embedded "
+                  + "(WGS 84 / UTM zone 43N — EPSG:32643 — for Kerala).");
+
+        int projected = 0, geographic = 0;
+        int count = (int) dir[3];
+        for (int i = 0; i < count; i++) {
+            int at = 4 + i * 4;
+            if (at + 3 >= dir.length) break;
+            int key = (int) dir[at], location = (int) dir[at + 1], value = (int) dir[at + 3];
+            if (location != 0) continue;   // value stored in another tag, not inline — not an EPSG code
+            if (key == 3072) projected = value;
+            else if (key == 2048) geographic = value;
+        }
+        int code = projected != 0 && projected != 32767 ? projected : geographic;
+        if (code == 0 || code == 32767)
+            throw new IllegalArgumentException(
+                    "The GeoTIFF uses a user-defined coordinate system with no EPSG code. "
+                  + "Re-export it in EPSG:4326 or EPSG:32643.");
+        return code;
+    }
+
+    /* ------------------------------------------------------------------
+       Minimal TIFF IFD reader
+       ------------------------------------------------------------------ */
+
+    private static Map<Integer, Object> readIfd(RandomAccessFile raf, ByteOrder order, long offset)
+            throws IOException {
+        Map<Integer, Object> tags = new HashMap<>();
+        raf.seek(offset);
+        byte[] cnt = new byte[2];
+        raf.readFully(cnt);
+        int entries = ByteBuffer.wrap(cnt).order(order).getShort() & 0xFFFF;
+
+        byte[] block = new byte[entries * 12];
+        raf.readFully(block);
+        ByteBuffer bb = ByteBuffer.wrap(block).order(order);
+
+        for (int i = 0; i < entries; i++) {
+            int base = i * 12;
+            int tag = bb.getShort(base) & 0xFFFF;
+            int type = bb.getShort(base + 2) & 0xFFFF;
+            long count = bb.getInt(base + 4) & 0xFFFFFFFFL;
+            int size = typeSize(type);
+            if (size == 0 || count <= 0 || count > 1_000_000) continue;
+
+            long bytes = size * count;
+            byte[] data;
+            if (bytes <= 4) {
+                data = new byte[(int) bytes];
+                System.arraycopy(block, base + 8, data, 0, (int) bytes);
+            } else {
+                long at = bb.getInt(base + 8) & 0xFFFFFFFFL;
+                data = new byte[(int) bytes];
+                raf.seek(at);
+                raf.readFully(data);
+            }
+            tags.put(tag, decode(type, (int) count, ByteBuffer.wrap(data).order(order)));
+        }
+        return tags;
+    }
+
+    private static int typeSize(int type) {
+        return switch (type) {
+            case 1, 2, 6, 7 -> 1;
+            case 3, 8 -> 2;
+            case 4, 9, 11 -> 4;
+            case 5, 10, 12 -> 8;
+            default -> 0;
+        };
+    }
+
+    /** ASCII tags come back as a String; everything numeric as a double[]. */
+    private static Object decode(int type, int count, ByteBuffer bb) {
+        if (type == 2) {
+            byte[] raw = new byte[bb.remaining()];
+            bb.get(raw);
+            int end = raw.length;
+            while (end > 0 && raw[end - 1] == 0) end--;
+            return new String(raw, 0, end, StandardCharsets.US_ASCII);
+        }
+        double[] out = new double[count];
+        for (int i = 0; i < count; i++) {
+            out[i] = switch (type) {
+                case 1, 7 -> bb.get() & 0xFF;
+                case 6 -> bb.get();
+                case 3 -> bb.getShort() & 0xFFFF;
+                case 8 -> bb.getShort();
+                case 4 -> bb.getInt() & 0xFFFFFFFFL;
+                case 9 -> bb.getInt();
+                case 11 -> bb.getFloat();
+                case 12 -> bb.getDouble();
+                case 5 -> ratio(bb.getInt() & 0xFFFFFFFFL, bb.getInt() & 0xFFFFFFFFL);
+                case 10 -> ratio(bb.getInt(), bb.getInt());
+                default -> 0;
+            };
+        }
+        return out;
+    }
+
+    private static double ratio(double n, double d) {
+        return d == 0 ? 0 : n / d;
+    }
+
+    private static double[] doubles(Map<Integer, Object> tags, int tag) {
+        Object v = tags.get(tag);
+        return v instanceof double[] d ? d : null;
+    }
+
+    private static double num(Map<Integer, Object> tags, int tag, double fallback) {
+        double[] d = doubles(tags, tag);
+        return d == null || d.length == 0 ? fallback : d[0];
+    }
+
+    /** For the metadata panel: "RGB 8-bit", "Float 32-bit", etc. */
+    String pixelSummary() {
+        String kind = switch (sampleFormat) {
+            case 3 -> "Float";
+            case 2 -> "Signed integer";
+            default -> "Unsigned integer";
+        };
+        return samplesPerPixel + "-band · " + kind + " " + bitsPerSample + "-bit"
+                + (hasAlpha ? " · with alpha" : "");
+    }
+}

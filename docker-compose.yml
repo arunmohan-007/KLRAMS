@@ -41,7 +41,10 @@ services:
       # the TLS termination and letting clients forge X-Forwarded-For.
       - "127.0.0.1:8090:8090"
     volumes:
-      - klrams-data:/opt/klrams/data         # persists uploaded videos & data across rebuilds
+      # Persists uploaded videos & data across rebuilds — including the drone
+      # module's original GeoTIFFs and the tile pyramids built from them, which
+      # cost minutes of CPU each and must not be lost to an image rebuild.
+      - klrams-data:/opt/klrams/data
 
 volumes:
   pgdata:

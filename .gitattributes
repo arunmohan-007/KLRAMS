@@ -2,3 +2,9 @@
 *.cmd text eol=crlf
 *.webm filter=lfs diff=lfs merge=lfs -text
 video-store/*.webm filter=lfs diff=lfs merge=lfs -text
+
+# GeoTIFF test fixtures are binary. Pinned rather than left to git's
+# auto-detection, because a CRLF conversion would silently corrupt them and the
+# GeoTIFF reader tests would fail with a decode error rather than an obvious one.
+*.tif binary
+*.tiff binary

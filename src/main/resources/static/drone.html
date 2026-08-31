@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>KLRAMS Console · Drone — Kerala PWD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0b1220; --panel:#101b2e; --panel-2:#0e1726; --edge:#20304c; --edge-soft:#1a2740;
+    --text:#eaf0fa; --muted:#93a3bb; --muted-2:#5f6e86;
+    --green:#19b277; --blue:#3b86e6; --gold:#d3aa3e; --violet:#8a68e6; --red:#e65b5b; --amber:#ffa630; --teal:#2bb3c0;
+    --disp:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{min-height:100%}
+  body{font-family:var(--body);background:var(--void);color:var(--text);-webkit-font-smoothing:antialiased}
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:radial-gradient(90% 60% at 82% -10%, rgba(138,104,230,.13) 0, transparent 60%),
+      radial-gradient(70% 50% at 8% 108%, rgba(59,134,230,.12) 0, transparent 60%), var(--void)}
+  .shell{position:relative;z-index:2;max-width:1240px;margin:0 auto;padding:24px clamp(18px,4vw,48px) 60px}
+
+  .top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:13px}
+  .glyph{width:44px;height:44px;border-radius:12px;flex:none;background:linear-gradient(135deg,#a48ef0,#6b4fd0);display:flex;align-items:center;justify-content:center;color:#fff}
+  .glyph svg{width:23px;height:23px}
+  .bk .t{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.5px}
+  .bk .s{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted-2);margin-top:2px}
+  .top-r{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+  .link{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);border:1px solid var(--edge);border-radius:999px;padding:8px 16px;text-decoration:none;transition:.2s}
+  .link:hover{color:var(--violet);border-color:rgba(138,104,230,.5)}
+  .link.go{color:#cdbcff;border-color:rgba(138,104,230,.45)}
+
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(24px,3.4vw,34px);letter-spacing:-.01em;margin:26px 0 6px}
+  .sub{color:var(--muted);font-size:13.5px;max-width:860px;line-height:1.65}
+
+  .msg{margin-top:14px;font-size:12.5px;padding:10px 13px;border-radius:9px;display:none;line-height:1.55}
+  .msg.err{display:block;color:#ffb4ac;background:rgba(230,91,91,.1);border:1px solid rgba(230,91,91,.32)}
+  .msg.ok{display:block;color:#a4ecc7;background:rgba(25,178,119,.1);border:1px solid rgba(25,178,119,.32)}
+  .msg.warn{display:block;color:#ffd28a;background:rgba(255,166,48,.09);border:1px solid rgba(255,166,48,.3)}
+
+  .tabs{display:flex;gap:8px;margin:22px 0 4px;flex-wrap:wrap;border-bottom:1px solid var(--edge-soft);padding-bottom:13px}
+  .tab{cursor:pointer;background:transparent;border:1px solid var(--edge);color:var(--muted);
+    border-radius:9px;padding:9px 15px;font-family:var(--disp);font-size:12.5px;font-weight:600;transition:.15s}
+  .tab:hover{color:var(--text);border-color:var(--violet)}
+  .tab.on{color:#fff;background:linear-gradient(180deg,#9c80ee,#7358d8);border-color:transparent}
+  .pane{display:none;padding-top:20px}
+  .pane.on{display:block}
+
+  /* dashboard counters */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:13px}
+  .stat{border:1px solid var(--edge-soft);background:var(--panel-2);border-radius:14px;padding:16px 17px}
+  .stat .l{font-family:var(--mono);font-size:8.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted-2)}
+  .stat .v{font-family:var(--disp);font-size:30px;font-weight:700;margin-top:7px;line-height:1}
+  .stat .d{font-size:11.5px;color:var(--muted-2);margin-top:6px;line-height:1.5}
+  .stat.ok .v{color:var(--green)} .stat.warn .v{color:var(--amber)} .stat.bad .v{color:var(--red)}
+  .stat.info .v{color:var(--blue)} .stat.vio .v{color:#b39dfb}
+
+  .sec-h{font-family:var(--disp);font-size:15px;font-weight:600;margin:26px 0 4px;display:flex;
+    align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .sec-d{font-size:12.5px;color:var(--muted-2);line-height:1.6;max-width:840px;margin-bottom:12px}
+
+  .btn{cursor:pointer;border:0;border-radius:9px;padding:10px 17px;font-family:var(--disp);font-weight:600;font-size:13px;color:#fff;background:linear-gradient(180deg,#9c80ee,#7358d8);transition:filter .18s,transform .06s}
+  .btn:hover{filter:brightness(1.08)} .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--edge)}
+  .btn.ghost:hover{color:var(--text);border-color:var(--violet)}
+  .btn.sm{padding:6px 12px;font-size:11.5px;border-radius:7px}
+  .btn.danger{background:linear-gradient(180deg,#ef7676,#e65b5b)}
+  .btn.good{background:linear-gradient(180deg,#2cc98c,#19b277);color:#04241a}
+  .btn:disabled{opacity:.42;cursor:not-allowed}
+
+  /* forms */
+  .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px;
+    border:1px solid var(--edge-soft);background:var(--panel-2);border-radius:14px;padding:18px}
+  .fld{display:flex;flex-direction:column;gap:6px}
+  .fld.wide{grid-column:1/-1}
+  .fld label{font-family:var(--mono);font-size:8.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted-2)}
+  .fld input,.fld select,.fld textarea{background:var(--void);border:1px solid var(--edge);color:var(--text);
+    border-radius:8px;padding:9px 11px;font-family:var(--body);font-size:13px;width:100%}
+  .fld input:focus,.fld select:focus,.fld textarea:focus{outline:0;border-color:var(--violet)}
+  .fld textarea{resize:vertical;min-height:62px}
+  .fld .hint{font-size:11px;color:var(--muted-2);line-height:1.5}
+  .fld input[type=file]{padding:8px;font-size:12px}
+
+  /* tables */
+  .tbl-wrap{border:1px solid var(--edge-soft);border-radius:14px;overflow:auto;background:var(--panel-2)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:820px}
+  th{font-family:var(--mono);font-size:8.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted-2);
+    text-align:left;padding:12px 14px;border-bottom:1px solid var(--edge-soft);white-space:nowrap;background:var(--panel)}
+  td{padding:11px 14px;border-bottom:1px solid var(--edge-soft);vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  tr:hover td{background:rgba(138,104,230,.05)}
+  td.acts{white-space:nowrap;display:flex;gap:6px;flex-wrap:wrap}
+  .code{font-family:var(--mono);font-size:11.5px;color:#cdbcff}
+
+  .pill{display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+    padding:4px 9px;border-radius:999px;border:1px solid var(--edge);color:var(--muted-2);white-space:nowrap}
+  .pill.pub{color:#a4ecc7;border-color:rgba(25,178,119,.4);background:rgba(25,178,119,.09)}
+  .pill.proc{color:#ffd28a;border-color:rgba(255,166,48,.4);background:rgba(255,166,48,.08)}
+  .pill.fail{color:#ffb4ac;border-color:rgba(230,91,91,.4);background:rgba(230,91,91,.09)}
+  .pill.up{color:#9fc7f5;border-color:rgba(59,134,230,.4);background:rgba(59,134,230,.08)}
+  .pill.none{opacity:.5}
+
+  /* metadata read back from the file after upload */
+  .meta{border:1px solid rgba(138,104,230,.26);background:rgba(138,104,230,.05);border-radius:13px;
+    padding:15px 17px;margin-top:16px;display:none}
+  .meta.on{display:block}
+  .meta-t{font-family:var(--mono);font-size:8.5px;letter-spacing:.17em;text-transform:uppercase;
+    color:#cdbcff;margin-bottom:11px}
+  .meta-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:11px 20px}
+  .meta-r .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2)}
+  .meta-r .v{font-size:12.5px;margin-top:3px;word-break:break-word}
+
+  .empty{color:var(--muted-2);font-size:12.5px;padding:26px 16px;text-align:center}
+  .note{font-size:11.5px;color:var(--muted-2);line-height:1.6;margin-top:12px;max-width:860px}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+  @media(max-width:720px){td.acts{flex-direction:column;align-items:stretch}}
+</style>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a0f1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KLRAMS">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="stylesheet" href="/css/mobile-pages.css?v=3">
+</head>
+<body>
+<div class="bg"></div>
+<div class="shell">
+
+  <div class="top">
+    <div class="brand">
+      <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.6"/><path d="M12 9.4V6M12 14.6V18M9.4 12H6M14.6 12H18"/><circle cx="4.6" cy="4.6" r="2.1"/><circle cx="19.4" cy="4.6" r="2.1"/><circle cx="4.6" cy="19.4" r="2.1"/><circle cx="19.4" cy="19.4" r="2.1"/><path d="m6.1 6.1 3.4 3.4M17.9 6.1l-3.4 3.4M6.1 17.9l3.4-3.4M17.9 17.9l-3.4-3.4"/></svg></div>
+      <div class="bk"><div class="t">KLRAMS Console</div><div class="s">Drone</div></div>
+    </div>
+    <div class="top-r">
+      <a class="link" href="/home.html">&larr; Portal</a>
+      <a class="link" href="/layers.html">Layers</a>
+      <a class="link go" href="/drone-viewer.html">Drone Viewer &rarr;</a>
+    </div>
+  </div>
+
+  <h1>Drone</h1>
+  <p class="sub">Drone survey projects and their imagery. Each project is one flight over a stretch of road and holds
+    up to two rasters &mdash; an <b>orthomosaic</b> and a <b>DEM</b>. Uploading reads the coordinate system, extent and
+    resolution straight out of the GeoTIFF; publishing turns it into map tiles so it can be drawn over the KLRAMS road
+    network without the browser ever downloading the full image.</p>
+
+  <div class="msg" id="msg"></div>
+
+  <div class="tabs">
+    <button class="tab on" data-pane="dash">Drone Dashboard</button>
+    <button class="tab" data-pane="projects">Drone Projects</button>
+    <button class="tab" data-pane="upload" data-requires="admin">Upload Drone Data</button>
+  </div>
+
+  <!-- ---------------- Dashboard ---------------- -->
+  <div class="pane on" id="pane-dash">
+    <div class="stats" id="stats"></div>
+    <div class="sec-h">Recent datasets</div>
+    <p class="sec-d">Everything uploaded, newest first, with the status of its tile build.</p>
+    <div class="tbl-wrap"><table id="recent"><tbody><tr><td class="empty">Loading&hellip;</td></tr></tbody></table></div>
+  </div>
+
+  <!-- ---------------- Projects ---------------- -->
+  <div class="pane" id="pane-projects">
+    <div class="sec-h">
+      <span>Drone projects</span>
+      <button class="btn sm" id="new-project" data-requires="admin">New project</button>
+    </div>
+    <p class="sec-d">One row per survey flight. The Orthomosaic and DEM columns show whether that raster has been
+      uploaded and whether it is published to the map.</p>
+
+    <div id="project-form" style="display:none">
+      <div class="form">
+        <input type="hidden" id="p-id">
+        <div class="fld"><label>Project ID</label><input id="p-code" placeholder="DRONE-001" maxlength="40">
+          <span class="hint">The code staff quote &mdash; must be unique.</span></div>
+        <div class="fld"><label>Project Name</label><input id="p-name" placeholder="ABC Road drone survey" maxlength="160"></div>
+        <div class="fld"><label>Survey Date</label><input id="p-date" type="date"></div>
+        <div class="fld"><label>Road / Section</label><input id="p-road" list="road-list" placeholder="ABC Road" maxlength="160">
+          <datalist id="road-list"></datalist></div>
+        <div class="fld"><label>Location</label><input id="p-location" placeholder="Ch. 2/400 &ndash; 4/900, near Kazhakkoottam" maxlength="160">
+          <span class="hint">Where on the road the flight covered.</span></div>
+        <div class="fld"><label>PWD Section</label><input id="p-sec" placeholder="Thiruvananthapuram" maxlength="120"></div>
+        <div class="fld wide"><label>Description</label><textarea id="p-desc" placeholder="Purpose of the flight, equipment, GSD, anything worth recording."></textarea></div>
+        <div class="fld wide bar" style="margin-top:0">
+          <button class="btn" id="p-save">Save project</button>
+          <button class="btn ghost" id="p-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tbl-wrap" style="margin-top:14px"><table id="projects"><tbody><tr><td class="empty">Loading&hellip;</td></tr></tbody></table></div>
+  </div>
+
+  <!-- ---------------- Upload ---------------- -->
+  <div class="pane" id="pane-upload">
+    <div class="sec-h">Upload drone data</div>
+    <p class="sec-d">GeoTIFF only (<b>.tif</b> / <b>.tiff</b>), with the coordinate system embedded &mdash; WGS 84
+      geographic (EPSG:4326) or WGS 84 / UTM zone 43N (EPSG:32643), which is what drone software produces for Kerala.
+      The original file is kept exactly as uploaded; the map tiles are built from it separately.</p>
+
+    <div class="form">
+      <div class="fld"><label>Project</label><select id="u-project"></select></div>
+      <div class="fld"><label>Dataset Type</label>
+        <select id="u-type">
+          <option value="ORTHOMOSAIC">Orthomosaic</option>
+          <option value="DEM">DEM</option>
+        </select>
+        <span class="hint">One orthomosaic and one DEM per project.</span></div>
+      <div class="fld"><label>Dataset Name</label><input id="u-name" placeholder="Defaults to the file name" maxlength="160"></div>
+      <div class="fld wide"><label>GeoTIFF File</label><input id="u-file" type="file" accept=".tif,.tiff,image/tiff">
+        <span class="hint">Large files take a while to upload &mdash; leave this page open until it finishes.</span></div>
+      <div class="fld wide bar" style="margin-top:0">
+        <button class="btn" id="u-go">Upload</button>
+        <span class="hint" id="u-status"></span>
+      </div>
+    </div>
+
+    <div class="meta" id="u-meta">
+      <div class="meta-t">Metadata read from the file</div>
+      <div class="meta-g" id="u-meta-g"></div>
+      <div class="bar">
+        <button class="btn good sm" id="u-publish">Publish to map</button>
+        <a class="btn ghost sm" href="/drone-viewer.html" style="text-decoration:none;display:inline-block">Open Drone Viewer</a>
+      </div>
+    </div>
+
+    <p class="note">Publishing builds a tile pyramid from the GeoTIFF. It runs in the background and one dataset is
+      processed at a time, so a large survey can sit in <b>Processing</b> for a few minutes. The project list shows when
+      it turns to <b>Published</b>.</p>
+  </div>
+
+</div>
+<script src="/js/drone-console.js?v=2" defer></script>
+<script src="/js/role-gate.js" defer></script>
+</body>
+</html>

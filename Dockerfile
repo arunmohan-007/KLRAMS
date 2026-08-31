@@ -30,6 +30,7 @@ WORKDIR /opt/klrams/app
 RUN mkdir -p /opt/klrams/data/videos /opt/klrams/data/shapefiles \
              /opt/klrams/data/excel /opt/klrams/data/images \
              /opt/klrams/data/reports /opt/klrams/data/temp \
+             /opt/klrams/data/drone \
  && groupadd -r klrams && useradd -r -g klrams -d /opt/klrams klrams \
  && chown -R klrams:klrams /opt/klrams
 
