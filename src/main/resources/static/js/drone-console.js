@@ -518,18 +518,55 @@
     return n === Math.round(n) ? String(n) : n.toFixed(3);
   }
 
+
+  /**
+   * Pixel size — the ground sample distance a surveyor asks for.
+   *
+   * <p>Read from the GeoTIFF's own ModelPixelScale (or the affine, when the raster
+   * is rotated), so it is the file's stated size and not an estimate.
+   *
+   * <p>Two things this has to get right. A raster's X and Y pixel sizes are not
+   * always equal, and showing only X would hide a stretched image. And a geographic
+   * raster's pixel is measured in DEGREES, which is unreadable as a distance — so
+   * the metre equivalent is given alongside, worked out at the raster's own
+   * latitude, because a degree of longitude shortens towards the poles.
+   */
+  function pixelSize(d) {
+    var x = Number(d.res_x), y = Number(d.res_y);
+    if (!isFinite(x) || x === 0) return null;
+    if (!isFinite(y) || y === 0) y = x;
+
+    if (Number(d.epsg) !== 4326) return pair(x, y, 3) + ' m';
+
+    var lat = (Number(d.min_y) + Number(d.max_y)) / 2;
+    var mx = x * 111320 * Math.cos(lat * Math.PI / 180);
+    var my = y * 110540;
+    return pair(x, y, 8) + '°  (≈ ' + pair(mx, my, 3) + ' m)';
+  }
+
+  /**
+   * "0.080 × 0.120" when the two differ, "0.050" when they do not.
+   *
+   * <p>Compares the FORMATTED values rather than the raw ones. A degree of longitude
+   * and a degree of latitude are never exactly the same length, so a raw comparison
+   * renders "0.055 × 0.055" — two numbers that are genuinely different and, at the
+   * precision shown, identical. What the reader sees is what decides.
+   */
+  function pair(a, b, digits) {
+    var sa = num(a, digits), sb = num(b, digits);
+    return sa === sb ? sa : sa + ' × ' + sb;
+  }
+
   function showMeta(d) {
     var g = document.getElementById('u-meta-g');
     g.textContent = '';
-    var degrees = d.epsg === 4326;
     var rows = [
       ['File name', d.file_name],
       ['File size', fmtBytes(d.file_size)],
       ['Dataset type', d.dataset_type === 'DEM' ? 'DEM' : 'Orthomosaic'],
       ['Coordinate system', d.crs_name],
       ['Raster size', d.raster_width + ' × ' + d.raster_height + ' px'],
-      ['Resolution', num(d.res_x, degrees ? 8 : 3) + ' × ' + num(d.res_y, degrees ? 8 : 3) +
-        (degrees ? '°' : ' m') + ' per pixel'],
+      ['Pixel size (GSD)', pixelSize(d)],
       ['Pixel format', d.format],
       ['Bands', d.band_count == null ? null
                  : d.band_count + (d.colour_interp ? ' · ' + d.colour_interp : '')],
