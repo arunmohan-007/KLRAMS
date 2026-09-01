@@ -101,6 +101,10 @@
   .pill.fail{color:#ffb4ac;border-color:rgba(230,91,91,.4);background:rgba(230,91,91,.09)}
   .pill.up{color:#9fc7f5;border-color:rgba(59,134,230,.4);background:rgba(59,134,230,.08)}
   .pill.none{opacity:.5}
+  .geoid-in{background:var(--void);border:1px solid var(--edge);color:var(--text);border-radius:6px;
+    padding:5px 8px;font-family:var(--body);font-size:12px;width:100%;min-width:150px}
+  .geoid-in:focus{outline:0;border-color:var(--violet)}
+  .geoid-in:disabled{opacity:.5}
 
   /* metadata read back from the file after upload */
   .meta{border:1px solid rgba(138,104,230,.26);background:rgba(138,104,230,.05);border-radius:13px;
@@ -218,6 +222,19 @@
         <input id="u-elev" placeholder="Detected automatically" maxlength="60">
         <span class="hint">The attribute holding each contour&rsquo;s height. Left blank, common
           names (ELEV, ELEVATION, CONTOUR, LEVEL&hellip;) are tried.</span></div>
+      <div class="fld" id="u-geoid-fld" style="display:none"><label>Geoid Model</label>
+        <input id="u-geoid" list="geoid-list" placeholder="e.g. EGM96" maxlength="120">
+        <datalist id="geoid-list">
+          <option value="EGM2008"></option>
+          <option value="EGM96"></option>
+          <option value="EGM84"></option>
+          <option value="Indian Geoid (INDGEOID)"></option>
+          <option value="Local geoid from GPS levelling"></option>
+          <option value="Mean sea level (MSL)"></option>
+          <option value="Ellipsoidal (WGS 84) — no geoid applied"></option>
+        </datalist>
+        <span class="hint">Heights are referenced to this. GeoTIFFs rarely record it, so take
+          it from the processing report. Can be set later.</span></div>
       <div class="fld wide"><label id="u-file-l">GeoTIFF File</label>
         <input id="u-file" type="file" accept=".tif,.tiff,image/tiff">
         <span class="hint" id="u-file-h">Large files take a while to upload &mdash; leave this page open until it finishes.</span></div>
@@ -246,7 +263,7 @@
      division the Layer Management importer uses; nothing parses them server-side. -->
 <script src="https://unpkg.com/shpjs@6.1.0/dist/shp.min.js"></script>
 <script src="/js/kml-reader.js?v=1"></script>
-<script src="/js/drone-console.js?v=7" defer></script>
+<script src="/js/drone-console.js?v=8" defer></script>
 <script src="/js/role-gate.js" defer></script>
 </body>
 </html>

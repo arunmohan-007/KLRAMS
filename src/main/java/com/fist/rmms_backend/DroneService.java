@@ -169,6 +169,12 @@ public class DroneService {
            a readable block into a jumble. Nothing queries inside it, so the only
            thing jsonb would buy is the thing that breaks it. */
         jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS geo_details json");
+        /* The vertical reference a person recorded from the survey documentation.
+           Separate from geo_details, which is only ever what the FILE declares — a
+           geoid model is usually in the processing report and not in the GeoTIFF at
+           all, and the two must not be presented as though they carry equal
+           authority. */
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS geoid_model text");
         jdbc.execute("""
             DO $$
             BEGIN
@@ -203,6 +209,13 @@ public class DroneService {
                 + "ON drone_dataset (project_id, dataset_type)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS drone_dataset_footprint_idx "
                 + "ON drone_dataset USING GIST (footprint)");
+    }
+
+    /** Record (or clear) the vertical reference for a dataset. */
+    void setGeoidModel(int datasetId, String model) {
+        dataset(datasetId);   // 404s for an id that does not exist
+        jdbc.update("UPDATE drone_dataset SET geoid_model = ?, updated_at = now() WHERE id = ?",
+                blankToNull(model), datasetId);
     }
 
     /* ------------------------------------------------------------------
@@ -300,7 +313,7 @@ public class DroneService {
             d.status, d.status_message, d.published, d.min_zoom, d.max_zoom, d.build_version,
             d.band_count, d.data_type, d.colour_interp, d.band_stats::text AS band_stats, d.no_data,
             d.contour_interval, d.contour_status, d.contour_count, d.contour_message, d.warnings,
-            d.geo_details::text AS geo_details,
+            d.geo_details::text AS geo_details, d.geoid_model,
             d.created_by, d.created_at, d.updated_at
             """;
 
@@ -346,7 +359,7 @@ public class DroneService {
                    d.epsg, d.crs_name, d.res_x, d.res_y, d.raster_width, d.raster_height, d.file_size,
                    d.band_count, d.data_type, d.colour_interp, d.band_stats::text AS band_stats, d.no_data,
                    d.contour_interval, d.contour_status, d.contour_count, d.warnings,
-                   d.geo_details::text AS geo_details,
+                   d.geo_details::text AS geo_details, d.geoid_model,
                    p.project_code, p.project_name, p.location, p.road_section, p.pwd_section, %s
             FROM drone_dataset d JOIN drone_project p ON p.id = d.project_id
             WHERE d.published AND d.status = 'PUBLISHED'

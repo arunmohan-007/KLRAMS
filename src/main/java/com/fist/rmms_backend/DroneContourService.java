@@ -135,7 +135,7 @@ public class DroneContourService {
      */
     @SuppressWarnings("unchecked")
     int importFeatures(int projectId, String name, String fileName, String elevationField,
-                       List<Map<String, Object>> features, String user) {
+                       String geoidModel, List<Map<String, Object>> features, String user) {
         drone.project(projectId);
         if (features == null || features.isEmpty())
             throw new IllegalArgumentException("That file contains no contour lines.");
@@ -192,14 +192,16 @@ public class DroneContourService {
             INSERT INTO drone_dataset
                 (project_id, dataset_name, dataset_type, file_name, file_path, file_size, format,
                  epsg, crs_name, min_x, min_y, max_x, max_y, elevation_min, elevation_max,
-                 footprint, status, published, contour_status, contour_count, contour_interval, created_by)
+                 geoid_model, footprint, status, published,
+                 contour_status, contour_count, contour_interval, created_by)
             VALUES (?, ?, ?, ?, '', 0, ?, 4326, 'EPSG:4326 — WGS 84', ?, ?, ?, ?, ?, ?,
-                    ST_MakeEnvelope(?, ?, ?, ?, 4326), ?, true, ?, ?, ?, ?)
+                    ?, ST_MakeEnvelope(?, ?, ?, ?, 4326), ?, true, ?, ?, ?, ?)
             RETURNING id
             """, Integer.class,
             projectId, name, DroneService.CONTOUR, fileName,
             rows.size() + " contour lines · elevation from \"" + field + "\"",
             minX, minY, maxX, maxY, minZ, maxZ,
+            DroneService.blankToNull(geoidModel),
             minX, minY, maxX, maxY, DroneService.PUBLISHED,
             READY, rows.size(), interval > 0 ? interval : null, user);
 

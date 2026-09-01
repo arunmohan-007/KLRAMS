@@ -132,7 +132,7 @@
         return;
       }
       var head = el('thead'), hr = el('tr');
-      ['Dataset', 'Type', 'Project', 'Size', 'Resolution', 'CRS', 'Uploaded', 'Status'].forEach(function (h) {
+      ['Dataset', 'Type', 'Project', 'Size', 'CRS', 'Geoid model', 'Uploaded', 'Status'].forEach(function (h) {
         hr.appendChild(el('th', null, h));
       });
       head.appendChild(hr); t.appendChild(head);
@@ -146,8 +146,8 @@
             : d.dataset_type === 'CONTOUR' ? 'Contours' : 'Orthomosaic'));
         var pc = el('td'); pc.appendChild(el('span', 'code', d.project_code)); tr.appendChild(pc);
         tr.appendChild(el('td', null, fmtBytes(d.file_size)));
-        tr.appendChild(el('td', null, d.res_x == null ? '—' : num(d.res_x, 3) + (d.epsg === 4326 ? '°' : ' m')));
         tr.appendChild(el('td', null, 'EPSG:' + (d.epsg == null ? '—' : d.epsg)));
+        tr.appendChild(geoidCell(d));
         tr.appendChild(el('td', null, fmtDate(d.created_at)));
         var st = el('td'); st.appendChild(statusPill(d.status, d.published));
         if (d.status === 'FAILED' && d.status_message) st.title = d.status_message;
@@ -156,6 +156,54 @@
       });
       t.appendChild(body);
     });
+  }
+
+  /**
+   * The geoid model, editable in place.
+   *
+   * <p>Editable here rather than only at upload because the processing report that
+   * names it routinely arrives after the raster does — and a field you can only set
+   * once, at the moment you have least information, is one that stays empty.
+   *
+   * <p>Orthomosaics have no vertical reference to record, so they show a dash.
+   */
+  function geoidCell(d) {
+    var td = el('td');
+    if (d.dataset_type === 'ORTHOMOSAIC') {
+      td.appendChild(el('span', 'pill none', 'n/a'));
+      return td;
+    }
+    if (!isAdmin()) {
+      td.textContent = d.geoid_model || '—';
+      return td;
+    }
+
+    var input = el('input');
+    input.className = 'geoid-in';
+    input.value = d.geoid_model || '';
+    input.placeholder = 'not recorded';
+    input.setAttribute('list', 'geoid-list');
+    input.maxLength = 120;
+
+    var saved = input.value;
+    function save() {
+      if (input.value === saved) return;
+      var want = input.value;
+      input.disabled = true;
+      jsonPost('/api/drone/datasets/' + d.id + '/geoid', { geoid_model: want }, 'PUT')
+        .then(function () {
+          saved = want;
+          d.geoid_model = want;
+          say(want ? 'Geoid model recorded for ' + d.dataset_name + '.'
+                   : 'Geoid model cleared for ' + d.dataset_name + '.', 'ok');
+        })
+        .catch(function (e) { input.value = saved; say(e.message, 'err'); })
+        .finally(function () { input.disabled = false; });
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') input.blur(); });
+    td.appendChild(input);
+    return td;
   }
 
   /* ---------------- projects ---------------- */
@@ -355,6 +403,9 @@
     document.getElementById('u-file-h').textContent = ui.hint;
     document.getElementById('u-file').accept = ui.accept;
     document.getElementById('u-elev-fld').style.display = type === 'CONTOUR' ? '' : 'none';
+    // Only elevation data has a vertical reference; an orthomosaic is flat imagery.
+    document.getElementById('u-geoid-fld').style.display =
+      (type === 'DEM' || type === 'CONTOUR') ? '' : 'none';
   }
   document.getElementById('u-type').addEventListener('change', syncUploadType);
   syncUploadType();
@@ -415,6 +466,7 @@
           dataset_name: document.getElementById('u-name').value,
           file_name: file.name,
           elevation_field: document.getElementById('u-elev').value,
+          geoid_model: document.getElementById('u-geoid').value,
           features: features
         });
       });
@@ -423,6 +475,7 @@
       fd.append('project_id', projectId);
       fd.append('dataset_type', type);
       fd.append('dataset_name', document.getElementById('u-name').value);
+      fd.append('geoid_model', document.getElementById('u-geoid').value);
       fd.append('file', file);
       status.textContent = 'Uploading ' + fmtBytes(file.size) + '…';
       work = api('/api/drone/datasets', { method: 'POST', body: fd });
@@ -497,6 +550,7 @@
     var det = null;
     try { det = JSON.parse(d.geo_details || 'null'); } catch (e) { det = null; }
     if (det) Object.keys(det).forEach(function (k) { rows.push([k, det[k]]); });
+    if (d.geoid_model) rows.push(['Geoid model', d.geoid_model + ' (recorded)']);
 
     rows.forEach(function (r) {
       var box = el('div', 'meta-r');
