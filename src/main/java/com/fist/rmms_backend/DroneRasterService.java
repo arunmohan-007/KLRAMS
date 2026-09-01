@@ -1,5 +1,6 @@
 package com.fist.rmms_backend;
 
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -86,6 +87,12 @@ public class DroneRasterService {
         this.jdbc = jdbc;
     }
 
+    /** Describe anything uploaded before the header description existed. */
+    @PostConstruct
+    void onStartup() {
+        backfillHeaderDetails();
+    }
+
     /* ------------------------------------------------------------------
        Upload
        ------------------------------------------------------------------ */
@@ -141,10 +148,10 @@ public class DroneRasterService {
                     (project_id, dataset_name, dataset_type, file_name, file_path, file_size, format,
                      epsg, crs_name, res_x, res_y, raster_width, raster_height,
                      min_x, min_y, max_x, max_y, elevation_min, elevation_max,
-                     band_count, data_type, colour_interp, band_stats, no_data, warnings,
+                     band_count, data_type, colour_interp, band_stats, no_data, warnings, geo_details,
                      footprint, status, created_by)
                 VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, CAST(? AS jsonb), ?, ?,
+                        ?, ?, ?, CAST(? AS jsonb), ?, ?, CAST(? AS json),
                         ST_MakeEnvelope(?, ?, ?, ?, 4326), ?, ?)
                 RETURNING id
                 """, Integer.class,
@@ -154,6 +161,7 @@ public class DroneRasterService {
                     elev == null ? null : elev[0], elev == null ? null : elev[1],
                     meta.samplesPerPixel, meta.dataType(), meta.colourInterpretation(),
                     stats.toJson(meta), Double.isNaN(meta.noData) ? null : meta.noData, warnings,
+                    meta.detailsJson(),
                     b[0], b[1], b[2], b[3], DroneService.UPLOADED, user);
 
             Path target = originalFile(id, original);
@@ -164,6 +172,65 @@ public class DroneRasterService {
         } finally {
             Files.deleteIfExists(staging);
         }
+    }
+
+    /**
+     * Fill in the header description for datasets uploaded before it was recorded.
+     *
+     * <p>Without this, every raster already in the system would show no datum, no
+     * projection and no geoid for the rest of its life, because that information is
+     * only written at upload. The original files are kept, and this reads only their
+     * header — a few hundred bytes each, no pixels — so the whole backfill is
+     * cheaper than one tile.
+     *
+     * <p>Band statistics are deliberately NOT backfilled: those need a full decode,
+     * which is not something to do to every dataset on every boot. They appear when
+     * a dataset is next published.
+     *
+     * <p>Runs on the tile builder's thread so a slow disk cannot delay startup, and
+     * per-row failures are logged and skipped — a raster that has since become
+     * unreadable must not stop the others being described.
+     */
+    void backfillHeaderDetails() {
+        builder.submit(() -> {
+            List<Map<String, Object>> rows;
+            try {
+                rows = jdbc.queryForList(
+                        "SELECT id, file_path FROM drone_dataset "
+                      + "WHERE geo_details IS NULL AND file_path <> '' AND dataset_type <> ?",
+                        DroneService.CONTOUR);
+            } catch (Exception e) {
+                log.warn("Drone header backfill could not run: {}", e.toString());
+                return;
+            }
+            if (rows.isEmpty()) return;
+
+            int done = 0;
+            for (Map<String, Object> row : rows) {
+                int id = ((Number) row.get("id")).intValue();
+                try {
+                    Path file = Path.of(String.valueOf(row.get("file_path")));
+                    if (!Files.isRegularFile(file)) continue;
+                    GeoTiffMeta meta = GeoTiffMeta.read(file);
+                    jdbc.update("""
+                        UPDATE drone_dataset
+                           SET geo_details = CAST(? AS json),
+                               band_count = COALESCE(band_count, ?),
+                               data_type = COALESCE(data_type, ?),
+                               colour_interp = COALESCE(colour_interp, ?),
+                               no_data = COALESCE(no_data, ?)
+                         WHERE id = ?
+                        """, meta.detailsJson(), meta.samplesPerPixel, meta.dataType(),
+                             meta.colourInterpretation(),
+                             Double.isNaN(meta.noData) ? null : meta.noData, id);
+                    done++;
+                } catch (Exception e) {
+                    log.warn("Drone dataset {}: could not read its header for backfill — {}",
+                            id, e.toString());
+                }
+            }
+            if (done > 0) log.info("Drone: described {} existing dataset(s) from their headers", done);
+        });
     }
 
     /* ------------------------------------------------------------------

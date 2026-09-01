@@ -162,6 +162,24 @@ public class DroneService {
         /* Things that are true of the upload and would otherwise only become
            apparent as a strange-looking map after a long publish. */
         jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS warnings text");
+        /* Datum, projection, geoid and provenance, as the file states them.
+           Deliberately json and NOT jsonb: jsonb normalises key order, and these are
+           written in reading order — model type, datum, ellipsoid, projection, then
+           the vertical side. jsonb hands them back sorted by key length, which turns
+           a readable block into a jumble. Nothing queries inside it, so the only
+           thing jsonb would buy is the thing that breaks it. */
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS geo_details json");
+        jdbc.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'drone_dataset' AND column_name = 'geo_details'
+                              AND data_type = 'jsonb')
+                THEN
+                    ALTER TABLE drone_dataset
+                        ALTER COLUMN geo_details TYPE json USING geo_details::text::json;
+                END IF;
+            END $$""");
 
         /* Contours traced from a DEM. Lines in PostGIS rather than pixels in the
            DEM's pyramid: a contour is a value to label and query, not a picture. */
@@ -282,6 +300,7 @@ public class DroneService {
             d.status, d.status_message, d.published, d.min_zoom, d.max_zoom, d.build_version,
             d.band_count, d.data_type, d.colour_interp, d.band_stats::text AS band_stats, d.no_data,
             d.contour_interval, d.contour_status, d.contour_count, d.contour_message, d.warnings,
+            d.geo_details::text AS geo_details,
             d.created_by, d.created_at, d.updated_at
             """;
 
@@ -327,6 +346,7 @@ public class DroneService {
                    d.epsg, d.crs_name, d.res_x, d.res_y, d.raster_width, d.raster_height, d.file_size,
                    d.band_count, d.data_type, d.colour_interp, d.band_stats::text AS band_stats, d.no_data,
                    d.contour_interval, d.contour_status, d.contour_count, d.warnings,
+                   d.geo_details::text AS geo_details,
                    p.project_code, p.project_name, p.location, p.road_section, p.pwd_section, %s
             FROM drone_dataset d JOIN drone_project p ON p.id = d.project_id
             WHERE d.published AND d.status = 'PUBLISHED'

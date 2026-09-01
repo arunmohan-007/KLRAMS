@@ -380,6 +380,34 @@
     });
 
     appendBandTable(info, d);
+    appendGeoDetails(info, d);
+  }
+
+  /**
+   * What the file says about its own coordinate reference and provenance.
+   *
+   * <p>Kept apart from the rows above because it answers a different question. The
+   * rows say where the raster is and what it holds; this says what it is referenced
+   * TO — which datum, which projection, and whether its heights are above a geoid or
+   * above the ellipsoid. On a road survey that last one is the difference between a
+   * level that matches a benchmark and one that is tens of metres out.
+   */
+  function appendGeoDetails(info, d) {
+    var det;
+    try { det = JSON.parse(d.geo_details || 'null'); } catch (e) { det = null; }
+    if (!det) return;
+    var keys = Object.keys(det);
+    if (!keys.length) return;
+
+    var wrap = el('div', 'geo');
+    wrap.appendChild(el('div', 'geo-t', 'Coordinate reference'));
+    keys.forEach(function (k) {
+      var row = el('div', 'r');
+      row.appendChild(el('div', 'k', k));
+      row.appendChild(el('div', 'v', det[k]));
+      wrap.appendChild(row);
+    });
+    info.appendChild(wrap);
   }
 
   /**

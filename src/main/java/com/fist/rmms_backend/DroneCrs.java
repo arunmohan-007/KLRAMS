@@ -67,6 +67,29 @@ final class DroneCrs {
         return "EPSG:" + epsg + " — WGS 84 / UTM zone " + utmZone + (south ? "S" : "N");
     }
 
+    /**
+     * The datum, which is WGS 84 for every code this class accepts.
+     *
+     * <p>Not a guess: {@link #of} rejects anything that is not WGS 84 based, so a
+     * raster that reached this point is on WGS 84 by construction. Worth stating
+     * because GDAL usually writes the datum by EPSG reference rather than as its own
+     * GeoKey, leaving the field blank in the file itself.
+     */
+    String datum() {
+        return "WGS 84";
+    }
+
+    String ellipsoid() {
+        return "WGS 84";
+    }
+
+    /** The projection method, in the words a surveyor would use. */
+    String projectionMethod() {
+        if (epsg == 4326) return "none — geographic coordinates";
+        if (epsg == 3857) return "Pseudo-Mercator (spherical development)";
+        return "Transverse Mercator — UTM zone " + utmZone + (south ? " South" : " North");
+    }
+
     /** True when a unit of this CRS is a degree, so a pixel size is not a metre count. */
     boolean isGeographic() {
         return epsg == 4326;

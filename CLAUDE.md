@@ -112,6 +112,17 @@ Rejected outright: a bit depth the reader cannot decode, a raster over 800 megap
 
 Colour rendering needs **three or more non-alpha bands**, not exactly three; the first three become R, G, B in order. See `GeoTiffMeta.displayBands()`.
 
+### What a drone raster's header says about itself
+
+`GeoTiffMeta.details` carries datum, ellipsoid, projection method, units, vertical CRS / geoid, pixel-is-area/point, the exporter's citations, the producing software and the compression/layout. Shown as a **Coordinate reference** block in both info panels.
+
+Two things to know:
+
+- **A GeoKey's value is not always inline.** The entry's `TIFFTagLocation` says where it lives: 0 means the value is the fourth field, 34736 means a double in GeoDoubleParams, 34737 means a slice of the GeoAsciiParams string. Reading only the inline case (which is all the EPSG lookup needed) silently skips every citation — and the citations are where an exporter writes the datum and geoid in words.
+- **GDAL usually writes datum/ellipsoid/projection by EPSG reference, not as their own GeoKeys**, so those fields are normally absent from the file. They are derived from the CRS instead and labelled "implied by EPSG:nnnnn". That is not a guess: `DroneCrs.of()` rejects anything not WGS 84 based, so a raster that reached this point is on WGS 84 by construction.
+
+Stored in a **`json`** column, deliberately not `jsonb`: these are written in reading order and `jsonb` normalises key order, turning a readable block into a jumble. Nothing queries inside it. `DroneRasterService.backfillHeaderDetails()` fills this in for datasets uploaded before it existed — header-only, so it is cheap; band statistics are not backfilled because those need a full decode.
+
 ### Drone contours
 
 Two sources, one table and one map layer:
