@@ -104,6 +104,14 @@ Every other map layer is PostGIS geometry served as MVT. Drone orthomosaics and 
 - Writes need no new `SecurityConfig` rule — they fall under the blanket `POST/PUT/DELETE /api/**` ADMIN matcher, so view-only accounts can view drone data but not upload or publish it.
 - A drone project's road reference is **Road / Location** (`drone_project.location`) — the stretch the flight covered, e.g. "Ch. 2/400 – 4/900, Vempayam → Thycad". It was called `crn` briefly; `DroneService.ensureSchema()` carries a guarded `ALTER … RENAME COLUMN`.
 
+### Drone upload validation
+
+`DroneRasterService.validate()` runs after the metadata and band statistics are read, before the row is written. It is aimed at files that upload perfectly, take minutes to publish, and then produce a black, grey or empty rectangle — every one of those is knowable at upload.
+
+Rejected outright: a bit depth the reader cannot decode, a raster over 800 megapixels, and an orthomosaic whose every band is flat (a failed export). Recorded as `warnings` and shown in both info panels: a one-band orthomosaic (drawn grey), an orthomosaic with more than three colour bands (1-3 drawn, rest ignored), a multi-band DEM (band 1 used), an 8-bit DEM (usually a hillshade uploaded by mistake), and no nodata/alpha (collar only transparent where pure black).
+
+Colour rendering needs **three or more non-alpha bands**, not exactly three; the first three become R, G, B in order. See `GeoTiffMeta.displayBands()`.
+
 ### Drone contours
 
 Two sources, one table and one map layer:

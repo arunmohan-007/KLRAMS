@@ -370,6 +370,7 @@
     ];
     if (d.dataset_type === 'DEM')
       rows.splice(8, 0, ['Elevation', num(d.elevation_min, 2) + ' – ' + num(d.elevation_max, 2) + ' m']);
+    if (d.warnings) rows.push(['Check', d.warnings]);
 
     rows.forEach(function (r) {
       var row = el('div', 'r');

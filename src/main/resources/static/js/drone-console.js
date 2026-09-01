@@ -488,6 +488,7 @@
       ['Upload date', fmtDate(d.created_at)],
       ['Processing status', d.status === 'UPLOADED' ? 'Uploaded — not yet published' : d.status]
     ];
+    if (d.warnings) rows.push(['Check', d.warnings]);
     if (d.dataset_type === 'DEM')
       rows.splice(8, 0, ['Elevation range', num(d.elevation_min, 2) + ' m — ' + num(d.elevation_max, 2) + ' m']);
 

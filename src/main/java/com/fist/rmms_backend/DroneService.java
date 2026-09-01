@@ -159,6 +159,9 @@ public class DroneService {
         jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS colour_interp text");
         jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS band_stats jsonb");
         jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS no_data double precision");
+        /* Things that are true of the upload and would otherwise only become
+           apparent as a strange-looking map after a long publish. */
+        jdbc.execute("ALTER TABLE drone_dataset ADD COLUMN IF NOT EXISTS warnings text");
 
         /* Contours traced from a DEM. Lines in PostGIS rather than pixels in the
            DEM's pyramid: a contour is a value to label and query, not a picture. */
@@ -278,7 +281,7 @@ public class DroneService {
             d.min_x, d.min_y, d.max_x, d.max_y, d.elevation_min, d.elevation_max,
             d.status, d.status_message, d.published, d.min_zoom, d.max_zoom, d.build_version,
             d.band_count, d.data_type, d.colour_interp, d.band_stats::text AS band_stats, d.no_data,
-            d.contour_interval, d.contour_status, d.contour_count, d.contour_message,
+            d.contour_interval, d.contour_status, d.contour_count, d.contour_message, d.warnings,
             d.created_by, d.created_at, d.updated_at
             """;
 
@@ -323,7 +326,7 @@ public class DroneService {
                    d.min_zoom, d.max_zoom, d.build_version, d.elevation_min, d.elevation_max,
                    d.epsg, d.crs_name, d.res_x, d.res_y, d.raster_width, d.raster_height, d.file_size,
                    d.band_count, d.data_type, d.colour_interp, d.band_stats::text AS band_stats, d.no_data,
-                   d.contour_interval, d.contour_status, d.contour_count,
+                   d.contour_interval, d.contour_status, d.contour_count, d.warnings,
                    p.project_code, p.project_name, p.location, p.road_section, p.pwd_section, %s
             FROM drone_dataset d JOIN drone_project p ON p.id = d.project_id
             WHERE d.published AND d.status = 'PUBLISHED'

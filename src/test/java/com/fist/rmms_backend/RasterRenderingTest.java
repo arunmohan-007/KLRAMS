@@ -277,4 +277,54 @@ class RasterRenderingTest {
             return img;
         }
     }
+
+    /* ------------------------------------------------------------------
+       Upload validation
+       ------------------------------------------------------------------ */
+
+    /**
+     * The band layout a file declares is what the warnings are written from, so the
+     * cases that produce a warning have to be distinguishable from the metadata
+     * alone — no decoding, no publish.
+     */
+    @Test
+    void bandLayoutIsEnoughToTellAColourOrthoFromAGreyOne() throws Exception {
+        GeoTiffMeta colour = GeoTiffMeta.read(fixture("ortho-utm43n.tif"));
+        GeoTiffMeta grey = GeoTiffMeta.read(fixture("dem-utm43n.tif"));
+
+        assertTrue(colour.isColour(), "3 bands is a colour image");
+        assertEquals(3, colour.displayBands().length);
+
+        assertFalse(grey.isColour(), "1 band cannot be colour");
+        assertEquals(1, grey.displayBands().length);
+    }
+
+    /** A 4-band multispectral file is colour, and its 4th band is not transparency. */
+    @Test
+    void multibandFileIsColourAndItsFourthBandIsNotAlpha() throws Exception {
+        GeoTiffMeta m = GeoTiffMeta.read(fixture("ortho-multiband16.tif"));
+
+        assertTrue(m.isColour());
+        assertEquals(4, m.samplesPerPixel);
+        assertFalse(m.hasAlpha, "band 4 here is a measurement, so nothing is transparent");
+        // 4 colour bands and only 3 drawable, which is what the upload warns about
+        assertEquals(4, m.samplesPerPixel - (m.hasAlpha ? 1 : 0));
+    }
+
+    /** Flat data has no picture in it, which the upload check keys off. */
+    @Test
+    void flatBandsAreDetectableFromTheStatisticsAlone() throws Exception {
+        GeoTiffMeta m = GeoTiffMeta.read(fixture("ortho-uint16.tif"));
+        RasterBandStats real = RasterBandStats.measure(
+                samplesOf(readRaster(fixture("ortho-uint16.tif")), m.samplesPerPixel), m);
+        for (int b = 0; b < real.bands; b++)
+            assertTrue(real.max[b] > real.min[b], "the fixture does have detail in band " + (b + 1));
+
+        double[][] flat = new double[3][256];
+        for (double[] band : flat) java.util.Arrays.fill(band, 1200);
+        RasterBandStats none = RasterBandStats.measure(flat, m);
+        for (int b = 0; b < none.bands; b++)
+            assertEquals(none.min[b], none.max[b], 1e-9, "a flat band has no range");
+    }
+
 }
