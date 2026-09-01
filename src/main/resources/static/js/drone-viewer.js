@@ -407,6 +407,18 @@
       row.appendChild(el('div', 'v', det[k]));
       wrap.appendChild(row);
     });
+
+    /* Kept visually apart from the rows above: everything there is what the FILE
+       declares, this is what a person recorded from the survey documentation. */
+    if (d.geoid_model) {
+      var row = el('div', 'r');
+      row.appendChild(el('div', 'k', 'Geoid model'));
+      var v = el('div', 'v');
+      v.appendChild(document.createTextNode(d.geoid_model));
+      v.appendChild(el('span', 'geo-src', ' recorded from documentation'));
+      row.appendChild(v);
+      wrap.appendChild(row);
+    }
     info.appendChild(wrap);
   }
 

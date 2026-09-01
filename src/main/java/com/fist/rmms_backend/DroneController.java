@@ -136,10 +136,12 @@ public class DroneController {
     public Map<String, Object> upload(@RequestParam("project_id") int projectId,
                                       @RequestParam("dataset_type") String type,
                                       @RequestParam(value = "dataset_name", required = false) String name,
+                                      @RequestParam(value = "geoid_model", required = false) String geoid,
                                       @RequestParam("file") MultipartFile file,
                                       Authentication auth) {
         try {
-            int id = rasters.store(projectId, type, name, file, auth == null ? null : auth.getName());
+            int id = rasters.store(projectId, type, name, geoid, file,
+                    auth == null ? null : auth.getName());
             Map<String, Object> res = ok("id", id);
             res.put("dataset", drone.dataset(id));
             return res;
@@ -175,6 +177,27 @@ public class DroneController {
             return ok("deleted", id);
         } catch (Exception e) {
             return fail("drone delete dataset", e);
+        }
+    }
+
+    /**
+     * Record the vertical reference a GeoTIFF does not carry.
+     *
+     * <p>A geoid model is almost always in the processing report rather than in the
+     * file — Pix4D and Metashape write the horizontal CRS into the GeoTIFF and leave
+     * the vertical side to their PDF. So it is entered by hand, separately from
+     * {@code geo_details}, which stays strictly what the file itself declares.
+     *
+     * <p>Editable after upload because the documentation frequently arrives later
+     * than the raster does.
+     */
+    @PutMapping("/datasets/{id}/geoid")
+    public Map<String, Object> setGeoid(@PathVariable int id, @RequestBody Map<String, String> body) {
+        try {
+            drone.setGeoidModel(id, body == null ? null : body.get("geoid_model"));
+            return ok("id", id);
+        } catch (Exception e) {
+            return fail("drone geoid", e);
         }
     }
 
@@ -223,8 +246,8 @@ public class DroneController {
             if (name == null) name = file == null ? "Imported contours" : file;
 
             int id = contours.importFeatures(projectId, name, file == null ? "" : file,
-                    str(body.get("elevation_field")), (List<Map<String, Object>>) list,
-                    auth == null ? null : auth.getName());
+                    str(body.get("elevation_field")), str(body.get("geoid_model")),
+                    (List<Map<String, Object>>) list, auth == null ? null : auth.getName());
             Map<String, Object> res = ok("id", id);
             res.put("dataset", drone.dataset(id));
             return res;

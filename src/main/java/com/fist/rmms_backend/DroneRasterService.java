@@ -104,7 +104,8 @@ public class DroneRasterService {
      * an unsupported one is rejected outright rather than sitting in the list as
      * an entry that can never be published.
      */
-    int store(int projectId, String type, String datasetName, MultipartFile file, String user) throws IOException {
+    int store(int projectId, String type, String datasetName, String geoidModel,
+              MultipartFile file, String user) throws IOException {
         drone.project(projectId);   // 404s here rather than on the foreign key
         String kind = normaliseType(type);
         String original = safeFileName(file == null ? null : file.getOriginalFilename());
@@ -149,10 +150,10 @@ public class DroneRasterService {
                      epsg, crs_name, res_x, res_y, raster_width, raster_height,
                      min_x, min_y, max_x, max_y, elevation_min, elevation_max,
                      band_count, data_type, colour_interp, band_stats, no_data, warnings, geo_details,
-                     footprint, status, created_by)
+                     geoid_model, footprint, status, created_by)
                 VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, CAST(? AS jsonb), ?, ?, CAST(? AS json),
-                        ST_MakeEnvelope(?, ?, ?, ?, 4326), ?, ?)
+                        ?, ST_MakeEnvelope(?, ?, ?, ?, 4326), ?, ?)
                 RETURNING id
                 """, Integer.class,
                     projectId, name, kind, original, file.getSize(), meta.pixelSummary(),
@@ -161,7 +162,7 @@ public class DroneRasterService {
                     elev == null ? null : elev[0], elev == null ? null : elev[1],
                     meta.samplesPerPixel, meta.dataType(), meta.colourInterpretation(),
                     stats.toJson(meta), Double.isNaN(meta.noData) ? null : meta.noData, warnings,
-                    meta.detailsJson(),
+                    meta.detailsJson(), DroneService.blankToNull(geoidModel),
                     b[0], b[1], b[2], b[3], DroneService.UPLOADED, user);
 
             Path target = originalFile(id, original);
