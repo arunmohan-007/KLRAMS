@@ -104,6 +104,10 @@ Every other map layer is PostGIS geometry served as MVT. Drone orthomosaics and 
 - Writes need no new `SecurityConfig` rule — they fall under the blanket `POST/PUT/DELETE /api/**` ADMIN matcher, so view-only accounts can view drone data but not upload or publish it.
 - A drone project's road reference is **Road / Location** (`drone_project.location`) — the stretch the flight covered, e.g. "Ch. 2/400 – 4/900, Vempayam → Thycad". It was called `crn` briefly; `DroneService.ensureSchema()` carries a guarded `ALTER … RENAME COLUMN`.
 
+### Pixel size (GSD)
+
+Read from the GeoTIFF's own `ModelPixelScale` (or the affine when the raster is rotated), stored as `res_x` / `res_y`, shown as **Pixel size (GSD)** in both info panels. Two things it has to get right: X and Y are not always equal, so showing only X would hide a stretched raster; and a geographic (EPSG:4326) raster's pixel is in DEGREES, which is unreadable as a ground distance, so the metre equivalent is given alongside — computed at the raster's own latitude, since a degree of longitude shortens towards the poles. The "are these the same?" test compares the FORMATTED values, not the raw ones, or a geographic raster renders "0.055 × 0.055 m" — two genuinely different numbers that are identical at the precision shown.
+
 ### Drone upload validation
 
 `DroneRasterService.validate()` runs after the metadata and band statistics are read, before the row is written. It is aimed at files that upload perfectly, take minutes to publish, and then produce a black, grey or empty rectangle — every one of those is knowable at upload.
