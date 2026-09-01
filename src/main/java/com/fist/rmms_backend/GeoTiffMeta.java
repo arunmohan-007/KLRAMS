@@ -49,6 +49,15 @@ final class GeoTiffMeta {
     private static final int MODEL_TIEPOINT = 33922;
     private static final int MODEL_TRANSFORMATION = 34264;
     private static final int GEO_KEY_DIRECTORY = 34735;
+    private static final int GEO_DOUBLE_PARAMS = 34736;
+    private static final int GEO_ASCII_PARAMS = 34737;
+    private static final int IMAGE_DESCRIPTION = 270;
+    private static final int SOFTWARE = 305;
+    private static final int DATE_TIME = 306;
+    private static final int COMPRESSION = 259;
+    private static final int TILE_WIDTH = 322;
+    private static final int TILE_LENGTH = 323;
+    private static final int ROWS_PER_STRIP = 278;
     private static final int GDAL_NODATA = 42113;
 
     final int width;
@@ -71,6 +80,12 @@ final class GeoTiffMeta {
     final DroneCrs crs;
     /** NaN when the file declares no nodata value. */
     final double noData;
+    /**
+     * Datum, projection, geoid and the rest of what the header says about itself —
+     * insertion-ordered so it reads top to bottom. Only keys the file actually
+     * carries are present; nothing is guessed.
+     */
+    final java.util.LinkedHashMap<String, String> details;
 
     /* Pixel (column,row) -> model (x,y), as a 6-parameter affine. */
     private final double ax, bx, cx;
@@ -79,7 +94,8 @@ final class GeoTiffMeta {
     private final double ia, ib, ic, id, ie, iff;
 
     private GeoTiffMeta(int width, int height, int samplesPerPixel, int bitsPerSample, int sampleFormat,
-                        int photometric, int alphaBand, DroneCrs crs, double noData, double[] t) {
+                        int photometric, int alphaBand, DroneCrs crs, double noData,
+                        java.util.LinkedHashMap<String, String> details, double[] t) {
         this.width = width;
         this.height = height;
         this.samplesPerPixel = samplesPerPixel;
@@ -90,6 +106,7 @@ final class GeoTiffMeta {
         this.hasAlpha = alphaBand >= 0;
         this.crs = crs;
         this.noData = noData;
+        this.details = details == null ? new java.util.LinkedHashMap<>() : details;
         this.ax = t[0]; this.bx = t[1]; this.cx = t[2];
         this.ay = t[3]; this.by = t[4]; this.cy = t[5];
 
@@ -223,7 +240,8 @@ final class GeoTiffMeta {
                 try { nodata = Double.parseDouble(s.trim()); } catch (NumberFormatException ignored) { }
             }
 
-            return new GeoTiffMeta(width, height, spp, bps, fmt, photo, alphaBand, crs, nodata, transform);
+            return new GeoTiffMeta(width, height, spp, bps, fmt, photo, alphaBand, crs, nodata,
+                                   describe(tags, crs), transform);
         }
     }
 
@@ -269,6 +287,173 @@ final class GeoTiffMeta {
                     "The GeoTIFF uses a user-defined coordinate system with no EPSG code. "
                   + "Re-export it in EPSG:4326 or EPSG:32643.");
         return code;
+    }
+
+    /* ------------------------------------------------------------------
+       Header description — datum, projection, geoid, provenance
+       ------------------------------------------------------------------ */
+
+    /**
+     * Everything the header states about itself, in reading order.
+     *
+     * <p>A GeoKey's value is not always inline. The entry's {@code TIFFTagLocation}
+     * says where it lives: 0 means the value IS the fourth field, 34736 means it is
+     * a double in GeoDoubleParams, and 34737 means it is a slice of the
+     * GeoAsciiParams string. Reading only the inline case — which is all the EPSG
+     * lookup needed — silently skips every citation, and the citations are exactly
+     * where an exporter writes the datum and the geoid in words.
+     */
+    private static java.util.LinkedHashMap<String, String> describe(
+            Map<Integer, Object> tags, DroneCrs crs) {
+
+        java.util.LinkedHashMap<String, String> out = new java.util.LinkedHashMap<>();
+        Map<Integer, Object> keys = geoKeys(tags);
+
+        Integer model = intKey(keys, 1024);
+        if (model != null)
+            out.put("Model type", switch (model) {
+                case 1 -> "Projected";
+                case 2 -> "Geographic (lat/lon)";
+                case 3 -> "Geocentric";
+                default -> "code " + model;
+            });
+
+        /* GDAL normally writes the datum, ellipsoid and projection method by EPSG
+           reference rather than as their own GeoKeys, so these are usually absent
+           from the file. Where they are, the file's own answer wins; where they are
+           not, the CRS supplies it and says so, because a blank "Datum" is a worse
+           answer than a derived one for the person checking a survey. */
+        String datum = GeoKeyNames.datum(code(keys, 2050));
+        put(out, "Datum", datum != null ? datum : crs.datum() + " — implied by EPSG:" + crs.epsg());
+        String ellipsoid = GeoKeyNames.ellipsoid(code(keys, 2056));
+        put(out, "Ellipsoid", ellipsoid != null ? ellipsoid : crs.ellipsoid());
+        String proj = GeoKeyNames.projection(code(keys, 3075));
+        put(out, "Projection", proj != null ? proj : crs.projectionMethod());
+        put(out, "Linear units", GeoKeyNames.linearUnit(code(keys, 3076)));
+        put(out, "Angular units", GeoKeyNames.angularUnit(code(keys, 2054)));
+
+        /* The vertical side. Its absence is itself worth reporting: heights with no
+           declared vertical CRS are ellipsoidal, which is metres away from the
+           orthometric heights a road level is quoted in. */
+        String vcrs = GeoKeyNames.verticalCrs(code(keys, 4096));
+        String vdatum = GeoKeyNames.verticalDatum(code(keys, 4098));
+        put(out, "Vertical CRS / geoid", vcrs);
+        put(out, "Vertical datum", vdatum);
+        put(out, "Vertical units", GeoKeyNames.linearUnit(code(keys, 4099)));
+        if (vcrs == null && vdatum == null)
+            out.put("Vertical CRS / geoid", "not declared — heights are above the ellipsoid");
+
+        Integer raster = intKey(keys, 1025);
+        if (raster != null)
+            out.put("Pixel is", raster == 2 ? "point (value at the pixel centre)"
+                                            : "area (value covers the pixel)");
+
+        // Citations last: they repeat some of the above, but in the exporter's own
+        // words, which is often more specific than the codes.
+        put(out, "CRS citation", ascii(keys, 1026));
+        put(out, "Projected CRS citation", ascii(keys, 3073));
+        put(out, "Geographic CRS citation", ascii(keys, 2049));
+
+        Object software = tags.get(SOFTWARE);
+        if (software instanceof String s && !s.isBlank()) out.put("Produced by", s.trim());
+        Object when = tags.get(DATE_TIME);
+        if (when instanceof String s && !s.isBlank()) out.put("File date", s.trim());
+        Object desc = tags.get(IMAGE_DESCRIPTION);
+        if (desc instanceof String s && !s.isBlank()) out.put("Description", s.trim());
+
+        double[] comp = doubles(tags, COMPRESSION);
+        if (comp != null && comp.length > 0) out.put("Compression", GeoKeyNames.compression((int) comp[0]));
+
+        double[] tw = doubles(tags, TILE_WIDTH), th = doubles(tags, TILE_LENGTH);
+        double[] rps = doubles(tags, ROWS_PER_STRIP);
+        if (tw != null && th != null && tw.length > 0 && th.length > 0)
+            out.put("Layout", "tiled " + (int) tw[0] + " × " + (int) th[0]);
+        else if (rps != null && rps.length > 0)
+            out.put("Layout", "stripped, " + (int) rps[0] + " rows per strip");
+
+        return out;
+    }
+
+    private static void put(java.util.LinkedHashMap<String, String> out, String k, String v) {
+        if (v != null && !v.isBlank()) out.put(k, v);
+    }
+
+    /** A GeoKey's numeric code, or 0 when the file does not carry that key. */
+    private static int code(Map<Integer, Object> keys, int key) {
+        Integer v = intKey(keys, key);
+        return v == null ? 0 : v;
+    }
+
+    private static Integer intKey(Map<Integer, Object> keys, int key) {
+        Object v = keys.get(key);
+        return v instanceof Integer i ? i : null;
+    }
+
+    private static String ascii(Map<Integer, Object> keys, int key) {
+        Object v = keys.get(key);
+        if (!(v instanceof String s)) return null;
+        // GeoAsciiParams separates entries with '|', which is not part of the text.
+        String t = s.replace('|', ' ').trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    /** The GeoKeyDirectory as key -> Integer or String, values resolved to their store. */
+    private static Map<Integer, Object> geoKeys(Map<Integer, Object> tags) {
+        Map<Integer, Object> out = new HashMap<>();
+        double[] dir = doubles(tags, GEO_KEY_DIRECTORY);
+        if (dir == null || dir.length < 4) return out;
+
+        double[] dbl = doubles(tags, GEO_DOUBLE_PARAMS);
+        Object asciiRaw = tags.get(GEO_ASCII_PARAMS);
+        String asc = asciiRaw instanceof String s ? s : null;
+
+        int count = (int) dir[3];
+        for (int i = 0; i < count; i++) {
+            int at = 4 + i * 4;
+            if (at + 3 >= dir.length) break;
+            int key = (int) dir[at], location = (int) dir[at + 1];
+            int len = (int) dir[at + 2], offset = (int) dir[at + 3];
+
+            if (location == 0) {
+                out.put(key, offset);
+            } else if (location == GEO_DOUBLE_PARAMS && dbl != null && offset < dbl.length) {
+                out.put(key, String.valueOf(dbl[offset]));
+            } else if (location == GEO_ASCII_PARAMS && asc != null
+                    && offset >= 0 && offset + len <= asc.length()) {
+                out.put(key, asc.substring(offset, offset + len));
+            }
+        }
+        return out;
+    }
+
+    /** The description as JSON, for the {@code geo_details} column. */
+    String detailsJson() {
+        if (details.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, String> e : details.entrySet()) {
+            if (!first) sb.append(',');
+            sb.append(quote(e.getKey())).append(':').append(quote(e.getValue()));
+            first = false;
+        }
+        return sb.append('}').toString();
+    }
+
+    private static String quote(String s) {
+        StringBuilder sb = new StringBuilder("\"");
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n', '\r', '\t' -> sb.append(' ');
+                default -> {
+                    if (c < 0x20) sb.append(' ');
+                    else sb.append(c);
+                }
+            }
+        }
+        return sb.append('"').toString();
     }
 
     /* ------------------------------------------------------------------

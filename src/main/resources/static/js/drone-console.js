@@ -492,6 +492,12 @@
     if (d.dataset_type === 'DEM')
       rows.splice(8, 0, ['Elevation range', num(d.elevation_min, 2) + ' m — ' + num(d.elevation_max, 2) + ' m']);
 
+    // The coordinate reference the file declares, appended as its own rows so the
+    // datum and geoid are visible at upload rather than only in the viewer.
+    var det = null;
+    try { det = JSON.parse(d.geo_details || 'null'); } catch (e) { det = null; }
+    if (det) Object.keys(det).forEach(function (k) { rows.push([k, det[k]]); });
+
     rows.forEach(function (r) {
       var box = el('div', 'meta-r');
       box.appendChild(el('div', 'k', r[0]));
