@@ -19,8 +19,10 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -128,6 +130,8 @@ public class DroneRasterService {
                 throw new IllegalArgumentException(
                         "The DEM contains no usable elevation values — every pixel is nodata.");
 
+            String warnings = validate(meta, stats, kind);
+
             double[] b = meta.wgs84Bounds();
             String name = DroneService.blankToNull(datasetName);
             if (name == null) name = original;
@@ -137,10 +141,10 @@ public class DroneRasterService {
                     (project_id, dataset_name, dataset_type, file_name, file_path, file_size, format,
                      epsg, crs_name, res_x, res_y, raster_width, raster_height,
                      min_x, min_y, max_x, max_y, elevation_min, elevation_max,
-                     band_count, data_type, colour_interp, band_stats, no_data,
+                     band_count, data_type, colour_interp, band_stats, no_data, warnings,
                      footprint, status, created_by)
                 VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, CAST(? AS jsonb), ?,
+                        ?, ?, ?, CAST(? AS jsonb), ?, ?,
                         ST_MakeEnvelope(?, ?, ?, ?, 4326), ?, ?)
                 RETURNING id
                 """, Integer.class,
@@ -149,7 +153,7 @@ public class DroneRasterService {
                     b[0], b[1], b[2], b[3],
                     elev == null ? null : elev[0], elev == null ? null : elev[1],
                     meta.samplesPerPixel, meta.dataType(), meta.colourInterpretation(),
-                    stats.toJson(meta), Double.isNaN(meta.noData) ? null : meta.noData,
+                    stats.toJson(meta), Double.isNaN(meta.noData) ? null : meta.noData, warnings,
                     b[0], b[1], b[2], b[3], DroneService.UPLOADED, user);
 
             Path target = originalFile(id, original);
@@ -581,6 +585,80 @@ public class DroneRasterService {
      * centimetres. The values drive a colour ramp and a summary line, neither of
      * which is a survey deliverable.
      */
+    /** Bit depths the JDK's TIFF reader decodes into samples this code can use. */
+    private static final java.util.Set<Integer> SUPPORTED_DEPTHS = java.util.Set.of(8, 16, 32, 64);
+    /** Beyond this many pixels a pyramid build is hours of CPU, not minutes. */
+    private static final long MAX_PIXELS = 800_000_000L;
+
+    /**
+     * Check an upload for the things that would otherwise go wrong later, and
+     * describe the ones that are survivable.
+     *
+     * <p>The failures worth catching here are not malformed files — those already
+     * fail in {@link GeoTiffMeta}. They are files that upload perfectly, take minutes
+     * to publish, and then produce a black rectangle, a grey rectangle or nothing at
+     * all. Every one of those is knowable at upload from the metadata and the band
+     * statistics, so it is said then, in terms that name the fix.
+     *
+     * @return warnings to record against the dataset, or null if there are none
+     * @throws IllegalArgumentException if the file cannot usefully be published
+     */
+    private String validate(GeoTiffMeta meta, RasterBandStats stats, String kind) {
+        boolean dem = DroneService.DEM.equals(kind);
+
+        if (!SUPPORTED_DEPTHS.contains(meta.bitsPerSample))
+            throw new IllegalArgumentException(
+                    meta.bitsPerSample + "-bit imagery cannot be read. Re-export the "
+                  + kind.toLowerCase(Locale.ROOT) + " as 8-bit or 16-bit GeoTIFF.");
+
+        long pixels = (long) meta.width * meta.height;
+        if (pixels > MAX_PIXELS)
+            throw new IllegalArgumentException(String.format(
+                    "This raster is %,d × %,d (%,d megapixels), which is too large to tile here. "
+                  + "Split it, or downsample it to under %,d megapixels.",
+                    meta.width, meta.height, pixels / 1_000_000, MAX_PIXELS / 1_000_000));
+
+        /* Every band flat means there is no picture in the file — usually a failed
+           export, or the wrong product exported. Publishing it would spend minutes
+           producing one flat colour. */
+        if (!dem && stats != null && stats.bands > 0) {
+            boolean anyDetail = false;
+            for (int b = 0; b < stats.bands; b++)
+                if (b != meta.alphaBand && stats.max[b] > stats.min[b]) { anyDetail = true; break; }
+            if (!anyDetail)
+                throw new IllegalArgumentException(
+                        "The orthomosaic has no image detail — every pixel holds the same value. "
+                      + "The export may have failed, or this may be an empty tile.");
+        }
+
+        List<String> notes = new ArrayList<>();
+        int colourBands = meta.samplesPerPixel - (meta.hasAlpha ? 1 : 0);
+
+        if (!dem) {
+            if (colourBands == 1 && meta.photometric != 3)
+                notes.add("Only one band, so this will be drawn in grey rather than colour.");
+            else if (colourBands > 3)
+                notes.add("Bands 1-3 will be drawn as red, green and blue; the remaining "
+                        + (colourBands - 3) + " will not be shown.");
+        } else {
+            if (meta.samplesPerPixel > 1)
+                notes.add("Band 1 will be read as elevation; the other "
+                        + (meta.samplesPerPixel - 1) + " will be ignored.");
+            // Real terrain in whole metres 0-255 is possible but far more often this is
+            // a hillshade or a colour relief image exported by mistake.
+            if (meta.sampleFormat == 1 && meta.bitsPerSample == 8)
+                notes.add("Elevations are 8-bit whole numbers (0-255). If this is a hillshade "
+                        + "or colour-relief image rather than a height model, upload it as an "
+                        + "orthomosaic instead.");
+        }
+
+        if (Double.isNaN(meta.noData) && meta.alphaBand < 0 && !dem)
+            notes.add("No nodata value and no alpha band, so any collar around the flight "
+                    + "will only be transparent where it is pure black.");
+
+        return notes.isEmpty() ? null : String.join(" ", notes);
+    }
+
     /**
      * True when the raster's samples are not already display levels.
      *
