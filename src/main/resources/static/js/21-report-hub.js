@@ -20,8 +20,7 @@ const RH_SETS=[
   {key:'traffic',  label:'Traffic Station & Count',kind:'traffic',                     title:'Traffic Station & Count Report',file:'traffic-station-count-report'},
   {key:'subgrade', label:'Sub-Grade Soil',     kind:'asset',    type:'subgrade',        title:'Sub-Grade Soil Report',      file:'subgrade-soil-report'},
   {key:'core',     label:'Bituminous Core',    kind:'asset',    type:'bituminous_core', title:'Bituminous Core Report',     file:'bituminous-core-report'},
-  {key:'crust',    label:'Pavement Crust',     kind:'asset',    type:'pavement_crust',  title:'Pavement Crust Report',      file:'pavement-crust-report'},
-  {key:'flood',    label:'Flood Susceptibility',kind:'client',                          title:'Flood Susceptibility Report',file:'flood-susceptibility-report'}
+  {key:'crust',    label:'Pavement Crust',     kind:'asset',    type:'pavement_crust',  title:'Pavement Crust Report',      file:'pavement-crust-report'}
 ];
 let rhTab='fwd', rhSearch='', rhDistrict='', rhRoad='', rhSec='', rhCache={};
 /* Perf: the condition dataset is ~33k rows × ~40 columns. Rendering it all at
@@ -35,9 +34,14 @@ function openReportHub(){
   const s=document.getElementById('reportHub'); if(!s)return;
   ['dashboard','pciScreen','condScreen','regScreen'].forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('open');});
   s.classList.add('open');
+  document.getElementById('fpanes').classList.add('hidden');
+  document.querySelectorAll('#iconrail .railbtn').forEach(b=>b.classList.toggle('active',b.dataset.pane==='reports'));
   rhScreenTab(rhTab||'fwd');
 }
-function closeReportHub(){ const s=document.getElementById('reportHub'); if(s)s.classList.remove('open'); }
+function closeReportHub(){
+  const s=document.getElementById('reportHub'); if(s)s.classList.remove('open');
+  railSyncToPanes();
+}
 function rhSet(k){return RH_SETS.find(x=>x.key===k)||RH_SETS[0];}
 function rhScreenTab(k){
   rhTab=k; rhSearch=''; rhDistrict=''; rhRoad=''; rhSec=''; rhPage=0;
@@ -161,11 +165,6 @@ function rhEnsure(set){
           .then(st=>{const rows=rhTrafficRows(st);rhCache[set.key]=rows;return rows;})
           .catch(()=>{rhCache[set.key]=[];return [];});
       }
-      if(set.kind==='client'){
-        const src=(typeof CLIMATE_ROWS!=='undefined'&&CLIMATE_ROWS)||[];
-        const rows=src.map(function(r){return {sec:r.sec,road:r.name||(roadProps(r.sec).Road_Name||''),pwd:roadProps(r.sec).PWD_Sec||'',district:roadProps(r.sec).District||'',data:r.props||{}};});
-        rhCache[set.key]=rows; return rows;
-      }
       /* Reuse GeoJSON the map viewer already downloaded (condition segments are
          a multi-MB payload) instead of fetching the same thing a second time. */
       if(set.kind==='segments'&&Segs.loaded()){
@@ -276,7 +275,7 @@ function rhPager(pages){
 function rhRender(){
   const set=rhSet(rhTab); const allRows=rhCache[set.key]||[]; const rows=rhFilteredRows();
   const body=document.getElementById('rhBody'); if(!body)return;
-  if(!allRows.length){body.innerHTML=rhToolbar(set.key,allRows,'0 rows')+'<div class="dash-loading">No '+escH(set.label)+' data found yet. '+(set.kind==='client'?'Import the flood CSV in the Climate module, then reopen this report.':'Upload it in the Data Console, then reopen this report.')+'</div>';return;}
+  if(!allRows.length){body.innerHTML=rhToolbar(set.key,allRows,'0 rows')+'<div class="dash-loading">No '+escH(set.label)+' data found yet. Upload it in the Data Console, then reopen this report.</div>';return;}
   const cols=rhColumnsFor(set);
   /* Page the table: dumping all ~33k condition rows into one innerHTML froze
      the browser for many seconds and left a million-cell DOM behind. Exports

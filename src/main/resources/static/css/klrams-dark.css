@@ -162,6 +162,8 @@ select option:disabled{color:var(--k-faint)!important}
 }
 #iconrail .railbtn.active .rl{color:var(--k-accent)!important;font-weight:700;text-shadow:none!important}
 #iconrail .railbtn .rl{font-size:9.5px;font-weight:500;text-shadow:none!important}
+/* group divider — matches the panel hairlines rather than app.css's lighter blue */
+#iconrail .rail-sep{background:linear-gradient(90deg,transparent,var(--k-line2),transparent)!important}
 
 /* ---------- left side panel (Layers / Filter / Base map / Measure) ---------- */
 #fpanes,.fpane{
@@ -692,8 +694,8 @@ select option:disabled{color:var(--k-faint)!important}
 .nsc-stat .l{color:var(--k-muted)!important}
 .nsc-own .ol{color:var(--k-faint)!important}
 
-/* ---------- full-screen overlays (dashboard / PCI / register / NSV / hub / climate) ---------- */
-#dashboard,#pciScreen,#condScreen,#regScreen,#nsvScreen,#reportHub,#climate{
+/* ---------- full-screen overlays (dashboard / PCI / register / NSV / hub) ---------- */
+#dashboard,#pciScreen,#condScreen,#regScreen,#nsvScreen,#reportHub{
   /* NB: must be radial-gradient — the "<size> at <position>" form is invalid for
      linear-gradient, which made the browser drop this rule and fall back to the
      light base background (white rows / unreadable dark-theme text). */
@@ -701,8 +703,7 @@ select option:disabled{color:var(--k-faint)!important}
 }
 #dashboard::-webkit-scrollbar-thumb,#pciScreen::-webkit-scrollbar-thumb,
 #condScreen::-webkit-scrollbar-thumb,#regScreen::-webkit-scrollbar-thumb,
-#nsvScreen::-webkit-scrollbar-thumb,#reportHub::-webkit-scrollbar-thumb,
-#climate::-webkit-scrollbar-thumb{background:var(--k-line2)!important;border:3px solid transparent!important;background-clip:padding-box!important}
+#nsvScreen::-webkit-scrollbar-thumb,#reportHub::-webkit-scrollbar-thumb{background:var(--k-line2)!important;border:3px solid transparent!important;background-clip:padding-box!important}
 
 .dash-eyebrow{color:var(--k-accent)!important}
 .dash-h1{color:#fff!important}
@@ -885,7 +886,7 @@ select option:disabled{color:var(--k-faint)!important}
 .reg-table tbody tr:hover{background:rgba(45,212,191,.08)!important}
 .reg-table tbody tr:hover td{color:#fff!important}
 
-/* NSV / climate screens */
+/* NSV screens */
 .nsv-viewbtn{background:var(--k-accent)!important;box-shadow:none!important}
 .nsv-viewbtn:hover{background:var(--k-accent-d)!important;filter:none!important}
 .amx th,.amx td{border-bottom:1px solid var(--k-line)!important}
