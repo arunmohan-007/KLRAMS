@@ -351,6 +351,24 @@ public class DroneService {
         return Path.of((String) rows.get(0).get("file_path"));
     }
 
+    /**
+     * May this dataset's tiles be served at all?
+     *
+     * <p>The same test {@link #publishedDatasets()} applies, asked one id at a time.
+     * Unpublishing only clears the flag — it deliberately leaves the built pyramid on
+     * disk so re-publishing is instant rather than minutes of CPU — so without this
+     * check the tile endpoints go on serving a withdrawn survey to anyone who knows
+     * or guesses its id. Dataset ids are small sequential integers, so guessing is
+     * not a barrier.
+     */
+    boolean isDrawable(int datasetId) {
+        Boolean drawable = jdbc.query(
+                "SELECT (published AND status = ?) FROM drone_dataset WHERE id = ?",
+                rs -> rs.next() ? rs.getBoolean(1) : Boolean.FALSE,
+                PUBLISHED, datasetId);
+        return Boolean.TRUE.equals(drawable);
+    }
+
     /** Every dataset the viewer may draw: published, with a built pyramid. */
     List<Map<String, Object>> publishedDatasets() {
         return jdbc.queryForList("""

@@ -38,6 +38,16 @@ import java.util.Map;
  * <p>Writes land under the blanket {@code POST/PUT/DELETE /api/**} ADMIN rule in
  * {@link SecurityConfig}, so view-only accounts can browse and view drone data but
  * cannot upload, publish or delete it. No new security rule is needed.
+ *
+ * <p>The three endpoints that hand out survey content — raster tiles, contour tiles
+ * and point elevation — additionally require the dataset to be published
+ * ({@link DroneService#isDrawable}). Login alone is not enough: unpublishing leaves
+ * the built pyramid on disk on purpose, so without the check a withdrawn survey stays
+ * readable to any signed-in account that walks the (small, sequential) id space.
+ *
+ * <p>Their {@code Cache-Control} is {@code private}, never {@code public}: this is
+ * login-gated imagery, and a shared proxy must not be invited to keep a copy it could
+ * hand to someone who never authenticated.
  */
 @RestController
 @RequestMapping("/api/drone")
@@ -283,11 +293,12 @@ public class DroneController {
                 produces = "application/vnd.mapbox-vector-tile")
     public ResponseEntity<byte[]> contourTile(@PathVariable int id, @PathVariable int z,
                                               @PathVariable int x, @PathVariable int y) {
+        if (!drone.isDrawable(id)) return ResponseEntity.noContent().build();
         TileCoordinate t = TileCoordinate.of(z, x, y, CONTOUR_MAX_ZOOM);
         byte[] tile = contourTiles.tile(id, t);
         if (tile == null) return ResponseEntity.noContent().build();
         return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic())
+                .cacheControl(CacheControl.maxAge(Duration.ofMinutes(5)).cachePrivate())
                 .body(tile);
     }
 
@@ -316,11 +327,12 @@ public class DroneController {
                                        @PathVariable int y) {
         if (z < 0 || z > 24 || x < 0 || y < 0 || x >= (1 << z) || y >= (1 << z))
             return ResponseEntity.badRequest().build();
+        if (!drone.isDrawable(id)) return ResponseEntity.noContent().build();
         try {
             Path png = rasters.tileFile(id, z, x, y);
             if (png == null) return ResponseEntity.noContent().build();
             return ResponseEntity.ok()
-                    .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic())
+                    .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePrivate())
                     .contentType(MediaType.IMAGE_PNG)
                     .body(Files.readAllBytes(png));
         } catch (Exception e) {
@@ -332,6 +344,8 @@ public class DroneController {
     public Map<String, Object> elevation(@PathVariable int id,
                                          @RequestParam("lng") double lng,
                                          @RequestParam("lat") double lat) {
+        if (!drone.isDrawable(id))
+            return fail("drone elevation", new IllegalArgumentException("That dataset is not published."));
         try {
             Double v = rasters.elevationAt(id, lng, lat);
             Map<String, Object> res = ok("id", id);
