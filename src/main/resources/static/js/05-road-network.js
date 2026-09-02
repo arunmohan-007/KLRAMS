@@ -450,7 +450,10 @@ function renderNetSavedList(){
     o.value=String(s.id);
     /* textContent, not innerHTML: names are user-typed and shared filters
        carry another user's name, so neither may be parsed as markup. */
-    o.textContent=s.name+(s.mine?'':' (shared by '+s.owner+')');
+    /* Own filters show whether they are published, otherwise "shared" is a
+       write-only flag: the checkbox is blank after every reload, so there is
+       no way to tell a filter everyone can see from a private one. */
+    o.textContent=s.name+(s.mine?(s.shared?' (shared with all)':''):' (shared by '+s.owner+')');
     sel.appendChild(o);
   });
   if(keep&&NET_SAVED.some(s=>String(s.id)===keep))sel.value=keep;
@@ -463,6 +466,19 @@ function onNetSavedPick(){
   /* Shared filters are load-only for everyone but the user who saved them. */
   del.disabled=!(s&&s.mine);
   del.title=s?(s.mine?'Delete “'+s.name+'”':'Only '+s.owner+' can delete this shared filter'):'Delete the selected filter';
+  /* Selecting one of your own filters loads its name and share state back into
+     the save row, so pressing Save overwrites THAT filter rather than silently
+     creating a near-duplicate under a slightly different name — and so the
+     checkbox reflects reality instead of always coming up unticked. Without
+     this, re-saving an already-shared filter with the box blank quietly
+     un-shares it (shared=EXCLUDED.shared on the server's upsert). */
+  const nameEl=document.getElementById('netSaveName'),shareEl=document.getElementById('netSaveShared');
+  if(s&&s.mine){
+    if(nameEl)nameEl.value=s.name;
+    if(shareEl)shareEl.checked=!!s.shared;
+  }else if(!s){
+    if(shareEl)shareEl.checked=false;
+  }
 }
 function refreshNetSavedList(){
   return fetch('/api/saved-filters?kind=network',{credentials:'same-origin',headers:{'Accept':'application/json'}})
@@ -478,7 +494,13 @@ function saveNetFilter(){
   if(!state.rows.length){_nsInfo('Add at least one condition before saving.',true);return;}
   const shareEl=document.getElementById('netSaveShared');
   const existing=NET_SAVED.find(s=>s.mine&&s.name.toLowerCase()===name.toLowerCase());
+  const wantShared=!!(shareEl&&shareEl.checked);
   if(existing&&!confirm('You already have a filter named “'+existing.name+'”. Overwrite it?'))return;
+  /* Overwriting replaces the shared flag too, so leaving the box unticked on a
+     published filter withdraws it from every other user. Say so rather than
+     letting it happen silently. */
+  if(existing&&existing.shared&&!wantShared&&
+     !confirm('“'+existing.name+'” is currently shared with all users.\n\nSaving with “Share with all users” unticked will remove it from everyone else. Continue?'))return;
   _nsInfo('Saving…');
   fetch('/api/saved-filters',{
     method:'POST',credentials:'same-origin',
