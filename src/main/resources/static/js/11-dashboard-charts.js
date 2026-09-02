@@ -343,10 +343,21 @@ function ovDistrictView(dd,d){
 function openPane(id){
   if(id==='dashboard'){document.getElementById('fpanes').classList.add('hidden');document.querySelectorAll('#iconrail .railbtn').forEach(b=>b.classList.toggle('active',b.dataset.pane==='dashboard'));return;}
   document.getElementById('dashboard').classList.remove('open');
+  /* the Report Hub overlays the panel column, so a map tool must dismiss it too */
+  const rh=document.getElementById('reportHub'); if(rh)rh.classList.remove('open');
   document.querySelectorAll('#fpanes .fpane').forEach(p=>p.classList.toggle('active',p.id==='pane-'+id));
   document.querySelectorAll('#iconrail .railbtn').forEach(b=>b.classList.toggle('active',b.dataset.pane===id));
   document.getElementById('fpanes').classList.remove('hidden');
   document.getElementById('iconrail').classList.remove('panes-hidden');
+}
+/* A full-screen module (Dashboard, Report Hub) lights its own rail button while
+   it is open. On close there is no click to hand the highlight back, so put it
+   on whichever side panel is showing — or clear it when the panels are hidden. */
+function railSyncToPanes(){
+  const fp=document.getElementById('fpanes');
+  const act=fp&&!fp.classList.contains('hidden')?fp.querySelector('.fpane.active'):null;
+  const pane=act?act.id.replace(/^pane-/,''):null;
+  document.querySelectorAll('#iconrail .railbtn').forEach(b=>b.classList.toggle('active',!!pane&&b.dataset.pane===pane));
 }
 function togglePanes(){
   const fp=document.getElementById('fpanes');

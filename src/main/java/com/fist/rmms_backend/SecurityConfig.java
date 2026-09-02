@@ -117,8 +117,6 @@ public class SecurityConfig {
                 .requestMatchers("/api/saved-filters").authenticated()
 
                 // --- view-only (USER) is blocked from every write ---
-                // climate seed/recalc are triggerable via GET, so pin them explicitly
-                .requestMatchers("/api/climate/seed-grid", "/api/climate/recalc").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST,   "/api/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PUT,    "/api/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole("ADMIN")

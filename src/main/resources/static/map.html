@@ -36,8 +36,8 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
-  <link rel="stylesheet" href="css/app.css?v=134">
-  <link rel="stylesheet" href="css/klrams-dark.css?v=20">
+  <link rel="stylesheet" href="css/app.css?v=135">
+  <link rel="stylesheet" href="css/klrams-dark.css?v=21">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
     .cond-metric-row{display:flex;align-items:center;gap:8px;margin:0 0 12px 24px;padding:0}
@@ -91,6 +91,11 @@
     <button class="railbtn" data-pane="basemap" onclick="openPane('basemap')" title="Base Map"><span class="ri"><svg viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span><span class="rl">Base map</span></button>
     <button class="railbtn" data-pane="measure" onclick="openPane('measure')" title="Measure & Route"><span class="ri"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></svg></span><span class="rl">Measure</span></button>
     <button class="railbtn" data-pane="chainage" onclick="openChainagePane()" title="Chainage Locator"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 18h16"/><path d="M7 18v-4M12 18V6M17 18v-7"/><circle cx="12" cy="4" r="1.6"/></svg></span><span class="rl">Chainage</span></button>
+    <!-- Analytics: full-screen modules, separated from the map tools above so the
+         rail reads as two groups rather than one long undifferentiated column. -->
+    <div class="rail-sep" role="separator" aria-hidden="true"></div>
+    <button class="railbtn" data-pane="dashboard" onclick="loadDashboard();openPane('dashboard')" title="Dashboards — network, pavement, asset &amp; survey figures"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.2"/><rect x="13" y="3" width="8" height="5" rx="1.2"/><rect x="13" y="10" width="8" height="11" rx="1.2"/><rect x="3" y="13" width="8" height="8" rx="1.2"/></svg></span><span class="rl">Dashboard</span></button>
+    <button class="railbtn" data-pane="reports" onclick="openReportHub()" title="Report Hub — filterable survey reports, Excel &amp; PDF"><span class="ri"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span><span class="rl">Reports</span></button>
   </div>
   <div class="rail-bottom">
     <a class="railbtn" href="/" title="Data Console"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H4z"/><path d="M8 20h8M12 16v4"/></svg></span><span class="rl">Console</span></a>
@@ -564,28 +569,8 @@
       <button class="dash-tab" id="rhTab_subgrade" onclick="rhScreenTab('subgrade')">Sub-Grade Soil</button>
       <button class="dash-tab" id="rhTab_core" onclick="rhScreenTab('core')">Bituminous Core</button>
       <button class="dash-tab" id="rhTab_crust" onclick="rhScreenTab('crust')">Pavement Crust</button>
-      <button class="dash-tab" id="rhTab_flood" onclick="rhScreenTab('flood')">Flood Susceptibility</button>
     </div>
     <div id="rhBody"><div class="dash-loading">Loading&hellip;</div></div>
-  </div>
-</div>
-
-<div id="climate" style="display:none">
-  <div class="dash-inner">
-    <div class="dash-head">
-      <div>
-        <div class="dash-eyebrow">Climate</div>
-        <h1 class="dash-h1">Flood Susceptibility</h1>
-        <div class="dash-h1-sub">Road length exposed to flood susceptibility, by road class and land-form. Import your flood CSV to populate the dashboard. The map is hidden while you work here.</div>
-      </div>
-      <button class="dash-close" onclick="closeClimate()" title="Back to map">&times;</button>
-    </div>
-    <div class="reg-bar" style="margin-bottom:16px">
-      <button class="btn ghost" onclick="importClimateCsv()">Import flood CSV&hellip;</button>
-      <span class="reg-count" id="climateStatus">No data imported</span>
-      <input type="file" id="climateFile" accept=".csv,.txt" style="display:none">
-    </div>
-    <div id="climateBody"><div class="dash-loading">Import a flood CSV to see the dashboard.</div></div>
   </div>
 </div>
 
@@ -1184,9 +1169,9 @@
   <script src="js/06-assets.js?v=185"></script>
   <script src="js/07-data-loaders.js?v=185"></script>
   <script src="js/08-condition-popup-nsv.js?v=171"></script>
-  <script src="js/09-dashboard-core.js?v=124"></script>
+  <script src="js/09-dashboard-core.js?v=125"></script>
   <script src="js/10-pci-report.js?v=125"></script>
-  <script src="js/11-dashboard-charts.js?v=124"></script>
+  <script src="js/11-dashboard-charts.js?v=125"></script>
   <script src="js/12-nsv-video.js?v=174"></script>
   <script src="js/13-search.js?v=121"></script>
   <script src="js/14-pci-engine.js?v=175"></script>
@@ -1196,11 +1181,10 @@
   <script src="js/18-filters.js?v=120"></script>
   <script src="js/19-asset-register.js?v=121"></script>
   <script src="js/20-asset-dashboard.js?v=117"></script>
-  <script src="js/21-report-hub.js?v=120"></script>
+  <script src="js/21-report-hub.js?v=121"></script>
   <script src="js/22-road-merged.js?v=119"></script>
-  <script src="js/23-climate.js?v=117"></script>
   <script src="js/24-fwd.js?v=163"></script>
-  <script src="js/25-nsv-module.js?v=165"></script>
+  <script src="js/25-nsv-module.js?v=166"></script>
   <script src="js/26-layers-collapse.js?v=3"></script>
   <script src="js/27-survey-dashboard.js?v=5"></script>
   <script src="js/28-fwd-dashboard.js?v=5"></script>
@@ -1213,7 +1197,7 @@
   <script src="js/34-layer-style.js?v=5"></script>
   <script src="js/35-live-location.js?v=1"></script>
   <script src="js/36-chainage-locator.js?v=2"></script>
-  <script src="js/launcher.js?v=161"></script>
+  <script src="js/launcher.js?v=162"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page
        scrollbar was revealing the hidden dock below the fold. */
@@ -1355,9 +1339,9 @@
   .ri-v{color:#1d2a40;font-weight:700;text-align:right;word-break:break-word}
   .ri-body::-webkit-scrollbar{width:8px}.ri-body::-webkit-scrollbar-thumb{background:#cdd7e3;border-radius:8px}
   /* Report Hub overlay (mirrors #regScreen) */
-  #reportHub,#climate{position:absolute;inset:0 0 0 74px;background:radial-gradient(130% 90% at 100% 0%,#eef4fb 0%,#eaeff6 42%,#e8edf3 100%);z-index:7;overflow-y:auto;display:none}
-  #reportHub.open,#climate.open{display:block!important}
-  #reportHub::-webkit-scrollbar,#climate::-webkit-scrollbar{width:11px}#reportHub::-webkit-scrollbar-thumb,#climate::-webkit-scrollbar-thumb{background:#c7d2e0;border-radius:6px;border:3px solid #eaeff6}
+  #reportHub{position:absolute;inset:0 0 0 74px;background:radial-gradient(130% 90% at 100% 0%,#eef4fb 0%,#eaeff6 42%,#e8edf3 100%);z-index:7;overflow-y:auto;display:none}
+  #reportHub.open{display:block!important}
+  #reportHub::-webkit-scrollbar{width:11px}#reportHub::-webkit-scrollbar-thumb{background:#c7d2e0;border-radius:6px;border:3px solid #eaeff6}
   </style>
 
   <!-- ============ Sahaayi · in-app KLRAMS help assistant (build 160) ============ -->
@@ -1436,10 +1420,8 @@
        a:"**Why you see no results:**\n\n1. **Layer not turned on** \u2192 Open Layers panel and toggle the layer ON\n2. **No matching data** \u2192 Try removing filters or change your search\n3. **Data not uploaded yet** \u2192 Check Data Console to see if that dataset is imported\n4. **Survey not done there** \u2192 Some areas may not have been surveyed yet\n5. **Chainage mismatch** \u2192 Make sure the chainage/location you're searching exists\n\nTip: Always turn on the 'Road network' layer first to see all available roads."},
       {k:['how to start','getting started','first steps','where to begin','tutorial','beginner'],
        a:"**Getting Started with KLRAMS:**\n\n1. **View the map** \u2192 Open Layers panel, turn on 'Road network' to see all roads\n2. **See condition** \u2192 Turn on 'Road Condition Data', pick a metric (IRI, Crack, etc)\n3. **Click a road** \u2192 Popup shows condition values for that location\n4. **Explore data** \u2192 Try Dashboard for network summary, or go to Data Console to import new data\n5. **Need help?** \u2192 Open this Assistant (Sahaayi) anytime\n\nStart simple: just turn on layers and click roads to explore."},
-      {k:['climate','flood','flood susceptibility','flood data','flood dashboard','flood prone','inundation','water logging','flood length','flood km'],
-       a:"The Climate module shows flood susceptibility \u2014 how much road length (km) lies in flood-prone areas, broken down by road class (SH, MDR, ODR, NH) and by land-form, with charts and a class-by-susceptibility table. Open it from the module launcher (grid icon), then use \u2018Import flood CSV\u2019 to load your data. The same data also appears as a Flood Susceptibility report in the Report Hub (Excel/PDF)."},
       {k:['report hub','reports module','report module','survey report','data report','reports section'],
-       a:"The Report Hub turns each survey dataset into a filterable, exportable table. Open it from the module launcher (grid icon, top-left). Tabs: FWD, Road Condition Data, Sub-Grade Soil, Bituminous Core and Pavement Crust. Every report shows Road Name and PWD Section and exports to Excel or PDF."},
+       a:"The Report Hub turns each survey dataset into a filterable, exportable table. Open it with the Reports icon on the left rail (or from the module launcher, grid icon, top-left). Tabs: FWD, Road Condition Data, Sub-Grade Soil, Bituminous Core and Pavement Crust. Every report shows Road Name and PWD Section and exports to Excel or PDF."},
       {k:['export excel','export pdf','download excel','download pdf','excel report','pdf report','export the data','save report','download report'],
        a:"In the Report Hub each dataset has Excel and PDF buttons in the toolbar \u2014 they export exactly what is on screen, so your search and filters are applied. The Asset Register and the Dashboards' PCI views also export."},
       {k:['filter report','report filter','filter the report','report by district','filter by road name','filter by district','filter by section','report search','narrow report'],
@@ -1676,6 +1658,9 @@ html body #fpanes.hidden{display:none!important}
   #iconrail .railbtn .ri{margin:0!important}
   #iconrail .railbtn .ri svg{width:23px;height:23px}
   #iconrail .railbtn .rl{display:none!important}
+  /* the rail is a column of floating pills on phones — a hairline between two of
+     them reads as a stray line, so the desktop group divider is dropped */
+  #iconrail .rail-sep{display:none!important}
   #iconrail .railbtn.active{background:linear-gradient(135deg,#34d399,#22b67e)!important;color:#04241a!important;border-color:transparent!important}
   #fpanes{position:fixed!important;left:0!important;right:0!important;bottom:0!important;top:auto!important;width:100%!important;max-width:100%!important;height:auto!important;max-height:78vh!important;border-radius:22px 22px 0 0!important;z-index:9!important;transition:transform .3s cubic-bezier(.4,0,.2,1);box-shadow:0 -18px 48px rgba(8,20,40,.34)!important;overflow:hidden!important}
   body #fpanes{display:block!important}
@@ -1710,11 +1695,11 @@ html body #fpanes.hidden{display:none!important}
   .vidhud .vh-roadname{font-size:16px!important;bottom:14px!important;padding:5px 16px!important;max-width:70vw!important}
   .vidhud .vh-attrs,.vidhud .vh-chain{display:none!important}
   /* ------- Full-screen module overlays on phones -------
-     Dashboard, Report Hub, PCI / Condition / Register / NSV report screens
-     and Climate all reserve 74px on the left for the desktop icon rail.
+     Dashboard, Report Hub and the PCI / Condition / Register / NSV report
+     screens all reserve 74px on the left for the desktop icon rail.
      On phones the rail floats bottom-right, so reclaim that space and trim
      the generous desktop padding and type sizes. */
-  #dashboard,#pciScreen,#condScreen,#regScreen,#nsvScreen,#reportHub,#climate{inset:0!important}
+  #dashboard,#pciScreen,#condScreen,#regScreen,#nsvScreen,#reportHub{inset:0!important}
   /* clear the floating icon rail (bottom-right) with generous bottom padding */
   .dash-inner{max-width:100%!important;padding:16px 14px calc(92px + env(safe-area-inset-bottom))!important}
   .dash-head{gap:12px!important;margin-bottom:16px!important}
@@ -1749,7 +1734,11 @@ html body #fpanes.hidden{display:none!important}
   (function add(){if(document.body)document.body.appendChild(bd);else setTimeout(add,60);})();
   function fp(){return document.getElementById('fpanes');}
   function clearActive(){document.querySelectorAll('#iconrail .railbtn').forEach(function(b){b.classList.remove('active');});}
-  function sync(){var f=fp();var open=f&&!f.classList.contains('hidden');document.body.classList.toggle('panel-open',!!open);if(!open)clearActive();}
+  /* A full-screen module (Dashboard, Report Hub, PCI/Condition/Register/NSV)
+     hides the panel column but keeps its own rail button lit, so "no panel
+     showing" is not on its own a reason to drop the highlight. */
+  function moduleOpen(){return !!document.querySelector('#dashboard.open,#reportHub.open,#pciScreen.open,#condScreen.open,#regScreen.open,#nsvScreen.open');}
+  function sync(){var f=fp();var open=f&&!f.classList.contains('hidden');document.body.classList.toggle('panel-open',!!open);if(!open&&!moduleOpen())clearActive();}
   function close(){var f=fp();if(f)f.classList.add('hidden');clearActive();document.body.classList.remove('panel-open');}
   bd.addEventListener('click',close);window.klClosePanes=close;
   (function wrap(){

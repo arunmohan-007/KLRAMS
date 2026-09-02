@@ -10,6 +10,7 @@ let dashView='hub';   // 'hub' = tile picker, 'detail' = one dashboard full-scre
 function closeDashboard(){
   if(dashView==='detail'){dashBackToHub();return;}
   document.getElementById('dashboard').classList.remove('open');
+  railSyncToPanes();
 }
 function dashBackToHub(){
   dashView='hub';

@@ -115,7 +115,7 @@
 
   window.openNsvScreen=function(){
     var s=document.getElementById('nsvScreen');if(!s)return;
-    ['dashboard','pciScreen','condScreen','regScreen','reportHub','climate'].forEach(function(id){var e=document.getElementById(id);if(e)e.classList.remove('open');});
+    ['dashboard','pciScreen','condScreen','regScreen','reportHub'].forEach(function(id){var e=document.getElementById(id);if(e)e.classList.remove('open');});
     s.classList.add('open');
     document.getElementById('nsvBody').innerHTML='<div class="dash-loading">Loading survey footage catalogue…</div>';
     var needCat=(typeof CATALOG==='undefined'||!Object.keys(CATALOG||{}).length);
