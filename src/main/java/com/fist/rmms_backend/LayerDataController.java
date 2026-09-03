@@ -88,6 +88,22 @@ public class LayerDataController {
     }
 
     /**
+     * The layer's attribute bags without geometry, for the viewer's Filter
+     * panel. See {@link LayerDataService#attrRows}.
+     */
+    @GetMapping(value = "/{layerId}/attrs", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> attrs(@PathVariable int layerId,
+                                   @RequestParam(value = "period_id", required = false) Integer periodId,
+                                   Authentication auth) {
+        try {
+            String user = (auth == null) ? "unknown" : auth.getName();
+            return ResponseEntity.ok(data.attrRows(layerId, periodId, user));
+        } catch (Exception e) {
+            return fail("layer attributes", e);
+        }
+    }
+
+    /**
      * Layers the Console can import into: every live user layer, plus this
      * user's temporary ones.
      *

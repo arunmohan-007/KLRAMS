@@ -432,6 +432,60 @@ public class LayerDataService {
         return gj == null ? EMPTY_FC : gj;
     }
 
+    /**
+     * One layer's attribute bags, without geometry, as a JSON array of
+     * {@code {"id":…,"a":{…}}}.
+     *
+     * <p>This is the user-layer twin of {@code /api/roads/index}, and it exists
+     * for the same reason: the Filter panel has to know what values a layer's
+     * columns actually hold (to offer them) and which rows satisfy a condition
+     * (to filter the map), and neither of those reads a coordinate. A user
+     * layer's vector tile ships its whole attribute bag as one JSON string, so a
+     * MapLibre expression cannot test an attribute inside it — the match is made
+     * here and the map layer is then filtered by the matching row ids, which the
+     * tile does carry as a flat {@code id} property.
+     *
+     * <p>Downloading {@link #geojson} instead would answer the same question and
+     * carry the geometry to do it; on the road network that difference measured
+     * 4.0 MB against 92 KB.
+     *
+     * <p>{@code user} is the caller's name, and the visibility rule is the one
+     * {@link UserLayerTileService#tile} applies rather than the looser one
+     * {@link #geojson} has: a frozen or hidden layer answers with nothing, and
+     * an unshared temporary layer answers only to whoever created it.
+     */
+    public String attrRows(int layerId, Integer requestedPeriodId, String user) {
+        Map<String, Object> layer;
+        try {
+            layer = jdbc.queryForMap(
+                    "SELECT physical_table, frozen, hidden, period_scoped, temporary, shared, created_by "
+                  + "FROM layer_definition WHERE id = ? AND source_type = 'USER'", layerId);
+        } catch (Exception e) {
+            return "[]";            // no such user layer
+        }
+        if (Boolean.TRUE.equals(layer.get("frozen")) || Boolean.TRUE.equals(layer.get("hidden"))) return "[]";
+        if (Boolean.TRUE.equals(layer.get("temporary"))
+                && !Boolean.TRUE.equals(layer.get("shared"))
+                && !String.valueOf(layer.get("created_by")).equals(user)) {
+            return "[]";
+        }
+        String table = String.valueOf(layer.get("physical_table"));
+        if ("null".equals(table) || !SAFE_TABLE.matcher(table).matches()) return "[]";
+
+        boolean scoped = Boolean.TRUE.equals(layer.get("period_scoped"));
+        // geom IS NOT NULL to match exactly the rows the map draws — a row that
+        // could not be placed is not on the map, so counting it as a match would
+        // report more hits than the filter can possibly show.
+        String sql = ("SELECT COALESCE(jsonb_agg(jsonb_build_object("
+                + "'id', t.id, 'a', COALESCE(t.attrs, '{}'::jsonb)))::text, '[]') "
+                + "FROM %s t WHERE t.geom IS NOT NULL").formatted(table)
+                + (scoped ? " AND t.period_id = ?" : "");
+        String out = scoped
+                ? jdbc.queryForObject(sql, String.class, periods.resolve(requestedPeriodId))
+                : jdbc.queryForObject(sql, String.class);
+        return out == null ? "[]" : out;
+    }
+
     /** Empty a user layer's rows, keeping the layer and its attributes. */
     @Transactional
     public int clearRows(int layerId) {

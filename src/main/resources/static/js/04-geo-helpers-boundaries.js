@@ -114,8 +114,18 @@ function clickIsOnFeatures(point,layers){
 const BSPEC={
  district:{src:'district',fills:'district-fill',layers:['district-fill','district-casing','district-line','district-label'],toggle:'showDist',title:'District boundary',accent:'#0e2038'},
  constituency:{src:'constituency',fills:'cons-fill',layers:['cons-fill','cons-line','cons-label'],toggle:'showCons',title:'Constituency',accent:'#0d7a51'}};
+/* The two boundary FeatureCollections as loaded, kept so anything that needs to
+   ask a question ABOUT them (which columns they carry, what values those hold)
+   does not have to download them a second time. A MapLibre source will hand back
+   its data only through private fields, so the answer is kept here instead —
+   37-layer-filters.js builds the boundary filter's attribute list and value
+   pickers out of this. */
+window.BOUNDARY_DATA={};
 function addBoundary(type,data){
-  const s=BSPEC[type]; if(map.getSource(s.src)){map.getSource(s.src).setData(data);return;}
+  const s=BSPEC[type];
+  BOUNDARY_DATA[type]=data;
+  if(typeof KLLayerFilters!=='undefined')KLLayerFilters.onBoundaryData(type);
+  if(map.getSource(s.src)){map.getSource(s.src).setData(data);return;}
   const before=map.getLayer('roadnet')?'roadnet':undefined;
   map.addSource(s.src,{type:'geojson',data});
   if(type==='district'){

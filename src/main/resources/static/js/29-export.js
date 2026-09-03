@@ -564,6 +564,69 @@ function pciEntry(prop,label,toggle,color){
         rowFor:function(f){return pciRow(f.properties||{},prop);}};
     }};
 }
+/* ---- boundary, user and temporary layers ----
+   Three families with no Road-Network scope to honour (they are not
+   road-linked, which is exactly why NET_SCOPE does not reach them), but with
+   their own attribute filters in the Filter panel — see 37-layer-filters.js.
+   Both entries below take the id set that module matched, so an export writes
+   the same features the map is showing and nothing else.
+
+   The ids mean different things by design and each entry knows which: a user
+   layer's row id, which its GeoJSON carries per feature, and a boundary's
+   position in its FeatureCollection, because a boundary is one stored document
+   with no per-feature key. The array indexed here is the very same
+   BOUNDARY_DATA array the filter built its bags from. */
+function lfIds(fkey){
+  return window.KLLayerFilters ? KLLayerFilters.matchIds(fkey) : null;
+}
+function lfReady(fkey){
+  return window.KLLayerFilters ? KLLayerFilters.ensureBags(fkey) : Promise.resolve();
+}
+function boundaryEntry(type,label,color,toggle,fkey){
+  return {label:label,color:color,toggle:toggle,
+    ensure:function(){
+      var have=(window.BOUNDARY_DATA||{})[type];
+      var load=(!have&&typeof ensureBoundary==='function')?ensureBoundary(type):Promise.resolve();
+      return load.then(function(){return lfReady(fkey);});
+    },
+    collect:function(){
+      var gj=(window.BOUNDARY_DATA||{})[type];
+      var all=(gj&&gj.features)||[];
+      var ids=lfIds(fkey);
+      var fs=ids?all.filter(function(f,i){return ids.has(i);}):all;
+      return {feats:fs,total:all.length,filtered:!!ids,
+        nameFor:function(f){
+          var p=(f&&f.properties)||{};
+          var keys=(typeof NAME_KEYS!=='undefined')?NAME_KEYS:['NAME','Name','name'];
+          for(var i=0;i<keys.length;i++){var v=p[keys[i]];if(v!=null&&v!=='')return String(v);}
+          return label;
+        }};
+    }};
+}
+/* layerId -> its FeatureCollection, fetched once. An export writes real
+   geometry, and in tile mode the viewer never downloads any — the same reason
+   ensureAssetData() exists for the asset layers. */
+var ULGJ={};
+function userLayerEntry(l,i){
+  var fkey='u_'+l.id;
+  var color=(window.KLUserLayers&&KLUserLayers.colorFor)?KLUserLayers.colorFor(i):'#e0529c';
+  return {label:l.name+(l.temporary?' (temporary)':''),color:color,toggle:'showUL'+l.id,
+    ensure:function(){
+      var load=ULGJ[l.id]?Promise.resolve():
+        fetch('/api/layer-data/'+l.id+'/geojson',{credentials:'same-origin'})
+          .then(function(r){return r.json();})
+          .then(function(gj){if(typeof gj==='string')gj=JSON.parse(gj);ULGJ[l.id]=gj;})
+          .catch(function(){ULGJ[l.id]={type:'FeatureCollection',features:[]};});
+      return load.then(function(){return lfReady(fkey);});
+    },
+    collect:function(){
+      var all=((ULGJ[l.id]||{}).features)||[];
+      var ids=lfIds(fkey);
+      var fs=ids?all.filter(function(f){return ids.has(f.id);}):all;
+      return {feats:fs,total:all.length,filtered:!!ids};
+    }};
+}
+
 var EXP={
   roads:{label:'Road network',color:'#8a4d1f',toggle:'showRoads',
     ensure:function(){return (typeof loadRoads==='function')?loadRoads(true):Promise.resolve();},
@@ -655,7 +718,9 @@ var EXP={
     }},
   soil:assetEntry('subgrade','Sub-grade soil','#8a4d1f','showSoil'),
   core:assetEntry('bituminous_core','Bituminous core','#2b2b2b','showCore'),
-  crust:assetEntry('pavement_crust','Pavement crust','#b8860b','showCrust')
+  crust:assetEntry('pavement_crust','Pavement crust','#b8860b','showCrust'),
+  bdist:boundaryEntry('district','District boundary','#0e2038','showDist','b_district'),
+  bcons:boundaryEntry('constituency','Constituency boundary','#0d7a51','showCons','b_constituency')
 };
 
 /* ================= download + dispatch ================= */
@@ -801,21 +866,46 @@ document.addEventListener('mousedown',function(e){
 window.addEventListener('resize',closeExpMenu);
 
 /* ================= inject an export button on every layer row ================= */
-(function(){
-  var dl='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10"/><path d="M8 9l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
+var EXP_DL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10"/><path d="M8 9l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
+/**
+ * Give every layer row in the Layers pane its export button.
+ *
+ * Idempotent, and re-runnable: the user and temporary layers are not in the
+ * pane when this file loads (33-user-layers.js builds their switches once the
+ * map is up, and rebuilds them whenever one is imported or discarded), so a
+ * button that was only ever injected at load time would never reach them.
+ */
+function injectExportButtons(){
   Object.keys(EXP).forEach(function(key){
     var E=EXP[key];
     var t=document.getElementById(E.toggle);if(!t)return;
     var row=t.closest('.switch');if(!row)return;
+    if(row.querySelector('.lexp'))return;          // already has one
     var b=document.createElement('button');
     b.type='button';b.className='lexp';
     b.title='Export '+E.label+' — Shapefile / GeoJSON / KML / KMZ / CSV';
-    b.innerHTML=dl;
+    b.innerHTML=EXP_DL;
     b.addEventListener('click',function(e){
       e.preventDefault();e.stopPropagation();
       if(_menuKey===key)closeExpMenu();else openExpMenu(key,b);
     });
     row.insertBefore(b,t);
   });
-})();
+}
+/**
+ * Re-register the user and temporary layers, from the list
+ * 37-layer-filters.js already holds, and give the new rows their buttons.
+ *
+ * Registrations are replaced rather than added to, so a discarded layer stops
+ * being offered instead of leaving an export button pointing at a layer the
+ * server will no longer serve.
+ */
+function syncUserLayers(list){
+  Object.keys(EXP).forEach(function(k){if(k.indexOf('ul')===0)delete EXP[k];});
+  (list||[]).forEach(function(l,i){EXP['ul'+l.id]=userLayerEntry(l,i);});
+  if(_menuKey&&!EXP[_menuKey])closeExpMenu();
+  injectExportButtons();
+}
+window.KLExport={syncUserLayers:syncUserLayers,refreshButtons:injectExportButtons};
+injectExportButtons();
 })();

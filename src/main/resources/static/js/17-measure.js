@@ -6,9 +6,12 @@
    ============================================================ */
 let measureMode = null;          // null | 'length' | 'area' | 'route'
 let measurePts = [];             // array of [lng,lat]
-/* Public OSRM demo server — fine for the pilot. For production, host your own
-   OSRM (or use a keyed routing API) and change this URL. */
-const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/';
+/* Set by app.routing.url in application.properties, delivered as
+   window.KL_CONFIG by /js/runtime-config.js. The fallback is the public OSRM
+   demo server — rate-limited and unsupported, so a production deployment should
+   set that property to its own OSRM (or a keyed routing API). */
+const OSRM_URL = (window.KL_CONFIG && window.KL_CONFIG.routingUrl)
+              || 'https://router.project-osrm.org/route/v1/driving/';
 
 function mEl(id){ return document.getElementById(id); }
 function setMHint(t){ const e=mEl('mHint'); if(e) e.textContent=t; }

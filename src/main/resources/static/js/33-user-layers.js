@@ -105,6 +105,12 @@
       pane.appendChild(title);
       pane.appendChild(grp);
     }
+
+    /* Build the matching Filter-panel sections only now. Each one locks itself
+       to its layer's switch, and those switches are the checkboxes created a
+       few lines above — asked for any earlier, 37-layer-filters.js would find
+       none of them and every section would sit permanently locked. */
+    if (window.KLLayerFilters) KLLayerFilters.refresh();
   }
 
   /**
@@ -498,7 +504,10 @@
     boot();
   }
 
-  window.KLUserLayers = { refresh: refresh };
+  /* colorFor is published so the export menu can draw the same swatch this
+     panel drew for the layer — the colour is assigned by position in the list,
+     which nothing outside this file could work out on its own. */
+  window.KLUserLayers = { refresh: refresh, colorFor: colorFor };
 
   if (typeof map !== 'undefined' && map.loaded && map.loaded()) boot();
   else if (typeof map !== 'undefined') map.on('load', boot);

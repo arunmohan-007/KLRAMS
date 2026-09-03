@@ -265,7 +265,7 @@ function cdExpTables(){
     {title:'Top 5 Major District Road sections',head:secHead,rows:secRows(t.mdr_sections)}
   ];
 }
-function cdExpNumCol(h){return h==='#'||h==='Lane km'||h==='Stretches'||h==='Chainage (km)'||h===((cdData&&cdData.param_label)||' ');}
+function cdExpNumCol(h){return h==='#'||h==='Lane km'||h==='Stretches'||h==='Chainage (km)'||h===((cdData&&cdData.param_label)||'\u0000');}
 function cdExpSlug(meta){return String(meta.scope+'_'+meta.label).replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'');}
 function cdExportPriority(fmt){
   if(!cdTop||cdTopKey!==cdScopeKey()){alert('The ranking is still loading — please try again in a moment.');return;}

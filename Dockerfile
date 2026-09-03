@@ -22,15 +22,14 @@ RUN ./mvnw -q clean package -DskipTests
 FROM eclipse-temurin:21-jre
 WORKDIR /opt/klrams/app
 
-# Storage dirs the app writes to (videos, shapefiles, etc). MOUNT A VOLUME
-# over /opt/klrams/data in compose so uploads survive image rebuilds.
+# Storage dirs the app writes to. MOUNT A VOLUME over /opt/klrams/data in
+# compose so uploads survive image rebuilds. Only these two exist: every other
+# upload format is parsed in the browser and posted as GeoJSON/JSON, so it never
+# touches the filesystem.
 # Create an unprivileged user and hand it ownership so the app does not run as
 # root (defence in depth: a compromise of the process is not a compromise of the
 # container's root).
-RUN mkdir -p /opt/klrams/data/videos /opt/klrams/data/shapefiles \
-             /opt/klrams/data/excel /opt/klrams/data/images \
-             /opt/klrams/data/reports /opt/klrams/data/temp \
-             /opt/klrams/data/drone \
+RUN mkdir -p /opt/klrams/data/videos /opt/klrams/data/drone \
  && groupadd -r klrams && useradd -r -g klrams -d /opt/klrams klrams \
  && chown -R klrams:klrams /opt/klrams
 

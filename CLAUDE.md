@@ -184,7 +184,7 @@ Large GeoJSON responses (roads, segments, assets) are built once and cached in m
 `application.properties`:
 - Database: `spring.datasource.url=jdbc:postgresql://localhost:5432/rmms`
 - Server: `server.port=8090`
-- Storage dirs: `app.video-dir`, `app.shapefile-dir`, `app.excel-dir`, `app.drone-dir`, etc.
+- Storage dirs: `app.video-dir` and `app.drone-dir` — the only two the app writes to; every other upload format is parsed in the browser and posted as GeoJSON/JSON
 - Admin credentials: `app.admin.username`, `app.admin.password`
 - HTTP compression is enabled for GeoJSON (~5-10x reduction)
 
