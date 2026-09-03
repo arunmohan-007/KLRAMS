@@ -1,0 +1,12 @@
+{
+  "_comment": "Map Composer template library. Add a file to /templates/ and its id to this list; the Composer needs no other change. A template is PRESENTATION ONLY — it must never name a road, a filter, a feature id or a user.",
+  "version": 1,
+  "templates": [
+    "pwd-professional",
+    "road-network-overview",
+    "road-asset-inspection",
+    "bridge-culvert",
+    "survey-gis-technical",
+    "minimal-modern"
+  ]
+}

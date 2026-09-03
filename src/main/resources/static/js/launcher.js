@@ -103,6 +103,7 @@
     {label:'Road Condition Data', desc:'Colour & thresholds', cls:'ic-gold', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 18l5-6 4 3 6-8"/><path d="M4 21h16"/></svg>', act:"openCondScreen();closeLauncher()"},
     {label:'Report Hub', desc:'FWD, condition, soil, core, crust', cls:'ic-violet', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>', act:"openReportHub();closeLauncher()"},
     {label:'NSV Videos', desc:'Survey footage catalogue & player', cls:'ic-blue', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>', act:"openNsvScreen();closeLauncher()"},
+    {label:'Map Composer', desc:'Print-ready map sheets, PDF & PNG', cls:'ic-green', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="1.6"/><path d="M3 9h18M15 9v11"/><path d="M6.5 13.5l2.5 3 2-2.2"/></svg>', act:"openMapComposer();closeLauncher()"},
     {label:'Filters', desc:'Filter data layers', cls:'ic-violet', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5h16l-6 7v5l-4 2v-7z"/></svg>', act:"openPane('filter');refreshFilterLocks();closeLauncher()"}
   ];
 

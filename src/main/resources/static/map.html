@@ -36,8 +36,8 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
-  <link rel="stylesheet" href="css/app.css?v=135">
-  <link rel="stylesheet" href="css/klrams-dark.css?v=21">
+  <link rel="stylesheet" href="css/app.css?v=136">
+  <link rel="stylesheet" href="css/klrams-dark.css?v=22">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
     .cond-metric-row{display:flex;align-items:center;gap:8px;margin:0 0 12px 24px;padding:0}
@@ -91,11 +91,14 @@
     <button class="railbtn" data-pane="basemap" onclick="openPane('basemap')" title="Base Map"><span class="ri"><svg viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span><span class="rl">Base map</span></button>
     <button class="railbtn" data-pane="measure" onclick="openPane('measure')" title="Measure & Route"><span class="ri"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></svg></span><span class="rl">Measure</span></button>
     <button class="railbtn" data-pane="chainage" onclick="openChainagePane()" title="Chainage Locator"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 18h16"/><path d="M7 18v-4M12 18V6M17 18v-7"/><circle cx="12" cy="4" r="1.6"/></svg></span><span class="rl">Chainage</span></button>
-    <!-- Analytics: full-screen modules, separated from the map tools above so the
-         rail reads as two groups rather than one long undifferentiated column. -->
-    <div class="rail-sep" role="separator" aria-hidden="true"></div>
-    <button class="railbtn" data-pane="dashboard" onclick="loadDashboard();openPane('dashboard')" title="Dashboards — network, pavement, asset &amp; survey figures"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.2"/><rect x="13" y="3" width="8" height="5" rx="1.2"/><rect x="13" y="10" width="8" height="11" rx="1.2"/><rect x="3" y="13" width="8" height="8" rx="1.2"/></svg></span><span class="rl">Dashboard</span></button>
-    <button class="railbtn" data-pane="reports" onclick="openReportHub()" title="Report Hub — filterable survey reports, Excel &amp; PDF"><span class="ri"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span><span class="rl">Reports</span></button>
+    <!-- Full-screen modules, captioned and plated so the rail reads as two
+         groups: tools that act on the map beside them, and modules that take
+         over the screen. The list scrolls (see #iconrail .rail-top in app.css),
+         so adding one can never push the Console link off the bottom. -->
+    <div class="rail-cap" aria-hidden="true">Modules</div>
+    <button class="railbtn modbtn" data-pane="dashboard" onclick="loadDashboard();openPane('dashboard')" title="Dashboards — network, pavement, asset &amp; survey figures"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.2"/><rect x="13" y="3" width="8" height="5" rx="1.2"/><rect x="13" y="10" width="8" height="11" rx="1.2"/><rect x="3" y="13" width="8" height="8" rx="1.2"/></svg></span><span class="rl">Dashboard</span></button>
+    <button class="railbtn modbtn" data-pane="composer" onclick="openMapComposer()" title="Map Composer — build a print-ready map sheet from the layers and filter on screen"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.6"/><path d="M3 9h18"/><path d="M15 9v11"/><path d="M6.5 13.5l2.5 3 2-2.2"/></svg></span><span class="rl">Composer</span></button>
+    <button class="railbtn modbtn" data-pane="reports" onclick="openReportHub()" title="Report Hub — filterable survey reports, Excel &amp; PDF"><span class="ri"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span><span class="rl">Reports</span></button>
   </div>
   <div class="rail-bottom">
     <a class="railbtn" href="/" title="Data Console"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H4z"/><path d="M8 20h8M12 16v4"/></svg></span><span class="rl">Console</span></a>
@@ -1207,13 +1210,16 @@
   <script src="js/30-condition-dashboard.js?v=5"></script>
   <script src="js/29-export.js?v=10"></script>
   <script src="js/32-iri-2km.js?v=5"></script>
-  <script src="js/33-user-layers.js?v=9"></script>
+  <script src="js/33-user-layers.js?v=10"></script>
   <script src="js/kl-symbols.js?v=1"></script>
   <script src="js/34-layer-style.js?v=5"></script>
   <script src="js/35-live-location.js?v=1"></script>
   <script src="js/36-chainage-locator.js?v=2"></script>
   <script src="js/37-layer-filters.js?v=6"></script>
-  <script src="js/launcher.js?v=162"></script>
+  <!-- Map Composer: the engine first, then the screen that drives it. -->
+  <script src="js/38-map-composer.js?v=5"></script>
+  <script src="js/38b-composer-ui.js?v=5"></script>
+  <script src="js/launcher.js?v=163"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page
        scrollbar was revealing the hidden dock below the fold. */
