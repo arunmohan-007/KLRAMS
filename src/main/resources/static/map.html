@@ -379,6 +379,13 @@
         <div class="note" style="margin:0">Shows bituminous core points whose total observed bituminous layer thickness falls in the range.</div>
       </div>
     </details>
+
+    <!-- Administrative boundary, user and temporary layers. Unlike every
+         section above, these have no fixed schema — a boundary's columns are
+         whatever shapefile was last uploaded and a user layer does not exist
+         until somebody creates it — so 37-layer-filters.js builds their
+         sections from the data itself. -->
+    <div id="fsecExtra"></div>
   </section>
 </div>
 
@@ -1164,7 +1171,7 @@
   <script src="js/02c-segment-data.js?v=2"></script>
   <script src="js/02d-road-index.js?v=2"></script>
   <script src="js/03-condition-style-filter.js?v=185"></script>
-  <script src="js/04-geo-helpers-boundaries.js?v=135"></script>
+  <script src="js/04-geo-helpers-boundaries.js?v=136"></script>
   <script src="js/05-road-network.js?v=188"></script>
   <script src="js/06-assets.js?v=185"></script>
   <script src="js/07-data-loaders.js?v=185"></script>
@@ -1190,13 +1197,14 @@
   <script src="js/28-fwd-dashboard.js?v=5"></script>
   <script src="js/31-traffic-dashboard.js?v=3"></script>
   <script src="js/30-condition-dashboard.js?v=4"></script>
-  <script src="js/29-export.js?v=9"></script>
+  <script src="js/29-export.js?v=10"></script>
   <script src="js/32-iri-2km.js?v=5"></script>
-  <script src="js/33-user-layers.js?v=7"></script>
+  <script src="js/33-user-layers.js?v=9"></script>
   <script src="js/kl-symbols.js?v=1"></script>
   <script src="js/34-layer-style.js?v=5"></script>
   <script src="js/35-live-location.js?v=1"></script>
   <script src="js/36-chainage-locator.js?v=2"></script>
+  <script src="js/37-layer-filters.js?v=6"></script>
   <script src="js/launcher.js?v=162"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page
