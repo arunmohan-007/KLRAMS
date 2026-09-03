@@ -36,8 +36,8 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
-  <link rel="stylesheet" href="css/app.css?v=136">
-  <link rel="stylesheet" href="css/klrams-dark.css?v=22">
+  <link rel="stylesheet" href="css/app.css?v=137">
+  <link rel="stylesheet" href="css/klrams-dark.css?v=23">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
     .cond-metric-row{display:flex;align-items:center;gap:8px;margin:0 0 12px 24px;padding:0}
@@ -91,6 +91,7 @@
     <button class="railbtn" data-pane="basemap" onclick="openPane('basemap')" title="Base Map"><span class="ri"><svg viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span><span class="rl">Base map</span></button>
     <button class="railbtn" data-pane="measure" onclick="openPane('measure')" title="Measure & Route"><span class="ri"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></svg></span><span class="rl">Measure</span></button>
     <button class="railbtn" data-pane="chainage" onclick="openChainagePane()" title="Chainage Locator"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 18h16"/><path d="M7 18v-4M12 18V6M17 18v-7"/><circle cx="12" cy="4" r="1.6"/></svg></span><span class="rl">Chainage</span></button>
+    <button class="railbtn" data-pane="heatmap" onclick="openHeatmapPane()" title="Heat Map Analysis — density surface over soil test points or traffic stations"><span class="ri"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg></span><span class="rl">Heat map</span></button>
     <!-- Full-screen modules, captioned and plated so the rail reads as two
          groups: tools that act on the map beside them, and modules that take
          over the screen. The list scrolls (see #iconrail .rail-top in app.css),
@@ -146,12 +147,14 @@
     <div class="grp">
       <div class="switch"><span class="lname"><span class="ldot" style="background:#1565c0"></span>Traffic stations</span><input type="checkbox" id="showTraffic"></div>
       <div class="trf-status" id="trfStatus"></div>
+      <button class="hm-launch" onclick="openHeatmapPane('traffic')" title="Build a traffic density / ADT heat map from these stations"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg>Heat Map Analysis</button>
     </div>
     <div class="grp-title">Sub-grade soil, bituminous core &amp; pavement crust</div>
     <div class="grp">
       <div class="switch"><span class="lname"><span class="ldot" style="background:#8a4d1f"></span>Sub-Grade Soil</span><input type="checkbox" id="showSoil"></div>
       <div class="switch"><span class="lname"><span class="ldot" style="background:#2b2b2b"></span>Bituminous Core</span><input type="checkbox" id="showCore"></div>
       <div class="switch"><span class="lname"><span class="ldot" style="background:#b8860b"></span>Pavement Crust</span><input type="checkbox" id="showCrust"></div>
+      <button class="hm-launch" onclick="openHeatmapPane('soil')" title="Build a CBR / plasticity heat map from the sub-grade soil test points"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg>Heat Map Analysis <span class="hm-launch-s">Sub-grade soil</span></button>
     </div>
     <!-- Interaction group hidden: survey video now launches from the Road Inspection popup's "Play footage" button. The #videoMode checkbox is retained (hidden) so playSurveyFromPopup() can still drive the video dock. -->
     <div class="grp-title" style="display:none">Interaction</div>
@@ -240,6 +243,47 @@
     <div class="mout" id="chlOut" style="display:none"></div>
     <div class="mrow"><button class="mghost" onclick="chlZoom()">Zoom to pin</button><button class="mghost" onclick="chlClear()">Clear pin</button></div>
     <div class="mnote">Enter metres (<b>2600</b>), the km+m form (<b>2+600</b>) or <b>2.6 km</b>. The value is read as a chainage along the <b>whole road</b>, not within one section. When a Road Network filter is on, only the roads it matches can be picked.</div>
+  </section>
+
+  <section class="fpane" id="pane-heatmap">
+    <div class="pane-title">Heat Map Analysis</div>
+    <div class="note" style="margin-top:-2px">Build a <b>kernel density surface</b> from a point dataset. The result is derived on each run from the choices below &mdash; it is an analysis, not a stored layer, so it is rebuilt every time and cleared explicitly.</div>
+
+    <div class="eyebrow" style="margin-top:16px">1 &middot; Dataset</div>
+    <div class="hm-seg" id="hmSeg">
+      <button class="hm-segbtn on" data-ds="soil"><span class="hm-sdot" style="background:#8a4d1f"></span>Sub-Grade Soil</button>
+      <button class="hm-segbtn" data-ds="traffic"><span class="hm-sdot" style="background:#1565c0"></span>Traffic Stations</button>
+    </div>
+
+    <div class="eyebrow" style="margin-top:16px">2 &middot; Heat value</div>
+    <select id="hmAttr" class="hm-sel" onchange="hmOnAttr(this.value)"></select>
+    <div class="hm-hint" id="hmAttrHint"></div>
+
+    <div class="eyebrow" style="margin-top:16px">3 &middot; Boundary layer</div>
+    <select id="hmBnd" class="hm-sel" onchange="hmOnBoundary(this.value)">
+      <option value="district" selected>District boundary</option>
+      <option value="none">None</option>
+    </select>
+    <div class="hm-hint">Drawn over the surface as a reference frame. It does not clip the heat &mdash; a density surface is continuous and legitimately crosses a district border.</div>
+
+    <div class="eyebrow" style="margin-top:16px">4 &middot; Kernel</div>
+    <div class="hm-tune">
+      <label><span>Radius</span><i id="hmRadiusV">26 px</i></label>
+      <input type="range" id="hmRadius" min="8" max="70" step="2" value="26" oninput="hmOnTune()">
+      <label><span>Intensity</span><i id="hmIntensityV">1.00&times;</i></label>
+      <input type="range" id="hmIntensity" min="30" max="250" step="5" value="100" oninput="hmOnTune()">
+    </div>
+
+    <button class="hm-run" id="hmRun" onclick="hmRun()">
+      <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg>
+      Run Heat Map Analysis
+    </button>
+    <div class="hm-status" id="hmStatus"></div>
+
+    <div class="hm-out" id="hmOut" style="display:none"></div>
+    <div class="mrow" id="hmActions" style="display:none"><button class="mghost" onclick="hmZoom()">Zoom to extent</button><button class="mghost" onclick="hmClear()">Clear heat map</button></div>
+
+    <div class="mnote">The surface is drawn <b>under</b> the point layers, so switch the dataset&rsquo;s own layer on to check the heat against its inputs. When a Road Network filter is applied, only the points it matches are analysed. Traffic runs apply the <b>station-group correction</b> from Calculation Rules: the two carriageways of one physical count station are a single heat point carrying both directions&rsquo; traffic.</div>
   </section>
 
   <section class="fpane" id="pane-filter">
@@ -1218,6 +1262,7 @@
   <script src="js/37-layer-filters.js?v=6"></script>
   <!-- Map Composer: the engine first, then the screen that drives it. -->
   <script src="js/38-map-composer.js?v=6"></script>
+  <script src="js/39-heatmap.js?v=2"></script>
   <script src="js/38b-composer-ui.js?v=6"></script>
   <script src="js/launcher.js?v=163"></script>
   <style id="dock-guard">
