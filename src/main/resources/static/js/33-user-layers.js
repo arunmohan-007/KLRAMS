@@ -506,8 +506,28 @@
 
   /* colorFor is published so the export menu can draw the same swatch this
      panel drew for the layer — the colour is assigned by position in the list,
-     which nothing outside this file could work out on its own. */
-  window.KLUserLayers = { refresh: refresh, colorFor: colorFor };
+     which nothing outside this file could work out on its own.
+
+     list/ensure/ids are published for the Map Composer (38-map-composer.js),
+     which has to be able to put a user layer on a SHEET without switching it
+     on in the VIEWER. That works because ensure() builds these layers with
+     visibility:'none' (see addPaintLayers) — the Composer copies the finished
+     layer definitions out of the style and makes them visible in its own
+     offscreen style, leaving the operational map exactly as it found it.
+     Re-implementing any of this in the Composer would mean a second colour
+     assignment, a second tile URL and a second popup binding, all of which
+     would drift from this file the first time it changed. */
+  window.KLUserLayers = {
+    refresh: refresh,
+    colorFor: colorFor,
+    /** Every viewer layer this user can see, in panel order (the order
+     *  colorFor() is indexed by, so callers must keep the index). */
+    list: function () { return LIST.slice(); },
+    /** Build one layer's sources/layers if they are not there yet. */
+    ensure: function (layer, i) { return ensure(layer, i); },
+    /** The three render layer ids a user layer owns. */
+    ids: function (layerId) { return ids(layerId); }
+  };
 
   if (typeof map !== 'undefined' && map.loaded && map.loaded()) boot();
   else if (typeof map !== 'undefined') map.on('load', boot);

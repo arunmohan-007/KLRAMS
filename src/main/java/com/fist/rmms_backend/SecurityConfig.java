@@ -115,6 +115,12 @@ public class SecurityConfig {
                 // SavedFilterController against auth.getName().
                 .requestMatchers("/api/saved-filters/**").authenticated()
                 .requestMatchers("/api/saved-filters").authenticated()
+                // The Map Composer's extent endpoint is a READ that has to be a POST — it is
+                // handed the section-label list of the active network filter, which is far too
+                // long (and too full of slashes) for a query string. Without this rule it would
+                // fall to the blanket "POST /api/** is ADMIN" matcher below and a view-only
+                // account could open the Composer but never get a map out of it.
+                .requestMatchers("/api/composer/**").authenticated()
 
                 // --- view-only (USER) is blocked from every write ---
                 .requestMatchers(HttpMethod.POST,   "/api/**").hasRole("ADMIN")
