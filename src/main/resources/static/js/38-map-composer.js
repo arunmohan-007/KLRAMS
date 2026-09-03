@@ -906,6 +906,22 @@ var KLComposer = (function () {
 
       if (!entries.length) return null;
 
+      /* A layer whose entries are ALL unlabelled has one symbol, not several.
+         A polygon family contributes a fill layer and an outline layer, and
+         both come back as anonymous swatches — printed as-is that reads
+         "District boundary / District boundary / District boundary", a
+         heading over two rows that say the same thing. Keep the one that
+         carries the most meaning (the fill a reader actually sees, then the
+         line, then a point or icon). Blocks whose entries ARE labelled — a
+         class breakdown, a colour-by — are untouched. */
+      if (entries.length > 1 && entries.every(function (e) { return !e.label; })) {
+        var rank = { fill: 0, gradient: 1, line: 2, icon: 3, point: 4, raster: 5 };
+        entries.sort(function (a, b) {
+          return (rank[a.kind] == null ? 9 : rank[a.kind]) - (rank[b.kind] == null ? 9 : rank[b.kind]);
+        });
+        entries = entries.slice(0, 1);
+      }
+
       var more = 0;
       if (entries.length > MAX_PER_LAYER) {
         more = entries.length - MAX_PER_LAYER;
@@ -1415,9 +1431,15 @@ var KLComposer = (function () {
      * flowed into two before anything is thrown away, which is what a
      * sheet with a colour-by on District (fourteen swatches) needs.
      */
-    function legendMetrics(blocks, widthMm, rowMm, fontMm, font, maxHeightMm, allowColumns) {
+    function legendMetrics(blocks, widthMm, rowMm, fontMm, font, maxHeightMm, allowColumns, hasHead) {
       var titleMm = fontMm * 1.12;
       var padY = 3.2, padX = 3.0, gap = 2.2;
+      /* The card's own heading ("LEGEND") and the rule under it. Counted
+         here because drawLegend() draws it before the first row: leaving it
+         out made every card about 7 mm shorter than its contents, so the
+         last row or two fell past the bottom and were reported as "+N more"
+         on a sheet with plenty of room for them. */
+      var headMm = hasHead ? (fontMm * 2.1 + 0.8) : 0;
       var rows = [];
       blocks.forEach(function (b, bi) {
         if (bi) rows.push({ t: 'gap', h: gap });
@@ -1428,18 +1450,20 @@ var KLComposer = (function () {
         if (b.more) rows.push({ t: 'more', h: rowMm * 0.9, block: b });
       });
 
-      var total = padY * 2;
-      rows.forEach(function (r) { total += r.h; });
+      var rowsMm = 0;
+      rows.forEach(function (r) { rowsMm += r.h; });
+      var chrome = padY * 2 + headMm;      /* everything that is not a row */
+      var total = chrome + rowsMm;
 
       var cols = 1;
       if (allowColumns && maxHeightMm && total > maxHeightMm) {
-        cols = Math.min(3, Math.ceil((total - padY * 2) / Math.max(6, maxHeightMm - padY * 2)));
+        cols = Math.min(3, Math.ceil(rowsMm / Math.max(6, maxHeightMm - chrome)));
       }
-      var colH = padY * 2 + (total - padY * 2) / cols;
+      var colH = chrome + rowsMm / cols;
 
       return {
         rows: rows, cols: cols, rowMm: rowMm, fontMm: fontMm, titleMm: titleMm,
-        padX: padX, padY: padY, width: widthMm,
+        padX: padX, padY: padY, width: widthMm, headMm: headMm,
         height: Math.min(colH, maxHeightMm || colH),
         naturalHeight: total,
         overflows: !!(maxHeightMm && colH > maxHeightMm + 0.4)
@@ -1451,18 +1475,18 @@ var KLComposer = (function () {
      * cartographer would: full size, then tighter rows, then a smaller
      * font, then two columns, and only then "+N more".
      */
-    function fitLegend(blocks, widthMm, maxHeightMm, font, allowColumns) {
+    function fitLegend(blocks, widthMm, maxHeightMm, font, allowColumns, hasHead) {
       var attempts = [
         { row: 5.0, fs: 2.7 }, { row: 4.5, fs: 2.55 }, { row: 4.1, fs: 2.4 },
         { row: 3.8, fs: 2.25 }, { row: 3.5, fs: 2.1 }
       ];
       var m = null;
       for (var i = 0; i < attempts.length; i++) {
-        m = legendMetrics(blocks, widthMm, attempts[i].row, attempts[i].fs, font, maxHeightMm, false);
+        m = legendMetrics(blocks, widthMm, attempts[i].row, attempts[i].fs, font, maxHeightMm, false, hasHead);
         if (!m.overflows) return m;
       }
       if (allowColumns) {
-        m = legendMetrics(blocks, widthMm, 3.8, 2.25, font, maxHeightMm, true);
+        m = legendMetrics(blocks, widthMm, 3.8, 2.25, font, maxHeightMm, true, hasHead);
         if (!m.overflows) return m;
       }
       /* Still too tall: drop entries, worst-represented block first, so
@@ -1470,7 +1494,7 @@ var KLComposer = (function () {
       var trimmed = blocks.map(function (b) { return Object.assign({}, b, { entries: b.entries.slice() }); });
       var guard = 200;
       while (guard-- > 0) {
-        m = legendMetrics(trimmed, widthMm, 3.5, 2.1, font, maxHeightMm, allowColumns);
+        m = legendMetrics(trimmed, widthMm, 3.5, 2.1, font, maxHeightMm, allowColumns, hasHead);
         if (!m.overflows) break;
         var biggest = null;
         trimmed.forEach(function (b) { if (!biggest || b.entries.length > biggest.entries.length) biggest = b; });
@@ -1542,11 +1566,13 @@ var KLComposer = (function () {
 
       var mapX = x0, mapY = y0, mapW = x1 - x0, mapH = y1 - y0;
 
+      var hasHead = !!(lg.title && String(lg.title).trim());
+
       if (wantLegend && colSide) {
         var want = lg.width || 52;
         var maxCol = (x1 - x0) * 0.42;                 /* the map keeps at least 58% */
         var colW = Math.min(want, maxCol);
-        var met = fitLegend(ctx.legend, colW - 2 * 3.0, mapH, font, true);
+        var met = fitLegend(ctx.legend, colW - 2 * 3.0, mapH, font, true, hasHead);
         /* A legend that fits in far less than the template asked for gets
            the space back to the map — a three-entry legend in a 54 mm
            column is a lot of white paper. */
@@ -1559,7 +1585,7 @@ var KLComposer = (function () {
             });
           });
           colW = Math.max(Math.min(colW, needW + 4), 30);
-          met = fitLegend(ctx.legend, colW - 2 * 3.0, mapH, font, true);
+          met = fitLegend(ctx.legend, colW - 2 * 3.0, mapH, font, true, hasHead);
         }
         if (met.cols > 1) colW = Math.min(colW * met.cols, maxCol);
 
@@ -1580,7 +1606,7 @@ var KLComposer = (function () {
       /* ---- floating legend over the map ---- */
       if (wantLegend && !colSide) {
         var fw = Math.min(lg.width || 46, mapW * 0.36);
-        var fmet = fitLegend(ctx.legend, fw - 2 * 3.0, mapH * 0.74, font, false);
+        var fmet = fitLegend(ctx.legend, fw - 2 * 3.0, mapH * 0.74, font, false, hasHead);
         L.legend = { w: fw, h: Math.min(fmet.height, mapH * 0.74), metrics: fmet,
                      style: lg.style || 'floating', title: lg.title, floating: true,
                      position: lg.position };
@@ -1966,16 +1992,20 @@ var KLComposer = (function () {
     }
 
     var cx = x + met.padX, cy = y + met.padY, col = 0;
-    var head = lg.title;
-    if (head) {
+    /* The heading's height is met.headMm, measured by legendMetrics — drawing
+       it by its own arithmetic here is what made the card and its contents
+       disagree, and every legend lose its last rows to a "+N more". */
+    if (met.headMm) {
       c.fillStyle = th.accent || '#0d5c9e';
       c.font = '700 ' + mm(met.fontMm * 1.05) + 'px ' + font;
-      c.fillText(String(head).toUpperCase(), mm(cx), mm(cy + met.fontMm));
-      cy += met.fontMm * 2.1;
+      c.fillText(String(lg.title).toUpperCase(), mm(cx), mm(cy + met.fontMm));
       c.strokeStyle = th.rule || '#ccd7e4';
       c.lineWidth = Math.max(1, mm(0.22));
-      c.beginPath(); c.moveTo(mm(cx), mm(cy - 1)); c.lineTo(mm(x + w - met.padX), mm(cy - 1)); c.stroke();
-      cy += 0.8;
+      c.beginPath();
+      c.moveTo(mm(cx), mm(cy + met.headMm - 1.2));
+      c.lineTo(mm(x + w - met.padX), mm(cy + met.headMm - 1.2));
+      c.stroke();
+      cy += met.headMm;
     }
 
     /* Clip to the card.
@@ -1993,7 +2023,7 @@ var KLComposer = (function () {
     met.rows.forEach(function (r, ri) {
       if (stopped >= 0) return;
       if (cy + r.h > limit && col < met.cols - 1) {
-        col++; cx = x + met.padX + col * colW; cy = y + met.padY + (head ? met.fontMm * 2.9 : 0);
+        col++; cx = x + met.padX + col * colW; cy = y + met.padY + met.headMm;
       }
       /* Out of columns and out of room: stop here and say how much was left,
          rather than drawing rows the clip would silently swallow. */
@@ -2484,6 +2514,26 @@ var KLComposer = (function () {
      The one pipeline both the preview and the export go through.
      ================================================================== */
   var lastCompose = null;
+  var composeSeq = 0;          /* which compose is the newest */
+  var composeChain = Promise.resolve();
+
+  /**
+   * Run composes one at a time, newest wins.
+   *
+   * Two bugs this closes, both of which showed up as the sidebar and the
+   * sheet disagreeing about the legend. `gl` is a single offscreen map, so
+   * two overlapping composes tore each other's WebGL context down mid-render;
+   * and `lastCompose` — which the legend editor reads — was written by
+   * whichever compose finished last, not by the newest one, so a slow older
+   * render could overwrite the current answer after the fact.
+   */
+  function compose(opts) {
+    var mySeq = ++composeSeq;
+    var run = function () { return composeOnce(opts, mySeq); };
+    var p = composeChain.then(run, run);
+    composeChain = p.catch(function () { /* keep the chain alive */ });
+    return p;
+  }
 
   /**
    * Build a sheet.
@@ -2492,7 +2542,7 @@ var KLComposer = (function () {
    * drawing is identical between a preview and an export, which is what
    * makes "what you see is what you get" true here rather than aspirational.
    */
-  function compose(opts) {
+  function composeOnce(opts, mySeq) {
     opts = opts || {};
     var dpi = opts.dpi || DPI_PREVIEW;
     var tpl = Templates.byId(state.templateId);
@@ -2566,13 +2616,17 @@ var KLComposer = (function () {
 
             draw(canvas, L, ctx2, frame, S);
 
-            lastCompose = {
+            var result = {
               canvas: canvas, page: page, layout: L, info: info, extent: ext,
               template: tpl, dpi: dpi, legend: legend, legendAll: legendAll, items: items,
               orientation: orient, pageSize: pageSize,
               warnings: warningsFor(ext, frame, items)
             };
-            return lastCompose;
+            /* Only the newest compose may become "the sheet on screen" — an
+               export started while a preview was still running must not
+               leave the legend editor describing the export's page size. */
+            if (mySeq === undefined || mySeq === composeSeq) lastCompose = result;
+            return result;
           });
         });
       });

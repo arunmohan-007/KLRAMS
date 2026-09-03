@@ -700,57 +700,8 @@
       }
     });
 
-    side.querySelectorAll('[data-lyr]').forEach(function (cb) {
-      cb.addEventListener('change', function () {
-        var s = KLComposer.state();
-        s.layers[cb.dataset.lyr] = cb.checked;
-        updateSummary('layers', layerSummary());
-        refresh();
-      });
-    });
-    side.querySelectorAll('[data-all],[data-none]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var g = b.dataset.all || b.dataset.none;
-        var on = !!b.dataset.all;
-        var s = KLComposer.state();
-        KLComposer.Layers.all().forEach(function (it) { if (it.group === g) s.layers[it.id] = on; });
-        var box = el('mcLayerBox');
-        if (box) { box.innerHTML = layersHtml(); wireSide(); }
-        updateSummary('layers', layerSummary());
-        refresh();
-      });
-    });
-
-    side.querySelectorAll('[data-lgblock]').forEach(function (cb) {
-      cb.addEventListener('change', function () {
-        var s = KLComposer.state();
-        if (cb.checked) delete s.legendHide[cb.dataset.lgblock];
-        else s.legendHide[cb.dataset.lgblock] = true;
-        redrawLegendStep();
-        refresh();
-      });
-    });
-    side.querySelectorAll('[data-lgentry]').forEach(function (cb) {
-      cb.addEventListener('change', function () {
-        var s = KLComposer.state();
-        if (cb.checked) delete s.legendHide[cb.dataset.lgentry];
-        else s.legendHide[cb.dataset.lgentry] = true;
-        updateSummary('legend', legendSummary());
-        refresh();
-      });
-    });
-    side.querySelectorAll('[data-lglabel]').forEach(function (inp) {
-      inp.addEventListener('input', function () {
-        KLComposer.state().legendLabel[inp.dataset.lglabel] = inp.value;
-        refresh();
-      });
-    });
-    var lr = el('mcLgReset');
-    if (lr) lr.addEventListener('click', function () {
-      KLComposer.set({ legendHide: {}, legendLabel: {} });
-      redrawLegendStep();
-      refresh();
-    });
+    wireLayers();
+    wireLegend();
 
     side.querySelectorAll('[data-info]').forEach(function (inp) {
       inp.addEventListener('input', function () {
@@ -819,6 +770,76 @@
     });
   }
 
+  /** Wire only the layer step's controls — same reason as wireLegend(): the
+   *  "All / None" buttons rebuild the list, and rewiring the whole sidebar
+   *  to match would double every other listener on it. */
+  function wireLayers() {
+    var side = el('mcSide');
+    if (!side) return;
+    side.querySelectorAll('[data-lyr]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        KLComposer.state().layers[cb.dataset.lyr] = cb.checked;
+        updateSummary('layers', layerSummary());
+        refresh();
+      });
+    });
+    side.querySelectorAll('[data-all],[data-none]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var g = b.dataset.all || b.dataset.none;
+        var on = !!b.dataset.all;
+        var s = KLComposer.state();
+        KLComposer.Layers.all().forEach(function (it) { if (it.group === g) s.layers[it.id] = on; });
+        var box = el('mcLayerBox');
+        if (box) { box.innerHTML = layersHtml(); wireLayers(); }
+        updateSummary('layers', layerSummary());
+        refresh();
+      });
+    });
+  }
+
+  /**
+   * Wire only the legend step's controls.
+   *
+   * Its own function because the legend editor is rebuilt after every
+   * preview, and calling the whole of wireSide() to do that added a second
+   * listener to every OTHER control on the sidebar each time — by the fifth
+   * preview a single click on a template card was firing five composes.
+   */
+  function wireLegend() {
+    var side = el('mcSide');
+    if (!side) return;
+    side.querySelectorAll('[data-lgblock]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var s = KLComposer.state();
+        if (cb.checked) delete s.legendHide[cb.dataset.lgblock];
+        else s.legendHide[cb.dataset.lgblock] = true;
+        redrawLegendStep();
+        refresh();
+      });
+    });
+    side.querySelectorAll('[data-lgentry]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var s = KLComposer.state();
+        if (cb.checked) delete s.legendHide[cb.dataset.lgentry];
+        else s.legendHide[cb.dataset.lgentry] = true;
+        updateSummary('legend', legendSummary());
+        refresh();
+      });
+    });
+    side.querySelectorAll('[data-lglabel]').forEach(function (inp) {
+      inp.addEventListener('input', function () {
+        KLComposer.state().legendLabel[inp.dataset.lglabel] = inp.value;
+        refresh();
+      });
+    });
+    var lr = el('mcLgReset');
+    if (lr) lr.addEventListener('click', function () {
+      KLComposer.set({ legendHide: {}, legendLabel: {} });
+      redrawLegendStep();
+      refresh();
+    });
+  }
+
   /**
    * Refresh the legend editor in place.
    *
@@ -832,7 +853,7 @@
     if (!box) return;
     if (document.activeElement && box.contains(document.activeElement)) return;
     box.innerHTML = legendHtml();
-    wireSide();
+    wireLegend();
     updateSummary('legend', legendSummary());
   }
 
