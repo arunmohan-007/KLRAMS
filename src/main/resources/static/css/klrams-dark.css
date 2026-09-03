@@ -448,6 +448,41 @@ select option:disabled{color:var(--k-faint)!important}
 .chpop-h span{color:var(--k-muted)!important}
 .chpop-r{border-top-color:var(--k-line)!important}
 .chpop-r>span{color:var(--k-muted)!important}
+
+/* ---------- heat map analysis ---------- */
+.hm-launch{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;color:var(--k-text)!important}
+.hm-launch:hover{background:var(--k-elev2)!important;border-color:var(--k-accent)!important;color:#fff!important}
+.hm-launch-s{color:var(--k-muted)!important}
+.hm-segbtn{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;color:var(--k-text)!important}
+.hm-segbtn:hover{background:var(--k-elev2)!important}
+/* The light theme marks the active dataset with navy-on-white. Navy is the dark
+   theme's own background, so the selected chip has to invert to the accent or it
+   disappears into the panel. */
+.hm-segbtn.on{background:var(--k-accent)!important;border-color:var(--k-accent)!important;color:#06231a!important;box-shadow:0 2px 8px rgba(45,212,191,.25)!important}
+.hm-sdot{box-shadow:0 0 0 2px rgba(0,0,0,.35)!important}
+.hm-sel{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;color:var(--k-text)!important}
+.hm-sel option,.hm-sel optgroup{background:var(--k-panel)!important;color:var(--k-text)!important}
+.hm-hint{color:var(--k-muted)!important}
+.hm-hint b{color:var(--k-text)!important}
+.hm-tune{background:var(--k-elev)!important;border:1px solid var(--k-line)!important}
+.hm-tune label{color:var(--k-text)!important}
+.hm-tune label i{color:var(--k-muted)!important}
+.hm-tune input[type=range]{accent-color:var(--k-accent)!important}
+.hm-run{background:linear-gradient(135deg,var(--k-accent-d),var(--k-accent))!important;color:#06231a!important;box-shadow:0 3px 12px rgba(45,212,191,.28)!important}
+.hm-run:hover{box-shadow:0 5px 18px rgba(45,212,191,.36)!important}
+.hm-status{color:var(--k-muted)!important}
+.hm-status.bad{color:#fda4af!important}
+.hm-out{background:rgba(45,212,191,.06)!important;border:1px solid var(--k-line)!important}
+.hm-legt{color:#fff!important}
+.hm-legt .hm-u{color:var(--k-muted)!important}
+.hm-bar{border-color:var(--k-line)!important}
+.hm-scale{color:var(--k-muted)!important}
+.hm-legnote{color:var(--k-faint)!important}
+.hm-stats{border-top-color:var(--k-line)!important}
+.hm-st span{color:var(--k-muted)!important}
+.hm-st b{color:#fff!important}
+.hm-note{border-top-color:var(--k-line)!important;color:var(--k-text)!important}
+.hm-note b{color:#fff!important}
 .chpop-r b{color:#fff!important}
 
 /* ---------- filter accordion ---------- */

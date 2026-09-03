@@ -860,7 +860,10 @@ public class CalcRuleService {
                        + "and the 24-hour profile of a group's members are merged"},
             new String[]{"Dashboard · Surveys", "The traffic-station count per district and period"},
             new String[]{"Map viewer · Network scope card", "The \"Traffic stations\" tile"},
-            new String[]{"Map viewer · NSV / condition popup", "The station count shown for a stretch"}));
+            new String[]{"Map viewer · NSV / condition popup", "The station count shown for a stretch"},
+            new String[]{"Map viewer · Heat Map Analysis", "One heat point per physical station — without the "
+                       + "grouping a dual carriageway would place two points and split its traffic between "
+                       + "them, reading as two medium stations instead of the one heavy one it is"}));
         USED_BY.put("pavement_width", List.of(
             new String[]{"PCI Report", "Area weighting — a road's PCI contribution is its length × this width"},
             new String[]{"Dashboard · Condition", "The worst-ranked roads and sections, ranked by area"}));
