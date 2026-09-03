@@ -138,11 +138,21 @@ function setupLocationSearch(){
   const inp=document.getElementById('locInput'),box=document.getElementById('locResults'),clr=document.getElementById('locClear');
   if(!inp)return;
   let items=[],active=-1,t=null,seq=0;
-  function meta(p){
-    const parts=[p.city,p.county,p.district,p.state,p.country].filter(Boolean);
-    const seen=new Set([String(p.name||'').toLowerCase()]);const out=[];
-    for(const x of parts){const k=String(x).toLowerCase();if(!seen.has(k)){seen.add(k);out.push(x);}}
-    return out.slice(0,3).join(', ');
+  /* /api/geocode hands back Nominatim's single display_name string —
+     "Kazhakkoottam, Thiruvananthapuram, Kerala, 695582, India" — so the head of
+     it is the place and the tail is the context. The postcode and "India" are
+     dropped: neither distinguishes one Kerala result from another. */
+  function split(full){
+    const parts=String(full||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const name=parts.shift()||'Unnamed place';
+    const meta=parts.filter(s=>!/^\d{4,6}$/.test(s)&&s.toLowerCase()!=='india').slice(0,3).join(', ');
+    return {name:name,meta:meta};
+  }
+  function fromProxy(r){
+    const s=split(r&&r.name);
+    return {name:s.name,meta:s.meta,kind:String((r&&r.kind)||'').replace(/_/g,' '),
+            lng:+(r&&r.lng),lat:+(r&&r.lat),
+            bbox:(r&&Array.isArray(r.bbox)&&r.bbox.length===4)?r.bbox:null};
   }
   const pinSvg='<span class="pin"><svg width="13" height="16" viewBox="0 0 13 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6.5 1C3.6 1 1 3.4 1 6.4 1 10.5 6.5 15 6.5 15S12 10.5 12 6.4C12 3.4 9.4 1 6.5 1Z"/><circle cx="6.5" cy="6.2" r="1.7" fill="currentColor" stroke="none"/></svg></span>';
   function gotoCoord(ll){
@@ -150,7 +160,7 @@ function setupLocationSearch(){
     placeLocation(ll.lng,ll.lat,'Lat '+ll.lat.toFixed(6)+', Lng '+ll.lng.toFixed(6));
   }
   function renderCoord(ll){
-    /* Bump seq so any in-flight Photon response from a partial typed number
+    /* Bump seq so any in-flight geocoder response from a partial typed number
        (e.g. "8.5241" before the comma) cannot overwrite this coordinate row. */
     seq++;
     items=[{__coord:ll}];active=0;
@@ -162,31 +172,35 @@ function setupLocationSearch(){
   function render(list){
     items=list;active=-1;
     if(!list.length){box.innerHTML='<div class="lnone">No matching place.</div>';box.classList.add('show');return;}
-    box.innerHTML=list.map((f,i)=>{
-      const p=f.properties||{};const nm=p.name||p.street||p.city||'Unnamed place';
-      const m=meta(p);const tp=String(p.osm_value||p.osm_key||'').replace(/_/g,' ');
-      return `<div class="lit" data-i="${i}">${pinSvg}<div><div class="nm">${escH(nm)}</div>${m?`<div class="meta">${escH(m)}</div>`:''}</div>${tp?`<span class="tp">${escH(tp)}</span>`:''}</div>`;
-    }).join('');
+    box.innerHTML=list.map((f,i)=>
+      `<div class="lit" data-i="${i}">${pinSvg}<div><div class="nm">${escH(f.name)}</div>${f.meta?`<div class="meta">${escH(f.meta)}</div>`:''}</div>${f.kind?`<span class="tp">${escH(f.kind)}</span>`:''}</div>`
+    ).join('');
     box.classList.add('show');
     box.querySelectorAll('.lit').forEach(el=>el.onclick=()=>choose(items[+el.dataset.i]));
   }
   function choose(f){
     if(f&&f.__coord){gotoCoord(f.__coord);return;}
-    if(!f||!f.geometry)return;const p=f.properties||{};const c=f.geometry.coordinates;if(!c)return;
-    const lon=+c[0],lat=+c[1];const nm=p.name||p.city||'Location';const m=meta(p);
-    box.classList.remove('show');inp.value=nm;
+    if(!f||!isFinite(f.lng)||!isFinite(f.lat))return;
+    box.classList.remove('show');inp.value=f.name;
     /* Single-result extent zoom only when this is the first pin — a second
        place would otherwise override the two-pin fitBounds that placeLocation
-       is about to run. */
-    if(!locMarkers.length&&Array.isArray(p.extent)&&p.extent.length===4){
-      const e=p.extent;map.fitBounds([[e[0],e[3]],[e[2],e[1]]],{padding:80,maxZoom:16,duration:800});
+       is about to run. The proxy hands bbox on as [west, south, east, north]. */
+    if(!locMarkers.length&&f.bbox){
+      const b=f.bbox;map.fitBounds([[b[0],b[1]],[b[2],b[3]]],{padding:80,maxZoom:16,duration:800});
     }
-    placeLocation(lon,lat,m?nm+' \u2014 '+m:nm);
+    placeLocation(f.lng,f.lat,f.meta?f.name+' \u2014 '+f.meta:f.name);
   }
+  /* Goes through the server rather than calling a geocoder from the browser:
+     it works on the PWD networks that reach KLRAMS but not arbitrary
+     third-party hosts, it keeps staff IPs and typed queries off a third party,
+     and one identified caller can honour the provider's rate limit where thirty
+     browsers cannot. Same reasoning, and the same app.geocode.* configuration,
+     documented on GeocodeController. */
   function run(q){
     const my=++seq;box.innerHTML='<div class="lloading">Searching\u2026</div>';box.classList.add('show');
-    const url='https://photon.komoot.io/api/?limit=6&lang=en&lat=8.52&lon=76.95&q='+encodeURIComponent(q);
-    fetch(url).then(r=>r.json()).then(d=>{if(my!==seq)return;render((d&&d.features)||[]);})
+    fetch('/api/geocode?q='+encodeURIComponent(q))
+      .then(r=>r.json())
+      .then(d=>{if(my!==seq)return;render((Array.isArray(d)?d:[]).map(fromProxy));})
       .catch(()=>{if(my!==seq)return;box.innerHTML='<div class="lnone">Location search unavailable. Check your internet connection and try again.</div>';box.classList.add('show');});
   }
   inp.addEventListener('input',()=>{
