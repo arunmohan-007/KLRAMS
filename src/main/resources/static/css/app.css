@@ -141,6 +141,21 @@
      bottom with no way to get at it. The Console link stays pinned below. */
   #iconrail .rail-top{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
   #iconrail .rail-top::-webkit-scrollbar{width:0;height:0}
+  /* Hiding the scrollbar keeps the rail reading as a solid column, but it also
+     removes the only clue that the list continues — with Heat map added, a
+     768px laptop clipped Composer and Reports and looked simply broken rather
+     than scrollable. Two fixes, because either alone is not enough:
+
+     1. The rail gets tighter below 820px so the whole list FITS, which is the
+        real answer — an affordance for scrolling is worse than not needing to
+        scroll. Comfortable spacing is kept on taller screens.
+     2. When it still overflows, the edge that has more behind it fades out.
+        The fade is a mask on the scroller itself, so it stays pinned to the
+        rail's edge instead of scrolling away with the buttons, and needs no
+        extra element to sit over the icons. */
+  #iconrail .rail-top.sc-down:not(.sc-up){-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 26px),transparent)}
+  #iconrail .rail-top.sc-up:not(.sc-down){-webkit-mask-image:linear-gradient(180deg,transparent,#000 26px);mask-image:linear-gradient(180deg,transparent,#000 26px)}
+  #iconrail .rail-top.sc-up.sc-down{-webkit-mask-image:linear-gradient(180deg,transparent,#000 26px,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(180deg,transparent,#000 26px,#000 calc(100% - 26px),transparent)}
   #iconrail .rail-bottom{flex:0 0 auto}
   #iconrail .railbtn{width:100%;background:transparent;border:0;color:#8ea4c4;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;cursor:pointer;text-decoration:none;position:relative;transition:color .15s}
   #iconrail .railbtn:hover{color:#dce6f4}
@@ -164,6 +179,16 @@
   #iconrail .railbtn.modbtn:hover .ri{background:rgba(142,164,196,.20)}
   #iconrail .railbtn.modbtn.active .ri{background:color-mix(in srgb,var(--accent) 26%,transparent);
     box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 55%,transparent)}
+  /* Tighten the rail on a short screen so the whole list FITS — needing to
+     scroll an icon rail at all is the problem, and the fade above is only the
+     fallback for when even this is not enough. Must come AFTER the .railbtn and
+     .modbtn rules it overrides: the specificity is identical, so source order
+     is what decides, and placed earlier these were silently ignored. */
+  @media (max-height:820px){
+    #iconrail .railbtn{padding:6px 4px;gap:2px}
+    #iconrail .rail-cap{padding:6px 2px 3px;margin-top:2px}
+    #iconrail .railbtn.modbtn .ri{width:30px;height:30px;border-radius:9px}
+  }
   #fpanes{width:320px;flex:0 0 auto;background:linear-gradient(180deg,#f8fafb,#f0f3f8);border-right:1px solid var(--hair);overflow-y:auto;position:relative;transition:width .22s,margin-left .22s}
   #fpanes.hidden{width:0;margin-left:0;overflow:hidden;border-right:0}
   #fpanes::-webkit-scrollbar{width:9px}#fpanes::-webkit-scrollbar-thumb{background:#cfd8e4;border-radius:6px;border:2px solid #f4f7fa}
