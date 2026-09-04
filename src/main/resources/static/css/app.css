@@ -189,6 +189,28 @@
     #iconrail .rail-cap{padding:6px 2px 3px;margin-top:2px}
     #iconrail .railbtn.modbtn .ri{width:30px;height:30px;border-radius:9px}
   }
+  /* ---- Modules flyout -------------------------------------------------
+     Dashboard, Map Composer and Report Hub share one rail slot; this is the
+     panel that slot opens (js/40-module-menu.js). It is position:fixed and
+     placed from JS, so the rail's own scroller cannot clip it. The items are
+     still .railbtn — the modules' existing active-state sweeps find them
+     there — so their column layout is restated as a row here. Two IDs beat
+     the one-ID `#iconrail .railbtn` rules without any !important. */
+  #iconrail #moduleMenu{position:fixed;z-index:60;min-width:246px;padding:7px;
+    background:#12233d;border:1px solid rgba(142,164,196,.24);border-radius:14px;
+    box-shadow:0 18px 44px rgba(2,8,20,.5);display:flex;flex-direction:column;gap:2px}
+  #iconrail #moduleMenu[hidden]{display:none}
+  #iconrail #moduleMenu .mod-menu-cap{font-size:8px;font-weight:800;letter-spacing:1.1px;
+    text-transform:uppercase;color:rgba(142,164,196,.62);padding:3px 9px 6px;user-select:none}
+  #iconrail #moduleMenu .railbtn{flex-direction:row;align-items:center;gap:11px;
+    width:100%;padding:8px 10px;border-radius:10px;text-align:left}
+  #iconrail #moduleMenu .railbtn:hover{background:rgba(142,164,196,.12)}
+  #iconrail #moduleMenu .railbtn.active::before{top:9px;bottom:9px}
+  #iconrail #moduleMenu .railbtn .ri{flex:0 0 auto}
+  #iconrail #moduleMenu .railbtn .rl{font-size:12.5px;font-weight:650;letter-spacing:.1px;
+    display:flex;flex-direction:column;gap:2px;min-width:0}
+  #iconrail #moduleMenu .railbtn .rl small{font-size:10px;font-weight:500;line-height:1.25;
+    color:rgba(142,164,196,.8);white-space:normal}
   #fpanes{width:320px;flex:0 0 auto;background:linear-gradient(180deg,#f8fafb,#f0f3f8);border-right:1px solid var(--hair);overflow-y:auto;position:relative;transition:width .22s,margin-left .22s}
   #fpanes.hidden{width:0;margin-left:0;overflow:hidden;border-right:0}
   #fpanes::-webkit-scrollbar{width:9px}#fpanes::-webkit-scrollbar-thumb{background:#cfd8e4;border-radius:6px;border:2px solid #f4f7fa}

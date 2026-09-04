@@ -102,8 +102,14 @@ function applyNetBasemapStyle(baseName){
 const NAME_KEYS=['NAME','Name','name','DISTRICT','District','district','AC_NAME','Ac_Name','ac_name','LAC_NAME','CONSTITUEN','Constituency','PC_NAME','Pc_Name','pc_name','LABEL'];
 function featName(p){for(const k of NAME_KEYS)if(p&&p[k]!=null&&p[k]!=='')return String(p[k]);return '';}
 function nameExpr(){const e=['coalesce'];NAME_KEYS.forEach(k=>e.push(['get',k]));e.push('');return e;}
-function boundaryPopup(lngLat,p,title,accent){
-  let rows='';Object.keys(p).forEach(k=>{const v=p[k];if(v==null||v==='')return;rows+=`<tr><td class="k">${k}</td><td class="v" style="font-size:11px">${v}</td></tr>`;});
+/* `layerKey` is the boundary's Layer Management key (boundary_district /
+   boundary_constituency). The popup used to head each row with the shapefile's
+   own column name — DIST_NAME, AC_NO — because that is what the GeoJSON
+   carries; the catalogue turns those into the names declared for the layer,
+   falling back to the raw column when it has no entry for one. */
+function boundaryPopup(lngLat,p,title,accent,layerKey){
+  const lbl=k=>(layerKey&&window.AttrCatalog&&AttrCatalog.label(layerKey,k))||k;
+  let rows='';Object.keys(p).forEach(k=>{const v=p[k];if(v==null||v==='')return;rows+=`<tr><td class="k">${lbl(k)}</td><td class="v" style="font-size:11px">${v}</td></tr>`;});
   new maplibregl.Popup({maxWidth:'300px'}).setLngLat(lngLat).setHTML(`<div class="pop"><div class="sec" style="background:${accent}">${title}${featName(p)?(' · '+featName(p)):''}</div><table>${rows}</table></div>`).addTo(map);
 }
 function clickIsOnFeatures(point,layers){
@@ -135,7 +141,7 @@ function addBoundary(type,data){
     try{map.addLayer({id:'district-label',type:'symbol',source:s.src,layout:{'text-field':nameExpr(),'text-size':13,'text-letter-spacing':0.08,'text-transform':'uppercase'},paint:{'text-color':'#0e2038','text-halo-color':'#ffffff','text-halo-width':1.8,'text-opacity':0.9}},before);}catch(e){}
     map.on('click','district-fill',e=>{
       if(clickIsOnFeatures(e.point,['roadnet','roadnet2','seg-CC','seg-CL1','seg-CL2','seg-CR1','seg-CR2','as-bridge','as-furnl','as-culvert','as-furnp','as-soil','as-core','as-crust','as-fwd','cons-fill']))return;
-      if(e.features.length)boundaryPopup(e.lngLat,e.features[0].properties,'District boundary','#0e2038');
+      if(e.features.length)boundaryPopup(e.lngLat,e.features[0].properties,'District boundary','#0e2038','boundary_district');
     });
   }else{
     map.addLayer({id:'cons-fill',type:'fill',source:s.src,paint:{'fill-color':'#16a06b','fill-opacity':0.05}},before);
@@ -143,7 +149,7 @@ function addBoundary(type,data){
     try{map.addLayer({id:'cons-label',type:'symbol',source:s.src,layout:{'text-field':nameExpr(),'text-size':11.5,'text-letter-spacing':0.04},paint:{'text-color':'#0d7a51','text-halo-color':'#ffffff','text-halo-width':1.6,'text-opacity':0.9}},before);}catch(e){}
     map.on('click','cons-fill',e=>{
       if(clickIsOnFeatures(e.point,['roadnet','roadnet2','seg-CC','seg-CL1','seg-CL2','seg-CR1','seg-CR2','as-bridge','as-furnl','as-culvert','as-furnp','as-soil','as-core','as-crust','as-fwd']))return;
-      if(e.features.length)boundaryPopup(e.lngLat,e.features[0].properties,'Constituency','#0d7a51');
+      if(e.features.length)boundaryPopup(e.lngLat,e.features[0].properties,'Constituency','#0d7a51','boundary_constituency');
     });
   }
   const tg=document.getElementById(s.toggle);

@@ -36,8 +36,8 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
-  <link rel="stylesheet" href="css/app.css?v=138">
-  <link rel="stylesheet" href="css/klrams-dark.css?v=23">
+  <link rel="stylesheet" href="css/app.css?v=139">
+  <link rel="stylesheet" href="css/klrams-dark.css?v=24">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
     .cond-metric-row{display:flex;align-items:center;gap:8px;margin:0 0 12px 24px;padding:0}
@@ -96,10 +96,22 @@
          groups: tools that act on the map beside them, and modules that take
          over the screen. The list scrolls (see #iconrail .rail-top in app.css),
          so adding one can never push the Console link off the bottom. -->
-    <div class="rail-cap" aria-hidden="true">Modules</div>
-    <button class="railbtn modbtn" data-pane="dashboard" onclick="loadDashboard();openPane('dashboard')" title="Dashboards — network, pavement, asset &amp; survey figures"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.2"/><rect x="13" y="3" width="8" height="5" rx="1.2"/><rect x="13" y="10" width="8" height="11" rx="1.2"/><rect x="3" y="13" width="8" height="8" rx="1.2"/></svg></span><span class="rl">Dashboard</span></button>
-    <button class="railbtn modbtn" data-pane="composer" onclick="openMapComposer()" title="Map Composer — build a print-ready map sheet from the layers and filter on screen"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.6"/><path d="M3 9h18"/><path d="M15 9v11"/><path d="M6.5 13.5l2.5 3 2-2.2"/></svg></span><span class="rl">Composer</span></button>
-    <button class="railbtn modbtn" data-pane="reports" onclick="openReportHub()" title="Report Hub — filterable survey reports, Excel &amp; PDF"><span class="ri"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span><span class="rl">Reports</span></button>
+    <!-- The three full-screen modules share ONE rail slot. Nine tools, three
+         modules and the Console link did not fit a laptop rail — the list
+         scrolled and the last icons were simply not visible. One grouped button
+         opens them in a flyout instead. The three buttons keep their class and
+         data-pane and stay inside #iconrail, so every existing
+         `querySelectorAll('#iconrail .railbtn')` active-state sweep still finds
+         them; the flyout only changes where they are drawn. -->
+    <button class="railbtn modbtn" id="modulesRailBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleModuleMenu(event)" title="Modules — Dashboard, Map Composer, Report Hub"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg></span><span class="rl">Modules</span></button>
+  </div>
+  <!-- Flyout: position:fixed, so it is neither clipped by the rail's scroller
+       nor a flex child of the mobile tab bar. Placed by openModuleMenu(). -->
+  <div id="moduleMenu" class="mod-menu" role="menu" aria-labelledby="modulesRailBtn" hidden>
+    <div class="mod-menu-cap">Modules</div>
+    <button class="railbtn modbtn" role="menuitem" data-pane="dashboard" onclick="pickModule(function(){loadDashboard();openPane('dashboard')})" title="Dashboards — network, pavement, asset &amp; survey figures"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.2"/><rect x="13" y="3" width="8" height="5" rx="1.2"/><rect x="13" y="10" width="8" height="11" rx="1.2"/><rect x="3" y="13" width="8" height="8" rx="1.2"/></svg></span><span class="rl">Dashboard<small>Network, pavement, asset &amp; survey figures</small></span></button>
+    <button class="railbtn modbtn" role="menuitem" data-pane="composer" onclick="pickModule(openMapComposer)" title="Map Composer — build a print-ready map sheet from the layers and filter on screen"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.6"/><path d="M3 9h18"/><path d="M15 9v11"/><path d="M6.5 13.5l2.5 3 2-2.2"/></svg></span><span class="rl">Map Composer<small>Print-ready map sheet from the current view</small></span></button>
+    <button class="railbtn modbtn" role="menuitem" data-pane="reports" onclick="pickModule(openReportHub)" title="Report Hub — filterable survey reports, Excel &amp; PDF"><span class="ri"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span><span class="rl">Report Hub<small>Filterable survey reports, Excel &amp; PDF</small></span></button>
   </div>
   <div class="rail-bottom">
     <a class="railbtn" href="/" title="Data Console"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H4z"/><path d="M8 20h8M12 16v4"/></svg></span><span class="rl">Console</span></a>
@@ -1226,8 +1238,8 @@
   <script src="js/02c-segment-data.js?v=2"></script>
   <script src="js/02d-road-index.js?v=2"></script>
   <script src="js/03-condition-style-filter.js?v=185"></script>
-  <script src="js/04-geo-helpers-boundaries.js?v=136"></script>
-  <script src="js/05-road-network.js?v=188"></script>
+  <script src="js/04-geo-helpers-boundaries.js?v=137"></script>
+  <script src="js/05-road-network.js?v=189"></script>
   <script src="js/06-assets.js?v=185"></script>
   <script src="js/07-data-loaders.js?v=185"></script>
   <script src="js/08-condition-popup-nsv.js?v=171"></script>
@@ -1243,7 +1255,7 @@
   <script src="js/18-filters.js?v=120"></script>
   <script src="js/19-asset-register.js?v=121"></script>
   <script src="js/20-asset-dashboard.js?v=117"></script>
-  <script src="js/21-report-hub.js?v=121"></script>
+  <script src="js/21-report-hub.js?v=122"></script>
   <script src="js/22-road-merged.js?v=119"></script>
   <script src="js/24-fwd.js?v=163"></script>
   <script src="js/25-nsv-module.js?v=166"></script>
@@ -1252,7 +1264,7 @@
   <script src="js/28-fwd-dashboard.js?v=5"></script>
   <script src="js/31-traffic-dashboard.js?v=3"></script>
   <script src="js/30-condition-dashboard.js?v=5"></script>
-  <script src="js/29-export.js?v=10"></script>
+  <script src="js/29-export.js?v=11"></script>
   <script src="js/32-iri-2km.js?v=5"></script>
   <script src="js/33-user-layers.js?v=10"></script>
   <script src="js/kl-symbols.js?v=1"></script>
@@ -1262,8 +1274,10 @@
   <script src="js/37-layer-filters.js?v=6"></script>
   <!-- Map Composer: the engine first, then the screen that drives it. -->
   <script src="js/38-map-composer.js?v=8"></script>
-  <script src="js/39-heatmap.js?v=3"></script>
+  <script src="js/39-heatmap.js?v=4"></script>
   <script src="js/38b-composer-ui.js?v=7"></script>
+  <!-- Groups Dashboard / Composer / Reports into one rail button + flyout. -->
+  <script src="js/40-module-menu.js?v=1"></script>
   <script src="js/launcher.js?v=163"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page
@@ -1911,7 +1925,7 @@ html body #fpanes.hidden{display:none!important}
 <!-- Mobile app layer. Deliberately last: the phone overrides above live in an
      inline <style> mid-document, so a <head> link would lose every !important
      tie against them. -->
-<link rel="stylesheet" href="css/mobile-app.css?v=3">
+<link rel="stylesheet" href="css/mobile-app.css?v=4">
 <script src="js/mobile-app.js?v=4"></script>
 </body>
 </html>

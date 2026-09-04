@@ -168,6 +168,16 @@ function hmDiscoverAttrs(features){
     }
   });
   const labels = hmSchemaLabels(HM_DATASETS[HM.dataset].assetType);
+  /* The layer whose declared attributes name these columns. `k` is the raw CSV
+     header the upload carried; the catalogue resolves it — by storage key or by
+     any accepted column name — onto the name Layer Management holds, which is
+     what the dropdown and the readout must say. It wins over the hard-coded
+     popup schema, because that schema is this file's guess and the catalogue is
+     the RMMS cell's decision; the schema still supplies the curated ORDER and a
+     unit for a column the catalogue declares without one. */
+  const layerKey = HM_DATASETS[HM.dataset].assetType
+                || (HM.dataset === 'traffic' ? 'traffic_stations' : null);
+  const cat = k => (layerKey && window.AttrCatalog) ? AttrCatalog.meta(layerKey, k) : null;
   const out = [];
   Object.keys(stat).forEach(k => {
     const s = stat[k];
@@ -175,7 +185,11 @@ function hmDiscoverAttrs(features){
     /* A column with one repeated value has no gradient to show. */
     if(s.min === s.max) return;
     const meta = labels[hmKey(k)];
-    out.push({key:k, label:(meta?meta.label:k), unit:(meta?meta.unit:''), n:s.num,
+    const dec = cat(k);
+    out.push({key:k,
+              label:(dec && dec.label) || (meta?meta.label:k),
+              unit:((dec && dec.unit) || (meta?meta.unit:'')),
+              n:s.num,
               order:(meta ? meta.order : 900 + out.length)});
   });
   out.sort((a,b) => a.order - b.order || a.label.localeCompare(b.label));

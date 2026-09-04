@@ -133,6 +133,14 @@
   /* the Video tool is launched from the road popup; its inline display:none is
      overridden by the older rail rule's display:flex!important, so restate it */
   #iconrail .railbtn[data-pane="video"]{display:none!important}
+  /* The tab-bar rules above are !important and would flatten the Modules
+     flyout's rows into tab-sized columns; restate the row layout for it. The
+     flyout itself is position:fixed, so it is not a tab in the bar. */
+  #iconrail #moduleMenu{min-width:min(300px,86vw)!important;padding:8px!important}
+  #iconrail #moduleMenu .railbtn{
+    width:100%!important;height:auto!important;flex:0 0 auto!important;
+    flex-direction:row!important;gap:11px;padding:11px 12px!important;
+    border-radius:12px!important;text-align:left}
 
   /* ---- bottom sheet: real snap points, drag handle, momentum scroll ---- */
   /* `body #fpanes` matches the older rule's specificity so display:flex wins */
@@ -225,6 +233,8 @@
   #fpanes::before,#fpanes::after,#roadInspector::before{display:none!important}
   .fpane,#roadInspector #riBody{padding-top:14px!important}
   #iconrail .railbtn .rl{display:none!important}
+  /* …but the Modules flyout is a list of names — the label IS the item there. */
+  #iconrail #moduleMenu .railbtn .rl{display:flex!important}
   #kbFab{display:none!important}
   .maplibregl-ctrl-bottom-left{transform:scale(.8)}
 }
