@@ -64,6 +64,7 @@ const HM = {
   intensity: 1,
   boundary: 'district',  // 'none' | 'district'
   ran     : false,
+  last    : null,        // descriptor of the surface now on the map (see KLHeatmap)
   attrs   : {soil:null, traffic:null}   // discovered attribute lists, cached per dataset
 };
 
@@ -421,6 +422,7 @@ function hmClear(){
   if(map.getLayer(HM_LAYER)) map.removeLayer(HM_LAYER);
   if(map.getSource(HM_SRC))  map.removeSource(HM_SRC);
   HM.ran = false;
+  HM.last = null;
   const out = hmEl('hmOut'); if(out) out.style.display = 'none';
   const act = hmEl('hmActions'); if(act) act.style.display = 'none';
   hmSetStatus('');
@@ -517,6 +519,22 @@ function hmRun(){
       hmDraw(fc);
       hmBoundary();
       HM.ran = true;
+      /* Everything a second renderer needs to label this surface, recorded at
+         the moment it is drawn. The Map Composer cannot derive the range from
+         the layer: heatmap-color interpolates over heatmap-density, which is
+         always 0..1, so reading the paint would legend a 6 240–17 760 veh/day
+         ramp as "0 → 1". The real range only exists here. */
+      const meta0 = hmAttrMeta();
+      HM.last = {
+        dataset: HM.dataset,
+        datasetLabel: HM_DATASETS[HM.dataset].label,
+        measureLabel: meta0.label,
+        unit: meta0.unit || '',
+        mode: (HM.attr === HM_DENSITY) ? 'density' : 'value',
+        lo: stats.lo, hi: stats.hi, n: stats.n,
+        unitNoun: HM_DATASETS[HM.dataset].unit,
+        ramp: HM_RAMP.map(function (s) { return [s[0], s[1]]; })
+      };
       hmRenderOut(stats);
       hmSetStatus('');
       if(first) hmZoom();
@@ -688,3 +706,41 @@ function openHeatmapPane(ds){
   sel.innerHTML = '<option value="'+HM_DENSITY+'">Point density (no weighting)</option>';
   hmRenderAttrHint();
 })();
+
+/* ============================================================
+   Public descriptor — read by the Map Composer (38-map-composer.js).
+
+   The Composer builds its sheet out of the LIVE style, so it can copy the
+   heatmap layer itself without help. What it cannot do is label it: a
+   heatmap's paint interpolates over `heatmap-density`, a normalised 0..1,
+   so the range an engineer needs on the sheet ("6 240 – 17 760 veh/day")
+   exists nowhere in the style. It is recorded on each run instead, and
+   handed over here rather than letting another module reach into HM.
+
+   Exposed as a plain object, not a class, to match KLLayers / KLUserLayers.
+   ============================================================ */
+window.KLHeatmap = {
+  /** Is a surface on the map right now? Only then is it offerable. */
+  active: function () {
+    try { return !!(HM.ran && map.getLayer(HM_LAYER)); } catch (e) { return false; }
+  },
+  /** Render layer ids in draw order: the surface, then its boundary frame. */
+  layerIds: function () {
+    var out = [];
+    try {
+      if (map.getLayer(HM_LAYER)) out.push(HM_LAYER);
+      HM_BND.forEach(function (l) { if (map.getLayer(l)) out.push(l); });
+    } catch (e) {}
+    return out;
+  },
+  /** What the surface shows, for the legend. Null when nothing has been run. */
+  info: function () {
+    return HM.last ? JSON.parse(JSON.stringify(HM.last)) : null;
+  },
+  /** One line naming the dataset and its measure, e.g. for a sheet title. */
+  title: function () {
+    var i = HM.last;
+    if (!i) return 'Heat map';
+    return i.datasetLabel + ' — ' + i.measureLabel + (i.unit ? ' (' + i.unit + ')' : '');
+  }
+};
