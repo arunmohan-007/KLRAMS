@@ -29,6 +29,35 @@ let rhTab='fwd', rhSearch='', rhDistrict='', rhRoad='', rhSec='', rhCache={};
 let rhPage=0, rhColsCache={}, rhOptsCache={}, rhSearchTimer=null;
 const RH_PAGE_SIZE=300;
 
+/* ---- column headings come from Layer Management, not from the upload ----
+   Every data column below the fixed five is discovered from the rows, so its
+   key is whatever header the district's CSV shipped ("Total_Obs_Bit_Thk_mm").
+   That key is how the value is fetched and must not change; only what is
+   printed above it does. The catalogue resolves a storage key OR any accepted
+   column name onto the layer's declared attribute, so two districts that
+   spelled the same field differently now head up under one name. */
+function rhLayerKey(set){
+  if(!set)return null;
+  if(set.kind==='asset')return set.type||null;      /* asset type IS the layer key */
+  if(set.kind==='segments')return 'condition';
+  if(set.kind==='traffic')return 'traffic_stations';
+  return null;
+}
+/* The heading for one discovered column: the declared name, else the raw key —
+   never blank, so a column the catalogue does not know still reads as it did. */
+function rhLabel(set,key){
+  const lk=rhLayerKey(set);
+  return (lk&&window.AttrCatalog&&AttrCatalog.label(lk,key))||key;
+}
+/* Columns are computed once per dataset and cached. The catalogue is fetched
+   asynchronously, so a report opened before it lands would keep raw headers for
+   the rest of the session; dropping the cache when it arrives rebuilds them. */
+if(window.AttrCatalog)AttrCatalog.ready().then(function(){
+  rhColsCache={};
+  if(document.getElementById('rhBody')&&document.getElementById('reportHub')
+     &&document.getElementById('reportHub').classList.contains('open'))rhRender();
+});
+
 /* ---- open / close ---- */
 function openReportHub(){
   const s=document.getElementById('reportHub'); if(!s)return;
@@ -196,7 +225,7 @@ function rhDataKeys(rows){
 const RH_LANE_ORDER=['CL1','CL2','CL3','CL4','CC','CR1','CR2','CR3','CR4'];
 function rhPrettyMetric(m){if(!m)return '';const map={iri:'IRI',crack:'Crack',cracking:'Crack',rut:'Rutting',rutting:'Rutting',pothole:'Pothole',ravelling:'Ravelling',raveling:'Ravelling',patch:'Patch Work',patchwork:'Patch Work',texture:'Texture'};const k=String(m).toLowerCase().replace(/[^a-z0-9]/g,'');return map[k]||String(m).replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
 function rhMetricOrder(metric){const ck=String(metric).toLowerCase().replace(/[^a-z0-9]/g,'');const pref=['iri','crack','cracking','pothole','rutting','rut','texture','patchwork','patch','ravelling','raveling'];const i=pref.indexOf(ck);return i<0?99:i;}
-function rhColumns(rows){
+function rhColumns(rows,set){
   const cols=[
     {l:'Sl',n:true,g:(r,i)=>i+1},
     {l:'Section Label',cls:'m',g:r=>r.sec},
@@ -207,7 +236,7 @@ function rhColumns(rows){
   const keys=rhDataKeys(rows);
   const laneCols=[],other=[];
   keys.forEach(k=>{const m=String(k).match(/^L(\d+)\|(.+)$/);if(m)laneCols.push({key:k,lane:+m[1],metric:m[2]});else other.push(k);});
-  other.forEach(k=>cols.push({l:k,n:rhKeyNumeric(rows,k),g:r=>{const v=(r.data||{})[k];return (v==null||v==='')?'':v;}}));
+  other.forEach(k=>cols.push({l:rhLabel(set,k),n:rhKeyNumeric(rows,k),g:r=>{const v=(r.data||{})[k];return (v==null||v==='')?'':v;}}));
   laneCols.sort((a,b)=>(rhMetricOrder(a.metric)-rhMetricOrder(b.metric))||String(a.metric).localeCompare(String(b.metric))||(a.lane-b.lane));
   laneCols.forEach(lc=>cols.push({l:'Lane '+lc.lane+' '+rhPrettyMetric(lc.metric),n:rhKeyNumeric(rows,lc.key),g:r=>{const v=(r.data||{})[lc.key];return (v==null||v==='')?'':v;}}));
   return cols;
@@ -260,7 +289,7 @@ function rhRenderTab(k){
   rhEnsure(set).then(()=>{ if(rhTab!==k)return; rhRender(); }).catch(()=>{ if(rhTab===k)body.innerHTML='<div class="dash-loading">Could not load '+escH(set.label)+'.</div>'; });
 }
 function rhColumnsFor(set){
-  if(!rhColsCache[set.key])rhColsCache[set.key]=rhColumns(rhCache[set.key]||[]);
+  if(!rhColsCache[set.key])rhColsCache[set.key]=rhColumns(rhCache[set.key]||[],set);
   return rhColsCache[set.key];
 }
 function rhPager(pages){

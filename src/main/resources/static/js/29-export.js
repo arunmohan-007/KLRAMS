@@ -17,6 +17,15 @@
    office links. The file includes a minimal ZIP (store), Shapefile
    (.shp/.shx/.dbf/.prj/.cpg) and KML writer — no new libraries.
 
+   Column NAMES come from Layer Management, not from the upload. Every
+   format heads its columns with the attribute name the RMMS cell has
+   declared for that layer, resolved from the raw key through the
+   catalogue's accepted-column-name list — so two districts that
+   spelled one field differently export under one heading, and a
+   rename on the Attribute Data screen reaches the exported file.
+   Column VALUES are untouched: a coded value stays its code, because
+   an export is data, not a card.
+
    Shapefile column names: the DBF format hard-limits field names to
    10 characters, so long names cannot be written in full (CSV /
    GeoJSON / KML keep them intact). Instead of blindly chopping at
@@ -459,25 +468,57 @@ function csvBuild(feats,rowFor){
 
 /* ================= property cleaning / per-layer rows ================= */
 var EXP_LANES=['CC','CL1','CL2','CR1','CR2'];
-function cleanProps(p){
-  var o={};
+/* The name Layer Management holds for a column, or null to keep the raw key.
+   The catalogue resolves either the storage key or any accepted column name, so
+   two districts that spelled one field differently export under one heading. */
+function expLabel(layerKey,k){
+  return (layerKey&&window.AttrCatalog&&AttrCatalog.label(layerKey,k))||null;
+}
+/* Turn a feature's properties into the row that every format writes.
+ *
+ * `layerKey` is the exported layer's Layer Management key, and it is what makes
+ * the CSV header, the GeoJSON property, the KML <Data name> and the DBF field
+ * read as the attribute is NAMED rather than as the upload spelled it. Values
+ * are untouched — a coded value stays its code, because an export is data, not
+ * a card. Without a key (or before the catalogue answers) every column keeps
+ * its raw name, exactly as this did before.
+ */
+function cleanProps(p,layerKey){
+  var o={},taken={};
   Object.keys(p||{}).forEach(function(k){
     if(k==='lane_vals')return;                      /* redundant JSON blob — lane values are flattened below */
-    if(k==='__d0'){o.D0_microns=p[k];return;}
+    if(k==='__d0'){o.D0_microns=p[k];taken.D0_microns=1;return;}
     if(k.charAt(0)==='_')return;                    /* internal (__sec, __dscale, __adt…) */
     if(/^L_(CC|CL1|CL2|CR1|CR2)$/.test(k))return;   /* internal lane-presence flags */
     var v=p[k];if(v==null||v==='')return;
-    o[k]=v;
+    var name=expLabel(layerKey,k)||k;
+    /* Two spellings of one attribute can both sit on a feature and both resolve
+       to the same declared name. Suffix the later one instead of letting it
+       overwrite the earlier — an export must not quietly lose a column. */
+    if(taken[name]){var n=2;while(taken[name+'_'+n])n++;name=name+'_'+n;}
+    taken[name]=1;
+    o[name]=v;
   });
   return o;
 }
+/* A single-parameter condition export heads its columns with the parameter's
+   DECLARED name, not its `condition` column key — "Patch_work_worst", not
+   "patch_work_worst". PARAMS already carries the Attribute Data name (see the
+   catalogue hook in 00-shared-config.js), so a rename there reaches this
+   without a second lookup. Punctuation and spaces are folded to underscores
+   because these are column headings, not prose. */
+function condParamName(param){
+  var lbl=(typeof PMAP!=='undefined'&&PMAP[param]&&PMAP[param].label)||param;
+  return String(lbl).trim().replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||param;
+}
 function condParamRow(p,param){
   var o={Road:p.road,From_ch_m:p.from_ch,To_ch_m:p.to_ch};
+  var nm=condParamName(param);
   if(p.lane_count!=null)o.Lanes=p.lane_count;
   if(p.xsp_list!=null&&p.xsp_list!=='')o.Lane_list=p.xsp_list;
-  if(p[param]!=null&&p[param]!=='')o[param+'_worst']=p[param];
-  if(p['avg_'+param]!=null&&p['avg_'+param]!=='')o[param+'_avg']=p['avg_'+param];
-  EXP_LANES.forEach(function(L){var v=p[L+'_'+param];if(v!=null&&v!=='')o[L+'_'+param]=v;});
+  if(p[param]!=null&&p[param]!=='')o[nm+'_worst']=p[param];
+  if(p['avg_'+param]!=null&&p['avg_'+param]!=='')o[nm+'_avg']=p['avg_'+param];
+  EXP_LANES.forEach(function(L){var v=p[L+'_'+param];if(v!=null&&v!=='')o[L+'_'+nm]=v;});
   return o;
 }
 function pciRow(p,prop){
@@ -522,7 +563,9 @@ function ensureAssetData(t){
   return (d&&typeof loadAssetData==='function')?loadAssetData(d):Promise.resolve();
 }
 function assetEntry(type,label,color,toggle){
-  return {label:label,color:color,toggle:toggle,
+  /* The asset type IS the layer key in Layer Management, so the entry can name
+     its own columns without being told twice. */
+  return {label:label,color:color,toggle:toggle,layerKey:type,
     ensure:function(){return ensureAssetData(type);},
     collect:function(){
       var gj=(typeof ASSET_DATA!=='undefined')?ASSET_DATA[type]:null;
@@ -583,7 +626,7 @@ function lfReady(fkey){
   return window.KLLayerFilters ? KLLayerFilters.ensureBags(fkey) : Promise.resolve();
 }
 function boundaryEntry(type,label,color,toggle,fkey){
-  return {label:label,color:color,toggle:toggle,
+  return {label:label,color:color,toggle:toggle,layerKey:'boundary_'+type,
     ensure:function(){
       var have=(window.BOUNDARY_DATA||{})[type];
       var load=(!have&&typeof ensureBoundary==='function')?ensureBoundary(type):Promise.resolve();
@@ -610,7 +653,7 @@ var ULGJ={};
 function userLayerEntry(l,i){
   var fkey='u_'+l.id;
   var color=(window.KLUserLayers&&KLUserLayers.colorFor)?KLUserLayers.colorFor(i):'#e0529c';
-  return {label:l.name+(l.temporary?' (temporary)':''),color:color,toggle:'showUL'+l.id,
+  return {label:l.name+(l.temporary?' (temporary)':''),color:color,toggle:'showUL'+l.id,layerKey:l.key,
     ensure:function(){
       var load=ULGJ[l.id]?Promise.resolve():
         fetch('/api/layer-data/'+l.id+'/geojson',{credentials:'same-origin'})
@@ -628,14 +671,14 @@ function userLayerEntry(l,i){
 }
 
 var EXP={
-  roads:{label:'Road network',color:'#8a4d1f',toggle:'showRoads',
+  roads:{label:'Road network',color:'#8a4d1f',toggle:'showRoads',layerKey:'roads',
     ensure:function(){return (typeof loadRoads==='function')?loadRoads(true):Promise.resolve();},
     collect:function(){
       var all=Object.keys(ROADS||{}).map(function(k){return ROADS[k];});
       var fs=window.NET_SCOPE?all.filter(function(f){return inScope((f.properties||{}).road);}):all;
       return {feats:fs,total:all.length,filtered:!!window.NET_SCOPE};
     }},
-  cond:{label:'Road condition data',color:'#2ba66a',toggle:'showCond',hasParam:true,
+  cond:{label:'Road condition data',color:'#2ba66a',toggle:'showCond',hasParam:true,layerKey:'condition',
     bandOrder:['Poor','Fair','Good'],
     /* A KML document carries ONE colour scale, so a condition export in that
        format is always a single-parameter export: IRI, or Crack, or Rutting —
@@ -672,7 +715,7 @@ var EXP={
       }
       return {feats:fs,total:all.length,filtered:condF||!!window.NET_SCOPE,rowFor:rowFor,suffix:suffix};
     }},
-  fwd:{label:'FWD deflection',color:'#7b1fa2',toggle:'showFwd',
+  fwd:{label:'FWD deflection',color:'#7b1fa2',toggle:'showFwd',layerKey:'fwd',
     bandOrder:['< 100','100 – 200','200 – 350','350 – 500','500 – 700','> 700','No data'],
     bandLabel:'D0 deflection band (microns, matching the map legend)',
     bandFor:function(){return function(f){return fwdBandFor((f.properties||{}).__d0);};},
@@ -740,7 +783,7 @@ function doExport(key,fmt,param){
   var res=E.collect(param);
   var feats=res.feats;
   if(!feats.length)return 0;
-  var rowFor=res.rowFor||function(f){return cleanProps(f.properties);};
+  var rowFor=res.rowFor||function(f){return cleanProps(f.properties,E.layerKey);};
   var nameFor=res.nameFor||function(f){return featName(f,E.label);};
   var bandFor=E.bandFor?E.bandFor(param):null;
   var base='KLRAMS_'+slug(E.label)+(res.suffix?('_'+slug(res.suffix)):'')+(res.filtered?'_filtered':'')+'_'+dateTag();
@@ -765,7 +808,7 @@ function doExport(key,fmt,param){
 /* ================= export menu UI ================= */
 var FORMATS=[
   {id:'shp',name:'Shapefile',desc:'ArcGIS · QGIS',
-   hint:'DBF columns are capped at 10 characters, so long names are abbreviated (Total_vehicles → TOT_VEH). The zip carries the full names in <layer>_field_names.csv, and QGIS shows them automatically from the .qml. Use CSV or GeoJSON if you need untouched column names.',
+   hint:'DBF columns are capped at 10 characters, so long names are abbreviated (Total_vehicles → TOT_VEH). The zip carries the full names in <layer>_field_names.csv, and QGIS shows them automatically from the .qml. Use CSV or GeoJSON if you need the full attribute names in the file itself.',
    icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg>'},
   {id:'geojson',name:'GeoJSON',desc:'Web GIS',
    icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4c-2 0-3 1-3 3v2c0 1.5-1 2.5-2 3 1 .5 2 1.5 2 3v2c0 2 1 3 3 3"/><path d="M16 4c2 0 3 1 3 3v2c0 1.5 1 2.5 2 3-1 .5-2 1.5-2 3v2c0 2-1 3-3 3"/></svg>'},

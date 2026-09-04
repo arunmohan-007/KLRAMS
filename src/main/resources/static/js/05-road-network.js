@@ -62,11 +62,41 @@ function buildAttrMeta(gj){
   });
   populateColorBySelect();
 }
+/* What to CALL a road-network column on screen: the name Layer Management holds
+   for it, never the header the district's file happened to ship. ATTRS is keyed
+   by the storage key (that is what ['get', …] needs), so the key stays the
+   option's VALUE and only the text the user reads is translated.
+
+   Falls back to the raw key when the catalogue has no entry for the column, or
+   has not answered yet — it is fetched asynchronously, which is why both
+   dropdowns are rebuilt once it lands (see the ready() hook below). */
+function netAttrLabel(k){
+  return (window.AttrCatalog&&AttrCatalog.label('roads',k))||k;
+}
+/* The attribute keys in the order the dropdowns should offer them: alphabetical
+   by the name that is on screen, not by the storage key nobody sees any more. */
+function netAttrKeys(){
+  return Object.keys(ATTRS).sort((a,b)=>String(netAttrLabel(a)).localeCompare(String(netAttrLabel(b))));
+}
 function populateColorBySelect(){
   const sel=document.getElementById('netColorBy');
+  if(!sel)return;
+  const cur=sel.value;
   sel.innerHTML='<option value="__class__">Default (SH / MDR)</option>';
-  Object.keys(ATTRS).sort().forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k+(ATTRS[k].numeric?' (numeric)':'');sel.appendChild(o);});
+  netAttrKeys().forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=netAttrLabel(k)+(ATTRS[k].numeric?' (numeric)':'');sel.appendChild(o);});
+  /* Rebuilding must not silently change what the map is painted by, so the
+     current selection is put back — the value is the storage key either way. */
+  if(cur)sel.value=cur;
 }
+/* The attribute list is built from the data (buildAttrMeta / ensureNetAttrList),
+   which routinely wins the race against the catalogue fetch. Relabel once the
+   catalogue arrives rather than leaving raw headers on screen until the next
+   time either control happens to be redrawn. */
+if(window.AttrCatalog)AttrCatalog.ready().then(function(){
+  if(!Object.keys(ATTRS).length)return;
+  populateColorBySelect();
+  if(document.getElementById('netFilters'))renderNetFilters();
+});
 /* Tile-mode twin of buildAttrMeta(gj): same ATTRS shape, but asked of
    /api/roads/attrs + /api/roads/attr-meta instead of scanned out of a
    downloaded FeatureCollection. Only worth doing because a MapLibre `match`
@@ -174,7 +204,7 @@ function renderNetLegend(attr){
   }
 }
 function setNetMode(m){netMode=m;document.getElementById('nAll').classList.toggle('on',m==='all');document.getElementById('nAny').classList.toggle('on',m==='any');applyNetFilter();}
-function addNetFilter(){netFilters.push({attr:Object.keys(ATTRS).sort()[0]||'',op:'=',val:''});renderNetFilters();}
+function addNetFilter(){netFilters.push({attr:netAttrKeys()[0]||'',op:'=',val:''});renderNetFilters();}
 function clearNetFilters(){netFilters=[];renderNetFilters();applyNetFilter();}
 /* Build 167 — multi-value conditions via a click-to-open picker, not typing.
    The value cell is a BUTTON (never a free-text field) showing the chosen
@@ -290,7 +320,10 @@ function renderNetFilters(){
     const m=nfAttrMetaForRow(i,f);
     const row=document.createElement('div');row.className='frow';
     const vq=String(f.val==null?'':f.val).replace(/"/g,'&quot;');
-    const as=Object.keys(ATTRS).sort().map(k=>`<option ${k===f.attr?'selected':''}>${k}</option>`).join('');
+    /* value = storage key (what netFilterExpr's ['get'] needs), text = the
+       Layer Management name. Before this the option had no value attribute at
+       all, so the key WAS the visible text and the two could not differ. */
+    const as=netAttrKeys().map(k=>`<option value="${String(k).replace(/"/g,'&quot;')}"${k===f.attr?' selected':''}>${String(netAttrLabel(k)).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</option>`).join('');
     const ops=m.numeric?['>','>=','=','<=','<']:['=','contains'];
     const os=ops.map(o=>`<option ${o===f.op?'selected':''}>${o}</option>`).join('');
     const listId='dl'+i;
@@ -530,7 +563,7 @@ function loadNetSaved(){
      road table no longer has. Load what still resolves and say what was
      dropped, rather than silently applying a filter that matches nothing. */
   const known=rows.filter(r=>ATTRS[r.attr]);
-  const missing=rows.filter(r=>!ATTRS[r.attr]).map(r=>r.attr);
+  const missing=rows.filter(r=>!ATTRS[r.attr]).map(r=>netAttrLabel(r.attr));
   netFilters=known.map(r=>({attr:r.attr,op:r.op||'=',val:r.val==null?'':String(r.val)}));
   netMode=p.mode==='any'?'any':'all';
   document.getElementById('nAll').classList.toggle('on',netMode==='all');
