@@ -87,3 +87,26 @@ map.on('load',()=>{
     });
 });
 
+
+/* ---- icon rail: show when the tool list has more behind an edge ----
+   The rail scrolls with its scrollbar hidden (see #iconrail .rail-top in
+   app.css), which on a short screen made a clipped Composer / Reports look
+   like they had simply vanished. Mark which edge still has content so the CSS
+   can fade it, and keep it in step with resizes — the panel column and the
+   video dock both change the rail's height without a window resize, so a
+   ResizeObserver is what actually catches it. */
+(function railOverflowHint(){
+  const rt = document.querySelector('#iconrail .rail-top');
+  if(!rt) return;
+  function sync(){
+    /* 1px of slack: sub-pixel layout routinely leaves scrollTop a hair short of
+       the true maximum, which would leave the bottom fade on at the very end. */
+    const max = rt.scrollHeight - rt.clientHeight;
+    rt.classList.toggle('sc-up',   max > 1 && rt.scrollTop > 1);
+    rt.classList.toggle('sc-down', max > 1 && rt.scrollTop < max - 1);
+  }
+  rt.addEventListener('scroll', sync, {passive:true});
+  addEventListener('resize', sync);
+  try{ new ResizeObserver(sync).observe(rt); }catch(e){}
+  sync();
+})();
