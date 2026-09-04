@@ -309,10 +309,11 @@ var KLComposer = (function () {
 
     var GROUP_LABEL = {
       network: 'Road network', pavement: 'Pavement condition', assets: 'Road assets',
-      traffic: 'Traffic', boundaries: 'Administrative boundaries',
+      traffic: 'Traffic', analysis: 'Analysis', boundaries: 'Administrative boundaries',
       user: 'Temporary & user layers', drone: 'Drone & survey rasters'
     };
-    var GROUP_ORDER = ['network', 'pavement', 'assets', 'traffic', 'boundaries', 'user', 'drone'];
+    var GROUP_ORDER = ['network', 'pavement', 'assets', 'traffic', 'analysis',
+                       'boundaries', 'user', 'drone'];
 
     function permanent() {
       if (typeof KLLayers === 'undefined') return [];
@@ -365,8 +366,36 @@ var KLComposer = (function () {
         .catch(function () { droneCache = []; return droneCache; });
     }
 
+    /**
+     * The Heat Map Analysis surface, when one has been run.
+     *
+     * Unlike every other entry this is NOT a registered layer family, and it
+     * deliberately does not become one: it exists only after the user presses
+     * Run, and it is rebuilt from scratch on the next run. Offering it as a
+     * permanent tickbox would promise a layer that is usually not there. So it
+     * appears in the picker exactly when there is a surface to print, and
+     * disappears again when the analysis is cleared.
+     *
+     * Pre-selected (`on: true`) for the same reason: a user who has just built
+     * a heat map and then opens the Composer wants it on the sheet.
+     */
+    function heat() {
+      if (!window.KLHeatmap || !KLHeatmap.active()) return [];
+      var info = KLHeatmap.info();
+      return [{
+        id: 'heat:1', kind: 'heat', info: info,
+        label: 'Heat map — ' + (info ? info.datasetLabel : 'analysis'),
+        group: 'analysis',
+        /* Above the roads and condition it is read against, below the point
+           layers, which is where the viewer puts it too — a surface drawn over
+           its own stations would hide the evidence for it. */
+        z: (typeof KLLayers !== 'undefined' ? KLLayers.Z.ASSET_POINT - 3 : 52),
+        on: true, built: true
+      }];
+    }
+
     function all() {
-      return permanent().concat(user(), drone());
+      return permanent().concat(user(), heat(), drone());
     }
 
     /** All layers, grouped and ordered for the picker. */
@@ -425,6 +454,9 @@ var KLComposer = (function () {
     function renderIds(it) {
       if (it.kind === 'permanent') return (it.spec.layers || []).slice();
       if (it.kind === 'user') return window.KLUserLayers ? KLUserLayers.ids(it.layerRow.id) : [];
+      /* The surface plus whichever boundary frame is switched on — real style
+         layers, so buildStyle copies them like any other. */
+      if (it.kind === 'heat') return window.KLHeatmap ? KLHeatmap.layerIds() : [];
       return [];  /* drone layers are built directly into the composer style */
     }
 
@@ -823,12 +855,40 @@ var KLComposer = (function () {
         return [];
       }
 
+      /* `case` is where the pavement layers keep their real symbology, so
+         reading only its LITERAL branches was silently wrong for four whole
+         families at once. Condition, PCI, 2 km IRI and FWD are all shaped
+         `['case', <no value?>, grey, <the step that does the work>]` — the
+         step is a nested expression, not a colour, so the old loop skipped it
+         and legended the entire layer as a single grey "no data" swatch. The
+         Good / Fair / Poor and PCI bands never reached the sheet.
+
+         So recurse into any branch that is not a literal.
+
+         The grey branch is then labelled from its own CONDITION rather than
+         left blank: `['!',['has',k]]` means exactly "this feature has no
+         value", and a legend row saying "No data" beside the grey is the
+         whole point of printing it. A `case` whose conditions are positive
+         `has` tests labels its DEFAULT the same way, which is the shape FWD
+         uses. Anything more complicated stays unlabelled rather than
+         inventing a meaning for it. */
       if (op === 'case') {
-        for (i = 2; i < value.length; i += 2) {
-          if (isColorLiteral(value[i])) out.push({ kind: kind, color: value[i], label: null });
+        var sawHas = false;
+        for (i = 2; i < value.length - 1; i += 2) {
+          var t = hasTest(value[i - 1]);
+          if (t === 1) sawHas = true;
+          if (isColorLiteral(value[i])) {
+            out.push({ kind: kind, color: value[i], label: t === -1 ? 'No data' : null });
+          } else {
+            entriesFrom(value[i], kind).forEach(function (e) { out.push(e); });
+          }
         }
         var last = value[value.length - 1];
-        if (isColorLiteral(last)) out.push({ kind: kind, color: last, label: null });
+        if (isColorLiteral(last)) {
+          out.push({ kind: kind, color: last, label: sawHas ? 'No data' : null });
+        } else {
+          entriesFrom(last, kind).forEach(function (e) { out.push(e); });
+        }
         return out;
       }
 
@@ -839,6 +899,14 @@ var KLComposer = (function () {
         }
       }
       return [];
+    }
+
+    /** 1 for `['has',k]`, -1 for `['!',['has',k]]`, 0 for anything else. */
+    function hasTest(c) {
+      if (!Array.isArray(c)) return 0;
+      if (c[0] === 'has') return 1;
+      if (c[0] === '!' && Array.isArray(c[1]) && c[1][0] === 'has') return -1;
+      return 0;
     }
 
     function fmtNum(n) {
@@ -869,6 +937,37 @@ var KLComposer = (function () {
         return {
           title: it.label,
           entries: [{ kind: 'raster', color: '#8899aa', label: droneKindLabel(d) }]
+        };
+      }
+
+      /* The heat map legends itself from the run's own descriptor, NOT from
+         its paint. heatmap-color interpolates over `heatmap-density`, which is
+         always 0..1 whatever the data, so entriesFrom() would print a ramp
+         labelled "0 → 1" — true of the renderer and useless on a sheet. What
+         the reader needs is the measure and the range it spans, which is what
+         the panel shows in the viewer and what is recorded at run time.
+
+         The fully transparent first ramp stop is dropped: on screen it lets
+         the basemap through, but as a legend swatch it would just be a strip
+         of blank paper at the cold end. */
+      if (it.kind === 'heat') {
+        var hi = it.info || (window.KLHeatmap && KLHeatmap.info()) || null;
+        if (!hi) return null;
+        var stops = (hi.ramp || [])
+          .filter(function (s) { return !/,\s*0\s*\)$/.test(String(s[1])); })
+          .map(function (s) { return { at: s[0], color: s[1] }; });
+        if (stops.length < 2) return null;
+        var range = (hi.mode === 'density')
+          ? 'Sparse → clustered'
+          : fmtNum(hi.lo) + ' → ' + fmtNum(hi.hi) + (hi.unit ? ' ' + hi.unit : '');
+        /* Joined with middle dots, not dashes: the measure label already
+           contains an em dash ("ADT — average daily traffic"), and a dash
+           separator on top of it reads as two headings run together. */
+        return {
+          key: it.id, group: it.group,
+          title: 'Heat map · ' + hi.datasetLabel + ' · ' + hi.measureLabel,
+          entries: [{ kind: 'gradient', stops: stops, label: range }],
+          more: 0, flat: false
         };
       }
 
@@ -905,6 +1004,24 @@ var KLComposer = (function () {
       });
 
       if (!entries.length) return null;
+
+      /* PCI greys "no value" AND "negative" with the same colour, so recursing
+         the case yields one grey row labelled "No data" and a second identical
+         grey with no label at all. Drop an unlabelled entry whenever a labelled
+         one already shows that exact swatch — it carries no information the
+         labelled row does not, and prints as a blank line. */
+      if (entries.some(function (e) { return e.label; })) {
+        var labelled = {};
+        entries.forEach(function (e) { if (e.label) labelled[e.kind + '|' + (e.color || '')] = 1; });
+        entries = entries.filter(function (e) {
+          return e.label || !labelled[e.kind + '|' + (e.color || '')];
+        });
+      }
+
+      /* "No data" is a footnote to the bands, not the first thing to read. */
+      entries.sort(function (a, b) {
+        return (a.label === 'No data' ? 1 : 0) - (b.label === 'No data' ? 1 : 0);
+      });
 
       /* A layer whose entries are ALL unlabelled has one symbol, not several.
          A polygon family contributes a fill layer and an outline layer, and
@@ -1153,7 +1270,10 @@ var KLComposer = (function () {
   function applyEmphasis(def, item, emph) {
     var k = 1;
     if (item.group === 'assets' || item.group === 'traffic') k = emph.asset || 1;
-    else if (item.group === 'boundaries') k = emph.boundary || 1;
+    /* The heat item's only strokes ARE a boundary frame — the surface itself
+       has no width to scale — so it takes the boundary multiplier, not the
+       road one it would otherwise fall through to. */
+    else if (item.group === 'boundaries' || item.group === 'analysis') k = emph.boundary || 1;
     else if (item.group === 'user' || item.group === 'drone') k = 1;
     else k = emph.road || 1;
     if (k === 1) return;
