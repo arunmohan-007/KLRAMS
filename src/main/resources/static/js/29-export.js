@@ -483,6 +483,30 @@ function expLabel(layerKey,k){
  * a card. Without a key (or before the catalogue answers) every column keeps
  * its raw name, exactly as this did before.
  */
+/* Keys the API bolts on top of the stored columns so the map always has one
+   predictable name to read: RoadController's road/name/len, AssetController's
+   road/from_ch/to_ch. Each is a COPY of a column the layer already declares, so
+   once that column is exported under its declared name the alias is a second
+   column holding the same value under a raw name — "Section Label" and "road"
+   side by side.
+
+   Dropped only when the identical value really is present elsewhere in the row.
+   An alias whose source column is missing or empty is then the only carrier of
+   that value, and removing it would lose data rather than tidy it. */
+var EXP_ALIAS_KEYS={road:1,name:1,len:1,from_ch:1,to_ch:1};
+function dropDuplicateAliases(o){
+  var keys=Object.keys(o);
+  keys.forEach(function(k){
+    if(!EXP_ALIAS_KEYS[k])return;
+    var v=String(o[k]);
+    for(var i=0;i<keys.length;i++){
+      var other=keys[i];
+      if(other===k||EXP_ALIAS_KEYS[other])continue;
+      if(String(o[other])===v){delete o[k];return;}
+    }
+  });
+  return o;
+}
 function cleanProps(p,layerKey){
   var o={},taken={};
   Object.keys(p||{}).forEach(function(k){
@@ -499,7 +523,7 @@ function cleanProps(p,layerKey){
     taken[name]=1;
     o[name]=v;
   });
-  return o;
+  return dropDuplicateAliases(o);
 }
 /* A single-parameter condition export heads its columns with the parameter's
    DECLARED name, not its `condition` column key — "Patch_work_worst", not
@@ -555,6 +579,25 @@ function inScope(val){return !window.NET_SCOPE||window.NET_SCOPE.has(String(val!
 
 /* ================= layer registry ================= */
 function assetDef(t){try{return ASSETS.filter(function(a){return a.type===t;})[0];}catch(e){return null;}}
+/* Fill ROADS with real features + geometry, fetching them if the map never did.
+   Deliberately does NOT call renderRoads(): that re-points the map's source at
+   GeoJSON and would drop the viewer out of tile mode as a side effect of
+   opening an export menu. */
+var _roadsExpP=null;
+function ensureRoadsGeojson(){
+  if(typeof ROADS!=='undefined'&&Object.keys(ROADS).length)return Promise.resolve();
+  if(_roadsExpP)return _roadsExpP;
+  _roadsExpP=fetch('/api/roads/geojson',{credentials:'same-origin'})
+    .then(function(r){return r.json();})
+    .then(function(gj){
+      ((gj&&gj.features)||[]).forEach(function(f){
+        if(f&&f.properties&&f.properties.road!=null)ROADS[f.properties.road]=f;
+      });
+    })
+    .catch(function(){/* the menu's own "no features" message covers this */})
+    .then(function(){_roadsExpP=null;});
+  return _roadsExpP;
+}
 function ensureAssetData(t){
   if(typeof ASSET_DATA!=='undefined'&&ASSET_DATA[t])return Promise.resolve();
   var d=assetDef(t);
@@ -672,7 +715,18 @@ function userLayerEntry(l,i){
 
 var EXP={
   roads:{label:'Road network',color:'#8a4d1f',toggle:'showRoads',layerKey:'roads',
-    ensure:function(){return (typeof loadRoads==='function')?loadRoads(true):Promise.resolve();},
+    /* loadRoads() alone is not enough in tile mode. With TILES_ON it warms the
+       vector source and the road index and returns — ROADS stays EMPTY, because
+       nothing the MAP draws needs per-feature geometry when it is drawing from
+       tiles. collect() reads ROADS, so the menu reported "No features to export
+       — no data uploaded yet" for every user on the default render path.
+       ensureRoadsGeojson() is the same on-demand fetch ensureAssetData() does
+       for the asset layers; in GeoJSON mode loadRoads has already filled ROADS
+       and it costs nothing. */
+    ensure:function(){
+      var p=(typeof loadRoads==='function')?loadRoads(true):Promise.resolve();
+      return p.then(ensureRoadsGeojson,ensureRoadsGeojson);
+    },
     collect:function(){
       var all=Object.keys(ROADS||{}).map(function(k){return ROADS[k];});
       var fs=window.NET_SCOPE?all.filter(function(f){return inScope((f.properties||{}).road);}):all;

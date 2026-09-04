@@ -362,6 +362,89 @@
     fi.style.display = 'none';
     fi.addEventListener('change', onImportFile);
     scr.appendChild(fi);
+
+    wireTextDrag();
+  }
+
+  /* ================================================================
+     Drag a custom text box straight on the preview
+
+     #mcCanvasBox is created once in build() and never replaced (only the
+     <canvas> INSIDE it is swapped out by every full compose), so the drag
+     listeners live here rather than being rewired after each preview —
+     they just check e.target on the way in.
+
+     Moving a text box only needs KLComposer.redraw(), not a full
+     compose(): the map frame and legend are untouched by where a label
+     sits, so re-running the (cheap, synchronous) layout pass against the
+     same canvas is what keeps this smooth under the mouse instead of
+     re-fetching the extent and re-rendering the map on every pixel.
+     ================================================================== */
+  var textDrag = null;   /* {index, dxMm, dyMm} while a drag is in progress */
+
+  function canvasMm(canvasEl, clientX, clientY) {
+    var last = KLComposer.last();
+    var rect = canvasEl.getBoundingClientRect();
+    var pxToCanvas = canvasEl.width / rect.width;
+    var xPx = (clientX - rect.left) * pxToCanvas;
+    var yPx = (clientY - rect.top) * pxToCanvas;
+    var S = canvasEl.width / last.page.w;
+    return { x: xPx / S, y: yPx / S };
+  }
+
+  function wireTextDrag() {
+    var host = el('mcCanvasBox');
+    if (!host) return;
+    host.addEventListener('mousedown', function (e) {
+      if (e.target.tagName !== 'CANVAS') return;
+      var last = KLComposer.last();
+      if (!last) return;
+      var mm = canvasMm(e.target, e.clientX, e.clientY);
+      var idx = KLComposer.hitTestText(mm.x, mm.y);
+      if (idx < 0) return;
+      e.preventDefault();
+      var s = KLComposer.state();
+      var t = s.textItems[idx];
+      var page = last.page;
+      textDrag = {
+        index: idx,
+        dxMm: mm.x - (t.x != null ? t.x : 0.1) * page.w,
+        dyMm: mm.y - (t.y != null ? t.y : 0.1) * page.h
+      };
+      e.target.style.cursor = 'grabbing';
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!textDrag) return;
+      var canvasEl = document.querySelector('#mcCanvasBox canvas');
+      var last = KLComposer.last();
+      if (!canvasEl || !last) return;
+      var mm = canvasMm(canvasEl, e.clientX, e.clientY);
+      var page = last.page;
+      var t = KLComposer.state().textItems[textDrag.index];
+      if (!t) { textDrag = null; return; }
+      t.x = Math.max(0, Math.min(1, (mm.x - textDrag.dxMm) / page.w));
+      t.y = Math.max(0, Math.min(1, (mm.y - textDrag.dyMm) / page.h));
+      KLComposer.redraw();
+      updateTextRowFields(textDrag.index, t);
+    });
+    document.addEventListener('mouseup', function () {
+      if (!textDrag) return;
+      var canvasEl = document.querySelector('#mcCanvasBox canvas');
+      if (canvasEl) canvasEl.style.cursor = '';
+      textDrag = null;
+    });
+  }
+
+  /** Keep the X%/Y% number inputs in the sidebar honest while dragging,
+   *  without rebuilding the row (which would drop the drag's own focus
+   *  and, on a touch/trackpad drag, the in-progress mousemove stream). */
+  function updateTextRowFields(idx, t) {
+    var row = document.querySelector('[data-textrow="' + idx + '"]');
+    if (!row) return;
+    var xi = row.querySelector('[data-txt-field="xPct"]');
+    var yi = row.querySelector('[data-txt-field="yPct"]');
+    if (xi && document.activeElement !== xi) xi.value = Math.round(t.x * 100);
+    if (yi && document.activeElement !== yi) yi.value = Math.round(t.y * 100);
   }
 
   /* ================================================================
@@ -601,11 +684,11 @@
       legend: (tpl.legend || {}).show !== false, north: (tpl.northArrow || {}).show !== false,
       scale: (tpl.scaleBar || {}).show !== false, grid: !!(tpl.grid || {}).show,
       metadata: (tpl.metadata || {}).show !== false, logo: !!(tpl.logo || {}).show,
-      header: (tpl.header || {}).show !== false
+      header: (tpl.header || {}).show !== false, filter: true
     };
     var toggles = [['legend', 'Legend'], ['north', 'North arrow'], ['scale', 'Scale bar'],
                    ['grid', 'Coordinate grid'], ['logo', 'Logo'], ['metadata', 'Metadata footer'],
-                   ['header', 'Title header']].map(function (t) {
+                   ['header', 'Title header'], ['filter', 'Filter line']].map(function (t) {
       var on = (s.show[t[0]] != null) ? s.show[t[0]] : showDefaults[t[0]];
       return '<label class="mc-row"><input type="checkbox" data-show="' + t[0] + '"' + (on ? ' checked' : '') + '>' +
         '<span class="mc-lbl"><b>' + t[1] + '</b></span></label>';
@@ -633,7 +716,41 @@
         '<div class="mc-note">Plain paper is the cleanest for a printed sheet — switch on the district ' +
         'or constituency boundary in step 3 to give it geographic context.</div>' +
       '</div>' +
-      '<div class="mc-grp"><div class="mc-gt"><span>Show on this sheet</span></div>' + toggles + '</div>';
+      '<div class="mc-grp"><div class="mc-gt"><span>Show on this sheet</span></div>' + toggles + '</div>' +
+      '<div class="mc-grp"><div class="mc-gt"><span>Custom text</span></div>' +
+        '<div id="mcTextBox">' + textItemsHtml() + '</div>' +
+        '<div class="mc-chips"><button class="mc-chip" id="mcAddText">+ Add text</button></div>' +
+        '<div class="mc-note">Position is a percentage of the page, from the top-left — 0/0 is the top-left ' +
+        'corner, 100/100 is the bottom-right.</div>' +
+      '</div>';
+  }
+
+  /** One row per user text box: the string plus its four bits of styling
+   *  (size, bold, underline, colour) and where on the page it sits. Kept as
+   *  plain inputs rather than a drag-handle on the preview — the preview is
+   *  a flat canvas image with no element to drag, and a percentage position
+   *  survives a page-size or orientation change that a pixel position would not. */
+  function textItemsHtml() {
+    var items = KLComposer.state().textItems || [];
+    if (!items.length) return '<div class="mc-note">No text added yet.</div>';
+    return items.map(function (t, i) {
+      var x = Math.round((t.x != null ? t.x : 0.1) * 100);
+      var y = Math.round((t.y != null ? t.y : 0.1) * 100);
+      return '<div class="mc-textitem" data-textrow="' + i + '" style="border-top:1px solid #e3e8ef;padding:8px 0">' +
+        '<textarea data-txt-field="text" rows="2" style="width:100%">' + esc(t.text || '') + '</textarea>' +
+        '<div class="mc-2">' +
+          '<div class="mc-fld"><label>Size (mm)</label><input type="number" min="1" max="40" step="0.5" data-txt-field="size" value="' + (t.size != null ? t.size : 4) + '"></div>' +
+          '<div class="mc-fld"><label>Colour</label><input type="color" data-txt-field="color" value="' + (t.color || '#111111') + '"></div>' +
+        '</div>' +
+        '<div class="mc-2">' +
+          '<div class="mc-fld"><label>X %</label><input type="number" min="0" max="100" data-txt-field="xPct" value="' + x + '"></div>' +
+          '<div class="mc-fld"><label>Y %</label><input type="number" min="0" max="100" data-txt-field="yPct" value="' + y + '"></div>' +
+        '</div>' +
+        '<label class="mc-row"><input type="checkbox" data-txt-field="bold"' + (t.bold ? ' checked' : '') + '><span class="mc-lbl">Bold</span></label>' +
+        '<label class="mc-row"><input type="checkbox" data-txt-field="underline"' + (t.underline ? ' checked' : '') + '><span class="mc-lbl">Underline</span></label>' +
+        '<div class="mc-chips"><button class="mc-chip" data-txt-del="' + i + '">Remove</button></div>' +
+      '</div>';
+    }).join('');
   }
 
   /* ---- summaries shown collapsed ---- */
@@ -719,6 +836,7 @@
 
     wireLayers();
     wireLegend();
+    wireTextItems();
 
     side.querySelectorAll('[data-info]').forEach(function (inp) {
       inp.addEventListener('input', function () {
@@ -872,6 +990,50 @@
     box.innerHTML = legendHtml();
     wireLegend();
     updateSummary('legend', legendSummary());
+  }
+
+  function redrawTextStep() {
+    var box = el('mcTextBox');
+    if (!box) return;
+    if (document.activeElement && box.contains(document.activeElement)) return;
+    box.innerHTML = textItemsHtml();
+    wireTextItems();
+  }
+
+  function wireTextItems() {
+    var side = el('mcSide');
+    if (!side) return;
+    var addBtn = el('mcAddText');
+    if (addBtn) addBtn.onclick = function () {
+      var s = KLComposer.state();
+      s.textItems.push({ text: 'New text', size: 4, bold: false, underline: false,
+                          color: '#111111', x: 0.1, y: 0.1 });
+      redrawTextStep();
+      refresh();
+    };
+    side.querySelectorAll('[data-textrow]').forEach(function (row) {
+      var i = +row.dataset.textrow;
+      row.querySelectorAll('[data-txt-field]').forEach(function (inp) {
+        var evt = (inp.tagName === 'TEXTAREA' || inp.type === 'number') ? 'input' : 'change';
+        inp.addEventListener(evt, function () {
+          var item = KLComposer.state().textItems[i];
+          if (!item) return;
+          var f = inp.dataset.txtField;
+          if (f === 'xPct') item.x = Math.max(0, Math.min(100, +inp.value || 0)) / 100;
+          else if (f === 'yPct') item.y = Math.max(0, Math.min(100, +inp.value || 0)) / 100;
+          else if (f === 'size') item.size = Math.max(1, +inp.value || 4);
+          else if (inp.type === 'checkbox') item[f] = inp.checked;
+          else item[f] = inp.value;
+          refresh();
+        });
+      });
+      var del = row.querySelector('[data-txt-del]');
+      if (del) del.addEventListener('click', function () {
+        KLComposer.state().textItems.splice(i, 1);
+        redrawTextStep();
+        refresh();
+      });
+    });
   }
 
   function updateSummary(key, text) {

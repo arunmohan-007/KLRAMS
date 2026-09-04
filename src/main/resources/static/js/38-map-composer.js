@@ -113,7 +113,13 @@ var KLComposer = (function () {
        legend being rebuilt — entry ORDER changes when a layer is restyled or
        recoloured, but an entry's own colour+label does not. */
     legendHide: {},
-    legendLabel: {}
+    legendLabel: {},
+    /* User-added text boxes — free-standing labels the layout engine
+       knows nothing about (a north-facing arrow note, a "DRAFT" stamp, a
+       revision mark). Positioned as a fraction of the page (0..1) rather
+       than millimetres so a box stays put, proportionally, if the page
+       size or orientation changes after it was placed. */
+    textItems: []
   };
 
   function get() { return state; }
@@ -912,10 +918,20 @@ var KLComposer = (function () {
       return 0;
     }
 
-    function fmtNum(n) {
+    /** `decimals` caps how many fraction digits survive — defaults to 2, the
+     *  same precision the sub-1000 branch always rounded to. Without a cap,
+     *  `toLocaleString()` on a number ≥1000 keeps EVERY decimal the raw value
+     *  carried (e.g. an ADT of 1071.153512 printed as "1,071.154"), which is
+     *  how a traffic count ended up on a legend with a fraction of a
+     *  vehicle. Pass 0 for counts (ADT, station totals) that have no
+     *  fractional unit at all. */
+    function fmtNum(n, decimals) {
       if (typeof n !== 'number') return String(n);
-      return Math.abs(n) >= 1000 ? n.toLocaleString()
-           : (Math.round(n * 100) / 100).toString();
+      var d = (decimals == null) ? 2 : decimals;
+      var f = Math.pow(10, d);
+      return Math.abs(n) >= 1000
+        ? n.toLocaleString(undefined, { maximumFractionDigits: d })
+        : (Math.round(n * f) / f).toString();
     }
 
     function widthOf(def) {
@@ -973,14 +989,19 @@ var KLComposer = (function () {
            measure nor the range. Split into title, caption and end labels,
            each part is short enough to survive a 46 mm legend column. */
         var isDensity = (hi.mode === 'density');
+        /* Vehicle counts (ADT, survey volume, peak-hour volume) are whole
+           traffic — "1,071.15 vehicles/day" is not a real measurement, it is
+           a rounding artefact of the raw stored value. Fuzzy attributes
+           (CBR%, soil moisture...) keep their normal 2-decimal precision. */
+        var countUnit = /^veh/i.test(hi.unit || '');
         return {
           key: it.id, group: it.group,
           title: 'Heat map · ' + hi.datasetLabel,
           entries: [{
             kind: 'gradient', stops: stops,
             label: hi.measureLabel + (hi.unit ? ' · ' + hi.unit : ''),
-            lo: isDensity ? 'Sparse' : fmtNum(hi.lo),
-            hi: isDensity ? 'Clustered' : fmtNum(hi.hi)
+            lo: isDensity ? 'Sparse' : fmtNum(hi.lo, countUnit ? 0 : 2),
+            hi: isDensity ? 'Clustered' : fmtNum(hi.hi, countUnit ? 0 : 2)
           }],
           more: 0, flat: false
         };
@@ -1805,6 +1826,7 @@ var KLComposer = (function () {
       L.logo = (opts.showLogo !== false && (tpl.logo || {}).show)
         ? { size: (tpl.logo || {}).size || 12, position: (tpl.logo || {}).position || 'header-left' }
         : null;
+      L.textItems = ctx.textItems || [];
 
       return L;
     }
@@ -2104,7 +2126,63 @@ var KLComposer = (function () {
       drawLogo(c, mm(lp.x), mm(lp.y), mm(L.logo.size), false);
     }
 
+    /* ---------------- user text boxes ---------------- */
+    if (L.textItems && L.textItems.length) drawTextItems(c, L, S, mm);
+
     c.restore();
+  }
+
+  /**
+   * User-added text — the one thing on the sheet with no layout logic at
+   * all. Every other element is placed by the template; these are placed
+   * by the person building the sheet, anywhere they like, so the draw is
+   * just "put this string at this fraction of the page" with the four
+   * properties a sheet author actually reaches for: size, colour, bold,
+   * underline. Wrapped to whatever's left of the page at its x, the same
+   * greedy wrap() the title and legend use, so a long note does not run
+   * off the sheet unread.
+   */
+  function drawTextItems(c, L, S, mm) {
+    var page = L.page, font = L.font;
+    L.textItems.forEach(function (t) {
+      if (!t.text) return;
+      var sizeMm = t.size || 4;
+      var weight = t.bold ? '700' : '400';
+      var x = (t.x != null ? t.x : 0.1) * page.w;
+      var y = (t.y != null ? t.y : 0.1) * page.h;
+      var maxW = Math.max(20, page.w - x - L.margin);
+      /* Wrap paragraph by paragraph, not the whole string at once — wrap()
+         treats any run of whitespace as one space, so a blank line the user
+         typed on purpose (separating a heading from a note) would otherwise
+         collapse away. */
+      var lines = [];
+      String(t.text).split(/\n/).forEach(function (para) {
+        if (!para) { lines.push(''); return; }
+        Layout.wrap(para, maxW, sizeMm, weight, font, 20).forEach(function (ln) { lines.push(ln); });
+      });
+      c.save();
+      c.font = weight + ' ' + mm(sizeMm) + 'px ' + font;
+      c.fillStyle = t.color || '#111111';
+      c.textAlign = t.align === 'center' ? 'center' : (t.align === 'right' ? 'right' : 'left');
+      c.textBaseline = 'alphabetic';
+      var lineH = sizeMm * 1.3;
+      var tx = c.textAlign === 'center' ? x + maxW / 2 : (c.textAlign === 'right' ? x + maxW : x);
+      lines.forEach(function (ln, i) {
+        var ly = y + sizeMm * 0.85 + i * lineH;
+        c.fillText(ln, mm(tx), mm(ly));
+        if (t.underline) {
+          var w = Layout.measure(ln, sizeMm, weight, font);
+          var ux = c.textAlign === 'center' ? tx - w / 2 : (c.textAlign === 'right' ? tx - w : tx);
+          c.strokeStyle = t.color || '#111111';
+          c.lineWidth = Math.max(1, mm(sizeMm * 0.045));
+          c.beginPath();
+          c.moveTo(mm(ux), mm(ly + sizeMm * 0.14));
+          c.lineTo(mm(ux + w), mm(ly + sizeMm * 0.14));
+          c.stroke();
+        }
+      });
+      c.restore();
+    });
   }
 
   function drawLogo(c, x, y, size, onDark) {
@@ -2803,6 +2881,10 @@ var KLComposer = (function () {
         var legendAll = Legend.build(items);          /* everything the layers offer */
         var legend = Legend.applyEdits(legendAll);    /* …minus what the user dropped */
         var info = Meta.merged(ext);
+        /* "Show filter" off means off everywhere the filter line could print —
+           the header's meta line AND the footer's "Filter" row both read
+           info.filterText, so clearing it here once is enough for both. */
+        if (state.show.filter === false) info = Object.assign({}, info, { filterText: '' });
 
         /* First layout pass to learn the map frame's aspect ratio, which
            the extent normaliser needs before the frame is rendered. */
@@ -2841,7 +2923,7 @@ var KLComposer = (function () {
                and simply did not appear on the sheet. */
             var L = Layout.compose(tpl, Object.assign(sheetOpts(), { orientation: orient }), {
               title: info.title, subtitle: info.subtitle, filterText: info.filterText,
-              legend: legend
+              legend: legend, textItems: state.textItems
             });
             var sheetLabel = (PAGES[pageSize] ? PAGES[pageSize].label : pageSize) + ' ' +
                              (orient === 'portrait' ? 'Portrait' : 'Landscape');
@@ -2852,7 +2934,7 @@ var KLComposer = (function () {
             var result = {
               canvas: canvas, page: page, layout: L, info: info, extent: ext,
               template: tpl, dpi: dpi, legend: legend, legendAll: legendAll, items: items,
-              orientation: orient, pageSize: pageSize,
+              orientation: orient, pageSize: pageSize, frame: frame,
               warnings: warningsFor(ext, frame, items)
             };
             /* Only the newest compose may become "the sheet on screen" — an
@@ -2874,6 +2956,78 @@ var KLComposer = (function () {
       showHeader: state.show.header,
       pageSize: state.pageSize, orientation: state.orientation, custom: state.custom
     };
+  }
+
+  /**
+   * Re-paint the current sheet onto its existing canvas, without redoing
+   * any of the expensive work — reading the layers, resolving the extent,
+   * or rendering the offscreen map. Those three are exactly what compose()
+   * spends its time on, and none of them change while a user is dragging a
+   * text box around: the map frame is still the same picture, the legend
+   * is still the same blocks. Only the LAYOUT pass (pure arithmetic, no
+   * network, no WebGL) needs to run again, against the same `frame` and
+   * the same canvas element already sitting in the DOM — so this is what
+   * makes live text-dragging possible instead of a 1-2 second wait per
+   * pixel moved.
+   *
+   * Returns the updated compose result, or null if nothing has been
+   * composed yet (dragging is only offered once a sheet exists).
+   */
+  function redraw() {
+    var last = lastCompose;
+    if (!last || !last.frame) return null;
+    var tpl = Templates.byId(state.templateId);
+    var info = Meta.merged(last.extent);
+    if (state.show.filter === false) info = Object.assign({}, info, { filterText: '' });
+    var legend = Legend.applyEdits(Legend.build(last.items));
+    var L = Layout.compose(tpl, Object.assign(sheetOpts(), { orientation: last.orientation }), {
+      title: info.title, subtitle: info.subtitle, filterText: info.filterText,
+      legend: legend, textItems: state.textItems
+    });
+    var sheetLabel = (PAGES[last.pageSize] ? PAGES[last.pageSize].label : last.pageSize) + ' ' +
+                     (last.orientation === 'portrait' ? 'Portrait' : 'Landscape');
+    var ctx2 = { metaFields: Meta.fields(info, last.extent, sheetLabel), info: info };
+    draw(last.canvas, L, ctx2, last.frame, pxPerMm(last.dpi));
+    last.layout = L; last.info = info; last.legend = legend;
+    return last;
+  }
+
+  /** The mm bounding box a text item will occupy — the same wrap/measure
+   *  the actual draw does, so a click either does or doesn't land on it by
+   *  the same rule the paint used, never a rough approximation of it. */
+  function textBoxMm(t, page, margin, font) {
+    var sizeMm = t.size || 4;
+    var weight = t.bold ? '700' : '400';
+    var x = (t.x != null ? t.x : 0.1) * page.w;
+    var y = (t.y != null ? t.y : 0.1) * page.h;
+    var maxW = Math.max(20, page.w - x - margin);
+    var lines = [];
+    String(t.text || '').split(/\n/).forEach(function (para) {
+      if (!para) { lines.push(''); return; }
+      Layout.wrap(para, maxW, sizeMm, weight, font, 20).forEach(function (ln) { lines.push(ln); });
+    });
+    var w = 0;
+    lines.forEach(function (ln) { w = Math.max(w, Layout.measure(ln, sizeMm, weight, font)); });
+    var lineH = sizeMm * 1.3;
+    return { x0: x, y0: y, x1: x + Math.max(w, 6), y1: y + Math.max(lineH, lines.length * lineH) };
+  }
+
+  /** Which text item (if any) a click at this page position lands on —
+   *  topmost (last-added) first, so a click in an overlap grabs whichever
+   *  box is drawn on top, matching what the eye sees. -1 for no hit. */
+  function hitTestText(xMm, yMm) {
+    if (!lastCompose) return -1;
+    var page = lastCompose.page;
+    var margin = (lastCompose.layout && lastCompose.layout.margin != null) ? lastCompose.layout.margin : 9;
+    var font = (lastCompose.template && lastCompose.template.theme && lastCompose.template.theme.font) || 'sans-serif';
+    var pad = 1.5; /* mm slack, so a short or empty line is still grabbable */
+    for (var i = state.textItems.length - 1; i >= 0; i--) {
+      var t = state.textItems[i];
+      if (!t.text) continue;
+      var b = textBoxMm(t, page, margin, font);
+      if (xMm >= b.x0 - pad && xMm <= b.x1 + pad && yMm >= b.y0 - pad && yMm <= b.y1 + pad) return i;
+    }
+    return -1;
   }
 
   function warningsFor(ext, frame, items) {
@@ -3076,6 +3230,8 @@ var KLComposer = (function () {
     Meta: Meta,
     Export: Export,
     compose: compose,
+    redraw: redraw,
+    hitTestText: hitTestText,
     last: function () { return lastCompose; },
     dispose: disposeGl
   };
