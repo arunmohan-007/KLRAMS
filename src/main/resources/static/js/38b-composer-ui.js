@@ -91,6 +91,11 @@
     padding:3px 6px;font-size:11.8px;font-family:inherit;color:#2c4664}
   .mc-lgname:hover{border-color:#dbe4ee;background:#fff}
   .mc-lgname:focus{outline:none;border-color:#1d6fb8;background:#fff;box-shadow:0 0 0 2px rgba(29,111,184,.12)}
+  /* The heading field sits where an entry's swatch would, so the rows below it
+     stay aligned; the "H" chip is what marks it as the heading and not a row. */
+  .mc-lgtitle-ic{width:16px;height:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    border-radius:3px;background:#e6eefa;color:#1d6fb8;font-size:9px;font-weight:800}
+  .mc-lgtitle{font-weight:700;color:#16304e}
 
   .mc-grp{margin-top:9px}
   .mc-grp:first-child{margin-top:0}
@@ -512,12 +517,24 @@
           (bHidden ? ' disabled' : '') + '>' +
         '</div>';
       }).join('');
+      /* The HEADING is editable too, not just the rows under it. The engine
+         has always honoured a rename keyed on the block (applyEdits reads
+         legendLabel[b.key]); there was simply no field to type it into, so a
+         heading the layers named badly could only be hidden, never fixed. */
+      var tKey = b.key;
+      var tVal = (tKey in s.legendLabel) ? s.legendLabel[tKey] : b.title;
       return '<div class="mc-grp">' +
         '<label class="mc-row" style="padding:5px 2px">' +
           '<input type="checkbox" data-lgblock="' + esc(b.key) + '"' + (bHidden ? '' : ' checked') + '>' +
           '<span class="mc-lbl"><b>' + esc(b.title) + '</b>' +
           '<i>' + b.entries.length + ' item(s) in the legend</i></span>' +
-        '</label>' + rows + '</div>';
+        '</label>' +
+        '<div class="mc-lgrow' + (bHidden ? ' dis' : '') + '">' +
+          '<span class="mc-lgtitle-ic" title="Legend heading">H</span>' +
+          '<input type="text" class="mc-lgname mc-lgtitle" data-lglabel="' + esc(tKey) + '"' +
+          ' value="' + esc(tVal) + '" placeholder="Legend heading"' +
+          (bHidden ? ' disabled' : '') + '>' +
+        '</div>' + rows + '</div>';
     }).join('');
 
     return out +

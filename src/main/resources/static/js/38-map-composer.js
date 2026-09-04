@@ -847,9 +847,12 @@ var KLComposer = (function () {
           if (isColorLiteral(value[i + 1])) stops.push({ at: value[i], color: value[i + 1] });
         }
         if (stops.length >= 2) {
+          /* lo/hi are kept as their own fields rather than baked into one
+             "a → b" string: the ramp is drawn as a bar with its ends labelled
+             underneath, so the two numbers have to be placed independently. */
           return [{
-            kind: 'gradient', stops: stops,
-            label: fmtNum(stops[0].at) + ' → ' + fmtNum(stops[stops.length - 1].at)
+            kind: 'gradient', stops: stops, label: null,
+            lo: fmtNum(stops[0].at), hi: fmtNum(stops[stops.length - 1].at)
           }];
         }
         return [];
@@ -957,16 +960,28 @@ var KLComposer = (function () {
           .filter(function (s) { return !/,\s*0\s*\)$/.test(String(s[1])); })
           .map(function (s) { return { at: s[0], color: s[1] }; });
         if (stops.length < 2) return null;
-        var range = (hi.mode === 'density')
-          ? 'Sparse → clustered'
-          : fmtNum(hi.lo) + ' → ' + fmtNum(hi.hi) + (hi.unit ? ' ' + hi.unit : '');
-        /* Joined with middle dots, not dashes: the measure label already
-           contains an em dash ("ADT — average daily traffic"), and a dash
-           separator on top of it reads as two headings run together. */
+        /* Laid out the way the viewer's own panel lays it out, because that
+           is the arrangement the reader has already learned:
+
+             Heat map · Sub-Grade Soil      <- block title (the dataset)
+             CBR (soaked) · %               <- the measure and its unit
+             [======= ramp =======]
+             4                  10.1        <- the range, at the ramp's ends
+
+           Cramming all of that onto one heading is what made it unreadable:
+           "Heat map · Sub-Grade Soil · CB…" told the reader neither the
+           measure nor the range. Split into title, caption and end labels,
+           each part is short enough to survive a 46 mm legend column. */
+        var isDensity = (hi.mode === 'density');
         return {
           key: it.id, group: it.group,
-          title: 'Heat map · ' + hi.datasetLabel + ' · ' + hi.measureLabel,
-          entries: [{ kind: 'gradient', stops: stops, label: range }],
+          title: 'Heat map · ' + hi.datasetLabel,
+          entries: [{
+            kind: 'gradient', stops: stops,
+            label: hi.measureLabel + (hi.unit ? ' · ' + hi.unit : ''),
+            lo: isDensity ? 'Sparse' : fmtNum(hi.lo),
+            hi: isDensity ? 'Clustered' : fmtNum(hi.hi)
+          }],
           more: 0, flat: false
         };
       }
@@ -1560,32 +1575,74 @@ var KLComposer = (function () {
          last row or two fell past the bottom and were reported as "+N more"
          on a sheet with plenty of room for them. */
       var headMm = hasHead ? (fontMm * 2.1 + 0.8) : 0;
-      var rows = [];
-      blocks.forEach(function (b, bi) {
-        if (bi) rows.push({ t: 'gap', h: gap });
-        if (!b.flat) rows.push({ t: 'title', h: titleMm * 1.5, block: b });
-        b.entries.forEach(function (e) {
-          rows.push({ t: 'entry', h: rowMm, entry: e, block: b, flat: b.flat });
-        });
-        if (b.more) rows.push({ t: 'more', h: rowMm * 0.9, block: b });
-      });
-
-      var rowsMm = 0;
-      rows.forEach(function (r) { rowsMm += r.h; });
       var chrome = padY * 2 + headMm;      /* everything that is not a row */
+
+      /* Rows are built against the width of ONE COLUMN, because that is what
+         the text has to fit into — and the column width depends on how many
+         columns there are. So the row list is rebuilt per candidate column
+         count rather than measured once at full width and reused; measuring a
+         two-column legend against the full card width is what would let a
+         wrapped title overrun its column. */
+      var SW = 6.4;            /* swatch width, mirrored in drawLegend */
+      var BAR = 2.9;           /* ramp bar height */
+      function buildRows(cols) {
+        var colTextW = Math.max(8, widthMm / cols - 2 * padX);
+        var rows = [];
+        blocks.forEach(function (b, bi) {
+          if (bi) rows.push({ t: 'gap', h: gap });
+          if (!b.flat) {
+            /* Titles WRAP now instead of being cut off with an ellipsis. A
+               legend heading that reads "Heat map · Sub-Grade Soil · CB…" has
+               lost the very thing it exists to say. */
+            var tl = wrap(b.title, colTextW, titleMm, '700', font, 4);
+            rows.push({ t: 'title', h: tl.length * titleMm * 1.5, block: b, lines: tl });
+          }
+          b.entries.forEach(function (e) {
+            if (e.kind === 'gradient') {
+              /* A ramp is drawn across the full column width with its ends
+                 labelled underneath — a 6.4 mm swatch cannot show a six-stop
+                 gradient at all, which is why the colours "were not showing".*/
+              var cap = e.label ? wrap(e.label, colTextW, fontMm, '600', font, 3) : [];
+              var hasEnds = (e.lo != null || e.hi != null);
+              rows.push({
+                t: 'grad', entry: e, block: b, lines: cap,
+                h: cap.length * fontMm * 1.4 + (cap.length ? 0.8 : 0) +
+                   BAR + (hasEnds ? (0.9 + fontMm * 1.25) : 0) + 1.2
+              });
+              return;
+            }
+            var txt = e.label || (b.flat ? b.title : '');
+            var lw = colTextW - (b.flat ? 0 : 1.4) - SW - 2.2;
+            var ll = txt ? wrap(txt, Math.max(6, lw), fontMm, '400', font, 3) : [''];
+            rows.push({
+              t: 'entry', entry: e, block: b, flat: b.flat, lines: ll,
+              h: Math.max(rowMm, ll.length * fontMm * 1.45 + 1.4)
+            });
+          });
+          if (b.more) rows.push({ t: 'more', h: rowMm * 0.9, block: b });
+        });
+        return rows;
+      }
+
+      var cols = 1, rows = buildRows(1), rowsMm = 0;
+      rows.forEach(function (r) { rowsMm += r.h; });
       var total = chrome + rowsMm;
 
-      var cols = 1;
       if (allowColumns && maxHeightMm && total > maxHeightMm) {
-        cols = Math.min(3, Math.ceil(rowsMm / Math.max(6, maxHeightMm - chrome)));
+        for (var nc = 2; nc <= 3; nc++) {
+          var trial = buildRows(nc), tm = 0;
+          trial.forEach(function (r) { tm += r.h; });
+          if (chrome + tm / nc <= maxHeightMm) { cols = nc; rows = trial; rowsMm = tm; break; }
+          cols = nc; rows = trial; rowsMm = tm;
+        }
       }
       var colH = chrome + rowsMm / cols;
 
       return {
         rows: rows, cols: cols, rowMm: rowMm, fontMm: fontMm, titleMm: titleMm,
-        padX: padX, padY: padY, width: widthMm, headMm: headMm,
+        padX: padX, padY: padY, width: widthMm, headMm: headMm, swW: SW, barMm: BAR,
         height: Math.min(colH, maxHeightMm || colH),
-        naturalHeight: total,
+        naturalHeight: chrome + rowsMm,
         overflows: !!(maxHeightMm && colH > maxHeightMm + 0.4)
       };
     }
@@ -2153,7 +2210,44 @@ var KLComposer = (function () {
       if (r.t === 'title') {
         c.fillStyle = th.ink || '#111';
         c.font = '700 ' + mm(met.titleMm) + 'px ' + font;
-        c.fillText(clip(c, r.block.title, mm(colW - 2 * met.padX)), mm(cx), mm(cy + met.titleMm * 0.92));
+        (r.lines || [r.block.title]).forEach(function (ln, li) {
+          c.fillText(ln, mm(cx), mm(cy + met.titleMm * (0.92 + li * 1.5)));
+        });
+        cy += r.h;
+        return;
+      }
+
+      /* A colour ramp, drawn the width of the column with its ends labelled
+         underneath — the arrangement the viewer's own heat-map legend uses. */
+      if (r.t === 'grad') {
+        var e0 = r.entry, tw = colW - 2 * met.padX, gy = cy;
+        if (r.lines && r.lines.length) {
+          c.fillStyle = th.ink || '#111';
+          c.font = '600 ' + mm(met.fontMm) + 'px ' + font;
+          r.lines.forEach(function (ln, li) {
+            c.fillText(ln, mm(cx), mm(gy + met.fontMm * (0.95 + li * 1.4)));
+          });
+          gy += r.lines.length * met.fontMm * 1.4 + 0.8;
+        }
+        var gr = c.createLinearGradient(mm(cx), 0, mm(cx + tw), 0);
+        var n0 = e0.stops.length - 1;
+        e0.stops.forEach(function (s, i) { gr.addColorStop(n0 ? i / n0 : 0, s.color); });
+        c.fillStyle = gr;
+        roundRect(c, mm(cx), mm(gy), mm(tw), mm(met.barMm), mm(0.5));
+        c.fill();
+        c.strokeStyle = th.rule || '#ccd7e4';
+        c.lineWidth = Math.max(1, mm(0.2));
+        roundRect(c, mm(cx), mm(gy), mm(tw), mm(met.barMm), mm(0.5));
+        c.stroke();
+        gy += met.barMm;
+        if (e0.lo != null || e0.hi != null) {
+          c.fillStyle = th.muted || '#667';
+          c.font = '600 ' + mm(met.fontMm * 0.95) + 'px ' + font;
+          var by = mm(gy + 0.9 + met.fontMm * 0.95);
+          if (e0.lo != null) { c.textAlign = 'left';  c.fillText(String(e0.lo), mm(cx), by); }
+          if (e0.hi != null) { c.textAlign = 'right'; c.fillText(String(e0.hi), mm(cx + tw), by); }
+          c.textAlign = 'left';
+        }
         cy += r.h;
         return;
       }
@@ -2166,12 +2260,19 @@ var KLComposer = (function () {
       }
 
       var e = r.entry;
-      var swX = cx + (r.flat ? 0 : 1.4), swW = 6.4, swMid = cy + r.h / 2;
-      drawSwatch(c, e, swX, swMid, swW, S, mm, th);
+      var swX = cx + (r.flat ? 0 : 1.4), swW = met.swW, lines = r.lines || [''];
+      /* One line centres in its row, as before. A label that WRAPS aligns its
+         swatch to the first line instead — centring a swatch on a three-line
+         row floats it beside the middle line, reading as if it belonged to
+         nothing. */
+      var lineH = met.fontMm * 1.45;
+      var firstMid = (lines.length <= 1) ? (cy + r.h / 2) : (cy + 0.7 + lineH / 2);
+      drawSwatch(c, e, swX, firstMid, swW, S, mm, th);
       c.fillStyle = th.ink || '#111';
       c.font = '400 ' + mm(met.fontMm) + 'px ' + font;
-      var label = e.label || (r.flat ? r.block.title : '');
-      c.fillText(clip(c, label, mm(colW - 2 * met.padX - swW - 4)), mm(swX + swW + 2.2), mm(swMid + met.fontMm * 0.36));
+      lines.forEach(function (ln, li) {
+        c.fillText(ln, mm(swX + swW + 2.2), mm(firstMid + met.fontMm * 0.36 + li * lineH));
+      });
       cy += r.h;
     });
 
@@ -2705,7 +2806,12 @@ var KLComposer = (function () {
 
         /* First layout pass to learn the map frame's aspect ratio, which
            the extent normaliser needs before the frame is rendered. */
-        var L0 = Layout.compose(tpl, sheetOpts(), {
+        /* Same resolution as page0 above — this pass only exists to learn the
+           map frame's aspect, and an aspect measured on the wrong page shape
+           would feed a wrongly normalised bbox into the render. */
+        var L0 = Layout.compose(tpl, Object.assign(sheetOpts(), {
+          orientation: state.orientation === 'auto' ? (tpl.orientation || 'landscape') : state.orientation
+        }), {
           title: info.title, subtitle: info.subtitle, filterText: info.filterText,
           legend: legend
         });
@@ -2726,7 +2832,14 @@ var KLComposer = (function () {
             canvas.width = Math.round(page.w * S);
             canvas.height = Math.round(page.h * S);
 
-            var L = Layout.compose(tpl, sheetOpts(), {
+            /* The RESOLVED orientation, not state's raw value.
+               `state.orientation` is routinely 'auto', which pageRect treats as
+               landscape — so with auto resolving to portrait (which Kerala's
+               tall outline does), the CANVAS was sized 210x297 while the LAYOUT
+               was composed for 297x210. Everything laid out against the right
+               edge, the legend first, was then drawn past the end of the canvas
+               and simply did not appear on the sheet. */
+            var L = Layout.compose(tpl, Object.assign(sheetOpts(), { orientation: orient }), {
               title: info.title, subtitle: info.subtitle, filterText: info.filterText,
               legend: legend
             });
