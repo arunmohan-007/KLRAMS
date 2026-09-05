@@ -19,7 +19,9 @@ import org.springframework.stereotype.Service;
  *
  * <p>{@code __dscale} is a whole-network decision (mm vs µm surveys), so it is
  * computed once per period and stamped on every feature — neighbouring tiles must
- * agree or the D0 colour scale breaks at seams.
+ * agree or the D0 colour scale breaks at seams. {@code __style}, when the saved
+ * style colours by D0, reuses this same scale-corrected value rather than the raw
+ * attrs text, for the same reason.
  */
 @Service
 public class FwdTileService {
@@ -64,7 +66,7 @@ public class FwdTileService {
         // styled the layer, and the D0 colouring above is untouched either way.
         String[] keys = styles.tileKeys("fwd");
         byte[] tile = jdbc.queryForObject(TILE_SQL, byte[].class,
-                t.z(), t.x(), t.y(), periodId, periodId, keys[0], keys[1], extent, buffer, extent);
+                t.z(), t.x(), t.y(), periodId, periodId, keys[0], keys[0], keys[1], extent, buffer, extent);
 
         return (tile == null || tile.length == 0) ? null : tile;
     }
@@ -120,7 +122,14 @@ public class FwdTileService {
                     c.from_ch,
                     c.to_ch,
                     c.attrs::text   AS attrs_json,
-                    c.attrs->>(?::text) AS __style,
+                    /* A style keyed on D0 (the only case seeded today, see
+                       LayerStyleService.fwdD0Style) has to read the SAME
+                       scale-corrected value the D0 legend colours the layer
+                       by, not the raw attrs text — a survey recorded in mm
+                       would otherwise band into "< 100" almost everywhere. */
+                    CASE WHEN regexp_replace(lower(?::text), '[^a-z0-9]', '', 'g') IN ('d0', 'do')
+                         THEN (round(c.d0 * s.f))::text
+                         ELSE c.attrs->>(?::text) END AS __style,
                     c.attrs->>(?::text) AS __label,
                     s.f             AS __dscale,
                     round(c.d0 * s.f)::int AS __d0,

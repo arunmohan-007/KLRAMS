@@ -30,7 +30,10 @@ import java.util.regex.Pattern;
  * only when someone deliberately saves a style, and deleting the row is the
  * "back to the built-in style" action — which is why the built-in look never had
  * to be transcribed into the database, where it could then drift out of step
- * with the code that actually draws it.
+ * with the code that actually draws it. FWD is the one deliberate exception
+ * ({@link #seedFwdStyle}): its D0 scale is transcribed once, on first boot, so
+ * the layer has a starting entry here instead of none at all — see that
+ * method for why it is safe.
  *
  * <h2>Condition and PCI are deliberately absent</h2>
  * Both already have an exclusive styling screen in the viewer — colour-by
@@ -125,6 +128,7 @@ public class LayerStyleService {
         try {
             ensureSchema();
             seedTemplates();
+            seedFwdStyle();
         } catch (Exception e) {
             log.error("Style registry init failed — Style & Label Management may be degraded, "
                     + "but the app will keep starting", e);
@@ -265,6 +269,64 @@ public class LayerStyleService {
           + "the layer actually holds when you apply it.",
             categorical(new String[]{"#4264fb", "#e55e5e", "#3bb2d0", "#f7c948", "#8a5cb8",
                                      "#1a9850", "#e07b2a", "#0fa3a3"}), sort += 10);
+    }
+
+    /**
+     * Give FWD (Deflection) a starting entry in this module, matching the D0
+     * colour scale the viewer has always drawn ({@code FWD_D0_STOPS} in
+     * {@code js/06-assets.js}) rather than leaving it the one asset layer with
+     * no entry here at all.
+     *
+     * <p>Unlike Condition and PCI, D0 never had its own analytical styling
+     * screen — {@code fwdD0ColorExpr()} was simply a constant sitting inside
+     * the generic asset loader, so there is no second answer to contradict.
+     * {@link FwdTileService} keeps this safe to edit or reset from here: a
+     * saved style keyed on {@code D0} is coloured from the same scale-corrected
+     * value (mm surveys normalised to microns) the built-in paint already used,
+     * not the raw attrs text.
+     *
+     * <p>Seeded once, on {@code INSERT ... WHERE NOT EXISTS}: a row someone
+     * has since edited, or reset back to nothing, is never overwritten by a
+     * later boot — the same one-way door {@link #tpl} uses for templates,
+     * just without the {@code built_in} column to key it on.
+     */
+    private void seedFwdStyle() {
+        try {
+            jdbc.update("""
+                INSERT INTO layer_style (layer_key, style, updated_by)
+                SELECT 'fwd', ?::jsonb, 'system'
+                 WHERE EXISTS (SELECT 1 FROM layer_definition WHERE layer_key = 'fwd')
+                   AND NOT EXISTS (SELECT 1 FROM layer_style WHERE layer_key = 'fwd')
+                """, write(clean(fwdD0Style())));
+        } catch (Exception e) {
+            log.error("Could not seed the FWD D0 style — Style & Label Management will show "
+                    + "the layer unstyled until someone saves one by hand", e);
+        }
+    }
+
+    /** The D0 deflection scale: six bands, same breaks and colours as the built-in legend. */
+    private static Map<String, Object> fwdD0Style() {
+        List<Map<String, Object>> ranges = new ArrayList<>();
+        ranges.add(band(null, 100d, "#1a9850", "< 100 microns"));
+        ranges.add(band(100d, 200d, "#91cf60", "100 – 200 microns"));
+        ranges.add(band(200d, 350d, "#fee08b", "200 – 350 microns"));
+        ranges.add(band(350d, 500d, "#fdae61", "350 – 500 microns"));
+        ranges.add(band(500d, 700d, "#f46d43", "500 – 700 microns"));
+        ranges.add(band(700d, null, "#b2182b", "> 700 microns"));
+        Map<String, Object> color = new LinkedHashMap<>();
+        color.put("mode", "RANGE");
+        color.put("attribute", "D0");
+        color.put("ranges", ranges);
+        return Map.of("color", color, "line", Map.of("width", 5d));
+    }
+
+    private static Map<String, Object> band(Double from, Double to, String color, String label) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (from != null) m.put("from", from);
+        if (to != null) m.put("to", to);
+        m.put("color", color);
+        m.put("label", label);
+        return m;
     }
 
     /** Upsert one built-in template. User-saved rows are never touched. */
