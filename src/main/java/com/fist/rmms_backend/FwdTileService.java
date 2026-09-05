@@ -22,6 +22,13 @@ import org.springframework.stereotype.Service;
  * agree or the D0 colour scale breaks at seams. {@code __style}, when the saved
  * style colours by D0, reuses this same scale-corrected value rather than the raw
  * attrs text, for the same reason.
+ *
+ * <p>The mm-vs-µm scale itself defaults to a guess — a period whose D0 values are
+ * all under 10 is assumed mm and scaled ×1000 — which is wrong for a period whose
+ * surveyed sections all happen to have very low deflection. {@code
+ * survey_periods.fwd_d0_unit} lets that guess be overridden per period (Data
+ * Console → Survey Periods); {@link SurveyPeriodService#fwdD0Factor} resolves it
+ * to the multiplier, or {@code null} to keep guessing.
  */
 @Service
 public class FwdTileService {
@@ -61,14 +68,49 @@ public class FwdTileService {
         if (!Boolean.TRUE.equals(built)) return null;
 
         int periodId = periods.resolve(requestedPeriodId);
+        // Someone who knows how this period's D0 was actually recorded can say
+        // so under Survey Periods; null means nobody has, so the query keeps
+        // guessing from the values themselves, as it always did.
+        Integer d0Factor = periods.fwdD0Factor(periodId);
         // The attribute a saved style colours and labels FWD by, lifted out of
         // attrs so a paint expression can read it. Null unless someone has
         // styled the layer, and the D0 colouring above is untouched either way.
         String[] keys = styles.tileKeys("fwd");
         byte[] tile = jdbc.queryForObject(TILE_SQL, byte[].class,
-                t.z(), t.x(), t.y(), periodId, periodId, keys[0], keys[0], keys[1], extent, buffer, extent);
+                t.z(), t.x(), t.y(), periodId, d0Factor, periodId,
+                keys[0], keys[0], keys[1], extent, buffer, extent);
 
         return (tile == null || tile.length == 0) ? null : tile;
+    }
+
+    /**
+     * The mm-vs-µm multiplier this period's D0 readings should be scaled by:
+     * the period's explicit override if it has one, otherwise the same
+     * from-the-data guess {@link #tile} falls back to.
+     *
+     * <p>Exposed so a caller outside the tile path agrees with what the map
+     * shows instead of guessing again on its own — {@code AssetController}'s
+     * whole-network GeoJSON (export, Report Hub, the chainage lookup in
+     * {@code js/24-fwd.js}) used to run three independent copies of this
+     * heuristic, one per consumer, which could each land on a different answer
+     * for the same period.
+     */
+    public int resolveD0Scale(int periodId) {
+        Integer override = periods.fwdD0Factor(periodId);
+        if (override != null) return override;
+        Integer f = jdbc.queryForObject("""
+            SELECT CASE WHEN max(abs(v)) > 0 AND max(abs(v)) < 10 THEN 1000 ELSE 1 END
+            FROM (
+                SELECT (SELECT (e.value)::double precision
+                          FROM jsonb_each_text(a.attrs) e
+                         WHERE regexp_replace(lower(e.key), '[^a-z0-9]', '', 'g') IN ('d0', 'do')
+                           AND e.value ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                         LIMIT 1) AS v
+                FROM road_assets a
+                WHERE a.asset_type = 'fwd' AND a.period_id = ?
+            ) d0
+            """, Integer.class, periodId);
+        return f == null ? 1 : f;
     }
 
     private static final String TILE_SQL =
@@ -88,7 +130,8 @@ public class FwdTileService {
                 WHERE a.asset_type = 'fwd' AND a.period_id = ?
             ),
             scale AS (
-                SELECT CASE WHEN max(abs(v)) > 0 AND max(abs(v)) < 10 THEN 1000 ELSE 1 END AS f
+                SELECT COALESCE(?::int,
+                           CASE WHEN max(abs(v)) > 0 AND max(abs(v)) < 10 THEN 1000 ELSE 1 END) AS f
                 FROM d0
             ),
             cand AS (

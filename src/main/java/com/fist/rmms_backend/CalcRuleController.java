@@ -47,6 +47,10 @@ public class CalcRuleController {
                 "effect", rules.stationEffect()));
             out.put("width", withUsage(rules.widthBands(), "pavement_width", rules.widthEffect()));
             out.put("pci", withUsage(rules.pciSettings(), "pci", null));
+            out.put("fwd_d0", Map.of(
+                    "periods", rules.fwdD0Periods(),
+                    "used_by", CalcRuleService.usedBy("fwd_d0"),
+                    "effect", rules.fwdD0Effect()));
             return ResponseEntity.ok(out);
         } catch (Exception e) {
             return fail("calculation rules", e);

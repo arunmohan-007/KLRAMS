@@ -118,7 +118,8 @@
     { key: 'carriageway', label: 'Carriageway correction', count: function () { return (D.carriageway.groups || []).length; } },
     { key: 'stations',    label: 'Traffic station groups', count: function () { return (D.stations.groups || []).length; } },
     { key: 'width',       label: 'Pavement width bands',   count: function () { return (D.width.bands || []).length; } },
-    { key: 'pci',         label: 'PCI weights',            count: function () { return null; } }
+    { key: 'pci',         label: 'PCI weights',            count: function () { return null; } },
+    { key: 'fwd_d0',      label: 'FWD deflection unit',    count: function () { return null; } }
   ];
 
   function renderTabs() {
@@ -589,6 +590,60 @@
     });
   }
 
+  /* ==================================================================
+     5. FWD deflection unit (mm vs microns)
+     ================================================================== */
+
+  var D0_UNITS = [
+    ['AUTO', 'Auto-detect'], ['MM', 'Millimetres (×1000 to microns)'], ['MICRONS', 'Microns (as recorded)']
+  ];
+
+  function renderFwdD0() {
+    var f = D.fwd_d0;
+    var periods = f.periods || [];
+    el('pane-fwd_d0').innerHTML =
+      fxStrip(f.effect) +
+      usePanel(f.used_by) +
+      '<div class="sec-d">FWD deflection (D0) is uploaded in whichever unit the survey used. A raw reading '
+      + 'under 10 is assumed to be millimetres and multiplied ×1000; this is a guess, so a survey known to '
+      + 'be in one unit or the other can say so per period below, and every screen that reads D0 — the map, '
+      + 'the FWD Dashboard, popups and exports — agrees with it instead of each guessing on its own.</div>' +
+      (periods.length
+        ? '<div class="tbl-wrap"><table><thead><tr>' +
+            '<th>Survey period</th><th class="num">D0 unit</th>' +
+          '</tr></thead><tbody>' +
+            periods.map(function (p) {
+              return '<tr><td><b>' + esc(p.name) + '</b>' + (p.is_active ? ' <span class="dflt">active</span>' : '') + '</td>' +
+                '<td class="num"><select class="cell" data-period="' + (+p.id) + '" data-requires="admin">' +
+                  D0_UNITS.map(function (u) {
+                    return '<option value="' + u[0] + '"' + ((p.fwd_d0_unit || 'AUTO') === u[0] ? ' selected' : '') + '>'
+                      + u[1] + '</option>';
+                  }).join('') +
+                '</select><span class="wro" data-ro="' + (+p.id) + '">'
+                  + esc((D0_UNITS.filter(function (u) { return u[0] === (p.fwd_d0_unit || 'AUTO'); })[0] || D0_UNITS[0])[1])
+                  + '</span></td></tr>';
+            }).join('') +
+          '</tbody></table></div>'
+        : '<div class="empty">No survey periods yet — create one in Data Console before setting a D0 unit.</div>');
+
+    document.querySelectorAll('#pane-fwd_d0 .wro').forEach(function (s) { s.style.display = 'none'; });
+
+    document.querySelectorAll('#pane-fwd_d0 [data-period]').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        var id = sel.getAttribute('data-period');
+        fetch('/api/survey-periods/' + id + '/fwd-unit', {
+          method: 'PUT', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ unit: sel.value })
+        }).then(function (r) { return r.json(); }).then(function (j) {
+          if (j.status !== 'ok') throw new Error(j.message || 'The unit could not be saved.');
+          msg('FWD D0 unit saved.', 'ok');
+          return reload();
+        }).catch(fail);
+      });
+    });
+  }
+
   /* ---------- draw everything ---------- */
 
   function render() {
@@ -597,6 +652,7 @@
     renderWorkbench(STN);
     renderWidth();
     renderPci();
+    renderFwdD0();
     showTab(tab);
     applyRole();
   }

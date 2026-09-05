@@ -2214,8 +2214,23 @@ async function spRenderAdmin(){
       +(!p.is_active&&total===0?'<button class="btn ghost" style="padding:2px 10px;font-size:12px" onclick="spDelete('+(+p.id)+')">Delete</button>':'')
       +'</div>'
       +'<div style="font-size:12px;color:#64718a;margin-top:4px">'+escLog((p.start_date||'…')+' – '+(p.end_date||'…'))+' &nbsp;·&nbsp; '+parts+'</div>'
+      +'<div style="font-size:12px;color:#64718a;margin-top:6px;display:flex;align-items:center;gap:6px">'
+      +'<span>FWD D0 unit:</span>'
+      +'<select style="font-size:12px;padding:2px 6px" onchange="spSetD0Unit('+(+p.id)+',this.value)">'
+      +['AUTO','MM','MICRONS'].map(u=>'<option value="'+u+'"'+((p.fwd_d0_unit||'AUTO')===u?' selected':'')+'>'
+        +(u==='AUTO'?'Auto-detect (guess from the values)':u==='MM'?'Millimetres (×1000 to microns)':'Microns (as recorded)')+'</option>').join('')
+      +'</select>'
+      +'</div>'
       +'</div>';
   }).join('');
+}
+async function spSetD0Unit(id,unit){
+  try{
+    const r=await fetch('/api/survey-periods/'+id+'/fwd-unit',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({unit:unit})});
+    const j=await r.json();
+    if(j.status==='ok'){logUpload('Survey period','—',true,'Set FWD D0 unit for "'+spName(id)+'" to '+unit);spRenderAdmin();}
+    else alert('Error: '+(j.message||'failed'));
+  }catch(e){alert('Request failed: '+e.message);}
 }
 async function spCreate(){
   const out=document.getElementById('oSp');

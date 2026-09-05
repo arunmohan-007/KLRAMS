@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Survey Periods — named survey cycles (e.g. "Survey 1", 01-Nov-2025 to
@@ -59,6 +60,13 @@ public class SurveyPeriodService {
                 is_active boolean DEFAULT false,
                 created_at timestamp DEFAULT now()
             )""");
+        /* NULL means "figure it out from the data" (FwdTileService's old and only
+           behaviour: a period whose D0 values are all under 10 is assumed mm and
+           scaled ×1000). That guess is wrong for a period whose surveyed sections
+           all happen to have very low deflection, so this lets someone who knows
+           which unit a period was actually recorded in say so once, instead of
+           the map re-guessing it from the numbers every time. */
+        jdbc.execute("ALTER TABLE survey_periods ADD COLUMN IF NOT EXISTS fwd_d0_unit text");
 
         // Make sure every existing data table has the period_id column before
         // anything queries it (tables themselves are created lazily elsewhere).
@@ -182,7 +190,34 @@ public class SurveyPeriodService {
         return jdbc.queryForList(
                 "SELECT id, name, to_char(start_date,'DD-Mon-YYYY') AS start_date, " +
                 "to_char(end_date,'DD-Mon-YYYY') AS end_date, is_active, " +
-                "to_char(created_at,'DD-Mon-YYYY HH24:MI') AS created_at " +
+                "to_char(created_at,'DD-Mon-YYYY HH24:MI') AS created_at, " +
+                "COALESCE(fwd_d0_unit, 'AUTO') AS fwd_d0_unit " +
                 "FROM survey_periods ORDER BY start_date DESC NULLS LAST, id DESC");
+    }
+
+    private static final Set<String> D0_UNITS = Set.of("AUTO", "MM", "MICRONS");
+
+    /**
+     * The factor FwdTileService should multiply a period's raw D0 readings by,
+     * or {@code null} to fall back to its own per-tile guess from the data.
+     */
+    public Integer fwdD0Factor(int periodId) {
+        List<String> rows = jdbc.queryForList(
+                "SELECT fwd_d0_unit FROM survey_periods WHERE id = ?", String.class, periodId);
+        if (rows.isEmpty()) return null;
+        String unit = rows.get(0);
+        if ("MM".equals(unit)) return 1000;
+        if ("MICRONS".equals(unit)) return 1;
+        return null;
+    }
+
+    /** AUTO clears the override (stored as NULL) rather than as a third value
+     *  everything downstream would also have to know about. */
+    public void setFwdD0Unit(int periodId, String unit) {
+        if (unit == null || !D0_UNITS.contains(unit)) {
+            throw new IllegalArgumentException("Unit must be one of " + D0_UNITS);
+        }
+        jdbc.update("UPDATE survey_periods SET fwd_d0_unit = ? WHERE id = ?",
+                "AUTO".equals(unit) ? null : unit, periodId);
     }
 }

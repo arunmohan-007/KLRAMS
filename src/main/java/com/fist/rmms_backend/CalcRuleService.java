@@ -82,9 +82,13 @@ public class CalcRuleService {
     }
 
     private final JdbcTemplate jdbc;
+    private final SurveyPeriodService periods;
+    private final FwdTileService fwdTiles;
 
-    public CalcRuleService(JdbcTemplate jdbc) {
+    public CalcRuleService(JdbcTemplate jdbc, SurveyPeriodService periods, FwdTileService fwdTiles) {
         this.jdbc = jdbc;
+        this.periods = periods;
+        this.fwdTiles = fwdTiles;
     }
 
     /* ==================================================================
@@ -776,6 +780,7 @@ public class CalcRuleService {
         out.add(carriagewayEffect());
         out.add(stationEffect());
         out.add(widthEffect());
+        out.add(fwdD0Effect());
         return out;
     }
 
@@ -841,6 +846,50 @@ public class CalcRuleService {
     }
 
     /**
+     * The FWD D0 deflection scale — raw survey readings against the microns the
+     * map, dashboard and exports all show. Not a group or a band like the other
+     * three rules; the "editable data" here is a per-survey-period choice
+     * (AUTO / MM / MICRONS), read and written through {@link
+     * SurveyPeriodService#fwdD0Factor} / {@link SurveyPeriodService#setFwdD0Unit}
+     * rather than held in a table of its own — {@code survey_periods.fwd_d0_unit}
+     * is scoped to the period, not the whole network, because two survey cycles
+     * can genuinely be recorded in different units.
+     */
+    public Map<String, Object> fwdD0Effect() {
+        String periodName = "—";
+        long rows = 0;
+        int factor = 1;
+        String unitLabel = "Auto-detect";
+        try {
+            int periodId = periods.activePeriodId();
+            periodName = periods.nameOf(periodId);
+            factor = fwdTiles.resolveD0Scale(periodId);
+            Integer override = periods.fwdD0Factor(periodId);
+            unitLabel = override == null
+                    ? "Auto-detect (guessed " + (factor == 1000 ? "millimetres" : "microns") + " from the values)"
+                    : (override == 1000 ? "Millimetres, as declared" : "Microns, as declared");
+            Long n = jdbc.queryForObject(
+                    "SELECT count(*) FROM road_assets WHERE asset_type = 'fwd' AND period_id = ?",
+                    Long.class, periodId);
+            rows = n == null ? 0 : n;
+        } catch (Exception e) {
+            log.debug("FWD D0 scale unavailable for the effects report", e);
+        }
+        return effect("fwd_d0", "FWD deflection unit",
+                "D0 scale applied to the active period (\"" + periodName + "\")",
+                1d, (double) factor, "× (raw → microns)", rows, rows, "D0 readings",
+                "Resolved as: " + unitLabel + ". Change it per survey period under Data Console → "
+              + "Survey Periods, or below.");
+    }
+
+    /** Every period with its FWD D0 unit choice, for the editor this rule shows —
+     *  the same list {@code SurveyPeriodService.list()} already returns elsewhere,
+     *  passed through so this page needs no calculation-rules-specific endpoint. */
+    public List<Map<String, Object>> fwdD0Periods() {
+        return periods.list();
+    }
+
+    /**
      * Where each rule is actually consumed — so nobody has to guess whether
      * changing a number here moves the Road Network dashboard, the PCI report or
      * both. Each entry is {screen, what it changes there}. Kept next to the rules
@@ -873,6 +922,15 @@ public class CalcRuleService {
             new String[]{"Dashboard · Condition", "The PCI-derived rankings"},
             new String[]{"Stored segment data", "condition_segments.pci_avg / pci_worst — stale until the "
                        + "segments are rebuilt"}));
+        USED_BY.put("fwd_d0", List.of(
+            new String[]{"Map viewer · FWD (Deflection) layer", "The colour of every D0 line, against the "
+                       + "6-band microns legend"},
+            new String[]{"Style & Label Management", "The FWD layer's saved colour bands, keyed on this same "
+                       + "scale-corrected D0 value"},
+            new String[]{"Map viewer · FWD popup / Chainage Locator", "The D0 (and D1..Dn) figures shown for a stretch"},
+            new String[]{"Dashboard · FWD", "Every D0 statistic — min/max/mean/percentiles, the lower→higher "
+                       + "profile and the histogram, by district and road class"},
+            new String[]{"Reports · FWD exports", "The D0 values in any exported whole-network FWD GeoJSON"}));
     }
 
     /** {screen, what it changes} for one rule; empty when the rule is unknown. */

@@ -69,13 +69,15 @@ public class AssetController {
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
     private final LayerAttributeService attributes;
+    private final FwdTileService fwdTiles;
     private final ObjectMapper om = new ObjectMapper();
 
     public AssetController(JdbcTemplate jdbc, SurveyPeriodService periods,
-                           LayerAttributeService attributes) {
+                           LayerAttributeService attributes, FwdTileService fwdTiles) {
         this.jdbc = jdbc;
         this.periods = periods;
         this.attributes = attributes;
+        this.fwdTiles = fwdTiles;
     }
 
     private void ensure() {
@@ -417,8 +419,10 @@ public class AssetController {
             // Survey streams are filtered to one period (default: the active one);
             // inventory types (bridge, culvert, furniture) ignore the parameter.
             if (SURVEY_TYPES.contains(t)) {
+                int resolvedPeriod = periods.resolve(periodId);
                 body = jdbc.queryForObject(base + " AND period_id = ?",
-                        String.class, t, periods.resolve(periodId));
+                        String.class, t, resolvedPeriod);
+                if ("fwd".equals(t)) body = stampFwdScale(body, resolvedPeriod);
             } else {
                 body = jdbc.queryForObject(base, String.class, t);
             }
@@ -429,6 +433,58 @@ public class AssetController {
         // Assets aren't cached in memory, but a content ETag still lets a repeat
         // map open skip the re-download when the data is unchanged (304).
         return GeoJsonResponse.conditional(body, GeoJsonResponse.contentTag(body), ifNoneMatch);
+    }
+
+    /**
+     * Stamp {@code __dscale}/{@code __d0} onto every FWD feature before this
+     * whole-network GeoJSON goes out, using {@link FwdTileService#resolveD0Scale}
+     * — the same period override / guess the map's tiles are coloured from.
+     *
+     * <p>Before this, {@code js/06-assets.js} and {@code js/24-fwd.js} each
+     * re-guessed the mm-vs-µm scale independently from whatever slice of D0
+     * values they happened to have, so an export or the chainage lookup could
+     * disagree with what the map showed for the very same period. Stamping it
+     * here means every consumer reads one number instead of computing three.
+     *
+     * <p>Failure is swallowed and the un-stamped GeoJSON returned as-is: a
+     * client that finds no {@code __dscale} falls back to its own guess, which
+     * is exactly what it did before this existed.
+     */
+    @SuppressWarnings("unchecked")
+    private String stampFwdScale(String geojson, int periodId) {
+        try {
+            int scale = fwdTiles.resolveD0Scale(periodId);
+            Map<String, Object> fc = om.readValue(geojson, Map.class);
+            List<Map<String, Object>> feats = (List<Map<String, Object>>) fc.get("features");
+            if (feats != null) {
+                for (Map<String, Object> f : feats) {
+                    Map<String, Object> props = (Map<String, Object>) f.get("properties");
+                    if (props == null) continue;
+                    props.put("__dscale", scale);
+                    Object raw = fwdD0Value(props);
+                    if (raw != null) {
+                        try {
+                            props.put("__d0", Math.round(Double.parseDouble(String.valueOf(raw)) * scale));
+                        } catch (NumberFormatException ignore) { /* non-numeric D0, leave unstamped */ }
+                    }
+                }
+            }
+            return om.writeValueAsString(fc);
+        } catch (Exception e) {
+            log.warn("Could not stamp the FWD D0 scale onto the GeoJSON export — clients will "
+                    + "fall back to their own guess: {}", e.toString());
+            return geojson;
+        }
+    }
+
+    /** The D0 reading under whichever case/spacing the CSV used, or null. */
+    private static Object fwdD0Value(Map<String, Object> props) {
+        for (Map.Entry<String, Object> e : props.entrySet()) {
+            String k = e.getKey().toLowerCase().replaceAll("[^a-z0-9]", "");
+            Object v = e.getValue();
+            if (("d0".equals(k) || "do".equals(k)) && v != null && !"".equals(v)) return v;
+        }
+        return null;
     }
 
     /** How many signature columns of a stream appear in the (normalised) header.

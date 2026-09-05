@@ -323,7 +323,13 @@ function loadAssetData(a){
       ? gj.features.some(f=>{const g=f.geometry&&f.geometry.type;return !g||g==='Point'||g==='MultiPoint';})
       : ((a.kind==='point')&&isStretchData(gj));
     const asLine=(a.kind==='line')||needLinRef||(a.type==='fwd');
-    const go=()=>{if(needLinRef)linRefFeatures(gj);if(a.type==='fwd'){const sc=fwdScale(gj);gj.features.forEach(f=>{const v=fwdD0(f.properties);if(v!=null&&v!=='')f.properties.__d0=Math.round(+v*sc);f.properties.__dscale=sc;});}
+    const go=()=>{if(needLinRef)linRefFeatures(gj);if(a.type==='fwd'){
+      /* The server now stamps __dscale (AssetController.stampFwdScale) with the
+         same period override / guess the map's tiles are coloured from. Only
+         fall back to guessing here if an older server response didn't carry it. */
+      const first=gj.features[0]&&gj.features[0].properties;
+      const sc=(first&&first.__dscale!=null)?+first.__dscale:fwdScale(gj);
+      gj.features.forEach(f=>{const v=fwdD0(f.properties);if(v!=null&&v!=='')f.properties.__d0=Math.round(+v*sc);f.properties.__dscale=sc;});}
       /* Build 163 — resolve each feature's section label into __sec so the
          network-scope filter can match assets regardless of CSV column names */
       gj.features.forEach(f=>{const v=pickProp(f.properties,ROAD_KEYS);if(v!=null&&v!=='')f.properties.__sec=String(v);});

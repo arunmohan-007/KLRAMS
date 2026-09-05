@@ -26,6 +26,10 @@ import java.util.stream.Collectors;
  * and lets us build sorted profiles / histograms per scope in one pass.
  * District comes from roads."District" via the record's section label, exactly
  * like {@link SurveyDashboardController}.
+ *
+ * <p>D0 is scaled to microns per period via {@link FwdTileService#resolveD0Scale}
+ * before any statistic is computed — the same value the map's D0 colouring and
+ * the FWD GeoJSON export use, so this dashboard never disagrees with either.
  */
 @RestController
 @RequestMapping("/api/fwd-dashboard")
@@ -33,10 +37,12 @@ public class FwdDashboardController {
 
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
+    private final FwdTileService fwdTiles;
 
-    public FwdDashboardController(JdbcTemplate jdbc, SurveyPeriodService periods) {
+    public FwdDashboardController(JdbcTemplate jdbc, SurveyPeriodService periods, FwdTileService fwdTiles) {
         this.jdbc = jdbc;
         this.periods = periods;
+        this.fwdTiles = fwdTiles;
     }
 
     /* One FWD test point, already joined to the road network.
@@ -80,14 +86,24 @@ public class FwdDashboardController {
     public Map<String, Object> summary() {
 
         Map<Integer, List<Pt>> byPeriod = new HashMap<>();
+        /* D0 comes off the row in whatever unit the survey was uploaded in — the
+           same mm-vs-microns question FwdTileService answers for the map. Resolved
+           once per period (a period override, or its own from-the-data guess) and
+           cached here rather than recomputed per row, so every point in a period
+           reads the same D0 the map colours it by. */
+        Map<Integer, Integer> scaleOf = new HashMap<>();
         for (Map<String, Object> row : jdbc.queryForList(SQL)) {
             Number pid = (Number) row.get("pid");
             if (pid == null) continue;
-            byPeriod.computeIfAbsent(pid.intValue(), k -> new ArrayList<>()).add(new Pt(
+            int periodId = pid.intValue();
+            int scale = scaleOf.computeIfAbsent(periodId, fwdTiles::resolveD0Scale);
+            Double rawD0 = (Double) row.get("d0");
+            Double d0 = rawD0 == null ? null : rawD0 * scale;
+            byPeriod.computeIfAbsent(periodId, k -> new ArrayList<>()).add(new Pt(
                 (String) row.get("district"), (String) row.get("cls"),
                 surfOf((String) row.get("ptype"), (String) row.get("cons_type"), (String) row.get("surf_type")),
                 (String) row.get("section"),
-                (Double) row.get("d0"), (Double) row.get("pav"), (Double) row.get("air")));
+                d0, (Double) row.get("pav"), (Double) row.get("air")));
         }
 
         int activeId = periods.activePeriodId();

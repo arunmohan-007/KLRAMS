@@ -36,9 +36,17 @@
   /* index the FWD features by road, as chainage ranges carrying D0..Dn (microns) */
   function index(gj){
     var fs=(gj&&gj.features)||[];
-    /* scale: deflections uploaded in mm (all < 10) are converted to microns x1000 */
-    var mx=0;fs.forEach(function(f){var v=parseFloat(d0raw(f.properties));if(!isNaN(v))mx=Math.max(mx,Math.abs(v));});
-    var sc=(mx>0&&mx<10)?1000:1; FWD.scale=sc;
+    /* The server stamps __dscale on every feature (AssetController.stampFwdScale)
+       with the period's explicit unit override, or its own from-the-data guess —
+       the same one the map's tiles use. Read it directly rather than re-guessing
+       from mm-vs-micron magnitude here, which could disagree with the map for the
+       very same period. Only guess if an older server response has no __dscale. */
+    var first=fs[0]&&fs[0].properties;
+    var sc=(first&&first.__dscale!=null)?+first.__dscale:(function(){
+      var mx=0;fs.forEach(function(f){var v=parseFloat(d0raw(f.properties));if(!isNaN(v))mx=Math.max(mx,Math.abs(v));});
+      return (mx>0&&mx<10)?1000:1;
+    })();
+    FWD.scale=sc;
     var by={};
     fs.forEach(function(f){
       var p=f.properties||{};var road=pp(p,RK);if(road==null||road==='')return;
