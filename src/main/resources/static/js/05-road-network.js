@@ -145,6 +145,23 @@ function ensureAttrMeta(attr){
     .catch(function(){delete _attrMetaP[attr];return ATTRS[attr];});
   return _attrMetaP[attr];
 }
+/* The Road Network filter panel narrows which roads are ON the map (via
+   NET_SCOPE / the layer filter), but colour-by has always painted from
+   ATTRS[attr] — every value the WHOLE network carries, filter or no filter.
+   That is why colouring by Road Name with a 2-road filter active still drew
+   a 900+ entry legend: the match expression (and the legend built from it,
+   here and in the Map Composer, which reads this exact live paint
+   expression back out of the style) baked in every road name regardless of
+   what was actually visible. Restrict the value list to whatever the
+   current filter leaves in scope before assigning colours/legend rows. */
+function netScopedValues(attr,fullList){
+  const rows=netFilters.filter(f=>f.attr&&f.val!=='');
+  if(!rows.length)return fullList;
+  const meta=nfMatchMeta(-1);
+  const present={};
+  meta.forEach(p=>{const v=p[attr];if(v!=null&&v!=='')present[String(v)]=1;});
+  return fullList.filter(v=>present[String(v)]);
+}
 function netColorByExpr(attr){
   const m=ATTRS[attr];
   if(!m)return netColor();
@@ -166,9 +183,14 @@ function netColorByExpr(attr){
     return ['interpolate',['linear'],['to-number',['coalesce',['get',attr],lo]],lo,'#9ec97f',(lo+hi)/2,'#e4a13a',hi,'#c0392b'];
   }
   const e=['match',['to-string',['get',attr]]];
-  const list=m.valuesByFreq||m.values;
-  if(list.length<=CAT_MAX){
-    list.forEach((v,i)=>{e.push(v,CAT_PALETTE[i%CAT_PALETTE.length]);});
+  const fullList=m.valuesByFreq||m.values;
+  const list=netScopedValues(attr,fullList);
+  /* Colour index is taken from fullList, not the (possibly shorter) scoped
+     list — a value keeps the same colour whether or not a filter happens to
+     be active, instead of every remaining value shifting palette slots each
+     time the filter changes. */
+  if(fullList.length<=CAT_MAX){
+    list.forEach(v=>{e.push(v,CAT_PALETTE[fullList.indexOf(v)%CAT_PALETTE.length]);});
   }else{
     /* too many distinct values for a curated palette — hash every one of
        them to its own colour so nothing collapses into a shared "other". */
@@ -190,9 +212,14 @@ function renderNetLegend(attr){
     return;
   }
   if(m.numeric){el.innerHTML=`<div class="lg"><span class="bar" style="background:linear-gradient(90deg,#9ec97f,#e4a13a,#c0392b)"></span><span class="lgt">${m.min} → ${m.max}</span></div>`;return;}
-  const ordered=m.valuesByFreq||m.values;
-  if(ordered.length<=CAT_MAX){
-    ordered.forEach((v,i)=>{const lbl=dec(attr,v);el.innerHTML+=`<div class="lg"><span class="bar" style="background:${CAT_PALETTE[i%CAT_PALETTE.length]}"></span><span class="lgt" title="${lbl}">${lbl}</span></div>`;});
+  const fullOrdered=m.valuesByFreq||m.values;
+  const ordered=netScopedValues(attr,fullOrdered);
+  if(!ordered.length){
+    el.innerHTML='<div class="lg"><span class="lgt">No road in the current filter carries this attribute.</span></div>';
+    return;
+  }
+  if(fullOrdered.length<=CAT_MAX){
+    ordered.forEach(v=>{const i=fullOrdered.indexOf(v);const lbl=dec(attr,v);el.innerHTML+=`<div class="lg"><span class="bar" style="background:${CAT_PALETTE[i%CAT_PALETTE.length]}"></span><span class="lgt" title="${lbl}">${lbl}</span></div>`;});
   }else{
     /* too many distinct values to list one swatch per row — show a sample
        (most common first) plus a note, matching the road-number legend's
@@ -448,6 +475,23 @@ function applyNetFilter(){
   renderNetScopeCard(list,rows);
   if(_netFitT)clearTimeout(_netFitT);
   if(list&&list.length){const fl=list;_netFitT=setTimeout(()=>fitFeaturesBounds(fl),550);}
+  refreshNetColorAndLegend();
+}
+/* Colour-by and its legend are scoped to the filter (see netScopedValues),
+   so both have to be redrawn whenever the filter itself changes — not just
+   when the colour-by dropdown changes. Repaints only the colour, never
+   re-fetches tiles (refreshRoadTileAttr is for an actual attribute change),
+   since the tile's own columns didn't change, only which rows are in scope. */
+function refreshNetColorAndLegend(){
+  const sel=document.getElementById('netColorBy');
+  const v=sel?sel.value:'__class__';
+  const attr=(v&&v!=='__class__')?v:null;
+  if(!attr){renderNetLegend(null);return;}
+  const ready=(typeof ensureAttrMeta==='function')?ensureAttrMeta(attr):Promise.resolve(null);
+  ready.then(function(){
+    if(map.getLayer('roadnet'))map.setPaintProperty('roadnet','line-color',netColorByExpr(attr));
+    renderNetLegend(attr);
+  });
 }
 
 /* ============================================================
