@@ -1,6 +1,6 @@
 /* ============================================================
    KLRAMS viewer · 18-filters.js
-   New filters for the unified Filter folder — FWD (D0 microns),
+   New filters for the unified Filter folder — FWD (D0 mm),
    PCI (value range, both layers), Traffic (min ADT) — plus the
    layer-off lock handling shared by every filter section.
    (Network and Road-Condition filters keep their original logic
@@ -8,7 +8,7 @@
    32-iri-2km.js; their controls are simply relocated into the folder.)
    ============================================================ */
 
-/* ---------- FWD: filter by D0 deflection (microns) ---------- */
+/* ---------- FWD: filter by D0 deflection (mm) ---------- */
 function applyFwdFilter(){
   if(!map.getLayer('as-fwd')) return;
   const mn=parseFloat(document.getElementById('fwdMin').value);

@@ -280,32 +280,58 @@ public class LayerStyleService {
      * <p>Unlike Condition and PCI, D0 never had its own analytical styling
      * screen — {@code fwdD0ColorExpr()} was simply a constant sitting inside
      * the generic asset loader, so there is no second answer to contradict.
-     * {@link FwdTileService} keeps this safe to edit or reset from here: a
-     * saved style keyed on {@code D0} is coloured from the same scale-corrected
-     * value (mm surveys normalised to microns) the built-in paint already used,
-     * not the raw attrs text.
+     * D0 is read exactly as uploaded — millimetres, no scale conversion —
+     * everywhere in the app, this style included.
      *
      * <p>Seeded once, on {@code INSERT ... WHERE NOT EXISTS}: a row someone
      * has since edited, or reset back to nothing, is never overwritten by a
      * later boot — the same one-way door {@link #tpl} uses for templates,
      * just without the {@code built_in} column to key it on.
+     *
+     * <p>One migration rides alongside the seed: an earlier version of this
+     * method briefly shipped the bands in microns (×1000). A row that still
+     * matches that exact original default — never touched since — is moved
+     * to the mm scale; a row someone has since customised is left alone.
      */
     private void seedFwdStyle() {
         try {
+            String freshStyle = write(clean(fwdD0Style()));
             jdbc.update("""
                 INSERT INTO layer_style (layer_key, style, updated_by)
                 SELECT 'fwd', ?::jsonb, 'system'
                  WHERE EXISTS (SELECT 1 FROM layer_definition WHERE layer_key = 'fwd')
                    AND NOT EXISTS (SELECT 1 FROM layer_style WHERE layer_key = 'fwd')
-                """, write(clean(fwdD0Style())));
+                """, freshStyle);
+            jdbc.update("""
+                UPDATE layer_style SET style = ?::jsonb, updated_at = now(), updated_by = 'system'
+                 WHERE layer_key = 'fwd' AND style = ?::jsonb
+                """, freshStyle, write(clean(legacyMicronFwdD0Style())));
         } catch (Exception e) {
             log.error("Could not seed the FWD D0 style — Style & Label Management will show "
                     + "the layer unstyled until someone saves one by hand", e);
         }
     }
 
-    /** The D0 deflection scale: six bands, same breaks and colours as the built-in legend. */
+    /** The D0 deflection scale: six bands, same breaks and colours as the built-in legend
+     *  (millimetres — D0 is never converted to any other unit). */
     private static Map<String, Object> fwdD0Style() {
+        List<Map<String, Object>> ranges = new ArrayList<>();
+        ranges.add(band(null, 0.10, "#1a9850", "< 0.10 mm"));
+        ranges.add(band(0.10, 0.20, "#91cf60", "0.10 – 0.20 mm"));
+        ranges.add(band(0.20, 0.35, "#fee08b", "0.20 – 0.35 mm"));
+        ranges.add(band(0.35, 0.50, "#fdae61", "0.35 – 0.50 mm"));
+        ranges.add(band(0.50, 0.70, "#f46d43", "0.50 – 0.70 mm"));
+        ranges.add(band(0.70, null, "#b2182b", "> 0.70 mm"));
+        Map<String, Object> color = new LinkedHashMap<>();
+        color.put("mode", "RANGE");
+        color.put("attribute", "D0");
+        color.put("ranges", ranges);
+        return Map.of("color", color, "line", Map.of("width", 5d));
+    }
+
+    /** The original (microns) default, kept only so {@link #seedFwdStyle} can recognise
+     *  and migrate a row nobody has customised since. Not used to seed anything new. */
+    private static Map<String, Object> legacyMicronFwdD0Style() {
         List<Map<String, Object>> ranges = new ArrayList<>();
         ranges.add(band(null, 100d, "#1a9850", "< 100 microns"));
         ranges.add(band(100d, 200d, "#91cf60", "100 – 200 microns"));
@@ -401,7 +427,7 @@ public class LayerStyleService {
      * preset cannot know the range of a column it has never seen. Applying it
      * asks for the attribute and the min/max, and the client spreads the colours
      * across them — so the same ramp works on an IRI in m/km and a deflection in
-     * microns without either being wrong.
+     * millimetres without either being wrong.
      */
     private static Map<String, Object> ramp(String[] colors) {
         List<Map<String, Object>> stops = new ArrayList<>();

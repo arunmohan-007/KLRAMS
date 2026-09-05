@@ -214,7 +214,7 @@ final class LayerAttributeCatalog {
             dt("Section Start Date", "Section Start Date", "Section_Start_Date"),
             s("Survey Version", "Survey Version", "Survey_Version")));
         for (int n = 0; n <= 9; n++) {
-            fwd.add(d("D" + n, "D" + n, "microns", "D" + n + " ", "d" + n));
+            fwd.add(d("D" + n, "D" + n, "mm", "D" + n + " ", "d" + n));
         }
         fwd.add(d("Pavement Temp", "Pavement Temp", "°C",
                   "Pavement_Temp", "Pavement Temperature", "Pav Temp"));

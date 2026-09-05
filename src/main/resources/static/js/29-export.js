@@ -95,7 +95,7 @@ function zipStore(entries){
 var DBF_ALIAS={           /* names this app builds — hand-picked shortenings */
   'PCI_composite':'PCI_COMP','PCI_worst_lane':'PCI_WORST','ADT_veh_per_day':'ADT_PER_DY',
   'Total_vehicles':'TOT_VEH','Survey_days':'SRVY_DAYS','Chainage_m':'CHAINAGE_M',
-  'From_ch_m':'FROM_CH_M','WKT_geometry':'WKT_GEOM','D0_microns':'D0_MICRON',
+  'From_ch_m':'FROM_CH_M','WKT_geometry':'WKT_GEOM','D0_mm':'D0_MM',
   'Road_Name':'ROAD_NAME','Section_La':'SECTION_LA','Measrd_Len':'MEASRD_LEN',
   /* geotechnical upload columns (the fixed schema in ASSET_UNITS_SCHEMA) */
   'Observed Thickness of Wearing Course mm':'THK_WEAR',
@@ -389,16 +389,16 @@ function condBandFor(param,v){
   return{label:'Good',color:gC};
 }
 /* D0 deflection band — mirrors fwdD0ColorExpr() / FWD_D0_STOPS (06-assets.js):
-   same step thresholds, same colours and labels as the map's own legend. */
+   same step thresholds, same colours and labels as the map's own legend (mm). */
 function fwdBandFor(v){
   if(v==null||v===''||isNaN(+v))return{label:'No data',color:'#9aa0a6'};
   var n=+v;
-  if(n<100)return{label:'< 100',color:'#1a9850'};
-  if(n<200)return{label:'100 – 200',color:'#91cf60'};
-  if(n<350)return{label:'200 – 350',color:'#fee08b'};
-  if(n<500)return{label:'350 – 500',color:'#fdae61'};
-  if(n<700)return{label:'500 – 700',color:'#f46d43'};
-  return{label:'> 700',color:'#b2182b'};
+  if(n<0.10)return{label:'< 0.10',color:'#1a9850'};
+  if(n<0.20)return{label:'0.10 – 0.20',color:'#91cf60'};
+  if(n<0.35)return{label:'0.20 – 0.35',color:'#fee08b'};
+  if(n<0.50)return{label:'0.35 – 0.50',color:'#fdae61'};
+  if(n<0.70)return{label:'0.50 – 0.70',color:'#f46d43'};
+  return{label:'> 0.70',color:'#b2182b'};
 }
 function kmlGeom(g){
   var cd=function(c){return c[0]+','+c[1]+',0';};
@@ -511,8 +511,8 @@ function cleanProps(p,layerKey){
   var o={},taken={};
   Object.keys(p||{}).forEach(function(k){
     if(k==='lane_vals')return;                      /* redundant JSON blob — lane values are flattened below */
-    if(k==='__d0'){o.D0_microns=p[k];taken.D0_microns=1;return;}
-    if(k.charAt(0)==='_')return;                    /* internal (__sec, __dscale, __adt…) */
+    if(k==='__d0'){o.D0_mm=p[k];taken.D0_mm=1;return;}
+    if(k.charAt(0)==='_')return;                    /* internal (__sec, __adt…) */
     if(/^L_(CC|CL1|CL2|CR1|CR2)$/.test(k))return;   /* internal lane-presence flags */
     var v=p[k];if(v==null||v==='')return;
     var name=expLabel(layerKey,k)||k;
@@ -770,8 +770,8 @@ var EXP={
       return {feats:fs,total:all.length,filtered:condF||!!window.NET_SCOPE,rowFor:rowFor,suffix:suffix};
     }},
   fwd:{label:'FWD deflection',color:'#7b1fa2',toggle:'showFwd',layerKey:'fwd',
-    bandOrder:['< 100','100 – 200','200 – 350','350 – 500','500 – 700','> 700','No data'],
-    bandLabel:'D0 deflection band (microns, matching the map legend)',
+    bandOrder:['< 0.10','0.10 – 0.20','0.20 – 0.35','0.35 – 0.50','0.50 – 0.70','> 0.70','No data'],
+    bandLabel:'D0 deflection band (mm, matching the map legend)',
     bandFor:function(){return function(f){return fwdBandFor((f.properties||{}).__d0);};},
     ensure:function(){return ensureAssetData('fwd');},
     collect:function(){

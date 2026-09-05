@@ -333,7 +333,7 @@ function buildPopup(props,roadId,ch,lane){
   /* ---- Condition Data pane (matrix + PCI at chainage) ---- */
   H+='<div class="kc-pane on" id="tab-cond">'+condPaneInner(props,roadId,ch)+'</div>';
 
-  /* ---- FWD pane (dedicated FWD module, by chainage range, in microns) ---- */
+  /* ---- FWD pane (dedicated FWD module, by chainage range, in mm) ---- */
   H+='<div class="kc-pane" id="tab-fwd">';
   var kAt=(window.KL&&KL.atExact)?KL.atExact(roadId,ch):{};
   if(c){for(var _k in c){if(kAt[_k]==null||kAt[_k]==='')kAt[_k]=c[_k];}}
@@ -347,9 +347,9 @@ function buildPopup(props,roadId,ch,lane){
   var hasPts=(fwd!=null||dnums.length||traf!=null||soil!=null||core!=null);
   if(hasPts){
     var rng=(_fr&&!isNaN(_fr.from)&&!isNaN(_fr.to))?(Math.round(_fr.from).toLocaleString()+' \u2013 '+Math.round(_fr.to).toLocaleString()+' m'):(Math.round(ch).toLocaleString()+' m');
-    H+='<div class="kc-condhead">Deflection (microns) &middot; '+rng+'</div><div class="kc-kvs">';
-    if(fwd!=null)H+='<div class="kc-kv"><span class="k">Central deflection (D0)</span><span class="v">'+fwd+' &micro;m</span></div>';
-    dnums.forEach(function(d){H+='<div class="kc-kv"><span class="k">Deflection '+d[0]+'</span><span class="v">'+d[1]+' &micro;m</span></div>';});
+    H+='<div class="kc-condhead">Deflection (mm) &middot; '+rng+'</div><div class="kc-kvs">';
+    if(fwd!=null)H+='<div class="kc-kv"><span class="k">Central deflection (D0)</span><span class="v">'+fwd+' mm</span></div>';
+    dnums.forEach(function(d){H+='<div class="kc-kv"><span class="k">Deflection '+d[0]+'</span><span class="v">'+d[1]+' mm</span></div>';});
     /* FWD survey v2 — Pavement/Air Temp recorded per drop (°C); null on older surveys */
     if(_fr&&_fr.pt!=null)H+='<div class="kc-kv"><span class="k">Pavement temp</span><span class="v">'+_fr.pt+' &deg;C</span></div>';
     if(_fr&&_fr.at!=null)H+='<div class="kc-kv"><span class="k">Air temp</span><span class="v">'+_fr.at+' &deg;C</span></div>';

@@ -16,8 +16,6 @@ import java.util.*;
  *   POST   /api/survey-periods/{id}/activate make this the period the main map shows
  *   DELETE /api/survey-periods/{id}          only when empty and not active
  *   GET    /api/survey-periods/availability  per-period row counts for every survey dataset
- *   PUT    /api/survey-periods/{id}/fwd-unit set {unit: AUTO|MM|MICRONS} — overrides the
- *                                            guessed FWD D0 scale for this period
  */
 @RestController
 @RequestMapping("/api/survey-periods")
@@ -76,18 +74,6 @@ public class SurveyPeriodController {
             return ResponseEntity.status(409).body(Map.of("status", "error",
                     "message", "Period still holds " + rows + " data row(s) — it can only be deleted when empty."));
         jdbc.update("DELETE FROM survey_periods WHERE id = ?", id);
-        return ResponseEntity.ok(Map.of("status", "ok"));
-    }
-
-    @PutMapping("/{id}/fwd-unit")
-    public ResponseEntity<Map<String, Object>> setFwdUnit(@PathVariable int id, @RequestBody Map<String, String> body) {
-        if (!periods.exists(id))
-            return ResponseEntity.status(404).body(Map.of("status", "error", "message", "Unknown period"));
-        try {
-            periods.setFwdD0Unit(id, body.get("unit"));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("status", "error", "message", e.getMessage()));
-        }
         return ResponseEntity.ok(Map.of("status", "ok"));
     }
 

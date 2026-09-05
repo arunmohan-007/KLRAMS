@@ -266,7 +266,7 @@ var KLStyle = (function () {
     }
 
     /* GRADIENT — stops are 0-1 fractions of the declared min..max, so
-       one ramp works on an IRI in m/km and a deflection in microns. */
+       one ramp works on an IRI in m/km and a deflection in millimetres. */
     var g = c.gradient || {};
     var lo = num(g.min), hi = num(g.max);
     if (!(hi > lo)) return fallback;

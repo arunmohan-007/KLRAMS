@@ -82,11 +82,11 @@ function fdbScope(p){
   return (p.districts||[]).find(d=>d.district===fdbDistrict)||p;
 }
 
-/* D0 values in this data are millimetres (≈0.3 mm); older uploads may be
-   microns (≈300) — pick the unit from the period-wide maximum. */
-function fdbUnit(p){return (p.d0&&p.d0.max>10)?'μm':'mm';}
-function fdbF(v,unit){if(v==null||isNaN(v))return'—';return unit==='mm'?(+v).toFixed(3):String(Math.round(+v));}
-function fdbFt(v,unit){if(v==null||isNaN(v))return'—';return unit==='mm'?(+v).toFixed(2):String(Math.round(+v));}
+/* D0 is read exactly as uploaded — millimetres — with no scale detection or
+   conversion; every reading here and everywhere else in the app is mm. */
+function fdbUnit(p){return 'mm';}
+function fdbF(v,unit){if(v==null||isNaN(v))return'—';return (+v).toFixed(3);}
+function fdbFt(v,unit){if(v==null||isNaN(v))return'—';return (+v).toFixed(2);}
 
 /* nice ceiling for an axis maximum */
 function fdbNiceMax(v){

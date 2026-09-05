@@ -392,26 +392,25 @@ EXTRA_ASSETS.forEach(function(a){
   });
 });
 
-/* ---- FWD (D0 deflection), coloured by D0 band (mirrors 06-assets.js) ---- */
-var FWD_STOPS=[[100,'#1a9850'],[200,'#91cf60'],[350,'#fee08b'],[500,'#fdae61'],[700,'#f46d43']];
-var FWD_LEGEND=[['#1a9850','< 100'],['#91cf60','100 – 200'],['#fee08b','200 – 350'],['#fdae61','350 – 500'],['#f46d43','500 – 700'],['#b2182b','> 700']];
+/* ---- FWD (D0 deflection), coloured by D0 band (mirrors 06-assets.js) ----
+   D0 is read exactly as uploaded — millimetres — with no scale detection. */
+var FWD_STOPS=[[0.10,'#1a9850'],[0.20,'#91cf60'],[0.35,'#fee08b'],[0.50,'#fdae61'],[0.70,'#f46d43']];
+var FWD_LEGEND=[['#1a9850','< 0.10'],['#91cf60','0.10 – 0.20'],['#fee08b','0.20 – 0.35'],['#fdae61','0.35 – 0.50'],['#f46d43','0.50 – 0.70'],['#b2182b','> 0.70']];
 function fwdD0(p){if(!p)return null;for(var k in p){var kk=String(k).toLowerCase().replace(/[^a-z0-9]/g,'');if(kk==='d0'||kk==='do'){var v=p[k];if(v!=null&&v!=='')return v;}}return null;}
-function fwdColor(p,scale){var raw=fwdD0(p);if(raw==null||raw===''||isNaN(+raw))return NONE;var v=Math.abs(+raw)*scale;for(var i=0;i<FWD_STOPS.length;i++){if(v<FWD_STOPS[i][0])return FWD_STOPS[i][1];}return '#b2182b';}
+function fwdColor(p){var raw=fwdD0(p);if(raw==null||raw===''||isNaN(+raw))return NONE;var v=Math.abs(+raw);for(var i=0;i<FWD_STOPS.length;i++){if(v<FWD_STOPS[i][0])return FWD_STOPS[i][1];}return '#b2182b';}
 var fwdLayer=L.layerGroup(),fwdLoaded=false;
 bindToggle('tFwd',fwdLayer,function(){
   if(fwdLoaded)return; fwdLoaded=true;
   getJSON('/api/assets/fwd/geojson').then(function(gj){
-    var mx=0;((gj&&gj.features)||[]).forEach(function(f){var v=parseFloat(fwdD0(f.properties));if(!isNaN(v))mx=Math.max(mx,Math.abs(v));});
-    var scale=(mx>0&&mx<10)?1000:1;   /* metres→microns fallback, as in the full viewer */
     fwdLayer.clearLayers();
     L.geoJSON(gj,{
-      pointToLayer:function(f,latlng){return L.circleMarker(latlng,{radius:5,color:'#fff',weight:1,fillColor:fwdColor(f.properties||{},scale),fillOpacity:.95});},
+      pointToLayer:function(f,latlng){return L.circleMarker(latlng,{radius:5,color:'#fff',weight:1,fillColor:fwdColor(f.properties||{}),fillOpacity:.95});},
       onEachFeature:function(f,l){l.bindPopup(function(){return assetPopup(f.properties||{},'FWD (D0)');},{maxWidth:320});}
     }).addTo(fwdLayer);
     document.getElementById('cFwd').textContent=((gj&&gj.features?gj.features.length:0)).toLocaleString();
   }).catch(function(){document.getElementById('cFwd').textContent='0';});
 });
-document.getElementById('fwdLegend').innerHTML='<div class="hint" style="margin:2px 0 4px">D0 deflection (microns)</div>'+
+document.getElementById('fwdLegend').innerHTML='<div class="hint" style="margin:2px 0 4px">D0 deflection (mm)</div>'+
   FWD_LEGEND.map(function(r){return '<div class="li"><span class="swatch" style="background:'+r[0]+'"></span>'+esc(r[1])+'</div>';}).join('');
 
 /* ---- PCI engine (IRC:82-2023) — ported from js/14-pci-engine.js. Composite = area-

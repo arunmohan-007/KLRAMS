@@ -40,10 +40,11 @@ const ASSETS=[
 /* FWD is a LINE asset (From..To + D0..Dn). Lat/Lng in the CSV stay in attrs for
    the popup only — placement is always Section_Label + chainage LRS. */
 function fwdD0(p){if(!p)return null;for(const k in p){const kk=String(k).toLowerCase().replace(/[^a-z0-9]/g,'');if(kk==='d0'||kk==='do'){const v=p[k];if(v!=null&&v!=='')return v;}}return null;}
-const FWD_D0_STOPS=[['#1a9850','< 100'],['#91cf60','100 – 200'],['#fee08b','200 – 350'],['#fdae61','350 – 500'],['#f46d43','500 – 700'],['#b2182b','> 700']];
-function fwdScale(gj){let mx=0;((gj&&gj.features)||[]).forEach(f=>{const v=parseFloat(fwdD0(f.properties));if(!isNaN(v))mx=Math.max(mx,Math.abs(v));});return (mx>0&&mx<10)?1000:1;}
-function fwdD0ColorExpr(){return ['case',['has','__d0'],['step',['to-number',['get','__d0']],'#1a9850',100,'#91cf60',200,'#fee08b',350,'#fdae61',500,'#f46d43',700,'#b2182b'],'#9aa0a6'];}
-function renderFwdLegend(){const el=document.getElementById('fwdLegend');if(!el)return;el.innerHTML='<div class="fl-t">D0 deflection (microns)</div>'+FWD_D0_STOPS.map(x=>'<div class="fl-r"><span class="sw" style="background:'+x[0]+'"></span>'+x[1]+'</div>').join('');}
+/* D0 is shown exactly as uploaded — millimetres — with no scale detection or
+   conversion. Band breaks are the mm equivalent of the survey's usual bands. */
+const FWD_D0_STOPS=[['#1a9850','< 0.10'],['#91cf60','0.10 – 0.20'],['#fee08b','0.20 – 0.35'],['#fdae61','0.35 – 0.50'],['#f46d43','0.50 – 0.70'],['#b2182b','> 0.70']];
+function fwdD0ColorExpr(){return ['case',['has','__d0'],['step',['to-number',['get','__d0']],'#1a9850',0.10,'#91cf60',0.20,'#fee08b',0.35,'#fdae61',0.50,'#f46d43',0.70,'#b2182b'],'#9aa0a6'];}
+function renderFwdLegend(){const el=document.getElementById('fwdLegend');if(!el)return;el.innerHTML='<div class="fl-t">D0 deflection (mm)</div>'+FWD_D0_STOPS.map(x=>'<div class="fl-r"><span class="sw" style="background:'+x[0]+'"></span>'+x[1]+'</div>').join('');}
 /* Build 164 — professional, unit-aware popups for the geotechnical datasets.
    Field keys below are the exact CSV column names; each row is [key, label, unit]. */
 const ASSET_UNITS_SCHEMA={
@@ -190,13 +191,12 @@ function assetPopup(lngLat,p,label,type){
   if(type&&ASSET_UNITS_SCHEMA[type])return assetProPopup(lngLat,p,type,label);
   const rdv=pickProp(p,ROAD_KEYS),road=(rdv!=null?rdv:p.road)||'';
   const fr=pickProp(p,FROM_KEYS),to=pickProp(p,TO_KEYS);
-  const sc=+p.__dscale||1;
   const isFwd=String(label).toUpperCase()==='FWD';
   const lane=p.XSP||p.Xsp||p.xsp||'';
   const defl=[];
   Object.keys(p).forEach(k=>{if(k.charAt(0)==='_')return;const m=ckey(k).match(/^d(\d+)$/);if(m){const v=p[k];if(v!=null&&v!=='')defl.push([parseInt(m[1],10),v]);}});
   defl.sort((x,y)=>x[0]-y[0]);
-  const skip={};Object.keys(p).forEach(k=>{const c=ckey(k);if(k==='__d0'||k==='__dscale'||/^d\d+$/.test(c)||ROAD_KEYS.indexOf(c)>=0||FROM_KEYS.indexOf(c)>=0||TO_KEYS.indexOf(c)>=0||c==='xsp'||c==='date')skip[k]=1;});
+  const skip={};Object.keys(p).forEach(k=>{const c=ckey(k);if(k==='__d0'||/^d\d+$/.test(c)||ROAD_KEYS.indexOf(c)>=0||FROM_KEYS.indexOf(c)>=0||TO_KEYS.indexOf(c)>=0||c==='xsp'||c==='date')skip[k]=1;});
   /* FWD popup: hide survey-admin rows (survey type/version/dates, company). */
   if(isFwd){const _fwdHide={surveytype:1,surveyversion:1,surveyenddate:1,surveystartdate:1,sectionstartdate:1,surveyingcompanyname:1,surveycompanyname:1};Object.keys(p).forEach(k=>{if(_fwdHide[ckey(k)])skip[k]=1;});}
   let chTxt='';
@@ -211,7 +211,7 @@ function assetPopup(lngLat,p,label,type){
   let rows='';
   Object.keys(p).forEach(k=>{if(skip[k])return;const v=p[k];if(v==null||v==='')return;const meta=_assetKeyMeta(k,type);rows+='<div class="kp-attr"><span class="kp-k">'+escH(meta.label||k)+'</span><span class="kp-v">'+(_assetUVal(v,meta.unit,type,k)||escH(v))+'</span></div>';});
   if(rows)h+='<div class="kp-block"><div class="kp-eyebrow">'+(isFwd?'Details':'Attributes')+'</div><div class="kp-attrs">'+rows+'</div></div>';
-  if(defl.length)h+='<div class="kp-block"><div class="kp-eyebrow">Deflections'+(sc===1000?' · microns':'')+'</div><div class="kp-grid">'+defl.map(d=>'<div class="kp-gcell"><span class="kp-gk">D'+d[0]+'</span><span class="kp-gv">'+escH(sc===1000?Math.round(+d[1]*sc):d[1])+'</span></div>').join('')+'</div></div>';
+  if(defl.length)h+='<div class="kp-block"><div class="kp-eyebrow">Deflections · mm</div><div class="kp-grid">'+defl.map(d=>'<div class="kp-gcell"><span class="kp-gk">D'+d[0]+'</span><span class="kp-gv">'+escH(d[1])+'</span></div>').join('')+'</div></div>';
   h+='</div>';
   klPopup(lngLat,h);
 }
@@ -324,12 +324,9 @@ function loadAssetData(a){
       : ((a.kind==='point')&&isStretchData(gj));
     const asLine=(a.kind==='line')||needLinRef||(a.type==='fwd');
     const go=()=>{if(needLinRef)linRefFeatures(gj);if(a.type==='fwd'){
-      /* The server now stamps __dscale (AssetController.stampFwdScale) with the
-         same period override / guess the map's tiles are coloured from. Only
-         fall back to guessing here if an older server response didn't carry it. */
-      const first=gj.features[0]&&gj.features[0].properties;
-      const sc=(first&&first.__dscale!=null)?+first.__dscale:fwdScale(gj);
-      gj.features.forEach(f=>{const v=fwdD0(f.properties);if(v!=null&&v!=='')f.properties.__d0=Math.round(+v*sc);f.properties.__dscale=sc;});}
+      /* D0 is read exactly as uploaded — millimetres, no scaling — the same
+         value the map tiles carry as __d0. */
+      gj.features.forEach(f=>{const v=parseFloat(fwdD0(f.properties));if(!isNaN(v))f.properties.__d0=Math.round(v*1000)/1000;});}
       /* Build 163 — resolve each feature's section label into __sec so the
          network-scope filter can match assets regardless of CSV column names */
       gj.features.forEach(f=>{const v=pickProp(f.properties,ROAD_KEYS);if(v!=null&&v!=='')f.properties.__sec=String(v);});

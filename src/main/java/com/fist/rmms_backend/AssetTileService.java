@@ -12,8 +12,8 @@ import java.util.Set;
  * the untouched {@code /api/assets/{type}/geojson}.
  *
  * <p>FWD is served by {@link FwdTileService} (same URL under {@link AssetTileController}) because
- * its tiles also stamp network-wide {@code __d0}/{@code __dscale} for the deflection colour
- * legend. Upload now stores FWD as a LINE stretch ({@code ST_LineSubstring} of From..To), so the
+ * its tiles also stamp {@code __d0} for the deflection colour legend (millimetres, exactly as
+ * uploaded). Upload now stores FWD as a LINE stretch ({@code ST_LineSubstring} of From..To), so the
  * tile paints stored geom rather than a client-side re-derivation.
  *
  * <p>{@code attrs} is free-form per CSV upload — unlike the condition/road columns, there is no
