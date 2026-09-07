@@ -217,11 +217,23 @@
       <a class="sub" href="#s4-8">4.8 Traffic stations</a>
       <a class="sub" href="#s4-11">4.11 Network Dashboard</a>
       <a class="sub" href="#s4-12">4.12 Report Hub</a>
+      <a class="sub" href="#s4-19">4.19 Chainage Locator</a>
+      <a class="sub" href="#s4-20">4.20 Heat Map Analysis</a>
+      <a class="sub" href="#s4-21">4.21 Map Composer</a>
+      <a class="sub" href="#s4-22">4.22 Exporting layer data</a>
+      <a class="sub" href="#s4-23">4.23 My Location (GPS)</a>
       <a href="#ch5"><b>5</b> The Data Console</a>
       <a href="#ch6"><b>6</b> GO Portal</a>
       <a href="#ch7"><b>7</b> Users &amp; Security</a>
       <a href="#ch8"><b>8</b> Site Control</a>
-      <a href="#ch9"><b>9</b> Troubleshooting &amp; FAQ</a>
+      <a href="#ch9"><b>9</b> Platform Modules</a>
+      <a class="sub" href="#s9-1">9.1 Survey Archive</a>
+      <a class="sub" href="#s9-2">9.2 Drone</a>
+      <a class="sub" href="#s9-3">9.3 Layer Management</a>
+      <a class="sub" href="#s9-4">9.4 Style &amp; Label Management</a>
+      <a class="sub" href="#s9-5">9.5 Lookup &amp; Short Code</a>
+      <a class="sub" href="#s9-6">9.6 Calculation Rules</a>
+      <a href="#ch10"><b>10</b> Troubleshooting &amp; FAQ</a>
       <div class="gap"></div>
       <a href="#appA"><b>A</b> Road data dictionary</a>
       <a href="#appB"><b>B</b> Condition thresholds</a>
@@ -311,6 +323,9 @@
       <h3>2.3 Browser requirements</h3>
       <p>The main GIS viewer uses WebGL. If your machine or remote-desktop session has no graphics acceleration, KLRAMS detects this and offers the <b>Lite map</b> (see § 4.18) which needs no WebGL.</p>
 
+      <h3>2.4 Using KLRAMS on a phone or tablet</h3>
+      <p>KLRAMS is usable on a phone or tablet browser — panels switch to a touch-friendly, bottom-sheet layout automatically on a narrow screen; no separate app or install is needed. All the core viewer functions (layers, Road Inspector, condition, PCI, search) work the same way; a few dense screens (multi-tab dashboards, the Data Console) are easier to use on a larger screen.</p>
+
       <!-- ============ 3. PORTALS ============ -->
       <div class="ch" id="ch3"><span class="num" style="--ac:var(--gold)">3</span><h2>The Portals<span class="sub">Public site and staff home</span></h2></div>
 
@@ -357,6 +372,7 @@
         <tr><td><b>PCI</b></td><td>Composite PCI; Worst-Lane PCI (generate first — § 4.6)</td></tr>
         <tr><td><b>Traffic stations</b></td><td>Survey stations with counts</td></tr>
         <tr><td><b>Sub-grade soil, Bituminous core &amp; Pavement crust</b></td><td>Geotechnical investigation layers</td></tr>
+        <tr><td><b>My layers</b></td><td>Layers created in Layer Management (§ 9.3) — including anyone's <i>shared</i> layers and your own <i>temporary</i> ones, which carry a one-click discard button right here in the panel</td></tr>
       </table>
       <p>The <b>Network</b> panel adds display controls for the road network itself: <b>colour by attribute</b> (e.g. road class, surface type, ownership) and <b>filter by attribute</b>, with a live legend.</p>
       <figure class="fig" data-img="fig-04-03-network-panel.png" data-hint="Capture the Network panel open with 'Colour by attribute' set (e.g. Road class) and the legend showing SH / MDR.">
@@ -507,12 +523,16 @@
       </figure>
 
       <h3 style="--ac:var(--violet)" id="s4-11">4.11 Network Dashboard</h3>
-      <p>Launcher → <b>Dashboard</b> opens the network analytics screen with four tabs:</p>
+      <p>Launcher → <b>Dashboard</b> opens the network analytics screen with seven tiles:</p>
       <ul>
         <li><b>Network Overview</b> — total network length (with the <b>dual-carriageway correction</b>: A/B carriageway pairs are averaged so dual roads are not double-counted), as-drawn length, SH/MDR split, network by road class (donut), network by current owner (ranked bars), and the longest SH / MDR roads with a district filter.</li>
-        <li><b>PCI Analysis</b> — network-wide IRC:82-2023 PCI distribution and rankings (after generating PCI).</li>
-        <li><b>Culverts</b> and <b>Bridges</b> — structure inventories and condition summaries.</li>
+        <li><b>Culverts</b> and <b>Bridges</b> — count and length by district and road class.</li>
+        <li><b>Surveys</b> — year-wise field survey volumes (NSV lane-km, FWD points, traffic stations, soil tests, bituminous cores) with a district-wise breakdown.</li>
+        <li><b>Traffic</b> — top stations by ADT (state-wide and district-wise), vehicle-class mix, and the 24-hour peak-hour profile.</li>
+        <li><b>FWD Deflection</b> — D0 ranked lower-to-higher by road class (SH/MDR) and district, plus pavement and air temperature readings where recorded.</li>
+        <li><b>Condition Data</b> — IRI, crack, pothole and other parameters as Low/High/Mean by surface type and road class, with a list of segments crossing a chosen threshold.</li>
       </ul>
+      <p>A separate <b>PCI Analysis</b> view (reached from the PCI group) gives the network-wide IRC:82-2023 PCI distribution and rankings, switchable between Composite and Worst-Lane.</p>
       <figure class="fig" data-img="fig-04-19-dashboard-overview.png" data-hint="Capture Dashboard → Network Overview tab.">
         <figcaption><span class="fig-no">Figure 4.19</span>Network Overview: corrected network length, class split, ownership, longest roads.</figcaption>
       </figure>
@@ -549,6 +569,7 @@
 
       <h3 style="--ac:var(--violet)" id="s4-16">4.16 Filters</h3>
       <p>The <b>Filter</b> panel applies attribute filters per layer — road network, condition, PCI, FWD, traffic. Choose <i>show matching only</i>, combine multiple conditions with <b>Match all / any</b>, and clear with one click. (A section is locked until its layer is switched on — use the <i>Turn on layer</i> shortcut in the panel.)</p>
+      <p>Administrative boundary layers and any layer under <b>My layers</b> (user-created or temporary) get their own filter sections here too, built automatically from whatever attributes that layer actually carries — they are independent of the Road Network filter, since none of them is tied to a road.</p>
       <figure class="fig" data-img="fig-04-25-filters.png" data-hint="Capture the Filter panel with one active filter and the map showing only matching segments.">
         <figcaption><span class="fig-no">Figure 4.25</span>Attribute filters, e.g. condition IRI &gt; 3.3 — show matching only.</figcaption>
       </figure>
@@ -563,6 +584,39 @@
       <p>On machines without WebGL (some VDI/remote desktops), use <b>Lite map</b> (top-right button, or <code>/map-lite.html</code>). It renders the network without graphics acceleration — reduced styling, same data. If the main viewer cannot start WebGL it directs you there automatically.</p>
       <figure class="fig" data-img="fig-04-27-map-lite.png" data-hint="Capture /map-lite.html with the network visible.">
         <figcaption><span class="fig-no">Figure 4.27</span>The Lite viewer.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-19">4.19 Chainage Locator</h3>
+      <p>The <b>Chainage</b> rail button finds an exact point on a road by <b>chainage</b>, not by coordinates: pick a road (limited to your current network scope) and type a chainage, and it drops a pin at that offset within the section that covers it. If the chainage falls on a link road, or on both carriageways (A/B) of a dual road, every section that covers it gets its own pin, so nothing is missed.</p>
+      <figure class="fig" data-img="fig-04-28-chainage-locator.png" data-hint="Capture the Chainage Locator panel with a road and chainage entered, and the resulting pin(s) on the map.">
+        <figcaption><span class="fig-no">Figure 4.28</span>Chainage Locator — pin dropped at the located chainage.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-20">4.20 Heat Map Analysis</h3>
+      <p>The <b>Heat map</b> rail button (also reachable from the Traffic and Sub-Grade Soil panels' own "Heat Map Analysis" button) builds a client-side density surface over point data — <b>Traffic stations</b> (by ADT) or <b>Sub-Grade Soil</b> test points (by CBR/plasticity). Choose plain <b>density</b> or an <b>attribute-weighted</b> surface; colours are normalised on the 2nd–98th percentile of the data so a few extreme points don't wash out the rest. A district outline can be overlaid for reference, but it does not clip the heat surface. Nothing is uploaded or saved — it is generated in your browser from data already on screen.</p>
+      <figure class="fig" data-img="fig-04-29-heatmap.png" data-hint="Capture the Heat Map Analysis panel with a traffic or soil heat map rendered on the map.">
+        <figcaption><span class="fig-no">Figure 4.29</span>Heat Map Analysis over traffic stations.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-21">4.21 Map Composer</h3>
+      <p>Launcher → <b>Map Composer</b> builds a print-ready map sheet from the layers, styling and filter currently on screen. Pick a paper size/orientation and a layout template, add a title, north arrow, scale bar and legend, then export as a PDF. It renders your chosen extent on a second, offscreen map so composing a sheet never disturbs your main map view.</p>
+      <figure class="fig" data-img="fig-04-30-map-composer.png" data-hint="Capture the Map Composer screen with a layout template and a composed sheet preview.">
+        <figcaption><span class="fig-no">Figure 4.30</span>Map Composer — building a print sheet.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-22">4.22 Exporting layer data</h3>
+      <p>Every layer row in the Layers panel carries its own <b>export</b> button, opening a compact format menu: <b>Shapefile (zip)</b>, <b>GeoJSON</b>, <b>KML</b>, <b>KMZ</b> or <b>CSV</b>. Exports honour exactly what is on screen — the current attribute filters and, for Road Condition Data, the parameter you have selected — so a filtered view exports only the matching features, not the whole dataset.</p>
+      <div class="note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
+        <div><b>KML/KMZ is single-parameter.</b> A KML or KMZ export always carries the map's classified colours for the one parameter you currently have selected (e.g. IRI Good/Fair/Poor) — it is meant for viewing in Google Earth. For every parameter at once, export <b>CSV</b> or <b>Shapefile</b> instead.</div></div>
+      <p>Shapefile column names are abbreviated to fit the format's 10-character limit; the full names travel in the same zip as a QGIS alias file (<code>.qml</code>) and a <code>_field_names.csv</code> lookup, so nothing is lost, only shortened. Administrative boundary layers and any layer under <b>My layers</b> can be exported the same way, honouring their own Filter-panel conditions (§ 4.16).</p>
+      <figure class="fig" data-img="fig-04-31-layer-export.png" data-hint="Capture a Layers panel row with its export button open, showing the Shapefile/GeoJSON/KML/KMZ/CSV format menu.">
+        <figcaption><span class="fig-no">Figure 4.31</span>Per-layer export menu, honouring the active filters.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--violet)" id="s4-23">4.23 My Location (GPS)</h3>
+      <p>The <b>locate</b> control (map controls, near the zoom buttons) shows your device's live GPS position as a blue dot on the map, with an accuracy circle — useful for field verification against the mapped network. Your browser will ask for location permission the first time; this needs a secure (<code>https</code>) connection. Click the control again to stop tracking.</p>
+      <figure class="fig" data-img="fig-04-32-my-location.png" data-hint="Capture the map with the My Location control active and the live GPS dot visible near a road.">
+        <figcaption><span class="fig-no">Figure 4.32</span>My Location — a live GPS dot for field use.</figcaption>
       </figure>
       <!-- ============ 5. DATA CONSOLE ============ -->
       <div class="ch" id="ch5"><span class="num" style="--ac:var(--teal)">5</span><h2>The Data Console<span class="sub">Loading and managing every dataset</span></h2></div>
@@ -697,8 +751,51 @@ Start_Latitude, Start_Longitude, End_Latitude, End_Longitude</code></pre>
         <figcaption><span class="fig-no">Figure 8.1</span>Site Control: editing the public About / Contact / FAQ content.</figcaption>
       </figure>
 
-      <!-- ============ 9. TROUBLESHOOTING ============ -->
-      <div class="ch" id="ch9"><span class="num" style="--ac:var(--red)">9</span><h2>Troubleshooting &amp; FAQ<span class="sub">Common questions, quick fixes</span></h2></div>
+      <!-- ============ 9. PLATFORM MODULES ============ -->
+      <div class="ch" id="ch9"><span class="num" style="--ac:var(--teal)">9</span><h2>Platform Modules<span class="sub">Standalone tools reached from the Home portal</span></h2></div>
+      <p>These modules are opened from the Home portal's module grid, alongside the GIS Viewer and Data Console.</p>
+
+      <h3 style="--ac:var(--teal)" id="s9-1">9.1 Survey Archive</h3>
+      <p><b>Survey Archive</b> (<code>/survey-archive.html</code>) browses every past survey period on the map — older condition, FWD, traffic, soil, bituminous-core and pavement-crust data — kept separate from the CURRENT data shown in the main GIS Viewer. Pick a survey year/period, then browse it the same way as the live viewer.</p>
+      <figure class="fig" data-img="fig-09-01-survey-archive.png" data-hint="Capture /survey-archive.html with a past survey period selected and its data drawn on the map.">
+        <figcaption><span class="fig-no">Figure 9.1</span>Survey Archive: an earlier survey period on the map.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--teal)" id="s9-2">9.2 Drone</h3>
+      <p><b>Drone</b> (<code>/drone.html</code>, ADMIN for uploads) manages drone survey projects — each tied to a road/location — and their orthomosaic and DEM rasters (GeoTIFF upload, async publish to a tiled image pyramid). The <b>Drone Viewer</b> (<code>/drone-viewer.html</code>, open to all staff) is a separate standalone map that overlays published drone imagery on the KLRAMS road network, showing pixel size (GSD), coordinate-reference details and, for a DEM, elevation contours.</p>
+      <figure class="fig" data-img="fig-09-02-drone-console.png" data-hint="Capture /drone.html with a project and its orthomosaic/DEM listed.">
+        <figcaption><span class="fig-no">Figure 9.2</span>Drone: project list with orthomosaic and DEM datasets.</figcaption>
+      </figure>
+      <figure class="fig" data-img="fig-09-03-drone-viewer.png" data-hint="Capture /drone-viewer.html with a published orthomosaic drawn over the road network.">
+        <figcaption><span class="fig-no">Figure 9.3</span>Drone Viewer: orthomosaic over the road network.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--teal)" id="s9-3">9.3 Layer Management</h3>
+      <p><b>Layer Management</b> (<code>/layers.html</code>) is the registry behind every map layer — showing how each layer's features are placed (chainage, coordinates, boundary…) and, for ADMIN, letting you create new layer <b>folders</b> and new <b>layers</b> with their own upload format (GeoJSON/shapefile/KML) and attribute mapping. A layer can be marked <b>temporary</b> (deletable from the map or here) or <b>shared to all users</b>; sharing and deleting a shared layer is restricted to its owner or a SUPER_ADMIN.</p>
+      <figure class="fig" data-img="fig-09-04-layer-management.png" data-hint="Capture /layers.html with the layer/folder tree and one layer's details open.">
+        <figcaption><span class="fig-no">Figure 9.4</span>Layer Management: the layer/folder registry.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--teal)" id="s9-4">9.4 Style &amp; Label Management</h3>
+      <p><b>Style &amp; Label Management</b> (<code>/style.html</code>) controls how a layer is drawn — colour, outline, symbol and label — as a <b>single colour</b>, <b>by class/category</b>, <b>by range</b> (classified bands) or a <b>graduated ramp</b>, with styles reusable as templates across layers. A layer with no style row keeps its original built-in appearance. Condition Data and PCI layers are excluded here — their colouring comes from the condition thresholds instead (see §4.16 and Appendix B).</p>
+      <figure class="fig" data-img="fig-09-05-style-management.png" data-hint="Capture /style.html with a layer's style rule being edited (e.g. a graduated ramp).">
+        <figcaption><span class="fig-no">Figure 9.5</span>Style &amp; Label Management: editing a layer's style rule.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--teal)" id="s9-5">9.5 Lookup &amp; Short Code</h3>
+      <p><b>Lookup &amp; Short Code</b> (<code>/lookups.html</code>) is the dictionary behind every short code in the data — e.g. FLX (Flexible pavement), CLY (Clay), NB (Nil Bituminous) — and records which data attribute reads which code list. Both the code and its full word resolve to the same value; once set up, codes are shown expanded in plain words on every map popup and report.</p>
+      <figure class="fig" data-img="fig-09-06-lookups.png" data-hint="Capture /lookups.html with a code list open, showing code → full word mappings.">
+        <figcaption><span class="fig-no">Figure 9.6</span>Lookup &amp; Short Code: a code list expanded to its full words.</figcaption>
+      </figure>
+
+      <h3 style="--ac:var(--teal)" id="s9-6">9.6 Calculation Rules</h3>
+      <p><b>Calculation Rules</b> (<code>/rules.html</code>) documents the corrections behind every published figure as editable data, each with a before/after value and a "where used" note: dual-carriageway grouping (A/B pair averaging), traffic station grouping, pavement-width bands, and the PCI parameter weights. Road class, surface type and ownership are deliberately not here — they live in the road-network attributes and in Lookup &amp; Short Code (§9.5) instead.</p>
+      <figure class="fig" data-img="fig-09-07-calculation-rules.png" data-hint="Capture /rules.html with one rule expanded showing before/after and where-used.">
+        <figcaption><span class="fig-no">Figure 9.7</span>Calculation Rules: a correction with before/after and where it's used.</figcaption>
+      </figure>
+
+      <!-- ============ 10. TROUBLESHOOTING ============ -->
+      <div class="ch" id="ch10"><span class="num" style="--ac:var(--red)">10</span><h2>Troubleshooting &amp; FAQ<span class="sub">Common questions, quick fixes</span></h2></div>
       <h4>The map is blank / "Enable graphics to view the map".</h4>
       <p>Your browser session has no WebGL. Use the <b>Lite map</b> button (or <code>/map-lite.html</code>), or enable hardware acceleration in the browser settings.</p>
       <h4>I imported roads but the map still shows the old network.</h4>
