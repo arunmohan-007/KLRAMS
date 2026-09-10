@@ -29,8 +29,9 @@ public class UserService {
     /** Allowed role values. */
     public static final Set<String> ROLES = Set.of("SUPER_ADMIN", "ADMIN", "USER");
 
-    /** Minimum length for any password set through the app. */
-    static final int MIN_PASSWORD_LEN = 8;
+    /** Minimum length for any password set through the app. Length is only the
+     *  floor — the rest of the rules live in {@link PasswordPolicy}. */
+    static final int MIN_PASSWORD_LEN = PasswordPolicy.MIN_LEN;
 
     private final JdbcTemplate jdbc;
     private final PasswordEncoder encoder;
@@ -124,7 +125,7 @@ public class UserService {
     public Map<String,Object> create(String username, String fullName, String role, String password){
         String u = username == null ? "" : username.trim();
         if(u.isEmpty()) throw new IllegalArgumentException("Username is required");
-        if(password == null || password.length() < MIN_PASSWORD_LEN) throw new IllegalArgumentException("Password must be at least " + MIN_PASSWORD_LEN + " characters");
+        PasswordPolicy.validate(password, u);
         role = normalizeRole(role);
         if(findByUsername(u) != null) throw new IllegalArgumentException("Username already exists");
         jdbc.update("INSERT INTO app_users(username,password_hash,role,full_name,enabled,must_change_password) " +
@@ -155,8 +156,11 @@ public class UserService {
 
     /** Reset a user's password (admin action) and force them to change it at next login. */
     public void setPassword(long id, String password){
-        if(password == null || password.length() < MIN_PASSWORD_LEN) throw new IllegalArgumentException("Password must be at least " + MIN_PASSWORD_LEN + " characters");
-        if(findById(id) == null) throw new IllegalArgumentException("User not found");
+        // Looked up first so the policy can reject a password built from the
+        // username — which is exactly what a hurried admin reset tends to be.
+        Map<String,Object> target = findById(id);
+        if(target == null) throw new IllegalArgumentException("User not found");
+        PasswordPolicy.validate(password, (String) target.get("username"));
         jdbc.update("UPDATE app_users SET password_hash=?, must_change_password=true, updated_at=now() WHERE id=?",
                 encoder.encode(password), id);
     }
@@ -167,7 +171,9 @@ public class UserService {
         if(u == null) throw new IllegalArgumentException("User not found");
         if(current == null || !encoder.matches(current, (String) u.get("password_hash")))
             throw new IllegalArgumentException("Current password is incorrect");
-        if(next == null || next.length() < MIN_PASSWORD_LEN) throw new IllegalArgumentException("New password must be at least " + MIN_PASSWORD_LEN + " characters");
+        PasswordPolicy.validate(next, username);
+        if(encoder.matches(next, (String) u.get("password_hash")))
+            throw new IllegalArgumentException("New password must be different from the current one");
         jdbc.update("UPDATE app_users SET password_hash=?, must_change_password=false, updated_at=now() WHERE id=?",
                 encoder.encode(next), ((Number) u.get("id")).longValue());
     }

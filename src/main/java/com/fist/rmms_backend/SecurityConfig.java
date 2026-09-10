@@ -71,6 +71,72 @@ public class SecurityConfig {
                 .requestMatchers("/js/**", "/css/**", "/img/**", "/favicon.ico");
     }
 
+    /**
+     * Content-Security-Policy — PHASE 1 (see the CSP note in the security audit memo).
+     *
+     * WHAT THIS DOES AND DOES NOT STOP. `script-src` deliberately still carries
+     * 'unsafe-inline', because the pages rely on ~343 inline event-handler
+     * attributes (onclick="..." and friends: ~191 written into the HTML, ~152
+     * more string-built by the JS modules at runtime). A nonce cannot rescue
+     * those — the moment a nonce appears in script-src the browser IGNORES
+     * 'unsafe-inline', and every one of those handlers stops firing at once.
+     * Removing them is a separate, page-by-page refactor (Phase 2); until then
+     * an injected inline <script> or onerror= would still run.
+     *
+     * What it DOES stop today, which is most of the payload shapes that matter:
+     *   - script-src 'self' + a pinned CDN: an injected <script src="//evil/x.js">
+     *     will not load, and eval()/new Function() are blocked (no 'unsafe-eval';
+     *     verified nothing in this codebase uses either).
+     *   - base-uri 'self': blocks <base href="//evil"> injection, which would
+     *     otherwise silently re-point every relative <script src> on the page.
+     *   - form-action 'self': an injected <form> cannot post the user's input
+     *     (or a password manager's autofill) to an attacker host.
+     *   - connect-src / img-src allowlists: even if script does execute, it has
+     *     nowhere to exfiltrate to — fetch() and image-beacon to any host not
+     *     listed here is refused.
+     *   - object-src 'none' / frame-src 'none': no plugin or nested-document
+     *     vectors (the app embeds no iframes at all).
+     *
+     * ORIGIN NOTES — every entry below is load-bearing; dropping one breaks a map:
+     *   unpkg.com        MapLibre GL, Leaflet, Turf, shpjs (script + css, and
+     *                    Leaflet's css pulls its marker PNGs from there too,
+     *                    which is why unpkg is in img-src as well).
+     *   fonts.google/gstatic  the webfonts every page's <link> pulls.
+     *   demotiles.maplibre.org  glyph server for MapLibre symbol layers — label
+     *                    rendering fails outright without it (see the FONTS note
+     *                    in js/34-layer-style.js).
+     *   tile/basemap hosts    OSM, OpenTopoMap, Carto, ArcGIS World Imagery.
+     *                    Listed in BOTH img-src and connect-src: Leaflet
+     *                    (map-lite.html, survey-archive.html) loads tiles as
+     *                    <img>, MapLibre fetches them.
+     *   router.project-osrm.org  routing lookups.
+     *   blob:            MapLibre runs its workers from blob URLs (worker-src),
+     *                    and the CSV/PDF/KML export paths build blob downloads.
+     *   media-src https: the NSV video catalogue may point at an externally
+     *                    hosted file (video.html:147 uses entry.file directly
+     *                    when it is an absolute URL), so media cannot be pinned
+     *                    to 'self'. Broad, but media is not an execution vector.
+     */
+    private static final String CSP = String.join("; ",
+            "default-src 'self'",
+            "base-uri 'self'",
+            "object-src 'none'",
+            "frame-src 'none'",
+            "frame-ancestors 'none'",
+            "form-action 'self'",
+            // 'unsafe-inline' is Phase-2 debt, not an oversight — see above.
+            "script-src 'self' 'unsafe-inline' https://unpkg.com",
+            "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com",
+            "font-src 'self' data: https://fonts.gstatic.com",
+            "img-src 'self' data: blob: https://unpkg.com "
+                    + "https://*.tile.openstreetmap.org https://*.tile.opentopomap.org "
+                    + "https://*.basemaps.cartocdn.com https://server.arcgisonline.com",
+            "connect-src 'self' blob: https://demotiles.maplibre.org https://router.project-osrm.org "
+                    + "https://*.tile.openstreetmap.org https://*.tile.opentopomap.org "
+                    + "https://*.basemaps.cartocdn.com https://server.arcgisonline.com",
+            "media-src 'self' blob: https:",
+            "worker-src 'self' blob:");
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, LoginAuditService audit,
                                            LoginAttemptService attempts, UserService users) throws Exception {
@@ -82,8 +148,10 @@ public class SecurityConfig {
             // the proxy's X-Forwarded-Proto). Referrer-Policy stops the full
             // URL — including any query strings — leaking to third-party
             // resources the map viewer or public pages happen to link to.
-            .headers(h -> h.referrerPolicy(r -> r.policy(
-                    org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
+            .headers(h -> h
+                    .referrerPolicy(r -> r.policy(
+                            org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                    .contentSecurityPolicy(c -> c.policyDirectives(CSP)))
             // Reject POST /login from a locked-out IP before the password is checked.
             .addFilterBefore(new LoginAttemptFilter(attempts), UsernamePasswordAuthenticationFilter.class)
             // After authorization: block a "must change password" account from every
@@ -136,17 +204,19 @@ public class SecurityConfig {
                 // Record the sign-in (IP, user-agent, session) then land on the portal,
                 // preserving the previous "always redirect to /home.html" behaviour.
                 .successHandler((req, res, auth) -> {
-                    attempts.loginSucceeded(LoginAuditService.clientIp(req));
+                    attempts.loginSucceeded(LoginAuditService.clientIp(req), auth.getName());
                     audit.recordLogin(auth.getName(), req,
                             req.getSession(false) != null ? req.getSession().getId() : null);
                     res.sendRedirect(req.getContextPath() + "/home.html");
                 })
-                // Count the failure per IP; if it trips the lockout, say so.
+                // Count the failure against BOTH the IP and the account being guessed
+                // at (see LoginAttemptService); if either trips its lockout, say so.
                 .failureHandler((req, res, ex) -> {
                     String ip = LoginAuditService.clientIp(req);
-                    attempts.loginFailed(ip);
+                    String user = req.getParameter("username");
+                    attempts.loginFailed(ip, user);
                     res.sendRedirect(req.getContextPath()
-                            + (attempts.isBlocked(ip) ? "/login.html?locked" : "/login.html?error"));
+                            + (attempts.isBlocked(ip, user) ? "/login.html?locked" : "/login.html?error"));
                 })
                 .permitAll())
             .logout(l -> l
