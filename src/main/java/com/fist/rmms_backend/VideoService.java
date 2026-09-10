@@ -19,11 +19,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -190,24 +193,126 @@ public class VideoService {
         if (iRoad == null || iFile == null) {
             throw new IllegalArgumentException("CSV must have columns: section_label and video_file (and optionally direction).");
         }
-        int count = 0;
+        /* Read and check the whole file BEFORE writing anything, the same way the
+         * road-network upload does: a catalogue is edited by hand in a spreadsheet,
+         * so a bad row is usually one of several, and importing the good half would
+         * leave the admin guessing which sections actually took. */
+        List<String[]> rows = new ArrayList<>();     // {road, file, dir}
+        List<String> problems = new ArrayList<>();
+        int lineNo = 1;                              // the header was line 1
         String line;
         while ((line = br.readLine()) != null) {
+            lineNo++;
             if (line.trim().isEmpty()) continue;
             String[] c = parse(line);
             String road = val(c, iRoad);
             String file = val(c, iFile);
             String dir  = normDir(iDir != null ? val(c, iDir) : null);
             if (road == null || file == null) continue;
+            String bad = checkVideoRef(file);
+            if (bad != null) {
+                if (problems.size() < MAX_REPORTED_PROBLEMS)
+                    problems.add("line " + lineNo + " (" + road + "): " + bad);
+                else if (problems.size() == MAX_REPORTED_PROBLEMS)
+                    problems.add("… and further rows with the same kind of problem");
+                continue;
+            }
+            rows.add(new String[]{road, file, dir});
+        }
+        if (!problems.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "The catalogue was not imported — fix these rows and upload it again:\n"
+                            + String.join("\n", problems));
+        }
+        int count = 0;
+        for (String[] r : rows) {
             jdbc.update("""
                 INSERT INTO road_video (section_label, video_file, direction, period_id)
                 VALUES (?,?,?,?)
                 ON CONFLICT (section_label, period_id)
                 DO UPDATE SET video_file = EXCLUDED.video_file, direction = EXCLUDED.direction
-                """, road, file, dir, periodId);
+                """, r[0], r[1], r[2], periodId);
             count++;
         }
         return count;
+    }
+
+    /** Enough to show the shape of the mistake without a wall of text. */
+    private static final int MAX_REPORTED_PROBLEMS = 15;
+
+    /**
+     * Hosts that hand out a *web page* for a video rather than the video itself.
+     * A share link from one of these looks perfectly reasonable in a spreadsheet
+     * and never plays, because &lt;video src&gt; needs the media file, not the
+     * page that displays it.
+     */
+    private static final Set<String> SHARE_HOSTS = Set.of(
+            "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
+            "drive.google.com", "docs.google.com", "photos.google.com", "photos.app.goo.gl",
+            "dropbox.com", "www.dropbox.com", "db.tt",
+            "onedrive.live.com", "1drv.ms", "sharepoint.com",
+            "vimeo.com", "www.vimeo.com", "player.vimeo.com",
+            "facebook.com", "www.facebook.com", "fb.watch",
+            "mega.nz", "mediafire.com", "www.mediafire.com", "wetransfer.com", "we.tl");
+
+    /** Extensions that mean "this is a page", not "this is a video". */
+    private static final Set<String> PAGE_EXTENSIONS = Set.of("html", "htm", "php", "asp", "aspx", "jsp");
+
+    /**
+     * Check one {@code video_file} cell, returning a plain-English problem or null
+     * if it is usable.
+     *
+     *  WHY AT IMPORT TIME. The players accept either a bare file name (served from
+     *  the video folder) or a full URL used as-is — see js/12-nsv-video.js. Nothing
+     *  validated the URL, so a wrong one imported silently and only failed later as
+     *  a dead player with no message, on a different page, for whoever clicked that
+     *  road. These are the three ways it actually goes wrong.
+     */
+    static String checkVideoRef(String ref) {
+        String s = ref == null ? "" : ref.trim();
+        if (s.isEmpty()) return "is empty";
+
+        if (s.contains("://")) {
+            URI u;
+            try {
+                u = URI.create(s);
+            } catch (Exception e) {
+                return "is not a valid web address";
+            }
+            String scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase(Locale.ROOT);
+            if ("http".equals(scheme))
+                return "starts with http:// — KLRAMS is served over HTTPS, so the browser will refuse to play it. Use https://";
+            if (!"https".equals(scheme))
+                return "starts with " + scheme + ":// — only https:// links can be played";
+
+            String host = u.getHost() == null ? "" : u.getHost().toLowerCase(Locale.ROOT);
+            if (host.isEmpty()) return "is not a valid web address";
+            boolean share = SHARE_HOSTS.contains(host)
+                    || SHARE_HOSTS.stream().anyMatch(h -> host.endsWith("." + h));
+            if (share)
+                return "is a " + host + " share link, which is a web page rather than the video file itself. "
+                        + "Use a direct link that ends in the file (for example .mp4)";
+
+            String path = u.getPath() == null ? "" : u.getPath();
+            String ext = extensionOf(path);
+            if (PAGE_EXTENSIONS.contains(ext))
+                return "points at a web page (." + ext + ") rather than a video file";
+            return null;
+        }
+
+        /* Not a URL, so it is a file name inside the video folder. It is joined onto
+         * that folder's path, so it must stay a plain name. */
+        if (s.contains("/") || s.contains("\\") || s.contains(".."))
+            return "looks like a path — use just the file name of an uploaded video, or a full https:// link";
+        return null;
+    }
+
+    /** Lower-cased extension of a URL path, or "" when there is none. */
+    private static String extensionOf(String path) {
+        int slash = path.lastIndexOf('/');
+        int dot = path.lastIndexOf('.');
+        if (dot < 0 || dot < slash || dot == path.length() - 1) return "";
+        return path.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
     /** Catalog of one survey period (null = the active period the viewer shows). */

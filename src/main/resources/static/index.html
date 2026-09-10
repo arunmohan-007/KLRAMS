@@ -33,7 +33,9 @@
   input[type=file]{display:block;font-size:13.5px;margin:6px 0 10px}
   .btn{font-family:var(--sans);background:var(--ink);color:#fff;border:0;border-radius:9px;padding:9px 16px;font-size:13.5px;font-weight:500;cursor:pointer}
   .btn:hover{background:var(--ink-2)}.btn.ghost{background:var(--slate);color:var(--ink)}.btn.ghost:hover{background:#e3e8f0}
-  .out{margin-top:12px;font-size:13.5px;padding:11px 13px;border-radius:9px;display:none}
+  /* pre-wrap so a multi-line validation report (the video catalogue lists one
+     line per bad row) stays readable instead of collapsing into one paragraph */
+  .out{margin-top:12px;font-size:13.5px;padding:11px 13px;border-radius:9px;display:none;white-space:pre-wrap}
   .out.ok{display:block;background:#e7f6ef;color:var(--accent-d)}.out.err{display:block;background:#fcebea;color:#a3302a}
   .hint{color:var(--muted);font-size:12.5px;margin-top:14px;line-height:1.6}
   code{font-family:var(--mono);background:var(--slate);padding:1px 5px;border-radius:4px;font-size:12px}
@@ -1478,7 +1480,8 @@ const PANELS={
     +'<div id="wiz_vfile" class="wiz-box"></div>'
     +'<button class="btn" id="btn_vfile" onclick="up(\'catalog\')">Upload catalogue</button>'
     +'<div class="out" id="oCat"></div>'
-    +'<p class="hint">Columns: <code>section_label</code>, <code>video_file</code>, <code>direction</code> (front or back). <code>video_file</code> is the file name inside the zip, or a full <code>https://</code> link.</p>'
+    +'<p class="hint">Columns: <code>section_label</code>, <code>video_file</code>, <code>direction</code> (front or back). <code>video_file</code> is the file name inside the zip, or a full <code>https://</code> link &mdash; in which case nothing needs uploading here at all.</p>'
+    +'<p class="hint">A link must be <b>https://</b> (plain <code>http://</code> will not play) and must point <b>directly at the video file</b>, ending in something like <code>.mp4</code>. A YouTube, Google&nbsp;Drive, OneDrive or Dropbox <i>share</i> link is a web page, not a video file, and will not play. Bad rows are listed on import and nothing is saved until they are fixed.</p>'
     +'<a class="viewer" href="/map.html">Open the viewer to play videos &rarr;</a>',
   'road-net':'<div class="ip-title">Road network</div>'
     +'<p class="ip-sub">Upload the road network shapefile zip (or GeoJSON). Choose whether to add/update roads or replace the whole network.</p>'
