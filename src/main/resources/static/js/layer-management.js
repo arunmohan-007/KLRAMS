@@ -113,7 +113,7 @@
   function folderHtml(f) {
     var n = (f.layers || []).length;
     return '<div class="folder">' +
-      '<div class="fhead" onclick="this.parentNode.classList.toggle(\'open\')">' +
+      '<div class="fhead" data-act="this.parentNode.classList.toggle" data-args="open">' +
         '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>' +
         '<span class="fname">' + esc(f.name) + '</span>' +
         '<span class="fcount">' + n + ' layer' + (n === 1 ? '' : 's') + '</span>' +
@@ -185,38 +185,35 @@
     /* This screen defines layers; it does not load them. Importing lives in the
        Data Console alongside every other dataset's import, so there is one place
        to go to put data in the system rather than two with different rules. */
-    var acts = '<button class="btn ghost sm" onclick="AD.open(' + l.id + ')">Attributes</button>';
+    var acts = '<button class="btn ghost sm" data-act="AD.open" '+KLAct.args(l.id)+'>Attributes</button>';
     /* Styling is offered on every layer the style module accepts. Condition,
        PCI and the IRI roll-up are excluded there — they are coloured by survey
        parameter and threshold from the viewer's own screen — so no button is
        shown for them rather than one that leads to a layer that is not listed. */
     if (UNSTYLABLE.indexOf(l.key) < 0) {
-      acts += '<button class="btn ghost sm" onclick="LM.style(\'' + esc(l.key) + '\')">Style</button>';
+      acts += '<button class="btn ghost sm" data-act="LM.style" '+KLAct.args(esc(l.key))+'>Style</button>';
     }
     // Offered on every layer: a name is a label, and the import panels in the
     // Data Console take their titles from it.
     if (l.renamable !== false) {
-      acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.rename(' + l.id + ')">Rename</button>';
+      acts += '<button class="btn ghost sm" data-requires="admin" data-act="LM.rename" '+KLAct.args(l.id)+'>Rename</button>';
     }
     /* User layers are permanent. Hide takes it off the map; Freeze stops its
        data being used anywhere. Both are reversible, which is why neither is
        styled as a destructive action. */
     if (l.stateChangeable) {
-      acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.hide(' + l.id + ',' +
-        (!l.hidden) + ')">' + (l.hidden ? 'Show layer' : 'Hide layer') + '</button>';
-      acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.freeze(' + l.id + ',' +
-        (!l.frozen) + ')">' + (l.frozen ? 'Unfreeze data' : 'Freeze data') + '</button>';
+      acts += '<button class="btn ghost sm" data-requires="admin" data-act="LM.hide" '+KLAct.args(l.id, !l.hidden)+'>' + (l.hidden ? 'Show layer' : 'Hide layer') + '</button>';
+      acts += '<button class="btn ghost sm" data-requires="admin" data-act="LM.freeze" '+KLAct.args(l.id, !l.frozen)+'>' + (l.frozen ? 'Unfreeze data' : 'Freeze data') + '</button>';
     }
     /* Sharing hands a temporary layer to every signed-in user instead of only
        its creator. Shown only to whoever the server will actually let flip it
        — the layer's own creator, or a SUPER_ADMIN — so the button is never
        offered just to be refused. */
     if (l.shareable && canManageSharing(l)) {
-      acts += '<button class="btn ghost sm" data-requires="admin" onclick="LM.share(' + l.id + ',' +
-        (!l.shared) + ')">' + (l.shared ? 'Unshare' : 'Share with everyone') + '</button>';
+      acts += '<button class="btn ghost sm" data-requires="admin" data-act="LM.share" '+KLAct.args(l.id, !l.shared)+'>' + (l.shared ? 'Unshare' : 'Share with everyone') + '</button>';
     }
     if (l.deletable && (!l.shared || canManageSharing(l))) {
-      acts += '<button class="btn danger sm" data-requires="admin" onclick="LM.remove(' + l.id + ')">Discard</button>';
+      acts += '<button class="btn danger sm" data-requires="admin" data-act="LM.remove" '+KLAct.args(l.id)+'>Discard</button>';
     }
 
     return '<div class="lyr">' +

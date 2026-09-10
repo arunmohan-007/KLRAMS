@@ -100,11 +100,11 @@
       '<a class="viewer" href="/layers.html">Layer Management</a>. The file\'s columns are ' +
       'matched to the layer\'s attributes before anything is written.</p>' +
       '<div class="ip-field"><label class="ip-label">Target layer</label>' +
-      '<select id="ulTarget" onchange="ULC.pickTarget()"><option value="">Loading…</option></select>' +
+      '<select id="ulTarget" data-change="ULC.pickTarget"><option value="">Loading…</option></select>' +
       '<div id="ulTargetNote" class="hint"></div></div>' +
       '<div id="ulPeriod"></div>' +
       '<div class="ip-field"><label class="ip-label">Data file</label>' +
-      '<input type="file" id="ulFile" accept=".zip,.geojson,.json,.csv,.kml,.kmz" onchange="ULC.read(this)"></div>' +
+      '<input type="file" id="ulFile" accept=".zip,.geojson,.json,.csv,.kml,.kmz" data-change="ulcReadEl"></div>' +
       '<div id="ulStep"></div>' +
       '<div class="out" id="ulOut"></div>' +
       '<p class="hint">Shapefile zip needs <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> ' +
@@ -122,7 +122,7 @@
       '<div class="ip-field"><label class="ip-label">Layer name</label>' +
       '<input type="text" id="ulTempName" placeholder="e.g. Contractor survey — March"></div>' +
       '<div class="ip-field"><label class="ip-label">Data file</label>' +
-      '<input type="file" id="ulFile" accept=".zip,.geojson,.json,.csv,.kml,.kmz" onchange="ULC.read(this)"></div>' +
+      '<input type="file" id="ulFile" accept=".zip,.geojson,.json,.csv,.kml,.kmz" data-change="ulcReadEl"></div>' +
       '<div class="hint">Shapefile zip, KML, KMZ, GeoJSON or CSV.</div>' +
       '<div id="ulTempGeo"></div>' +
       '<div id="ulStep"></div>' +
@@ -430,7 +430,7 @@
     if (st.hasGeometry) {
       host.innerHTML = '<div class="hint">This file carries its own geometry (' +
         esc(st.geomKind || 'geometry') + '), so no coordinate columns are needed.</div>' +
-        '<button class="btn" onclick="ULC.createTemp()">Create layer and import</button>';
+        '<button class="btn" data-act="ULC.createTemp">Create layer and import</button>';
       return;
     }
     var opts = function (g) {
@@ -443,7 +443,7 @@
       '<select id="ulLat">' + opts(guess(['lat', 'latitude', 'y'])) + '</select></div>' +
       '<div class="ip-field"><label class="ip-label">Longitude column</label>' +
       '<select id="ulLng">' + opts(guess(['lng', 'lon', 'long', 'longitude', 'x'])) + '</select></div>' +
-      '<button class="btn" onclick="ULC.createTemp()">Create layer and import</button>';
+      '<button class="btn" data-act="ULC.createTemp">Create layer and import</button>';
   }
 
   function guess(names) {
@@ -651,7 +651,7 @@
     }
     html += '<label class="ul-ck"><input type="checkbox" id="ulReplace"> Replace everything ' +
       'already in this layer</label>' +
-      '<button class="btn" id="ulGo" onclick="ULC.requestPublish()">Import ' +
+      '<button class="btn" id="ulGo" data-act="ULC.requestPublish">Import ' +
       st.rows.length.toLocaleString() + ' rows</button></div>';
 
     document.getElementById('ulStep').innerHTML = html;
@@ -970,3 +970,6 @@
   };
   window.ULC = ULC;
 })();
+
+/* was onchange="ULC.read(this)" on the file inputs */
+function ulcReadEl(){ ULC.read(KLAct.el()); }

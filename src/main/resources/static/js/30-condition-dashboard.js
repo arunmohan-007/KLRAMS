@@ -61,7 +61,7 @@ function cdFetchSummary(){
       ?'<div class="dash-loading">Your session has expired (the server was restarted). '+
        '<a href="/login.html" style="color:#15976a;font-weight:700">Sign in again</a></div>'
       :'<div class="dash-loading">Could not load condition figures ('+escH(e.message)+'). '+
-       '<a href="#" onclick="renderCondDash();return false" style="color:#15976a;font-weight:700">Retry</a></div>';
+       '<a href="#" data-act="renderCondDash" style="color:#15976a;font-weight:700">Retry</a></div>';
   });
 }
 
@@ -85,19 +85,19 @@ function cdScope(){
 /* ---- shared controls bar (params · basis · period · districts) ---- */
 function cdControls(){
   const params=(cdData.params||[]).map(p=>
-    '<button type="button" class="svy-pill'+(p.key===cdParam?' on':'')+'" onclick="cdSetParam(\''+p.key+'\')">'+
+    '<button type="button" class="svy-pill'+(p.key===cdParam?' on':'')+'" data-act="cdSetParam" '+KLAct.args(p.key)+'>'+
     '<span class="svy-pill-cap">Parameter</span><span class="svy-pill-yr">'+escH(p.label)+'</span></button>').join('');
   const basis='<div class="cd-toggle">'+
-    ['avg','worst'].map(b=>'<button type="button" class="cd-tg'+(b===cdBasis?' on':'')+'" onclick="cdSetBasis(\''+b+'\')">'+
+    ['avg','worst'].map(b=>'<button type="button" class="cd-tg'+(b===cdBasis?' on':'')+'" data-act="cdSetBasis" '+KLAct.args(b)+'>'+
       (b==='avg'?'Lane average':'Worst lane')+'</button>').join('')+'</div>';
   const periods=(cdData.periods||[]).map(pp=>
-    '<button type="button" class="svy-pill'+(pp.id===cdPeriodId?' on':'')+'" title="'+escH(pp.range||'')+'" onclick="cdSetPeriod('+(+pp.id)+')">'+
+    '<button type="button" class="svy-pill'+(pp.id===cdPeriodId?' on':'')+'" title="'+escH(pp.range||'')+'" data-act="cdSetPeriod" '+KLAct.args((+pp.id))+'>'+
     '<span class="svy-pill-cap">Survey Period'+(pp.is_active?' · current':'')+'</span><span class="svy-pill-yr">'+escH(pp.name)+'</span></button>').join('');
-  const dists='<button type="button" class="svy-chip'+(cdDistrict?'':' on')+'" onclick="cdSetDistrict(null)">All Districts</button>'+
-    cdDistricts().map(d=>'<button type="button" class="svy-chip'+(d.district===cdDistrict?' on':'')+'" onclick="cdSetDistrict(\''+qq(d.district)+'\')">'+escH(d.district)+'</button>').join('');
+  const dists='<button type="button" class="svy-chip'+(cdDistrict?'':' on')+'" data-act="cdSetDistrict" data-args="[null]">All Districts</button>'+
+    cdDistricts().map(d=>'<button type="button" class="svy-chip'+(d.district===cdDistrict?' on':'')+'" data-act="cdSetDistrict" '+KLAct.args(qq(d.district))+'>'+escH(d.district)+'</button>').join('');
   const views='<div class="cd-toggle cd-views">'+
-    '<button type="button" class="cd-tg'+(cdView==='summary'?' on':'')+'" onclick="cdShowSummary()">Overview</button>'+
-    '<button type="button" class="cd-tg'+(cdView==='table'?' on':'')+'" onclick="cdShowTable()">Segment list</button></div>';
+    '<button type="button" class="cd-tg'+(cdView==='summary'?' on':'')+'" data-act="cdShowSummary">Overview</button>'+
+    '<button type="button" class="cd-tg'+(cdView==='table'?' on':'')+'" data-act="cdShowTable">Segment list</button></div>';
   return '<div class="svy-bar cd-bar"><div class="svy-years">'+params+'</div>'+basis+views+'</div>'+
          '<div class="svy-bar cd-bar"><div class="svy-years">'+periods+'</div></div>'+
          '<div class="svy-bar cd-bar"><div class="svy-dists">'+dists+'</div></div>';
@@ -142,7 +142,7 @@ function cdPaint(){
   const dists=cdDistricts();
   let mrows='';
   dists.forEach(d=>{const o=d.overall||{};
-    mrows+='<tr'+(d.district===cdDistrict?' class="svy-sel"':'')+' onclick="cdSetDistrict(\''+qq(d.district)+'\')" style="cursor:pointer">'+
+    mrows+='<tr'+(d.district===cdDistrict?' class="svy-sel"':'')+' data-act="cdSetDistrict" '+KLAct.args(qq(d.district))+' style="cursor:pointer">'+
       '<td>'+escH(d.district)+'</td>'+
       '<td class="n">'+cdFmt(o.low)+'</td><td class="n">'+cdFmt(o.high)+'</td>'+
       '<td class="n">'+cdFmt(o.mean)+'</td><td class="n">'+fmtKm(o.lane_km||0)+'</td>'+
@@ -189,8 +189,8 @@ function cdTopHead(){
   return '<div class="dcard-head" style="margin-bottom:10px">'+
     '<h3>Priority sections for intervention</h3>'+
     '<div class="cd-toggle" style="border-radius:9px">'+
-      '<button type="button" class="cd-tg" onclick="cdExportPriority(\'pdf\')" title="Open a printable report — use Save as PDF">PDF</button>'+
-      '<button type="button" class="cd-tg" onclick="cdExportPriority(\'excel\')" title="Download as a spreadsheet (opens in Excel)">Excel</button>'+
+      '<button type="button" class="cd-tg" data-act="cdExportPriority" data-args="pdf" title="Open a printable report — use Save as PDF">PDF</button>'+
+      '<button type="button" class="cd-tg" data-act="cdExportPriority" data-args="excel" title="Download as a spreadsheet (opens in Excel)">Excel</button>'+
     '</div></div>';
 }
 function cdTopSection(){
@@ -391,7 +391,7 @@ function cdPaintTable(){
       '<label><input type="number" step="0.01" id="cdVal" placeholder="value" value="'+escH(cdTblValue)+'"> '+escH(unit)+'</label>'+
       '<label>Surface <select id="cdSurf">'+surfaces.map(s=>'<option value="'+escH(s.value)+'"'+(s.value===cdTblSurface?' selected':'')+'>'+escH(s.label)+'</option>').join('')+'</select></label>'+
       '<label>Road class <select id="cdCls">'+classes.map(c=>'<option value="'+escH(c.value)+'"'+(c.value===cdTblClass?' selected':'')+'>'+escH(c.label)+'</option>').join('')+'</select></label>'+
-      '<button type="button" class="cd-run" onclick="cdRunTable()">Show segments</button>'+
+      '<button type="button" class="cd-run" data-act="cdRunTable">Show segments</button>'+
     '</div>'+
     '<div class="sub">Lists stretches from '+escH((cdPeriodObj()||{}).name||'')+' whose '+escH(cdData.param_label)+
     ' ('+cdBasisLabel().toLowerCase()+') passes the test. Change district with the chips above.</div></div>';

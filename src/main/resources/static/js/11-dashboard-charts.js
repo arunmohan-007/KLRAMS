@@ -44,7 +44,7 @@ function donutCard(title,sub,rows,opts){
     const col=(opts.colorFn||dColor)(r.label,i);const km=+r.km||0,pc=km/tot*100;
     const nm=opts.full?opts.full(r.label):r.label;
     const clickable=!!opts.legendClick;
-    const click=clickable?` onclick="${opts.legendClick}('${qq(r.label)}')" title="${escH(nm)} — click to list sections"`:'';
+    const click=clickable?` data-act="${opts.legendClick}" ${KLAct.args(r.label)} title="${escH(nm)} — click to list sections"`:'';
     return `<div class="dleg${clickable?' click':''}"${click}><span class="sw" style="background:${col}"></span>`+
       `<span class="nm"${clickable?'':` title="${escH(nm)}"`}>${escH(nm)}</span>`+
       `<span class="vl">${fmtKm(km)}<span class="pc"> · ${pc.toFixed(0)}%</span></span></div>`;
@@ -62,7 +62,7 @@ function rankedBars(rows,opts){
     const km=+r.km||0,pct=Math.max(3,km/max*100);
     const col=(opts.colorFn||dColor)(r.label,i);
     const sel=opts.selName!=null&&r.label===opts.selName;
-    const click=opts.click?` onclick="${opts.click}('${qq(r.label)}')"`:'';
+    const click=opts.click?` data-act="${opts.click}" ${KLAct.args(r.label)}`:'';
     const cls='rbar'+(opts.click?' click':'')+(sel?' sel':'');
     const nm=opts.full?opts.full(r.label):r.label;
     return `<div class="${cls}"${click}><div class="rk${i<3?' medal':''}">${String(i+1).padStart(2,'0')}</div>`+
@@ -85,7 +85,7 @@ function longestSection(){
         <div class="dcard-head" style="justify-content:flex-start;gap:10px"><h3>Longest roads</h3><span class="totchip">Top 10</span></div>
         <div class="sub">State Highways ranked by road number (all names under a number are listed) · MDRs by road name — corrected length</div>
       </div>
-      <button type="button" class="valbtn lr-distbtn"${n?' has':''} onclick="lrToggleDistPop(this)" title="Scope: all districts (overall) or pick one/more">
+      <button type="button" class="valbtn lr-distbtn"${n?' has':''} data-act="lrToggleDistPopEl" title="Scope: all districts (overall) or pick one/more">
         <span class="vb-txt">${escH(label)}</span><i class="vb-arr">▾</i>
       </button>
     </div>
@@ -270,7 +270,7 @@ function ovSetScope(name){
   try{document.getElementById('dashBody').scrollTop=0;}catch(e){}
 }
 function ovScopeBar(districts){
-  const chip=(name,label)=>`<button type="button" class="svy-chip${ovScope===name?' on':''}" onclick="ovSetScope('${qq(name)}')">${escH(label)}</button>`;
+  const chip=(name,label)=>`<button type="button" class="svy-chip${ovScope===name?' on':''}" data-act="ovSetScope" ${KLAct.args(name)}>${escH(label)}</button>`;
   return `<div class="svy-bar"><div class="svy-dists">`+
     chip('state','State-wide')+
     districts.slice().sort((a,b)=>a.localeCompare(b)).map(nm=>chip(nm,nm)).join('')+
@@ -363,3 +363,6 @@ function togglePanes(){
   const fp=document.getElementById('fpanes');
   fp.classList.toggle('hidden');
 }
+
+/* was onclick="lrToggleDistPop(this)" — the popup anchors to its own button */
+function lrToggleDistPopEl(){ lrToggleDistPop(KLAct.el()); }

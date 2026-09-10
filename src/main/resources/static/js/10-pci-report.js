@@ -125,13 +125,13 @@ function renderPciReportNow(){
   const dl='<svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>';
   const pr='<svg viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg>';
   let html='<div class="rpt-bar"><span style="display:flex;gap:10px;flex-wrap:wrap">'+
-    '<span class="segmented"><button class="'+(mode==='pwd'?'on':'')+'" onclick="setPciRptMode(\'pwd\')">By PWD section</button><button class="'+(mode==='district'?'on':'')+'" onclick="setPciRptMode(\'district\')">By district</button></span>'+
-    '<span class="segmented"><button class="'+(basis==='avg'?'on':'')+'" onclick="setPciRptBasis(\'avg\')">Composite</button><button class="'+(basis==='worst'?'on':'')+'" onclick="setPciRptBasis(\'worst\')">Worst-Lane</button></span>'+
-    '<span class="segmented"><button class="'+(view==='section'?'on':'')+'" onclick="setPciRptView(\'section\')">Section average</button><button class="'+(view==='stretch'?'on':'')+'" onclick="setPciRptView(\'stretch\')">Chainage stretch</button></span>'+
-    (view==='stretch'?('<span class="segmented"><button class="'+(filt==='all'?'on':'')+'" onclick="setPciRptFilt(\'all\')">All classes</button><button class="'+(filt==='pf'?'on':'')+'" onclick="setPciRptFilt(\'pf\')">Poor &amp; Fail</button></span>'):'')+
+    '<span class="segmented"><button class="'+(mode==='pwd'?'on':'')+'" data-act="setPciRptMode" data-args="pwd">By PWD section</button><button class="'+(mode==='district'?'on':'')+'" data-act="setPciRptMode" data-args="district">By district</button></span>'+
+    '<span class="segmented"><button class="'+(basis==='avg'?'on':'')+'" data-act="setPciRptBasis" data-args="avg">Composite</button><button class="'+(basis==='worst'?'on':'')+'" data-act="setPciRptBasis" data-args="worst">Worst-Lane</button></span>'+
+    '<span class="segmented"><button class="'+(view==='section'?'on':'')+'" data-act="setPciRptView" data-args="section">Section average</button><button class="'+(view==='stretch'?'on':'')+'" data-act="setPciRptView" data-args="stretch">Chainage stretch</button></span>'+
+    (view==='stretch'?('<span class="segmented"><button class="'+(filt==='all'?'on':'')+'" data-act="setPciRptFilt" data-args="all">All classes</button><button class="'+(filt==='pf'?'on':'')+'" data-act="setPciRptFilt" data-args="pf">Poor &amp; Fail</button></span>'):'')+
     '</span><span style="display:flex;gap:8px">'+
-    '<button class="rpt-btn" onclick="exportPciCsv()">'+dl+'Download CSV</button>'+
-    '<button class="rpt-btn primary" onclick="printPciReport()">'+pr+'Generate report (PDF)</button></span></div>';
+    '<button class="rpt-btn" data-act="exportPciCsv">'+dl+'Download CSV</button>'+
+    '<button class="rpt-btn primary" data-act="printPciReport">'+pr+'Generate report (PDF)</button></span></div>';
   const gword=(mode==='district')?'districts':'PWD sections';
   html+='<div class="rpt-summary"><div class="rs-top"><span class="big">'+(avg!=null?avg.toFixed(1):'\u2013')+'</span>'+(ab?'<span class="pci-chip" style="background:'+ab.color+'">'+ab.label+'</span>':'')+'<span class="rs-cap">'+pciBasisLabel(basis)+' &middot; network average (area-weighted) \u00b7 '+sections.length+' road sections across '+Object.keys(groups).length+' '+gword+' \u00b7 '+(tot/1000).toFixed(1)+' km surveyed</span></div>'+stackBar(m,tot)+'<div class="rpt-note">'+(view==='stretch'?('Contiguous chainage stretches of the <b>same class</b> are merged into one row, sorted by section then chainage'+(filt==='pf'?'; showing <b>Poor &amp; Fail</b> only':'')+'.'):'Class split is by <b>surveyed length (chainage)</b>. Rows below are each road section\u2019s <b>area-weighted average</b> PCI \u2014 switch to <b>Chainage stretch</b> to list individual Poor stretches.')+'</div></div>';
   if(view==='stretch'){
@@ -343,8 +343,8 @@ function renderPciAnalysisNow(){
   const worst=clsAvgs.slice().sort((a,b)=>a.avg-b.avg)[0];
   const bands=PCI_ORDER.filter(lb=>(d.overall[lb]||0)>0).length;
   let html='<div class="rpt-bar"><span class="segmented">'+
-    '<button class="'+(basis==='avg'?'on':'')+'" onclick="setPciaBasis(\'avg\')">Composite</button>'+
-    '<button class="'+(basis==='worst'?'on':'')+'" onclick="setPciaBasis(\'worst\')">Worst-Lane</button></span></div>';
+    '<button class="'+(basis==='avg'?'on':'')+'" data-act="setPciaBasis" data-args="avg">Composite</button>'+
+    '<button class="'+(basis==='worst'?'on':'')+'" data-act="setPciaBasis" data-args="worst">Worst-Lane</button></span></div>';
   const hero='<div class="dcard pcia-hero">'+
     '<div class="dcard-head"><h3>Network condition</h3>'+(ab?'<span class="pci-chip" style="background:'+ab.color+'">'+ab.label+'</span>':'')+'</div>'+
     '<div class="pcia-big">'+(avg!=null?avg.toFixed(1):'\u2013')+'<span class="u">avg PCI</span></div>'+

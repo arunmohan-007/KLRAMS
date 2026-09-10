@@ -105,7 +105,7 @@
 <meta name="apple-mobile-web-app-title" content="KLRAMS">
 <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
-<link rel="stylesheet" href="/css/mobile-pages.css?v=3">
+<link rel="stylesheet" href="/css/mobile-pages.css?v=5">
 </head>
 <body>
   <div class="bg"></div>
@@ -241,28 +241,7 @@
     </div>
   </div>
 
-<script>
-  (function(){
-    function pad(n){return (n<10?'0':'')+n;}
-    function tick(){
-      var d=new Date(),h=d.getHours(),ap=h>=12?'PM':'AM',h12=h%12||12;
-      document.getElementById('clock').innerHTML=pad(h12)+':'+pad(d.getMinutes())+'<small> '+ap+'</small>';
-      document.getElementById('dateln').textContent=d.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-      var g=h<12?'Good morning':(h<17?'Good afternoon':'Good evening');
-      document.getElementById('greet').textContent=g+' · signed in';
-    }
-    tick();setInterval(tick,15000);
-  })();
-
-  // role badge + card gating (role-gate.js does the hiding + force-change redirect)
-  window.RoleGate = window.RoleGate || {};
-  window.RoleGate.onReady = function(me){
-    var r = (me && me.role) || 'USER';
-    var label = r === 'SUPER_ADMIN' ? 'Super Admin' : r === 'ADMIN' ? 'Admin' : 'View only';
-    var el = document.getElementById('roleBadge');
-    if(el) el.textContent = label;
-  };
-</script>
+<script src="/js/home-page.js?v=3"></script>
 <script src="/js/role-gate.js" defer></script>
 </body>
 </html>

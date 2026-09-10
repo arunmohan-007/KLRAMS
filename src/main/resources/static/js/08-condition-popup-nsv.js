@@ -235,7 +235,7 @@ function buildCondOnlyPopup(props,roadId,ch,lane){
   if(!rnum && roadId){var mm=String(roadId).match(/\/(SH|MDR|ODR|NH)\/0*(\d+)/i);if(mm)rnum=mm[2];}
   var district=loc(['District','district','Dist','DISTRICT','Distrct']);
   var H='<div class="klcard">';
-  H+='<div class="kc-head"><div class="kc-back" onclick="hideInspector()">&#8249;&nbsp; All roads</div>'+
+  H+='<div class="kc-head"><div class="kc-back" data-act="hideInspector">&#8249;&nbsp; All roads</div>'+
      '<div class="kc-name">'+esc(name)+'</div><div class="kc-meta">'+
      '<span class="kc-chip '+clsKey+'">'+esc(cls||'SH')+(rnum?(' '+esc(rnum)):'')+'</span>'+
      '<span class="kc-sec">'+esc(roadId||props.road||'')+'</span>'+
@@ -264,7 +264,7 @@ function buildPopup(props,roadId,ch,lane){
   var carriage=loc(['Single_Du','Carriageway','carriageway']);
   var paveW=decodeVal('Pavement Width',loc(['Pavement_W','Pavement_Width','pavement_w']));
   var rtype=decodeVal('Road Type',loc(['Road_Type','RoadType','road_type']));
-  /* rid goes inside onclick="fn('...')" below: JS-string-escape first (backslash,
+  /* rid goes inside data-act="fn" data-args='["..."]' below: JS-string-escape first (backslash,
      then quote), then HTML-attribute-escape the result too (& < > "), since the
      road/section id is free text from a shapefile upload and a bare " in it
      would otherwise break out of the double-quoted onclick attribute. */
@@ -273,7 +273,7 @@ function buildPopup(props,roadId,ch,lane){
 
   var H='<div class="klcard">';
   /* header */
-  H+='<div class="kc-head"><div class="kc-back" onclick="hideInspector()">&#8249;&nbsp; All roads</div>'+
+  H+='<div class="kc-head"><div class="kc-back" data-act="hideInspector">&#8249;&nbsp; All roads</div>'+
      '<div class="kc-name">'+esc(name)+'</div><div class="kc-meta">'+
      '<span class="kc-chip '+clsKey+'">'+esc(cls||'SH')+(rnum?(' '+esc(rnum)):'')+'</span>'+
      '<span class="kc-sec">'+esc(roadId||props.road||'')+'</span>'+
@@ -281,11 +281,11 @@ function buildPopup(props,roadId,ch,lane){
 
   /* tab bar */
   H+='<div class="kc-tabs">'+
-     '<button class="kc-tab" onclick="klTab(this,\'tab-prof\')">Profile</button>'+
-     '<button class="kc-tab" onclick="klTab(this,\'tab-loc\')">Chainage</button>'+
-     '<button class="kc-tab on" onclick="klTab(this,\'tab-cond\')">Condition</button>'+
-     '<button class="kc-tab" onclick="klTab(this,\'tab-fwd\')">FWD</button>'+
-     '<button class="kc-tab" onclick="klTab(this,\'tab-sum\')">Survey</button>'+
+     '<button class="kc-tab" data-act="klTabEl" data-args="tab-prof">Profile</button>'+
+     '<button class="kc-tab" data-act="klTabEl" data-args="tab-loc">Chainage</button>'+
+     '<button class="kc-tab on" data-act="klTabEl" data-args="tab-cond">Condition</button>'+
+     '<button class="kc-tab" data-act="klTabEl" data-args="tab-fwd">FWD</button>'+
+     '<button class="kc-tab" data-act="klTabEl" data-args="tab-sum">Survey</button>'+
      '</div><div class="kc-panes">';
 
   /* ---- Profile pane (road attributes, decoded) ---- */
@@ -396,8 +396,8 @@ function buildPopup(props,roadId,ch,lane){
   /* ---- footer actions (always visible) ---- */
   var hasVid=(typeof CATALOG!=='undefined'&&CATALOG[roadId]&&CATALOG[roadId].file);
   H+='<div class="kc-foot">';
-  if(hasVid)H+='<button class="kc-playbtn" onclick="playSurveyFromPopup(\''+rid+'\','+(+ch||0)+')">&#9658;&nbsp; Play footage</button>';
-  H+='<button class="kc-exportbtn" onclick="exportRoadCSV(\''+rid+'\')">&#8681;&nbsp; Export CSV</button>';
+  if(hasVid)H+='<button class="kc-playbtn" data-act="playSurveyFromPopup" '+KLAct.args(rid, (+ch||0))+'>&#9658;&nbsp; Play footage</button>';
+  H+='<button class="kc-exportbtn" data-act="exportRoadCSV" '+KLAct.args(rid)+'>&#8681;&nbsp; Export CSV</button>';
   H+='</div></div>';
   return H;
 }
@@ -558,3 +558,6 @@ function setDir(d){dir=d;document.getElementById('fwd').classList.toggle('on',d=
      gap-aware plan and re-sync the video to the same physical chainage. */
   if(typeof cur!=='undefined'&&cur){if(typeof _stopGapAnim==='function')_stopGapAnim();if(typeof buildTravelPlan==='function')buildTravelPlan();if(typeof seek==='function')seek(typeof lastChainage!=='undefined'?lastChainage:0);if(typeof buildVidTrack==='function')buildVidTrack();if(typeof updateVidHud==='function')updateVidHud();}}
 let playSpeed=1;
+
+/* was onclick=klTab(this,'tab-x') — the tab strip marks the clicked tab active */
+function klTabEl(id){ klTab(KLAct.el(), id); }

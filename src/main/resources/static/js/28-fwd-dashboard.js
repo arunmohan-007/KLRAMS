@@ -53,7 +53,7 @@ function renderFwdDash(){
       ?'<div class="dash-loading">Your session has expired (the server was restarted). '+
        '<a href="/login.html" style="color:#15976a;font-weight:700">Sign in again</a></div>'
       :'<div class="dash-loading">Could not load FWD figures ('+escH(e.message)+'). '+
-       '<a href="#" onclick="renderFwdDash();return false" style="color:#15976a;font-weight:700">Retry</a></div>';
+       '<a href="#" data-act="renderFwdDash" style="color:#15976a;font-weight:700">Retry</a></div>';
   });
 }
 
@@ -184,7 +184,7 @@ function fdbBars(rows){
   const max=Math.max.apply(null,sorted.map(r=>+r.n||0).concat([0.0001]));
   return '<div class="rbars">'+sorted.map((r,i)=>{
     const n=+r.n||0,pct=Math.max(3,n/max*100),sel=r.label===fdbDistrict;
-    return '<div class="rbar click'+(sel?' sel':'')+'" onclick="fdbSetDistrict(\''+qq(r.label)+'\')">'+
+    return '<div class="rbar click'+(sel?' sel':'')+'" data-act="fdbSetDistrict" '+KLAct.args(qq(r.label))+'>'+
       '<div class="rk'+(i<3?' medal':'')+'">'+String(i+1).padStart(2,'0')+'</div>'+
       '<div><div class="rb-top"><span class="rb-nm" title="'+escH(r.label)+'">'+escH(r.label)+'</span><span class="rb-vl">'+fmtN(n)+'</span></div>'+
       '<div class="rb-track"><div class="rb-fill" style="width:'+pct.toFixed(1)+'%;background:linear-gradient(90deg,#3f9aa3,#3f9aa3cc)"></div></div></div></div>';
@@ -202,7 +202,7 @@ function fdbD0Districts(p,unit){
       if(!c.d0)return;
       const col=fdbCol(c.cls,i),st=c.d0;
       const lo=((st.min-gmin)/span*100),wd=Math.max((st.max-st.min)/span*100,1.2),dot=((st.mean-gmin)/span*100);
-      rows.push('<div class="fdb-dumb'+(d.district===fdbDistrict?' sel':'')+'" onclick="fdbSetDistrict(\''+qq(d.district)+'\')" title="'+escH(d.district)+' · '+escH(c.cls)+' — '+c.points+' points">'+
+      rows.push('<div class="fdb-dumb'+(d.district===fdbDistrict?' sel':'')+'" data-act="fdbSetDistrict" '+KLAct.args(qq(d.district))+' title="'+escH(d.district)+' · '+escH(c.cls)+' — '+c.points+' points">'+
         '<div class="fdb-dumb-lab"><span class="fdb-cls-chip" style="background:'+col+'">'+escH(c.cls)+'</span><span class="fdb-dumb-nm">'+escH(d.district)+'</span></div>'+
         '<div class="fdb-track"><i class="fdb-band" style="left:'+lo.toFixed(1)+'%;width:'+wd.toFixed(1)+'%;background:'+col+'"></i>'+
         '<i class="fdb-dot" style="left:'+dot.toFixed(1)+'%;background:'+col+'"></i></div>'+
@@ -250,7 +250,7 @@ function fdbTempCard(p){
     dists.forEach(d=>{
       const tp=d.temps.pavement,ta=d.temps.air;
       const c=t=>t==null?'<span class="z">·</span>':t.toFixed(1);
-      rows+='<tr'+(d.district===fdbDistrict?' class="svy-sel"':'')+' onclick="fdbSetDistrict(\''+qq(d.district)+'\')" style="cursor:pointer"><td>'+escH(d.district)+'</td>'+
+      rows+='<tr'+(d.district===fdbDistrict?' class="svy-sel"':'')+' data-act="fdbSetDistrict" '+KLAct.args(qq(d.district))+' style="cursor:pointer"><td>'+escH(d.district)+'</td>'+
         '<td class="n">'+c(tp&&tp.min)+'</td><td class="n"><b>'+c(tp&&tp.mean)+'</b></td><td class="n">'+c(tp&&tp.max)+'</td>'+
         '<td class="n">'+c(ta&&ta.min)+'</td><td class="n"><b>'+c(ta&&ta.mean)+'</b></td><td class="n">'+c(ta&&ta.max)+'</td></tr>';
     });
@@ -269,7 +269,7 @@ function fdbSurfCard(p){
   const rows=['flexible','rigid','unknown'].map(k=>{
     const v=p.variants&&p.variants[k];if(!v)return '';
     const s=fdbScope(v),st=s.d0,u=fdbUnit(v);
-    return '<tr'+(fdbSurface===k?' class="svy-sel"':'')+' onclick="fdbSetSurface(\''+k+'\')" style="cursor:pointer">'+
+    return '<tr'+(fdbSurface===k?' class="svy-sel"':'')+' data-act="fdbSetSurface" '+KLAct.args(k)+' style="cursor:pointer">'+
       '<td><b>'+FDB_SURF_LBL[k]+'</b></td><td class="n"><b>'+fmtN(s.points||0)+'</b></td>'+
       (st?'<td class="n">'+fdbF(st.min,u)+'</td><td class="n"><b>'+fdbF(st.mean,u)+'</b></td>'+
           '<td class="n">'+fdbF(st.max,u)+'</td><td class="n">'+u+'</td>'
@@ -319,7 +319,7 @@ function fdbUnmappedCard(p){
         '<td>'+(reasons[r.reason]||escH(r.reason||''))+'</td>'+
         '<td>'+(r.suggestion?'<b>'+escH(r.suggestion)+'</b>':'<span class="z">·</span>')+'</td></tr>';
     });
-    const delBtn=(noRoad&&isSuperAdmin())?'<button type="button" class="btn danger" style="margin-top:10px" onclick="fdbDeleteOrphans('+(+p.id)+')">'+
+    const delBtn=(noRoad&&isSuperAdmin())?'<button type="button" class="btn danger" style="margin-top:10px" data-act="fdbDeleteOrphans" '+KLAct.args((+p.id))+'>'+
       'Delete '+noRoad+' unmatched point'+(noRoad===1?'':'s')+'</button>':'';
     inner='<div class="amx-wrap"><table class="amx">'+
       '<tr><th class="n">#</th><th>Section label (as imported)</th><th class="n">Chainage (km)</th>'+
@@ -393,7 +393,7 @@ function fdbMatrix(p,unit){
   let rows='';
   dists.forEach(d=>{
     const tp=d.temps&&d.temps.pavement,ta=d.temps&&d.temps.air;
-    rows+='<tr'+(d.district===fdbDistrict?' class="svy-sel"':'')+' onclick="fdbSetDistrict(\''+qq(d.district)+'\')" style="cursor:pointer">'+
+    rows+='<tr'+(d.district===fdbDistrict?' class="svy-sel"':'')+' data-act="fdbSetDistrict" '+KLAct.args(qq(d.district))+' style="cursor:pointer">'+
       '<td>'+escH(d.district)+'</td><td class="n"><b>'+fmtN(d.points)+'</b></td>'+
       cls.map(c=>{const v=clsN(d,c);return '<td class="n">'+(v?fmtN(v):'<span class="z">·</span>')+'</td>';}).join('')+
       '<td class="n">'+(d.d0?fdbF(d.d0.min,unit):'<span class="z">·</span>')+'</td>'+
@@ -429,17 +429,17 @@ function fdbPaint(){
   const mix=p.surface_mix||{};
   const surfChips=(+mix.flexible||+mix.rigid)
     ?'<div class="svy-dists">'+['all','flexible','rigid','unknown'].map(k=>{
-        if(k==='all')return '<button type="button" class="svy-chip'+(fdbSurface==='all'?' on':'')+'" onclick="fdbSetSurface(\'all\')">'+FDB_SURF_LBL.all+'</button>';
+        if(k==='all')return '<button type="button" class="svy-chip'+(fdbSurface==='all'?' on':'')+'" data-act="fdbSetSurface" data-args="all">'+FDB_SURF_LBL.all+'</button>';
         const n=+mix[k]||0;
         if(!n)return k==='unknown'?'':'<span class="svy-chip" style="opacity:.45;cursor:default" title="No '+FDB_SURF_LBL[k]+' points in this period">'+FDB_SURF_LBL[k]+' · none</span>';
-        return '<button type="button" class="svy-chip'+(fdbSurface===k?' on':'')+'" onclick="fdbSetSurface(\''+k+'\')">'+FDB_SURF_LBL[k]+' · '+fmtN(n)+'</button>';
+        return '<button type="button" class="svy-chip'+(fdbSurface===k?' on':'')+'" data-act="fdbSetSurface" '+KLAct.args(k)+'>'+FDB_SURF_LBL[k]+' · '+fmtN(n)+'</button>';
       }).join('')+'</div>'
     :'';
   const pills='<div class="svy-bar"><div class="svy-years">'+
-    (fdbData.periods||[]).map(pp=>'<button type="button" class="svy-pill'+(pp.id===fdbPeriodId?' on':'')+'" title="'+escH(pp.range||'')+'" onclick="fdbSetPeriod('+(+pp.id)+')">'+
+    (fdbData.periods||[]).map(pp=>'<button type="button" class="svy-pill'+(pp.id===fdbPeriodId?' on':'')+'" title="'+escH(pp.range||'')+'" data-act="fdbSetPeriod" '+KLAct.args((+pp.id))+'>'+
       '<span class="svy-pill-cap">Survey Period'+(pp.is_active?' · current':'')+'</span><span class="svy-pill-yr">'+escH(pp.name)+'</span></button>').join('')+
-    '</div>'+surfChips+'<div class="svy-dists"><button type="button" class="svy-chip'+(fdbDistrict?'':' on')+'" onclick="fdbDistrict=null;fdbPaint()">All Districts</button>'+
-    dists.map(d=>'<button type="button" class="svy-chip'+(d.district===fdbDistrict?' on':'')+'" onclick="fdbSetDistrict(\''+qq(d.district)+'\')">'+escH(d.district)+'</button>').join('')+
+    '</div>'+surfChips+'<div class="svy-dists"><button type="button" class="svy-chip'+(fdbDistrict?'':' on')+'" data-act="fdbClearDistrict">All Districts</button>'+
+    dists.map(d=>'<button type="button" class="svy-chip'+(d.district===fdbDistrict?' on':'')+'" data-act="fdbSetDistrict" '+KLAct.args(qq(d.district))+'>'+escH(d.district)+'</button>').join('')+
     '</div></div>';
 
   if(!p.points){
@@ -461,7 +461,7 @@ function fdbPaint(){
     '<div class="kv">'+(d0?fdbF(d0.mean,unit):'—')+'<span class="u">'+unit+'</span></div>'+
     '<div class="kl">Median '+(d0?fdbF(d0.p50,unit):'—')+' '+unit+' · weak (&gt; <input type="number" step="0.001" '+
     'value="'+(fdbCutoff!=null?fdbCutoff:'')+'" placeholder="'+unit+'" style="width:56px" '+
-    'onclick="event.stopPropagation()" onchange="fdbSetCutoff(this.value)"> '+unit+'): '+
+    'data-act="klStop" data-change="klValue" data-args="fdbSetCutoff"> '+unit+'): '+
     (function(){const pw=d0?fdbPctWeak(d0.curve,fdbCutoff):null;return pw!=null?'<b>'+pw+'%</b>':'set cutoff';})()+
     '</div></div>'+
     '<div class="kpi" style="--kc:#15976a"><div class="kcap">D0 range</div>'+
@@ -516,3 +516,6 @@ function fdbPaint(){
     fdbWeakSections(v,unit)+
     fdbUnmappedCard(p)+dumbCard+fdbTempCard(v)+fdbMatrix(v,unit)+note;
 }
+
+/* was onclick="fdbDistrict=null;fdbPaint()" — clears the district filter */
+function fdbClearDistrict(){ fdbDistrict=null; fdbPaint(); }

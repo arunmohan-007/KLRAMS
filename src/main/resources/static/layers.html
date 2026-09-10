@@ -195,7 +195,8 @@
 <meta name="apple-mobile-web-app-title" content="KLRAMS">
 <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
-<link rel="stylesheet" href="/css/mobile-pages.css?v=3">
+<link rel="stylesheet" href="/css/mobile-pages.css?v=5">
+  <script src="/js/00-actions.js?v=3"></script>
 </head>
 <body>
 <div class="bg"></div>
@@ -221,8 +222,8 @@
   from other data.</p>
 
   <div class="actions" data-requires="admin">
-    <button class="btn" onclick="openWizard()">+ New layer</button>
-    <button class="btn ghost" onclick="newFolder()">+ New folder</button>
+    <button class="btn" data-act="openWizard">+ New layer</button>
+    <button class="btn ghost" data-act="newFolder">+ New folder</button>
   </div>
   <div id="msg" class="msg"></div>
 
@@ -319,10 +320,10 @@
     </div>
 
     <div class="mact">
-      <button class="btn ghost" id="wBack" onclick="wizBack()">Back</button>
+      <button class="btn ghost" id="wBack" data-act="wizBack">Back</button>
       <div style="display:flex;gap:10px">
-        <button class="btn ghost" onclick="closeWizard()">Cancel</button>
-        <button class="btn" id="wNext" onclick="wizNext()">Next</button>
+        <button class="btn ghost" data-act="closeWizard">Cancel</button>
+        <button class="btn" id="wNext" data-act="wizNext">Next</button>
       </div>
     </div>
   </div>
@@ -337,7 +338,7 @@
     <div id="attrBody"></div>
     <div class="mact">
       <span></span>
-      <button class="btn ghost" onclick="AD.close()">Close</button>
+      <button class="btn ghost" data-act="AD.close">Close</button>
     </div>
   </div>
 </div>
@@ -351,7 +352,7 @@
     <div class="mact">
       <span></span>
       <div style="display:flex;gap:10px">
-        <button class="btn ghost" onclick="AD.closeForm()">Cancel</button>
+        <button class="btn ghost" data-act="AD.closeForm">Cancel</button>
         <button class="btn" id="afSave">Save</button>
       </div>
     </div>
@@ -359,7 +360,7 @@
 </div>
 
 <script src="/js/role-gate.js" defer></script>
-<script src="/js/layer-management.js?v=7" defer></script>
-<script src="/js/attribute-data.js?v=4" defer></script>
+<script src="/js/layer-management.js?v=9" defer></script>
+<script src="/js/attribute-data.js?v=6" defer></script>
 </body>
 </html>

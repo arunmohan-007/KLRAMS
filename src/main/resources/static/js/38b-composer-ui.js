@@ -338,10 +338,10 @@
         '<div class="mc-ttl"><b>Map Composer</b><i>template · extent · layers · export</i></div>' +
         '<span class="mc-sheet" id="mcSheetMeta">Preparing…</span>' +
         '<div class="sp"></div>' +
-        '<button class="mc-btn" onclick="KLComposerUI.refresh(true)" title="Redraw the sheet">Regenerate</button>' +
-        '<button class="mc-btn pri" id="mcPng" onclick="KLComposerUI.exportPng()">PNG</button>' +
-        '<button class="mc-btn go" id="mcPdf" onclick="KLComposerUI.exportPdf()">PDF</button>' +
-        '<button class="mc-x" onclick="closeMapComposer()" title="Back to map">&times;</button>' +
+        '<button class="mc-btn" data-act="KLComposerUI.refresh" data-args="[true]" title="Redraw the sheet">Regenerate</button>' +
+        '<button class="mc-btn pri" id="mcPng" data-act="KLComposerUI.exportPng">PNG</button>' +
+        '<button class="mc-btn go" id="mcPdf" data-act="KLComposerUI.exportPdf">PDF</button>' +
+        '<button class="mc-x" data-act="closeMapComposer" title="Back to map">&times;</button>' +
       '</div>' +
       '<div class="mc-body">' +
         '<div class="mc-side" id="mcSide"></div>' +

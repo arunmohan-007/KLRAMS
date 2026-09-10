@@ -137,7 +137,7 @@ function roads2PopupShow(f){
   const lenU=(len!=null)?(len>=1000?'km':'m'):'';
   const rows=[['Road Number',rno],['Road Class',cls],['Road Start Chainage',sCh],['Road End Chainage',eCh],['Start Location',sLoc],['End Location',eLoc]];
   const rowsHtml=rows.map(r=>'<div class="ri-row"><span class="ri-k">'+r[0]+'</span><span class="ri-v">'+v(r[1])+'</span></div>').join('');
-  const html='<div class="ri-head"><div class="ri-ic"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fff\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 20 9 4M19 20 15 4M12 7v2M12 12v2M12 17v1\"/></svg></div><div class="ri-title"><div class="ri-eyebrow">FULL ROAD</div><div class="ri-name">'+v(name)+'</div></div><button class="ri-x" onclick="r2CloseCard()" aria-label="Close">&times;</button></div>'
+  const html='<div class="ri-head"><div class="ri-ic"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fff\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 20 9 4M19 20 15 4M12 7v2M12 12v2M12 17v1\"/></svg></div><div class="ri-title"><div class="ri-eyebrow">FULL ROAD</div><div class="ri-name">'+v(name)+'</div></div><button class="ri-x" data-act="r2CloseCard" aria-label="Close">&times;</button></div>'
     +'<div class="ri-body"><div class="ri-len"><span class="b">'+lenBig+'</span><span class="u">'+lenU+'</span><span class="cap">Total length</span></div>'+rowsHtml+'</div>';
   const c=r2EnsureCard(); c.innerHTML=html; c.style.display='block';
 }

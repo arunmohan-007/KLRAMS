@@ -192,8 +192,8 @@ function trafficPopupHTML(props){
   if(grouped){
     const uid='trfp'+(++trfPopSeq);
     h+='<div class="kp-seg">'
-      +'<button type="button" class="kp-segbtn on" onclick="trfSwitchBlk(\''+uid+'\',\'c\',this)">Combined</button>'
-      +'<button type="button" class="kp-segbtn" onclick="trfSwitchBlk(\''+uid+'\',\'s\',this)">This carriageway</button>'
+      +'<button type="button" class="kp-segbtn on" data-act="trfSwitchBlkEl" '+KLAct.args(uid,'c')+'>Combined</button>'
+      +'<button type="button" class="kp-segbtn" data-act="trfSwitchBlkEl" '+KLAct.args(uid,'s')+'>This carriageway</button>'
       +'</div>';
     h+='<div id="'+uid+'-c">';
     h+='<div class="kp-block" style="padding-bottom:0;padding-top:10px"><div class="kp-eyebrow">Combined · both carriageways ('+members.map(escH).join(' + ')+')</div></div>';
@@ -217,3 +217,6 @@ function trafficPopup(lngLat,props){
   else new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML(h).addTo(map);
 }
 (function initTraffic(){const tg=document.getElementById('showTraffic');if(!tg)return;function showLayer(){if(map.getLayer('trafficstn-lyr'))map.setLayoutProperty('trafficstn-lyr','visibility','visible');}tg.addEventListener('change',function(e){if(e.target.checked){TRAFFIC_LOADED=false;loadTraffic(showLayer);}else if(map.getLayer('trafficstn-lyr'))map.setLayoutProperty('trafficstn-lyr','visibility','none');});})();
+
+/* was onclick=trfSwitchBlk(uid,'c'|'s',this) — the button marks itself active */
+function trfSwitchBlkEl(uid,kind){ trfSwitchBlk(uid, kind, KLAct.el()); }

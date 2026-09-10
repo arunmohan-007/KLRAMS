@@ -87,7 +87,8 @@
 <meta name="apple-mobile-web-app-title" content="KLRAMS">
 <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
-<link rel="stylesheet" href="/css/mobile-pages.css?v=3">
+<link rel="stylesheet" href="/css/mobile-pages.css?v=5">
+  <script src="/js/00-actions.js?v=3"></script>
 </head>
 <body>
   <canvas id="scene"></canvas>
@@ -96,7 +97,7 @@
   <div class="shell">
     <header class="top">
       <div class="brand">
-        <img class="emblem" src="/img/kerala-emblem.png" alt="Government of Kerala" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+        <img class="emblem" src="/img/kerala-emblem.png" alt="Government of Kerala" data-hide-on-error="sibling">
         <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="#ffa630" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="19" height="19"><path d="M5 21 9 3M19 21 15 3M12 6v2M12 11v2M12 16v2"/></svg></span>
         <span class="bk"><div class="t">KLRAMS Console</div><div class="s">KHRI · RMMS Cell · Kerala PWD</div></span>
       </div>
@@ -143,21 +144,6 @@
 
 <script src="/js/three.min.js"></script>
 <script src="/js/road-login.js"></script>
-<script>
-  (function(){
-    var q = new URLSearchParams(location.search), err = document.getElementById('err');
-    if (q.has('locked')) { err.textContent = 'Too many failed sign-in attempts from this connection. Please wait about 15 minutes and try again.'; err.classList.add('show'); }
-    else if (q.has('error')) err.classList.add('show');
-  })();
-  document.getElementById('forgot').addEventListener('click', function(){ document.getElementById('resetNote').classList.toggle('show'); });
-  function pad(n){return (n<10?'0':'')+n;}
-  function tick(){
-    // Kerala local time (IST, UTC+5:30) regardless of the viewer's device timezone
-    var ist=new Date(Date.now()+(330+new Date().getTimezoneOffset())*60000);
-    document.getElementById('clock').textContent=pad(ist.getHours())+':'+pad(ist.getMinutes())+':'+pad(ist.getSeconds());
-  }
-  tick(); setInterval(tick,1000);
-  if (window.RoadLogin) RoadLogin.init('scene');
-</script>
+<script src="/js/login-page.js?v=3"></script>
 </body>
 </html>

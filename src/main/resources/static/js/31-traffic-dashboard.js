@@ -43,7 +43,7 @@ function renderTrafficDash(){
       ?'<div class="dash-loading">Your session has expired (the server was restarted). '+
        '<a href="/login.html" style="color:#15976a;font-weight:700">Sign in again</a></div>'
       :'<div class="dash-loading">Could not load traffic figures ('+escH(e.message)+'). '+
-       '<a href="#" onclick="renderTrafficDash();return false" style="color:#15976a;font-weight:700">Retry</a></div>';
+       '<a href="#" data-act="renderTrafficDash" style="color:#15976a;font-weight:700">Retry</a></div>';
   });
 }
 
@@ -208,9 +208,12 @@ function tdbKpi(extra,col,cap,val,sub,ring){
 
 function tdbPills(p,dists){
   return '<div class="svy-bar"><div class="svy-years">'+
-    (tdbData.periods||[]).map(pp=>'<button type="button" class="svy-pill'+(pp.id===tdbPeriodId?' on':'')+'" title="'+escH(pp.range||'')+'" onclick="tdbSetPeriod('+(+pp.id)+')">'+
+    (tdbData.periods||[]).map(pp=>'<button type="button" class="svy-pill'+(pp.id===tdbPeriodId?' on':'')+'" title="'+escH(pp.range||'')+'" data-act="tdbSetPeriod" '+KLAct.args((+pp.id))+'>'+
       '<span class="svy-pill-cap">Survey Period'+(pp.is_active?' · current':'')+'</span><span class="svy-pill-yr">'+escH(pp.name)+'</span></button>').join('')+
-    '</div><div class="svy-dists"><button type="button" class="svy-chip'+(tdbDistrict?'':' on')+'" onclick="tdbDistrict=null;tdbPaint()">All Districts</button>'+
-    dists.map(d=>'<button type="button" class="svy-chip'+(d.district===tdbDistrict?' on':'')+'" onclick="tdbSetDistrict(\''+qq(d.district)+'\')">'+escH(d.district)+' <span class="svy-chip-n">'+d.n+'</span></button>').join('')+
+    '</div><div class="svy-dists"><button type="button" class="svy-chip'+(tdbDistrict?'':' on')+'" data-act="tdbClearDistrict">All Districts</button>'+
+    dists.map(d=>'<button type="button" class="svy-chip'+(d.district===tdbDistrict?' on':'')+'" data-act="tdbSetDistrict" '+KLAct.args(qq(d.district))+'>'+escH(d.district)+' <span class="svy-chip-n">'+d.n+'</span></button>').join('')+
     '</div></div>';
 }
+
+/* was onclick="tdbDistrict=null;tdbPaint()" — clears the district filter */
+function tdbClearDistrict(){ tdbDistrict=null; tdbPaint(); }

@@ -107,14 +107,14 @@
     if (d.datasets.length > 1) {
       html += '<div class="dstabs">' + d.datasets.map(function (ds) {
         return '<button class="dstab' + (ds.key === state.dataset ? ' on' : '') +
-          '" onclick="AD.tab(\'' + ds.key + '\')">' + esc(ds.label) +
+          '" data-act="AD.tab" '+KLAct.args(ds.key)+'>' + esc(ds.label) +
           ' <span class="dscount">' + ds.attributes.length + '</span></button>';
       }).join('') + '</div>';
     }
 
     html += '<div class="attr-head">' +
       '<div class="attr-h-l">' + esc(current().label) + '</div>' +
-      '<button class="btn sm" onclick="AD.addRow()">Add Custom Attribute</button>' +
+      '<button class="btn sm" data-act="AD.addRow">Add Custom Attribute</button>' +
       '</div>';
 
     html += '<div class="tbl-wrap"><table class="atbl"><thead><tr>' +
@@ -168,11 +168,11 @@
       '<td>' + (a.attributeType === 'CUSTOM' ? '<span class="chip cu">Custom</span>' : 'Standard') + '</td>' +
       '<td><span class="badge ' + (a.status === 'ACTIVE' ? 'ok' : 'off') + '">' + esc(a.status) + '</span></td>' +
       '<td class="acts" data-requires="admin">' +
-        '<button class="ic" title="Edit" onclick="AD.edit(' + a.id + ')">✎</button>' +
+        '<button class="ic" title="Edit" data-act="AD.edit" '+KLAct.args(a.id)+'>✎</button>' +
         (a.placement
           ? '<span class="ic lock" title="Places the feature — give the role to another ' +
             'attribute before removing it">🔒</span>'
-          : '<button class="ic del" title="Remove" onclick="AD.remove(' + a.id + ')">🗑</button>') +
+          : '<button class="ic del" title="Remove" data-act="AD.remove" '+KLAct.args(a.id)+'>🗑</button>') +
       '</td></tr>';
   }
 

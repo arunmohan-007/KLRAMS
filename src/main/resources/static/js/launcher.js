@@ -13,7 +13,7 @@
      inset icon rings, subtle card/panel depth.
 
    Usage: include <script src="/js/launcher.js"></script> and a
-   button: <button class="kl-open" onclick="openLauncher()">…</button>
+   button: <button class="kl-open" data-act="openLauncher">…</button>
    ============================================================ */
 (function(){
   const CSS = `
@@ -97,14 +97,14 @@
     {href:'/admin.html',label:'Site Control', desc:'Website content',              cls:'ic-violet', ic:ICON.gear}
   ];
   const VIEWER = [
-    {label:'Dashboard', desc:'Network analytics', cls:'ic-blue',   ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/></svg>', act:"openPane('dashboard');loadDashboard();closeLauncher()"},
-    {label:'Asset Register', desc:'Roads, culverts, bridges', cls:'ic-teal', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9h18M3 14h18M9 4v16M15 4v16"/></svg>', act:"openRegScreen();closeLauncher()"},
-    {label:'PCI', desc:'Pavement Condition Index', cls:'ic-green', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 15a8 8 0 0 1 16 0"/><path d="M12 15l4.5-3.5"/><circle cx="12" cy="15" r="1.3"/></svg>', act:"openPciScreen('weights');closeLauncher()"},
-    {label:'Road Condition Data', desc:'Colour & thresholds', cls:'ic-gold', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 18l5-6 4 3 6-8"/><path d="M4 21h16"/></svg>', act:"openCondScreen();closeLauncher()"},
-    {label:'Report Hub', desc:'FWD, condition, soil, core, crust', cls:'ic-violet', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>', act:"openReportHub();closeLauncher()"},
-    {label:'NSV Videos', desc:'Survey footage catalogue & player', cls:'ic-blue', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>', act:"openNsvScreen();closeLauncher()"},
-    {label:'Map Composer', desc:'Print-ready map sheets, PDF & PNG', cls:'ic-green', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="1.6"/><path d="M3 9h18M15 9v11"/><path d="M6.5 13.5l2.5 3 2-2.2"/></svg>', act:"openMapComposer();closeLauncher()"},
-    {label:'Filters', desc:'Filter data layers', cls:'ic-violet', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5h16l-6 7v5l-4 2v-7z"/></svg>', act:"openPane('filter');refreshFilterLocks();closeLauncher()"}
+    {label:'Dashboard', desc:'Network analytics', cls:'ic-blue',   ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/></svg>', act:'launchDashboard'},
+    {label:'Asset Register', desc:'Roads, culverts, bridges', cls:'ic-teal', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9h18M3 14h18M9 4v16M15 4v16"/></svg>', act:'launchAssetRegister'},
+    {label:'PCI', desc:'Pavement Condition Index', cls:'ic-green', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 15a8 8 0 0 1 16 0"/><path d="M12 15l4.5-3.5"/><circle cx="12" cy="15" r="1.3"/></svg>', act:'launchPci'},
+    {label:'Road Condition Data', desc:'Colour & thresholds', cls:'ic-gold', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 18l5-6 4 3 6-8"/><path d="M4 21h16"/></svg>', act:'launchCondition'},
+    {label:'Report Hub', desc:'FWD, condition, soil, core, crust', cls:'ic-violet', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>', act:'launchReportHub'},
+    {label:'NSV Videos', desc:'Survey footage catalogue & player', cls:'ic-blue', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>', act:'launchNsv'},
+    {label:'Map Composer', desc:'Print-ready map sheets, PDF & PNG', cls:'ic-green', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="1.6"/><path d="M3 9h18M15 9v11"/><path d="M6.5 13.5l2.5 3 2-2.2"/></svg>', act:'launchComposer'},
+    {label:'Filters', desc:'Filter data layers', cls:'ic-violet', ic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5h16l-6 7v5l-4 2v-7z"/></svg>', act:'launchFilters'}
   ];
 
   function tileInner(c){
@@ -122,7 +122,7 @@
     return '<a class="kl-card'+(here(c.href)?' cur':'')+'" style="--ac:'+(AC[c.cls]||'#3b86e6')+'" href="'+c.href+'" data-l="'+(c.label+' '+c.desc).toLowerCase()+'">'+tileInner(c)+'</a>';
   }
   function vcard(c){
-    return '<button class="kl-card" style="--ac:'+(AC[c.cls]||'#3b86e6')+'" data-l="'+(c.label+' '+c.desc).toLowerCase()+'" onclick="'+c.act+'">'+tileInner(c)+'</button>';
+    return '<button class="kl-card" style="--ac:'+(AC[c.cls]||'#3b86e6')+'" data-l="'+(c.label+' '+c.desc).toLowerCase()+'" data-act="'+c.act+'">'+tileInner(c)+'</button>';
   }
 
   /* ---- Night mode ------------------------------------------------------ */
@@ -161,13 +161,13 @@
           +'<span class="kl-brandtxt"><b>KL<span>RAMS</span></b><i>Kerala Road Asset Management System · PWD</i></span>'
         +'</div>'
         +'<div class="kl-actions">'
-          +'<button class="kl-night" id="klNightBtn" onclick="toggleKlNight()" role="switch" aria-checked="false">'+ICON.moon+'<span>Night mode</span><span class="kl-sw"><i></i></span></button>'
-          +'<button class="kl-close" onclick="closeLauncher()" aria-label="Close">&times;</button>'
+          +'<button class="kl-night" id="klNightBtn" data-act="toggleKlNight" role="switch" aria-checked="false">'+ICON.moon+'<span>Night mode</span><span class="kl-sw"><i></i></span></button>'
+          +'<button class="kl-close" data-act="closeLauncher" aria-label="Close">&times;</button>'
         +'</div>'
       +'</div>'
       +'<div class="kl-body">'
         +'<div class="kl-search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>'
-        +'<input id="klSearch" placeholder="Search modules…" autocomplete="off" oninput="klFilter()"></div>'
+        +'<input id="klSearch" placeholder="Search modules…" autocomplete="off" data-input="klFilter"></div>'
         +'<div class="kl-sec">Platform modules</div>'
         +'<div class="kl-grid" id="klGrid">'+CARDS.map(card).join('')+'</div>'
         +(typeof window.openPane==='function'?('<div class="kl-sec">Viewer tools</div><div class="kl-grid">'+VIEWER.map(vcard).join('')+'</div>'):'')
@@ -182,3 +182,15 @@
   window.klFilter=function(){var q=(document.getElementById('klSearch').value||'').toLowerCase();document.querySelectorAll('#klOv .kl-card').forEach(function(c){c.style.display=c.dataset.l.indexOf(q)>=0?'':'none';});};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',inject);else inject();
 })();
+
+/* The launcher tiles used to carry their behaviour as a string of JS dropped
+   into onclick. Each is a named action now, so the tile markup holds only a
+   NAME and js/00-actions.js does the dispatch. */
+function launchDashboard(){ openPane('dashboard');loadDashboard();closeLauncher(); }
+function launchAssetRegister(){ openRegScreen();closeLauncher(); }
+function launchPci(){ openPciScreen('weights');closeLauncher(); }
+function launchCondition(){ openCondScreen();closeLauncher(); }
+function launchReportHub(){ openReportHub();closeLauncher(); }
+function launchNsv(){ openNsvScreen();closeLauncher(); }
+function launchComposer(){ openMapComposer();closeLauncher(); }
+function launchFilters(){ openPane('filter');refreshFilterLocks();closeLauncher(); }

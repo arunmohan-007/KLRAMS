@@ -106,14 +106,14 @@
 
     var h = '<div class="lk-bar">' +
       '<label class="lk-lbl">Layer</label>' +
-      '<select class="lk-pick" onchange="LK.pickLayer(this.value)">' +
+      '<select class="lk-pick" data-change="klValue" data-args="LK.pickLayer">' +
         state.layers.map(function (l) {
           return '<option value="' + esc(l.layerKey) + '"' +
             (l.layerKey === state.layerKey ? ' selected' : '') + '>' + esc(l.layer) + '</option>';
         }).join('') +
       '</select>' +
       '<label class="lk-lbl">Attribute</label>' +
-      '<select class="lk-pick wide" onchange="LK.pickAttribute(this.value)">' +
+      '<select class="lk-pick wide" data-change="klValue" data-args="LK.pickAttribute">' +
         '<option value="">— choose an attribute —</option>' +
         ((layer && layer.attributes) || []).map(function (a) {
           // The tick tells you which attributes already carry a lookup without
@@ -161,8 +161,8 @@
       '</div>' +
       '<div class="lk-state-r" data-requires="admin">' +
         (d.enabled
-          ? '<button class="btn sm ghost" onclick="LK.disable()">Turn lookup off</button>'
-          : '<button class="btn sm" onclick="LK.enable()">Turn lookup on</button>' +
+          ? '<button class="btn sm ghost" data-act="LK.disable">Turn lookup off</button>'
+          : '<button class="btn sm" data-act="LK.enable">Turn lookup on</button>' +
             shareHtml()) +
       '</div></div>';
 
@@ -177,8 +177,8 @@
 
     h += '<div class="attr-head"><div class="attr-h-l">Lookup Details</div>' +
       '<div class="lk-head-r" data-requires="admin">' +
-      '<button class="btn sm" onclick="LK.addRow()">+ Add</button>' +
-      '<button class="btn sm ghost" onclick="LK.exportCsv()">Export Data</button>' +
+      '<button class="btn sm" data-act="LK.addRow">+ Add</button>' +
+      '<button class="btn sm ghost" data-act="LK.exportCsv">Export Data</button>' +
       '</div></div>';
 
     h += '<div class="tbl-wrap"><table class="atbl lk-tbl"><thead><tr>' +
@@ -198,8 +198,8 @@
         '<td><span class="badge ' + (v.active ? 'ok' : 'off') + '">' +
           (v.active ? 'YES' : 'NO') + '</span></td>' +
         '<td class="acts" data-requires="admin">' +
-          '<button class="ic" title="Edit" onclick="LK.editRow(' + v.id + ')">✎</button>' +
-          '<button class="ic del" title="Remove" onclick="LK.delRow(' + v.id + ')">🗑</button>' +
+          '<button class="ic" title="Edit" data-act="LK.editRow" '+KLAct.args(v.id)+'>✎</button>' +
+          '<button class="ic del" title="Remove" data-act="LK.delRow" '+KLAct.args(v.id)+'>🗑</button>' +
         '</td></tr>';
     });
     if (!(d.values || []).length) {

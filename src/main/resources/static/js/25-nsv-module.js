@@ -80,16 +80,16 @@
     var body=document.getElementById('nsvBody');if(!body)return;
     var rows=nsvFiltered();
     var toolbar='<div class="reg-bar">'
-      +'<input id="nsvSearch" class="reg-search" placeholder="Search by Road Name, Road Number or Section Label…" value="'+escH(nsvSearch)+'" oninput="nsvSetSearch(this.value)">'
-      +'<select class="reg-sel" onchange="nsvSetDir(this.value)"><option value="">All directions</option><option value="Forward"'+(nsvDir==='Forward'?' selected':'')+'>Forward</option><option value="Reverse"'+(nsvDir==='Reverse'?' selected':'')+'>Reverse</option></select>'
-      +'<label class="reg-sel" style="display:inline-flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" '+(nsvGapsOnly?'checked':'')+' onchange="nsvSetGaps(this.checked)" style="margin:0"> Gaps only</label>'
+      +'<input id="nsvSearch" class="reg-search" placeholder="Search by Road Name, Road Number or Section Label…" value="'+escH(nsvSearch)+'" data-input="klValue" data-args="nsvSetSearch">'
+      +'<select class="reg-sel" data-change="klValue" data-args="nsvSetDir"><option value="">All directions</option><option value="Forward"'+(nsvDir==='Forward'?' selected':'')+'>Forward</option><option value="Reverse"'+(nsvDir==='Reverse'?' selected':'')+'>Reverse</option></select>'
+      +'<label class="reg-sel" style="display:inline-flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" '+(nsvGapsOnly?'checked':'')+' data-change="klChecked" data-args="nsvSetGaps" style="margin:0"> Gaps only</label>'
       +'<span class="reg-count">'+rows.length+' road'+(rows.length===1?'':'s')+' with footage</span>'
-      +'<span class="reg-exp"><button class="btn ghost" onclick="nsvExportExcel()">Excel</button><button class="btn ghost" onclick="nsvPrint()">PDF</button></span>'
+      +'<span class="reg-exp"><button class="btn ghost" data-act="nsvExportExcel">Excel</button><button class="btn ghost" data-act="nsvPrint">PDF</button></span>'
       +'</div>';
     var head='<tr><th class="n">Sl</th><th>Road Name</th><th class="m">Section Label</th><th class="n">Length of Road</th><th class="n">Gap Length</th><th>Direction</th><th>View Video</th></tr>';
     var tb='';
     rows.forEach(function(r,i){
-      /* sec goes inside onclick="nsvViewVideo('...')": JS-string-escape first
+      /* sec goes inside data-act="nsvViewVideo" data-args='["..."]': JS-string-escape first
          (backslash, then quote), then HTML-attribute-escape the result too
          (& < > "), since the section id is free text from a shapefile upload
          and a bare " in it would otherwise break out of the onclick attribute. */
@@ -102,7 +102,7 @@
         +'<td class="n">'+_m(r.len)+'</td>'
         +'<td class="n">'+(r.gap==null?'–':(r.gap<=1?'<span style="color:#2ba66a">None</span>':'<b style="color:#d9822b">'+_m(r.gap)+'</b>'))+'</td>'
         +'<td>'+escH(r.dir)+'</td>'
-        +'<td><button class="nsv-viewbtn" onclick="nsvViewVideo(\''+sec+'\')">&#9658;&nbsp;View Video</button></td>'
+        +'<td><button class="nsv-viewbtn" data-act="nsvViewVideo" '+KLAct.args(sec)+'>&#9658;&nbsp;View Video</button></td>'
         +'</tr>';
     });
     body.innerHTML=toolbar+'<div class="reg-tablewrap"><table class="reg-table"><thead>'+head+'</thead><tbody>'

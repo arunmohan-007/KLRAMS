@@ -15,29 +15,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script>
-/* WebGL guard — MapLibre requires WebGL. On machines where hardware
-   acceleration / WebGL is disabled, the map cannot initialise, which then
-   cascades into "map is not defined" errors across every module. Detect that
-   up front and send the user to a friendly instructions page instead of a
-   broken blank screen. Runs before MapLibre is even loaded. */
-(function(){
-  function webglSupported(){
-    try{
-      var c=document.createElement('canvas');
-      var gl=c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl');
-      return !!(window.WebGLRenderingContext && gl);
-    }catch(e){ return false; }
-  }
-  if(!webglSupported()) location.replace('/map-lite.html');
-})();
-</script>
+<script src="/js/map-boot.js?v=3"></script>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
-  <link rel="stylesheet" href="css/app.css?v=139">
-  <link rel="stylesheet" href="css/klrams-dark.css?v=24">
+  <link rel="stylesheet" href="css/app.css?v=141">
+  <link rel="stylesheet" href="css/klrams-dark.css?v=26">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
     .cond-metric-row{display:flex;align-items:center;gap:8px;margin:0 0 12px 24px;padding:0}
@@ -64,11 +48,12 @@
     /* search bar responsive */
     @media (min-width:900px){#search{max-width:460px}}
   </style>
+  <script src="/js/00-actions.js?v=3"></script>
 </head>
 <body>
 <div id="app">
   <div class="topbar">
-    <button class="kl-open kl-big" onclick="openLauncher()" title="Explore KLRAMS modules"><svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg></button>
+    <button class="kl-open kl-big" data-act="openLauncher" title="Explore KLRAMS modules"><svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg></button>
     <div class="brand"><span class="t">KLRAMS Console</span><span class="s">Kerala Road Asset Management System</span></div>
     <span class="spacer"></span>
     <span class="tag" id="districtTag">Kerala PWD</span>
@@ -83,15 +68,15 @@
   <div id="main">
     <nav id="iconrail">
   <div class="rail-top">
-    <button class="railbtn" data-pane="layers" onclick="openPane('layers')" title="Layers"><span class="ri"><svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span><span class="rl">Layers</span></button>
-    <button class="railbtn" data-pane="network" onclick="openPane('network')" title="Road Network"><span class="ri"><svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.3"/><circle cx="19" cy="12" r="2.3"/><circle cx="7" cy="19" r="2.3"/><path d="M7 7l10 4M17 13L9 18"/></svg></span><span class="rl">Network</span></button>
-    <button class="railbtn" data-pane="filter" onclick="openPane('filter');refreshFilterLocks()" title="Filters"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 5h16l-6 7v5l-4 2v-7z"/></svg></span><span class="rl">Filter</span></button>
+    <button class="railbtn" data-pane="layers" data-act="openPane" data-args='["layers"]' title="Layers"><span class="ri"><svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span><span class="rl">Layers</span></button>
+    <button class="railbtn" data-pane="network" data-act="openPane" data-args='["network"]' title="Road Network"><span class="ri"><svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.3"/><circle cx="19" cy="12" r="2.3"/><circle cx="7" cy="19" r="2.3"/><path d="M7 7l10 4M17 13L9 18"/></svg></span><span class="rl">Network</span></button>
+    <button class="railbtn" data-pane="filter" data-act="openFilterPane" title="Filters"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 5h16l-6 7v5l-4 2v-7z"/></svg></span><span class="rl">Filter</span></button>
     <!-- Survey video is now launched from the "Play footage" button on the Road Inspection popup, so the click-based Video panel is hidden. The #videoMode checkbox below is kept (hidden) because playSurveyFromPopup() toggles it to drive the video dock. -->
-    <button class="railbtn" data-pane="video" onclick="openPane('video')" title="Survey Video" style="display:none"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></span><span class="rl">Video</span></button>
-    <button class="railbtn" data-pane="basemap" onclick="openPane('basemap')" title="Base Map"><span class="ri"><svg viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span><span class="rl">Base map</span></button>
-    <button class="railbtn" data-pane="measure" onclick="openPane('measure')" title="Measure & Route"><span class="ri"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></svg></span><span class="rl">Measure</span></button>
-    <button class="railbtn" data-pane="chainage" onclick="openChainagePane()" title="Chainage Locator"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 18h16"/><path d="M7 18v-4M12 18V6M17 18v-7"/><circle cx="12" cy="4" r="1.6"/></svg></span><span class="rl">Chainage</span></button>
-    <button class="railbtn" data-pane="heatmap" onclick="openHeatmapPane()" title="Heat Map Analysis — density surface over soil test points or traffic stations"><span class="ri"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg></span><span class="rl">Heat map</span></button>
+    <button class="railbtn" data-pane="video" data-act="openPane" data-args='["video"]' title="Survey Video" style="display:none"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></span><span class="rl">Video</span></button>
+    <button class="railbtn" data-pane="basemap" data-act="openPane" data-args='["basemap"]' title="Base Map"><span class="ri"><svg viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span><span class="rl">Base map</span></button>
+    <button class="railbtn" data-pane="measure" data-act="openPane" data-args='["measure"]' title="Measure & Route"><span class="ri"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></svg></span><span class="rl">Measure</span></button>
+    <button class="railbtn" data-pane="chainage" data-act="openChainagePane" title="Chainage Locator"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 18h16"/><path d="M7 18v-4M12 18V6M17 18v-7"/><circle cx="12" cy="4" r="1.6"/></svg></span><span class="rl">Chainage</span></button>
+    <button class="railbtn" data-pane="heatmap" data-act="openHeatmapPane" title="Heat Map Analysis — density surface over soil test points or traffic stations"><span class="ri"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg></span><span class="rl">Heat map</span></button>
     <a class="railbtn" href="/drone-viewer.html" title="Drone Viewer — drone orthomosaic and DEM imagery drawn over the road network"><span class="ri"><svg viewBox="0 0 24 24"><circle cx="5" cy="5" r="2.2"/><circle cx="19" cy="5" r="2.2"/><circle cx="5" cy="19" r="2.2"/><circle cx="19" cy="19" r="2.2"/><path d="M6.6 6.6L10.5 10.5M17.4 6.6L13.5 10.5M6.6 17.4L10.5 13.5M17.4 17.4L13.5 13.5"/><rect x="10.2" y="10.2" width="3.6" height="3.6" rx="0.8"/></svg></span><span class="rl">Drone</span></a>
     <!-- Full-screen modules, captioned and plated so the rail reads as two
          groups: tools that act on the map beside them, and modules that take
@@ -104,22 +89,22 @@
          data-pane and stay inside #iconrail, so every existing
          `querySelectorAll('#iconrail .railbtn')` active-state sweep still finds
          them; the flyout only changes where they are drawn. -->
-    <button class="railbtn modbtn" id="modulesRailBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleModuleMenu(event)" title="Modules — Dashboard, Map Composer, Report Hub"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg></span><span class="rl">Modules</span></button>
+    <button class="railbtn modbtn" id="modulesRailBtn" aria-haspopup="true" aria-expanded="false" data-act="toggleModuleMenuEl" title="Modules — Dashboard, Map Composer, Report Hub"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg></span><span class="rl">Modules</span></button>
   </div>
   <!-- Flyout: position:fixed, so it is neither clipped by the rail's scroller
        nor a flex child of the mobile tab bar. Placed by openModuleMenu(). -->
   <div id="moduleMenu" class="mod-menu" role="menu" aria-labelledby="modulesRailBtn" hidden>
     <div class="mod-menu-cap">Modules</div>
-    <button class="railbtn modbtn" role="menuitem" data-pane="dashboard" onclick="pickModule(function(){loadDashboard();openPane('dashboard')})" title="Dashboards — network, pavement, asset &amp; survey figures"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.2"/><rect x="13" y="3" width="8" height="5" rx="1.2"/><rect x="13" y="10" width="8" height="11" rx="1.2"/><rect x="3" y="13" width="8" height="8" rx="1.2"/></svg></span><span class="rl">Dashboard<small>Network, pavement, asset &amp; survey figures</small></span></button>
-    <button class="railbtn modbtn" role="menuitem" data-pane="composer" onclick="pickModule(openMapComposer)" title="Map Composer — build a print-ready map sheet from the layers and filter on screen"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.6"/><path d="M3 9h18"/><path d="M15 9v11"/><path d="M6.5 13.5l2.5 3 2-2.2"/></svg></span><span class="rl">Map Composer<small>Print-ready map sheet from the current view</small></span></button>
-    <button class="railbtn modbtn" role="menuitem" data-pane="reports" onclick="pickModule(openReportHub)" title="Report Hub — filterable survey reports, Excel &amp; PDF"><span class="ri"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span><span class="rl">Report Hub<small>Filterable survey reports, Excel &amp; PDF</small></span></button>
+    <button class="railbtn modbtn" role="menuitem" data-pane="dashboard" data-act="pickDashboard" title="Dashboards — network, pavement, asset &amp; survey figures"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.2"/><rect x="13" y="3" width="8" height="5" rx="1.2"/><rect x="13" y="10" width="8" height="11" rx="1.2"/><rect x="3" y="13" width="8" height="8" rx="1.2"/></svg></span><span class="rl">Dashboard<small>Network, pavement, asset &amp; survey figures</small></span></button>
+    <button class="railbtn modbtn" role="menuitem" data-pane="composer" data-act="pickComposer" title="Map Composer — build a print-ready map sheet from the layers and filter on screen"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.6"/><path d="M3 9h18"/><path d="M15 9v11"/><path d="M6.5 13.5l2.5 3 2-2.2"/></svg></span><span class="rl">Map Composer<small>Print-ready map sheet from the current view</small></span></button>
+    <button class="railbtn modbtn" role="menuitem" data-pane="reports" data-act="pickReportHub" title="Report Hub — filterable survey reports, Excel &amp; PDF"><span class="ri"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span><span class="rl">Report Hub<small>Filterable survey reports, Excel &amp; PDF</small></span></button>
   </div>
   <div class="rail-bottom">
     <a class="railbtn" href="/" title="Data Console"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H4z"/><path d="M8 20h8M12 16v4"/></svg></span><span class="rl">Console</span></a>
   </div>
 </nav>
 <div id="fpanes" class="hidden">
-  <button id="paneCollapse" onclick="togglePanes()" title="Hide / show panel">&#10094;</button>
+  <button id="paneCollapse" data-act="togglePanes" title="Hide / show panel">&#10094;</button>
 
   <section class="fpane active" id="pane-layers">
     <div class="pane-title">Layers</div>
@@ -127,7 +112,7 @@
     <div class="grp">
       <div class="switch"><span class="lname"><span class="ldot" style="background:#8a4d1f"></span>Road network</span><input type="checkbox" id="showRoads" checked></div>
       <div class="switch"><span class="lname"><span class="ldot" style="background:#3a4ad6"></span>Full Road Network <span class="r2-hint">by road name</span></span><input type="checkbox" id="showRoads2"></div>
-      <div class="r2-row"><button class="btn ghost" onclick="importRoadLayer()">Import layer&hellip;</button><span class="r2-status" id="roads2Status">No layer imported</span><input type="file" id="roads2File" accept=".geojson,.json,.zip" style="display:none"></div>
+      <div class="r2-row"><button class="btn ghost" data-act="importRoadLayer">Import layer&hellip;</button><span class="r2-status" id="roads2Status">No layer imported</span><input type="file" id="roads2File" accept=".geojson,.json,.zip" style="display:none"></div>
     </div>
     <div class="grp-title">Road condition data &amp; FWD</div>
     <div class="grp">
@@ -160,14 +145,14 @@
     <div class="grp">
       <div class="switch"><span class="lname"><span class="ldot" style="background:#1565c0"></span>Traffic stations</span><input type="checkbox" id="showTraffic"></div>
       <div class="trf-status" id="trfStatus"></div>
-      <button class="hm-launch" onclick="openHeatmapPane('traffic')" title="Build a traffic density / ADT heat map from these stations"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg>Heat Map Analysis</button>
+      <button class="hm-launch" data-act="openHeatmapPane" data-args='["traffic"]' title="Build a traffic density / ADT heat map from these stations"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg>Heat Map Analysis</button>
     </div>
     <div class="grp-title">Sub-grade soil, bituminous core &amp; pavement crust</div>
     <div class="grp">
       <div class="switch"><span class="lname"><span class="ldot" style="background:#8a4d1f"></span>Sub-Grade Soil</span><input type="checkbox" id="showSoil"></div>
       <div class="switch"><span class="lname"><span class="ldot" style="background:#2b2b2b"></span>Bituminous Core</span><input type="checkbox" id="showCore"></div>
       <div class="switch"><span class="lname"><span class="ldot" style="background:#b8860b"></span>Pavement Crust</span><input type="checkbox" id="showCrust"></div>
-      <button class="hm-launch" onclick="openHeatmapPane('soil')" title="Build a CBR / plasticity heat map from the sub-grade soil test points"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg>Heat Map Analysis <span class="hm-launch-s">Sub-grade soil</span></button>
+      <button class="hm-launch" data-act="openHeatmapPane" data-args='["soil"]' title="Build a CBR / plasticity heat map from the sub-grade soil test points"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg>Heat Map Analysis <span class="hm-launch-s">Sub-grade soil</span></button>
     </div>
     <!-- Interaction group hidden: survey video now launches from the Road Inspection popup's "Play footage" button. The #videoMode checkbox is retained (hidden) so playSurveyFromPopup() can still drive the video dock. -->
     <div class="grp-title" style="display:none">Interaction</div>
@@ -221,13 +206,13 @@
   <section class="fpane" id="pane-measure">
     <div class="pane-title">Measure &amp; Route</div>
     <div class="mtools">
-      <button class="mbtn" id="mLen" onclick="setMeasureMode('length')"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></svg>Length</button>
-      <button class="mbtn" id="mArea" onclick="setMeasureMode('area')"><svg viewBox="0 0 24 24"><path d="M4 8l8-4 8 4v8l-8 4-8-4z"/></svg>Area</button>
-      <button class="mbtn" id="mRoute" onclick="setMeasureMode('route')"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 6h6a4 4 0 0 1 0 8H10a4 4 0 0 0 0 8"/></svg>Route</button>
+      <button class="mbtn" id="mLen" data-act="setMeasureMode" data-args='["length"]'><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></svg>Length</button>
+      <button class="mbtn" id="mArea" data-act="setMeasureMode" data-args='["area"]'><svg viewBox="0 0 24 24"><path d="M4 8l8-4 8 4v8l-8 4-8-4z"/></svg>Area</button>
+      <button class="mbtn" id="mRoute" data-act="setMeasureMode" data-args='["route"]'><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 6h6a4 4 0 0 1 0 8H10a4 4 0 0 0 0 8"/></svg>Route</button>
     </div>
     <div class="mhint" id="mHint">Pick a tool, then click on the map.</div>
     <div class="mout" id="mOut" style="display:none"></div>
-    <div class="mrow"><button class="mghost" onclick="measureUndo()">Undo point</button><button class="mghost" onclick="measureClear()">Clear</button></div>
+    <div class="mrow"><button class="mghost" data-act="measureUndo">Undo point</button><button class="mghost" data-act="measureClear">Clear</button></div>
     <div class="mnote">Length &amp; area are measured straight between your clicks. Route follows OSM roads (origin → destination; add clicks for stops).</div>
   </section>
 
@@ -240,7 +225,7 @@
       <div class="lsfield">
         <span class="lsicon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
         <input id="chlRoad" type="text" autocomplete="off" placeholder="Type to search the road list&hellip;">
-        <button class="lsclear" id="chlRoadClear" title="Clear road" onclick="chlClearRoad(true)">&times;</button>
+        <button class="lsclear" id="chlRoadClear" title="Clear road" data-act="chlClearRoad" data-args="[true]">&times;</button>
       </div>
       <div id="chlRoadList"></div>
     </div>
@@ -248,13 +233,13 @@
 
     <div class="eyebrow" style="margin-top:14px">2 &middot; Road chainage</div>
     <div class="row2" style="margin-top:0">
-      <input id="chlCh" type="text" class="full" style="flex:1;min-width:0" placeholder="e.g. 2600" onkeydown="if(event.key==='Enter')chlLocate()">
-      <button class="btn ghost" onclick="chlLocate()">Locate</button>
+      <input id="chlCh" type="text" class="full" style="flex:1;min-width:0" placeholder="e.g. 2600" data-enter="chlLocate">
+      <button class="btn ghost" data-act="chlLocate">Locate</button>
     </div>
     <div class="chl-range" id="chlRange"></div>
 
     <div class="mout" id="chlOut" style="display:none"></div>
-    <div class="mrow"><button class="mghost" onclick="chlZoom()">Zoom to pin</button><button class="mghost" onclick="chlClear()">Clear pin</button></div>
+    <div class="mrow"><button class="mghost" data-act="chlZoom">Zoom to pin</button><button class="mghost" data-act="chlClear">Clear pin</button></div>
     <div class="mnote">Enter metres (<b>2600</b>), the km+m form (<b>2+600</b>) or <b>2.6 km</b>. The value is read as a chainage along the <b>whole road</b>, not within one section. When a Road Network filter is on, only the roads it matches can be picked.</div>
   </section>
 
@@ -269,11 +254,11 @@
     </div>
 
     <div class="eyebrow" style="margin-top:16px">2 &middot; Heat value</div>
-    <select id="hmAttr" class="hm-sel" onchange="hmOnAttr(this.value)"></select>
+    <select id="hmAttr" class="hm-sel" data-change="hmOnAttrEl"></select>
     <div class="hm-hint" id="hmAttrHint"></div>
 
     <div class="eyebrow" style="margin-top:16px">3 &middot; Boundary layer</div>
-    <select id="hmBnd" class="hm-sel" onchange="hmOnBoundary(this.value)">
+    <select id="hmBnd" class="hm-sel" data-change="hmOnBoundaryEl">
       <option value="district" selected>District boundary</option>
       <option value="none">None</option>
     </select>
@@ -282,19 +267,19 @@
     <div class="eyebrow" style="margin-top:16px">4 &middot; Kernel</div>
     <div class="hm-tune">
       <label><span>Radius</span><i id="hmRadiusV">26 px</i></label>
-      <input type="range" id="hmRadius" min="8" max="70" step="2" value="26" oninput="hmOnTune()">
+      <input type="range" id="hmRadius" min="8" max="70" step="2" value="26" data-input="hmOnTune">
       <label><span>Intensity</span><i id="hmIntensityV">1.00&times;</i></label>
-      <input type="range" id="hmIntensity" min="30" max="250" step="5" value="100" oninput="hmOnTune()">
+      <input type="range" id="hmIntensity" min="30" max="250" step="5" value="100" data-input="hmOnTune">
     </div>
 
-    <button class="hm-run" id="hmRun" onclick="hmRun()">
+    <button class="hm-run" id="hmRun" data-act="hmRun">
       <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg>
       Run Heat Map Analysis
     </button>
     <div class="hm-status" id="hmStatus"></div>
 
     <div class="hm-out" id="hmOut" style="display:none"></div>
-    <div class="mrow" id="hmActions" style="display:none"><button class="mghost" onclick="hmZoom()">Zoom to extent</button><button class="mghost" onclick="hmClear()">Clear heat map</button></div>
+    <div class="mrow" id="hmActions" style="display:none"><button class="mghost" data-act="hmZoom">Zoom to extent</button><button class="mghost" data-act="hmClear">Clear heat map</button></div>
 
     <div class="mnote">The surface is drawn <b>under</b> the point layers, so switch the dataset&rsquo;s own layer on to check the heat against its inputs. When a Road Network filter is applied, only the points it matches are analysed. Traffic runs apply the <b>station-group correction</b> from Calculation Rules: the two carriageways of one physical count station are a single heat point carrying both directions&rsquo; traffic.</div>
   </section>
@@ -305,23 +290,23 @@
 
     <details class="flt-sec" id="fsecNet" open>
       <summary>Road Network</summary>
-      <div class="flt-lock">The <b>Road network</b> layer is off. <button class="btn ghost" onclick="enableLayer('showRoads')">Turn on layer</button></div>
+      <div class="flt-lock">The <b>Road network</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showRoads"]'>Turn on layer</button></div>
       <div class="flt-body">
     <div class="eyebrow">Filter by attribute</div>
     <div id="netFilters"></div>
-    <div class="row2"><button class="btn ghost" onclick="addNetFilter()">+ Add condition</button><button class="btn ghost" onclick="clearNetFilters()">Clear</button></div>
-    <div class="row2"><span class="note" style="margin:0">Match</span><span class="segmented"><button id="nAll" class="on" onclick="setNetMode('all')">All</button><button id="nAny" onclick="setNetMode('any')">Any</button></span></div>
+    <div class="row2"><button class="btn ghost" data-act="addNetFilter">+ Add condition</button><button class="btn ghost" data-act="clearNetFilters">Clear</button></div>
+    <div class="row2"><span class="note" style="margin:0">Match</span><span class="segmented"><button id="nAll" class="on" data-act="setNetMode" data-args='["all"]'>All</button><button id="nAny" data-act="setNetMode" data-args='["any"]'>Any</button></span></div>
     <div class="statusline" id="netMatchInfo"></div>
 
     <div class="eyebrow" style="margin-top:12px">Saved filters</div>
     <div class="row2">
-      <select id="netSavedSel" style="flex:1" onchange="onNetSavedPick()"><option value="">— No saved filters —</option></select>
-      <button class="btn ghost" onclick="loadNetSaved()" title="Apply the selected saved filter">Load</button>
-      <button class="btn ghost" id="netSavedDel" onclick="deleteNetSaved()" title="Delete the selected filter" disabled>&times;</button>
+      <select id="netSavedSel" style="flex:1" data-change="onNetSavedPick"><option value="">— No saved filters —</option></select>
+      <button class="btn ghost" data-act="loadNetSaved" title="Apply the selected saved filter">Load</button>
+      <button class="btn ghost" id="netSavedDel" data-act="deleteNetSaved" title="Delete the selected filter" disabled>&times;</button>
     </div>
     <div class="row2">
-      <input type="text" id="netSaveName" placeholder="Name this filter…" maxlength="80" style="flex:1" onkeydown="if(event.key==='Enter')saveNetFilter()">
-      <button class="btn ghost" onclick="saveNetFilter()" title="Save the conditions above under this name">Save</button>
+      <input type="text" id="netSaveName" placeholder="Name this filter…" maxlength="80" style="flex:1" data-enter="saveNetFilter">
+      <button class="btn ghost" data-act="saveNetFilter" title="Save the conditions above under this name">Save</button>
     </div>
     <!-- admin-only; revealed by 05-road-network.js on the kl-role-ready event -->
     <label class="row2" id="netShareRow" style="gap:6px;cursor:pointer;display:none">
@@ -333,41 +318,41 @@
 
     <details class="flt-sec" id="fsecCond">
       <summary>Road Condition</summary>
-      <div class="flt-lock">The <b>Road Condition Data</b> layer is off. <button class="btn ghost" onclick="enableLayer('showCond')">Turn on layer</button></div>
+      <div class="flt-lock">The <b>Road Condition Data</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showCond"]'>Turn on layer</button></div>
       <div class="flt-body">
     <div class="eyebrow">Filter — show matching only</div>
     <div id="filters"></div>
-    <div class="row2"><button class="btn ghost" onclick="addFilter()">+ Add condition</button><button class="btn ghost" onclick="clearFilters()">Clear</button></div>
-    <div class="row2"><span class="note" style="margin:0">Match</span><span class="segmented"><button id="mAll" class="on" onclick="setMode('all')">All</button><button id="mAny" onclick="setMode('any')">Any</button></span></div>
+    <div class="row2"><button class="btn ghost" data-act="addFilter">+ Add condition</button><button class="btn ghost" data-act="clearFilters">Clear</button></div>
+    <div class="row2"><span class="note" style="margin:0">Match</span><span class="segmented"><button id="mAll" class="on" data-act="setMode" data-args='["all"]'>All</button><button id="mAny" data-act="setMode" data-args='["any"]'>Any</button></span></div>
     <div class="statusline" id="matchInfo"></div>
       </div>
     </details>
 
     <details class="flt-sec" id="fsecTrf">
       <summary>Traffic</summary>
-      <div class="flt-lock">The <b>Traffic stations</b> layer is off. <button class="btn ghost" onclick="enableLayer('showTraffic')">Turn on layer</button></div>
+      <div class="flt-lock">The <b>Traffic stations</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showTraffic"]'>Turn on layer</button></div>
       <div class="flt-body">
         <div class="eyebrow">Minimum ADT (avg daily traffic)</div>
         <input id="trfMin" type="number" class="full" placeholder="e.g. 5000">
-        <div class="row2"><button class="btn ghost" onclick="applyTrafficFilter()">Apply</button><button class="btn ghost" onclick="clearTrafficFilter()">Clear</button></div>
+        <div class="row2"><button class="btn ghost" data-act="applyTrafficFilter">Apply</button><button class="btn ghost" data-act="clearTrafficFilter">Clear</button></div>
         <div class="note" style="margin:0">Shows stations whose average daily traffic is at least this value.</div>
       </div>
     </details>
 
     <details class="flt-sec" id="fsecFwd">
       <summary>FWD &middot; D0 deflection</summary>
-      <div class="flt-lock">The <b>FWD (D0)</b> layer is off. <button class="btn ghost" onclick="enableLayer('showFwd')">Turn on layer</button></div>
+      <div class="flt-lock">The <b>FWD (D0)</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showFwd"]'>Turn on layer</button></div>
       <div class="flt-body">
         <div class="eyebrow">D0 range (mm)</div>
         <div class="row2"><input id="fwdMin" type="number" class="full" placeholder="min"><input id="fwdMax" type="number" class="full" placeholder="max"></div>
-        <div class="row2"><button class="btn ghost" onclick="applyFwdFilter()">Apply</button><button class="btn ghost" onclick="clearFwdFilter()">Clear</button></div>
+        <div class="row2"><button class="btn ghost" data-act="applyFwdFilter">Apply</button><button class="btn ghost" data-act="clearFwdFilter">Clear</button></div>
         <div class="note" style="margin:0">Shows FWD stretches whose D0 deflection falls in the range.</div>
       </div>
     </details>
 
     <details class="flt-sec" id="fsecIri">
       <summary>Avg IRI &middot; 2 km</summary>
-      <div class="flt-lock">The <b>Avg IRI (2 km)</b> layer is off. <button class="btn ghost" onclick="enableLayer('showIri2km')">Turn on layer</button></div>
+      <div class="flt-lock">The <b>Avg IRI (2 km)</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showIri2km"]'>Turn on layer</button></div>
       <div class="flt-body">
         <div class="eyebrow">Worst-lane IRI range (m/km)</div>
         <div class="row2"><input id="iriMin" type="number" step="0.1" class="full" placeholder="min"><input id="iriMax" type="number" step="0.1" class="full" placeholder="max"></div>
@@ -377,7 +362,7 @@
           <option value="CL2">CL2</option><option value="CL1">CL1</option><option value="CC">CC</option>
           <option value="CR1">CR1</option><option value="CR2">CR2</option>
         </select>
-        <div class="row2"><button class="btn ghost" onclick="applyIri2kmFilter()">Apply</button><button class="btn ghost" onclick="clearIri2kmFilter()">Clear</button></div>
+        <div class="row2"><button class="btn ghost" data-act="applyIri2kmFilter">Apply</button><button class="btn ghost" data-act="clearIri2kmFilter">Clear</button></div>
         <div class="statusline" id="iriMatchInfo"></div>
         <div class="note" style="margin:0">Shows 2 km bins whose worst-lane average IRI falls in the range. <b>Worst lane</b> narrows that to bins where a particular lane is the worst one.</div>
       </div>
@@ -385,57 +370,57 @@
 
     <details class="flt-sec" id="fsecPci">
       <summary>PCI &middot; both layers</summary>
-      <div class="flt-lock">No <b>PCI</b> layer is on. <button class="btn ghost" onclick="enableLayer('showPciAvg')">Turn on layer</button></div>
+      <div class="flt-lock">No <b>PCI</b> layer is on. <button class="btn ghost" data-act="enableLayer" data-args='["showPciAvg"]'>Turn on layer</button></div>
       <div class="flt-body">
         <div class="eyebrow">PCI range (0&ndash;100)</div>
         <div class="row2"><input id="pciMin" type="number" class="full" placeholder="min"><input id="pciMax" type="number" class="full" placeholder="max"></div>
-        <div class="row2"><button class="btn ghost" onclick="applyPciFilter()">Apply</button><button class="btn ghost" onclick="clearPciFilter()">Clear</button></div>
+        <div class="row2"><button class="btn ghost" data-act="applyPciFilter">Apply</button><button class="btn ghost" data-act="clearPciFilter">Clear</button></div>
         <div class="note" style="margin:0">Filters both Composite and Worst-Lane PCI layers.</div>
       </div>
     </details>
 
     <details class="flt-sec" id="fsecBridge">
       <summary>Bridge</summary>
-      <div class="flt-lock">The <b>Bridge</b> layer is off. <button class="btn ghost" onclick="enableLayer('showBridge')">Turn on layer</button></div>
+      <div class="flt-lock">The <b>Bridge</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showBridge"]'>Turn on layer</button></div>
       <div class="flt-body">
         <div class="eyebrow">Bridge type</div>
         <select id="brgType" class="full"><option value="">Any type</option></select>
-        <div class="row2"><button class="btn ghost" onclick="applyBridgeFilter()">Apply</button><button class="btn ghost" onclick="clearBridgeFilter()">Clear</button></div>
+        <div class="row2"><button class="btn ghost" data-act="applyBridgeFilter">Apply</button><button class="btn ghost" data-act="clearBridgeFilter">Clear</button></div>
         <div class="note" style="margin:0">Shows only bridges of the selected type.</div>
       </div>
     </details>
 
     <details class="flt-sec" id="fsecCulv">
       <summary>Culvert</summary>
-      <div class="flt-lock">The <b>Culvert</b> layer is off. <button class="btn ghost" onclick="enableLayer('showCulvert')">Turn on layer</button></div>
+      <div class="flt-lock">The <b>Culvert</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showCulvert"]'>Turn on layer</button></div>
       <div class="flt-body">
         <div class="eyebrow">Culvert type</div>
         <select id="culvType" class="full"><option value="">Any type</option></select>
-        <div class="row2"><button class="btn ghost" onclick="applyCulvertFilter()">Apply</button><button class="btn ghost" onclick="clearCulvertFilter()">Clear</button></div>
+        <div class="row2"><button class="btn ghost" data-act="applyCulvertFilter">Apply</button><button class="btn ghost" data-act="clearCulvertFilter">Clear</button></div>
         <div class="note" style="margin:0">Shows only culverts of the selected type.</div>
       </div>
     </details>
 
     <details class="flt-sec" id="fsecSoil">
       <summary>Sub-Grade Soil</summary>
-      <div class="flt-lock">The <b>Sub-Grade Soil</b> layer is off. <button class="btn ghost" onclick="enableLayer('showSoil')">Turn on layer</button></div>
+      <div class="flt-lock">The <b>Sub-Grade Soil</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showSoil"]'>Turn on layer</button></div>
       <div class="flt-body">
         <div class="eyebrow">Soil type</div>
         <select id="soilType" class="full"><option value="">Any type</option></select>
         <div class="eyebrow" style="margin-top:11px">CBR range (%)</div>
         <div class="row2"><input id="soilCbrMin" type="number" class="full" placeholder="min"><input id="soilCbrMax" type="number" class="full" placeholder="max"></div>
-        <div class="row2"><button class="btn ghost" onclick="applySoilFilter()">Apply</button><button class="btn ghost" onclick="clearSoilFilter()">Clear</button></div>
+        <div class="row2"><button class="btn ghost" data-act="applySoilFilter">Apply</button><button class="btn ghost" data-act="clearSoilFilter">Clear</button></div>
         <div class="note" style="margin:0">Shows sub-grade soil points matching the selected type and/or soaked CBR range.</div>
       </div>
     </details>
 
     <details class="flt-sec" id="fsecCore">
       <summary>Bituminous Core</summary>
-      <div class="flt-lock">The <b>Bituminous Core</b> layer is off. <button class="btn ghost" onclick="enableLayer('showCore')">Turn on layer</button></div>
+      <div class="flt-lock">The <b>Bituminous Core</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showCore"]'>Turn on layer</button></div>
       <div class="flt-body">
         <div class="eyebrow">Total bituminous thickness (mm)</div>
         <div class="row2"><input id="coreMin" type="number" class="full" placeholder="min"><input id="coreMax" type="number" class="full" placeholder="max"></div>
-        <div class="row2"><button class="btn ghost" onclick="applyCoreFilter()">Apply</button><button class="btn ghost" onclick="clearCoreFilter()">Clear</button></div>
+        <div class="row2"><button class="btn ghost" data-act="applyCoreFilter">Apply</button><button class="btn ghost" data-act="clearCoreFilter">Clear</button></div>
         <div class="note" style="margin:0">Shows bituminous core points whose total observed bituminous layer thickness falls in the range.</div>
       </div>
     </details>
@@ -457,46 +442,46 @@
         <h1 class="dash-h1" id="dashScope">Road Network Overview</h1>
         <div class="dash-h1-sub" id="dashSub">Kerala PWD — network length, classification and ownership at a glance.</div>
       </div>
-      <button class="dash-close" id="dashCloseBtn" onclick="closeDashboard()" title="Back to map">&times;</button>
+      <button class="dash-close" id="dashCloseBtn" data-act="closeDashboard" title="Back to map">&times;</button>
     </div>
     <div id="dashHub" class="dash-hub">
-      <button type="button" class="dash-hub-tile dcard" style="--tc:#15976a;--tcbg:rgba(21,151,106,.13);--tcglow:rgba(21,151,106,.28)" onclick="dashTab('overview')">
+      <button type="button" class="dash-hub-tile dcard" style="--tc:#15976a;--tcbg:rgba(21,151,106,.13);--tcglow:rgba(21,151,106,.28)" data-act="dashTab" data-args='["overview"]'>
         <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span>
         <h3>Network Overview</h3>
         <div class="sub">Kerala PWD — network length, classification and ownership at a glance.</div>
         <span class="dash-hub-arrow">&rarr;</span>
       </button>
-      <button type="button" class="dash-hub-tile dcard" style="--tc:#6b4e9e;--tcbg:rgba(107,78,158,.13);--tcglow:rgba(107,78,158,.28)" onclick="dashTab('culv')">
+      <button type="button" class="dash-hub-tile dcard" style="--tc:#6b4e9e;--tcbg:rgba(107,78,158,.13);--tcglow:rgba(107,78,158,.28)" data-act="dashTab" data-args='["culv"]'>
         <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><path d="M4 17a8 8 0 0 1 16 0"/><path d="M4 17v3h16v-3"/><path d="M4 17h16"/></svg></span>
         <h3>Culverts</h3>
         <div class="sub">Culverts by district and road class — total count and distribution.</div>
         <span class="dash-hub-arrow">&rarr;</span>
       </button>
-      <button type="button" class="dash-hub-tile dcard" style="--tc:#c2603f;--tcbg:rgba(194,96,63,.13);--tcglow:rgba(194,96,63,.28)" onclick="dashTab('brid')">
+      <button type="button" class="dash-hub-tile dcard" style="--tc:#c2603f;--tcbg:rgba(194,96,63,.13);--tcglow:rgba(194,96,63,.28)" data-act="dashTab" data-args='["brid"]'>
         <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><path d="M3 17c0-5.5 3.5-10 9-10s9 4.5 9 10"/><path d="M5 17v-4.5M19 17v-4.5"/><path d="M2 20h20"/></svg></span>
         <h3>Bridges</h3>
         <div class="sub">Bridges by district and road class — count, total length and distribution.</div>
         <span class="dash-hub-arrow">&rarr;</span>
       </button>
-      <button type="button" class="dash-hub-tile dcard" style="--tc:#d4a02e;--tcbg:rgba(212,160,46,.14);--tcglow:rgba(212,160,46,.28)" onclick="dashTab('survey')">
+      <button type="button" class="dash-hub-tile dcard" style="--tc:#d4a02e;--tcbg:rgba(212,160,46,.14);--tcglow:rgba(212,160,46,.28)" data-act="dashTab" data-args='["survey"]'>
         <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9z"/><path d="M8 11h8M8 15h5"/></svg></span>
         <h3>Surveys</h3>
         <div class="sub">Year-wise field survey volumes — NSV lane-km, FWD points, traffic stations, soil tests and bituminous cores, with district-wise breakdown.</div>
         <span class="dash-hub-arrow">&rarr;</span>
       </button>
-      <button type="button" class="dash-hub-tile dcard" style="--tc:#d4a02e;--tcbg:rgba(212,160,46,.13);--tcglow:rgba(212,160,46,.28)" onclick="dashTab('traffic')">
+      <button type="button" class="dash-hub-tile dcard" style="--tc:#d4a02e;--tcbg:rgba(212,160,46,.13);--tcglow:rgba(212,160,46,.28)" data-act="dashTab" data-args='["traffic"]'>
         <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="15" rx="2"/><circle cx="12" cy="7" r="1.4"/><circle cx="12" cy="11" r="1.4"/><circle cx="12" cy="15" r="1.4"/><path d="M9 18l-2 3M15 18l2 3"/></svg></span>
         <h3>Traffic</h3>
         <div class="sub">Classified traffic-count stations — state-wide &amp; district-wise top stations by ADT, vehicle-class mix and the 24-hour peak-hour profile.</div>
         <span class="dash-hub-arrow">&rarr;</span>
       </button>
-      <button type="button" class="dash-hub-tile dcard" style="--tc:#3f9aa3;--tcbg:rgba(63,154,163,.13);--tcglow:rgba(63,154,163,.28)" onclick="dashTab('fwd')">
+      <button type="button" class="dash-hub-tile dcard" style="--tc:#3f9aa3;--tcbg:rgba(63,154,163,.13);--tcglow:rgba(63,154,163,.28)" data-act="dashTab" data-args='["fwd"]'>
         <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><path d="M12 3v7"/><path d="M9 7l3 3 3-3"/><rect x="8" y="12" width="8" height="3" rx="1"/><path d="M3 20c3-3.5 6-5 9-5s6 1.5 9 5"/></svg></span>
         <h3>FWD Deflection</h3>
         <div class="sub">Falling Weight Deflectometer — points, D0 lower-to-higher by SH/MDR and district, pavement &amp; air temperatures.</div>
         <span class="dash-hub-arrow">&rarr;</span>
       </button>
-      <button type="button" class="dash-hub-tile dcard" style="--tc:#b8543d;--tcbg:rgba(184,84,61,.13);--tcglow:rgba(184,84,61,.28)" onclick="dashTab('cond')">
+      <button type="button" class="dash-hub-tile dcard" style="--tc:#b8543d;--tcbg:rgba(184,84,61,.13);--tcglow:rgba(184,84,61,.28)" data-act="dashTab" data-args='["cond"]'>
         <span class="dash-hub-ic"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 5-7 4 5"/><path d="M3 20h18"/></svg></span>
         <h3>Condition Data</h3>
         <div class="sub">Road-condition parameters (IRI, cracks, potholes…) — state-wide &amp; district-wise Low / High / Mean by surface type and SH/MDR, with a threshold segment list.</div>
@@ -515,7 +500,7 @@
         <h1 class="dash-h1">PCI &mdash; IRC:82-2023</h1>
         <div class="dash-h1-sub">Set the six distress weightages and generate the index. The map is hidden while you work here.</div>
       </div>
-      <button class="dash-close" onclick="closePciScreen()" title="Back to map">&times;</button>
+      <button class="dash-close" data-act="closePciScreen" title="Back to map">&times;</button>
     </div>
     <div id="pciViewWeights">
       <div class="pci-cols">
@@ -524,8 +509,8 @@
           <div class="pci-whead"><span class="eyebrow" style="margin:0">Weightage factor (editable)</span><span class="pci-sum" id="pciSum">&Sigma; weights = <b>1.00</b></span></div>
           <div class="pci-wgrid" id="pciWeights"></div>
           <div class="pci-actions">
-            <button class="btn" onclick="generatePCI()">Generate PCI</button>
-            <button class="btn ghost" onclick="resetPciWeights()">Reset to IRC:82-2023</button>
+            <button class="btn" data-act="generatePCI">Generate PCI</button>
+            <button class="btn ghost" data-act="resetPciWeights">Reset to IRC:82-2023</button>
           </div>
           <div class="statusline" id="pciStatus"></div>
           <div id="pciSummary"></div>
@@ -549,7 +534,7 @@
         <h1 class="dash-h1">Condition Colouring &amp; Thresholds</h1>
         <div class="dash-h1-sub">Choose the distress parameter to colour the network by and tune the Good / Fair / Poor thresholds. The map is hidden while you work here.</div>
       </div>
-      <button class="dash-close" onclick="closeCondScreen()" title="Back to map">&times;</button>
+      <button class="dash-close" data-act="closeCondScreen" title="Back to map">&times;</button>
     </div>
     <div class="pci-cols">
       <div class="pci-card">
@@ -562,7 +547,7 @@
           <span class="bk"><span class="bksw" style="background:var(--poor)"></span>Poor &gt; <i id="kPoor">3.3</i></span>
         </div>
         <div class="note" style="margin-top:10px">Defaults per Table 5.3, IRC:82-2023. Editable.</div>
-        <button class="btn ghost" style="margin-top:10px" onclick="resetThresholds()">Reset to IRC defaults</button>
+        <button class="btn ghost" style="margin-top:10px" data-act="resetThresholds">Reset to IRC defaults</button>
         <div class="statusline" id="status">Loading&hellip;</div>
       </div>
       <div class="pci-card">
@@ -587,12 +572,12 @@
         <h1 class="dash-h1">Asset Register</h1>
         <div class="dash-h1-sub">Per-section inventory of roads, culverts and bridges. Filter, then export to Excel or PDF. The map is hidden while you work here.</div>
       </div>
-      <button class="dash-close" onclick="closeRegScreen()" title="Back to map">&times;</button>
+      <button class="dash-close" data-act="closeRegScreen" title="Back to map">&times;</button>
     </div>
     <div class="dash-tabs">
-      <button class="dash-tab on" id="regTabRoad" onclick="regScreenTab('road')">Road</button>
-      <button class="dash-tab" id="regTabCulv" onclick="regScreenTab('culvert')">Culvert</button>
-      <button class="dash-tab" id="regTabBrid" onclick="regScreenTab('bridge')">Bridge</button>
+      <button class="dash-tab on" id="regTabRoad" data-act="regScreenTab" data-args='["road"]'>Road</button>
+      <button class="dash-tab" id="regTabCulv" data-act="regScreenTab" data-args='["culvert"]'>Culvert</button>
+      <button class="dash-tab" id="regTabBrid" data-act="regScreenTab" data-args='["bridge"]'>Bridge</button>
     </div>
     <div id="regBody"><div class="dash-loading">Loading&hellip;</div></div>
   </div>
@@ -606,7 +591,7 @@
         <h1 class="dash-h1">NSV Survey Videos</h1>
         <div class="dash-h1-sub">Every road with survey footage. Search by Road Name, Road Number or Section Label, then open the full player &mdash; live track, coverage, direction, speed and fullscreen. The map is hidden while you work here.</div>
       </div>
-      <button class="dash-close" onclick="closeNsvScreen()" title="Back to map">&times;</button>
+      <button class="dash-close" data-act="closeNsvScreen" title="Back to map">&times;</button>
     </div>
     <div id="nsvBody"><div class="dash-loading">Loading&hellip;</div></div>
   </div>
@@ -627,15 +612,15 @@
         <h1 class="dash-h1">Report Hub</h1>
         <div class="dash-h1-sub">Survey datasets with Road Name &amp; PWD Section. Filter, then export to Excel or PDF. The map is hidden while you work here.</div>
       </div>
-      <button class="dash-close" onclick="closeReportHub()" title="Back to map">&times;</button>
+      <button class="dash-close" data-act="closeReportHub" title="Back to map">&times;</button>
     </div>
     <div class="dash-tabs">
-      <button class="dash-tab on" id="rhTab_fwd" onclick="rhScreenTab('fwd')">FWD</button>
-      <button class="dash-tab" id="rhTab_cond" onclick="rhScreenTab('cond')">Road Condition Data</button>
-      <button class="dash-tab" id="rhTab_traffic" onclick="rhScreenTab('traffic')">Traffic Station &amp; Count</button>
-      <button class="dash-tab" id="rhTab_subgrade" onclick="rhScreenTab('subgrade')">Sub-Grade Soil</button>
-      <button class="dash-tab" id="rhTab_core" onclick="rhScreenTab('core')">Bituminous Core</button>
-      <button class="dash-tab" id="rhTab_crust" onclick="rhScreenTab('crust')">Pavement Crust</button>
+      <button class="dash-tab on" id="rhTab_fwd" data-act="rhScreenTab" data-args='["fwd"]'>FWD</button>
+      <button class="dash-tab" id="rhTab_cond" data-act="rhScreenTab" data-args='["cond"]'>Road Condition Data</button>
+      <button class="dash-tab" id="rhTab_traffic" data-act="rhScreenTab" data-args='["traffic"]'>Traffic Station &amp; Count</button>
+      <button class="dash-tab" id="rhTab_subgrade" data-act="rhScreenTab" data-args='["subgrade"]'>Sub-Grade Soil</button>
+      <button class="dash-tab" id="rhTab_core" data-act="rhScreenTab" data-args='["core"]'>Bituminous Core</button>
+      <button class="dash-tab" id="rhTab_crust" data-act="rhScreenTab" data-args='["crust"]'>Pavement Crust</button>
     </div>
     <div id="rhBody"><div class="dash-loading">Loading&hellip;</div></div>
   </div>
@@ -700,7 +685,7 @@
       }
     </style>
     <aside id="roadInspector" aria-live="polite">
-      <button id="riClose" onclick="hideInspector()" aria-label="Close" title="Close">&times;</button>
+      <button id="riClose" data-act="hideInspector" aria-label="Close" title="Close">&times;</button>
       <div id="riBody"></div>
     </aside>
     <div id="mapLegend"><div class="ml-h"><span class="ml-h-label">Road class</span><button type="button" class="ml-min" title="Minimize">&minus;</button></div><div class="ml-body"></div></div>
@@ -708,8 +693,8 @@
       <div class="nsc-head">
         <span class="nsc-dot"></span>
         <span class="nsc-title">Road Network filter <b>ON</b></span>
-        <button type="button" class="nsc-min" id="nscMin" onclick="toggleNetScopeCard()" title="Minimize" aria-label="Minimize">&minus;</button>
-        <button type="button" class="nsc-x" onclick="closeNetScopeCard()" title="Close" aria-label="Close">&times;</button>
+        <button type="button" class="nsc-min" id="nscMin" data-act="toggleNetScopeCard" title="Minimize" aria-label="Minimize">&minus;</button>
+        <button type="button" class="nsc-x" data-act="closeNetScopeCard" title="Close" aria-label="Close">&times;</button>
       </div>
       <div class="nsc-crit" id="nscCrit"></div>
       <div class="nsc-stats" id="nscStats"></div>
@@ -898,88 +883,7 @@
       #mapLegend::-webkit-scrollbar{width:8px}
       #mapLegend::-webkit-scrollbar-thumb{background:rgba(123,225,180,.35);border-radius:6px}
     </style>
-    <script id="maplegend-js">
-      (function(){
-        function mirror(){
-          var src=document.getElementById('netLegend'),dst=document.getElementById('mapLegend');if(!dst)return;
-          var body=dst.querySelector('.ml-body');
-          var hasContent=src&&src.textContent&&src.textContent.trim().length>0;
-          var sel=document.getElementById('netColorBy');
-          var th=dst.querySelector('.ml-h-label');
-          if(th)th.textContent=(sel&&sel.options&&sel.options[sel.selectedIndex])?sel.options[sel.selectedIndex].text:'Road class';
-          if(body)body.innerHTML=hasContent?src.innerHTML:'';
-          var ro=document.getElementById('showRoads');
-          var roadsOn=ro&&ro.checked;
-          dst.classList.toggle('show',!!(hasContent&&roadsOn));
-        }
-        function enableDrag(){
-          var el=document.getElementById('mapLegend'),handle=el&&el.querySelector('.ml-h'),container=document.getElementById('main');
-          if(!el||!handle||!container)return;
-          var dragging=false,offX=0,offY=0;
-          function clamp(left,top){
-            var maxL=container.clientWidth-el.offsetWidth,maxT=container.clientHeight-el.offsetHeight;
-            return {left:Math.max(0,Math.min(left,Math.max(0,maxL))),top:Math.max(0,Math.min(top,Math.max(0,maxT)))};
-          }
-          try{
-            var pos=JSON.parse(localStorage.getItem('klMapLegendPos')||'null');
-            if(pos&&isFinite(pos.left)&&isFinite(pos.top)){el.style.left=pos.left+'px';el.style.top=pos.top+'px';el.style.bottom='auto';}
-          }catch(e){}
-          handle.addEventListener('pointerdown',function(e){
-            if(e.target.closest('.ml-min'))return;
-            var cRect=container.getBoundingClientRect(),eRect=el.getBoundingClientRect();
-            offX=e.clientX-eRect.left;offY=e.clientY-eRect.top;
-            dragging=true;
-            el.style.left=(eRect.left-cRect.left)+'px';el.style.top=(eRect.top-cRect.top)+'px';el.style.bottom='auto';
-            el.classList.add('dragging');
-            try{handle.setPointerCapture(e.pointerId);}catch(err){}
-            e.preventDefault();
-          });
-          handle.addEventListener('pointermove',function(e){
-            if(!dragging)return;
-            var cRect=container.getBoundingClientRect();
-            var c=clamp(e.clientX-cRect.left-offX,e.clientY-cRect.top-offY);
-            el.style.left=c.left+'px';el.style.top=c.top+'px';
-          });
-          function endDrag(e){
-            if(!dragging)return;
-            dragging=false;
-            el.classList.remove('dragging');
-            try{handle.releasePointerCapture(e.pointerId);}catch(err){}
-            try{localStorage.setItem('klMapLegendPos',JSON.stringify({left:parseFloat(el.style.left),top:parseFloat(el.style.top)}));}catch(err){}
-          }
-          handle.addEventListener('pointerup',endDrag);
-          handle.addEventListener('pointercancel',endDrag);
-        }
-        function enableMinimize(){
-          var el=document.getElementById('mapLegend'),btn=el&&el.querySelector('.ml-min');
-          if(!el||!btn)return;
-          function apply(min){
-            el.classList.toggle('min',min);
-            btn.innerHTML=min?'&plus;':'&minus;';
-            btn.title=min?'Expand':'Minimize';
-          }
-          var min=false;
-          try{min=localStorage.getItem('klMapLegendMin')==='1';}catch(e){}
-          apply(min);
-          btn.addEventListener('click',function(e){
-            e.stopPropagation();
-            min=!min;
-            apply(min);
-            try{localStorage.setItem('klMapLegendMin',min?'1':'0');}catch(err){}
-          });
-        }
-        function start(){
-          var src=document.getElementById('netLegend');
-          if(src&&window.MutationObserver){try{new MutationObserver(mirror).observe(src,{childList:true,subtree:true,characterData:true});}catch(e){}}
-          ['netColorBy','showRoads'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',function(){setTimeout(mirror,60);});});
-          document.querySelectorAll('#iconrail .railbtn').forEach(function(b){b.addEventListener('click',function(){setTimeout(mirror,80);});});
-          enableDrag();
-          enableMinimize();
-          setTimeout(mirror,800);setTimeout(mirror,2200);
-        }
-        if(document.readyState!=='loading')start();else document.addEventListener('DOMContentLoaded',start);
-      })();
-    </script>
+    <script src="/js/maplegend.js?v=3"></script>
 <style id="vidhud-css">
 #dock .vid{position:relative;}
 #dock .vh-gapbanner{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:9;display:none;align-items:center;gap:8px;background:rgba(184,38,29,.94);color:#fff;font:700 13px/1.3 Inter,system-ui,sans-serif;padding:8px 16px;border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.4);pointer-events:none;letter-spacing:.2px;white-space:nowrap}
@@ -1045,7 +949,7 @@
 .trackfs-btn:hover{background:#1c4264;}
 </style>
     <div id="dock">
-      <span class="close" onclick="closeDock()">&times;</span>
+      <span class="close" data-act="closeDock">&times;</span>
       <div class="vid"><video id="video" controls playsinline webkit-playsinline preload="metadata"></video><div class="vidloading" id="vidloading" style="display:none"><div class="vl-spin"></div><div class="vl-txt">Loading footage&hellip;</div></div><div class="vidempty" id="vidempty" style="display:none"></div><div class="vh-gapbanner" id="hudGapBanner"><span class="gap-ic">&#9888;</span> No NSV survey data for this chainage</div><div class="vidhud" id="vidhud"><div class="vh-left"><div class="vh-id"><div class="vh-route" id="hudRoute">&mdash;</div><div class="vh-meta"><span class="vh-cls" id="hudClass">&mdash;</span><span class="vh-sec" id="hudSec">&mdash;</span></div><div class="vh-chrow"><span class="vh-chip" id="hudCh">CH &ndash; m</span><span class="vh-chip dir" id="hudDir">Forward</span></div><div class="vh-attrs" id="hudAttrs"></div></div><div class="vh-iri" id="hudIri">AVG IRI &ndash;</div><div class="vh-pci" id="hudPci"></div></div><div class="vh-right"><svg class="vidhud-trk" id="hudTrack" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg><div class="vh-cond" id="hudCond"></div><div class="vh-chain" id="hudChain"></div></div><div class="vh-roadname" id="hudRoad">&mdash;</div></div></div>
       <div class="instr">
         <div class="road-eyebrow">Now playing</div>
@@ -1054,232 +958,77 @@
         <div class="road-route" id="dRoute">—</div>
         <div class="meter"><span class="val" id="dCh">0</span><span class="unit">m</span><span class="cap">Chainage</span><span class="val" id="dIri" style="font-size:26px;margin-left:20px">–</span><span class="cap">IRI m/km</span></div>
         <div class="covrow" id="dCoverage" style="display:none"><div class="cov-head">NSV survey coverage<span class="cov-pct" id="dCovPct">—</span></div><div class="cov-bar" id="dCovBar"></div><div class="cov-gaps" id="dCovGaps"></div></div>
-        <div class="dirrow"><span class="lbl">Direction</span><span class="seg-dark"><button id="fwd" class="on" onclick="setDir('fwd')">Front</button><button id="rev" onclick="setDir('rev')">Back</button></span><span class="lbl" style="margin-left:auto">Length</span><span class="road-id" id="dLen" style="font-size:13px;color:#cdd9ea">—</span></div>
-        <div class="dirrow"><span class="lbl">Speed</span><span class="seg-dark" id="speedSeg"><button data-spd="0.25" onclick="setSpeed(0.25,this)">0.25&times;</button><button data-spd="0.5" onclick="setSpeed(0.5,this)">0.5&times;</button><button data-spd="1" class="on" onclick="setSpeed(1,this)">1&times;</button><button data-spd="1.5" onclick="setSpeed(1.5,this)">1.5&times;</button><button data-spd="2" onclick="setSpeed(2,this)">2&times;</button></span></div>
-        <div class="dirrow"><button class="trackfs-btn" onclick="toggleVidFs()">&#10530; Fullscreen with live track &amp; IRI</button></div>
+        <div class="dirrow"><span class="lbl">Direction</span><span class="seg-dark"><button id="fwd" class="on" data-act="setDir" data-args='["fwd"]'>Front</button><button id="rev" data-act="setDir" data-args='["rev"]'>Back</button></span><span class="lbl" style="margin-left:auto">Length</span><span class="road-id" id="dLen" style="font-size:13px;color:#cdd9ea">—</span></div>
+        <div class="dirrow"><span class="lbl">Speed</span><span class="seg-dark" id="speedSeg"><button data-spd="0.25" data-act="setSpeedEl" data-args="[0.25]">0.25&times;</button><button data-spd="0.5" data-act="setSpeedEl" data-args="[0.5]">0.5&times;</button><button data-spd="1" class="on" data-act="setSpeedEl" data-args="[1]">1&times;</button><button data-spd="1.5" data-act="setSpeedEl" data-args="[1.5]">1.5&times;</button><button data-spd="2" data-act="setSpeedEl" data-args="[2]">2&times;</button></span></div>
+        <div class="dirrow"><button class="trackfs-btn" data-act="toggleVidFs">&#10530; Fullscreen with live track &amp; IRI</button></div>
       </div>
     </div>
   </div></div>
 </div>
-  <script id="kl-datastore">
-  /* ===== KLRAMS global data store (build 160) =====
-     Captures EVERY layer once it loads — both /api/* fetches AND live MapLibre
-     geojson sources (PCI, FWD, traffic, soil, core, condition) — indexed by road +
-     chainage. Both the NSV HUD and the inspector read the same store, so a value,
-     once generated/loaded, stays available for every later call (inspection card,
-     NSV video, etc.) and is only replaced when that layer is generated again. */
-  (function(){
-    window.KL=window.KL||{byRoad:{},layers:{},_pciCache:{},_srcSig:{}};
-    function roadKey(p){return p.road||p.Road_Name||p.road_name||p.ROAD_NAME||p.RoadName||p.section||p.Section_La||null;}
-    function num(v){return (v==null||v==='')?NaN:+v;}
-    function pickn(p,keys){for(var i=0;i<keys.length;i++){var v=p[keys[i]];if(v!=null&&v!=='')return +v;}return NaN;}
-    var CH_FROM=['from_ch','Rd_Str_cha','chainage_from','from_chainage','start_ch','ch_from','From_Chain','Start_Chai'];
-    var CH_TO  =['to_ch','Rd_End_cha','chainage_to','to_chainage','end_ch','ch_to','To_Chain','End_Chaina'];
-    var CH_PT  =['chainage','chn','ch','chainage_m','Chainage','CHAINAGE','chain','chain_m','ch_m','lrp','LRP','location','Chainage_m','chainage_no','chainage_pt','Chn'];
-    KL._clearLayer=function(layer){for(var r in KL.byRoad){KL.byRoad[r]=KL.byRoad[r].filter(function(e){return e.layer!==layer;});}};
-    /* replace-by-layer, but only when the new data actually has features
-       (so toggling a layer OFF / emptying a source never wipes captured values) */
-    KL.ingest=function(layer,gj){
-      try{
-        if(!gj||!gj.features||!gj.features.length)return;
-        layer=String(layer).toLowerCase();
-        KL._clearLayer(layer); KL.layers[layer]=gj.features.length;
-        for(var i=0;i<gj.features.length;i++){
-          var f=gj.features[i];var pr=f.properties||{};var rk=roadKey(pr);if(!rk)continue;
-          (KL.byRoad[rk]=KL.byRoad[rk]||[]).push({layer:layer,p:pr,
-            from:pickn(pr,CH_FROM),to:pickn(pr,CH_TO),pt:pickn(pr,CH_PT)});
-        }
-      }catch(e){}
-    };
-    KL.ingestUrl=function(url,gj){var m=String(url).match(/\/api\/([a-z0-9_\-]+)/i);KL.ingest(m?m[1]:String(url),gj);};
-    /* guaranteed capture of the already-parsed condition segments (worst PCI + condition) */
-    KL.syncGlobals=function(){
-      try{
-        if(typeof segsByRoad!=='undefined'&&segsByRoad){
-          var n=0,r;for(r in segsByRoad)n+=segsByRoad[r].length;
-          if(KL._segN!==n){KL._segN=n;KL._clearLayer('segments');
-            for(r in segsByRoad){for(var i=0;i<segsByRoad[r].length;i++){var f=segsByRoad[r][i],pr=f.properties||{},rk=pr.road||r;
-              (KL.byRoad[rk]=KL.byRoad[rk]||[]).push({layer:'segments',p:pr,from:num(pr.from_ch!=null?pr.from_ch:pr.Rd_Str_cha),to:num(pr.to_ch!=null?pr.to_ch:pr.Rd_End_cha),pt:NaN});}}
-          }
-        }
-      }catch(e){}
-    };
-    /* pull data straight out of live MapLibre geojson sources (where generated PCI etc. live) */
-    KL.scanSources=function(){
-      try{
-        var m=window.map;if(!m||!m.getStyle)return;
-        var srcs=m.getStyle().sources||{};
-        for(var id in srcs){
-          var src=m.getSource(id);if(!src)continue;
-          var gj=src._data||(src.serialize&&src.serialize().data);
-          if(!gj||typeof gj!=='object'||!gj.features||!gj.features.length){
-            try{var ff=m.querySourceFeatures(id);if(ff&&ff.length)gj={type:'FeatureCollection',features:ff};}catch(e){}
-          }
-          if(!gj||typeof gj!=='object'||!gj.features||!gj.features.length)continue; /* persist on empty */
-          var sig=id+':'+gj.features.length;
-          if(KL._srcSig[id]===sig)continue; /* unchanged since last scan */
-          KL._srcSig[id]=sig; KL.ingest(id,gj);
-        }
-      }catch(e){}
-    };
-    /* Throttle map-source scans, but NEVER skip a segsByRoad reindex — the
-       inspector/HUD can load one road's segments while a recent sync is still
-       inside the 1.2s window, and skipping left KL.pci returning null until a
-       later refresh ("PCI not linked" flash). */
-    KL.sync=function(force){
-      var t=Date.now(),needSegs=false;
-      try{if(typeof segsByRoad!=='undefined'&&segsByRoad){var n=0,r;for(r in segsByRoad)n+=segsByRoad[r].length;if(KL._segN!==n)needSegs=true;}}catch(e){}
-      if(!force&&!needSegs&&KL._lastSync&&(t-KL._lastSync)<1200)return;
-      KL._lastSync=t;KL.syncGlobals();KL.scanSources();
-    };
-    /* exact match only (no sticky nearest) \u2014 for chainage-varying readings (FWD etc.) */
-    KL.atExact=function(road,ch){
-      KL.sync();
-      var arr=KL.byRoad[road];if(!arr)return {};
-      var out={},k;
-      for(var i=0;i<arr.length;i++){var e=arr[i],hit=false;
-        if(!isNaN(e.from)&&!isNaN(e.to)){var lo=Math.min(e.from,e.to),hi=Math.max(e.from,e.to);hit=(ch>=lo&&ch<=hi);}
-        else if(!isNaN(e.pt))hit=(Math.abs(ch-e.pt)<=30);
-        else hit=false; /* no chainage info -> NOT a per-chainage hit */
-        if(hit){for(k in e.p)out[k]=e.p[k];}
-      }
-      return out;
-    };
-    /* FWD resolver — finds D0..D8 by matching column NAMES with a regex, so the exact
-       header (D0, FWD_D0, deflection, d0_micron, "D0 (mm)"...) no longer matters.
-       Uses range matching (from_ch..to_ch) like condition data. */
-    KL.fwdAt=function(road,ch){
-      KL.sync();
-      var arr=KL.byRoad[road];if(!arr)return null;
-      var props=null;
-      for(var i=0;i<arr.length;i++){var e=arr[i],hit=false;
-        if(!isNaN(e.from)&&!isNaN(e.to)){var lo=Math.min(e.from,e.to),hi=Math.max(e.from,e.to);hit=(ch>=lo&&ch<=hi);}
-        else if(!isNaN(e.pt))hit=(Math.abs(ch-e.pt)<=60);
-        if(!hit)continue;
-        var p=e.p,has=false,k;for(k in p){if(/(^|[_\s(\[])d0([_\s)\].]|$)|fwd.?d0|deflection|central.?defl/i.test(k)&&p[k]!=null&&p[k]!==''){has=true;break;}}
-        if(has){props=props?props:{};for(k in p)props[k]=p[k];}
-      }
-      if(!props)return null;
-      function valByRe(re){for(var k in props){if(re.test(k)){var v=+props[k];if(!isNaN(v))return v;}}return null;}
-      var d0=valByRe(/(^|[_\s(\[])d0([_\s)\].]|$)|fwd.?d0|deflection|central.?defl/i);
-      var ds=[];for(var n=1;n<=8;n++){var v=valByRe(new RegExp('(^|[_\\s(\\[])d'+n+'([_\\s)\\].]|$)|fwd.?d'+n,'i'));if(v!=null)ds.push(['D'+n,v]);}
-      return {d0:d0,ds:ds};
-    };
-    KL.at=function(road,ch){
-      KL.sync();
-      var arr=KL.byRoad[road];if(!arr)return {};
-      var hits=[],near={};
-      for(var i=0;i<arr.length;i++){var e=arr[i],d=Infinity,hit=false;
-        if(!isNaN(e.from)&&!isNaN(e.to)){var lo=Math.min(e.from,e.to),hi=Math.max(e.from,e.to);if(ch>=lo&&ch<=hi){hit=true;d=0;}else d=Math.min(Math.abs(ch-lo),Math.abs(ch-hi));}
-        else if(!isNaN(e.pt)){d=Math.abs(ch-e.pt);hit=(d<=30);}
-        else {hit=true;d=0;}
-        if(hit)hits.push(e.p);
-        if(!(e.layer in near)||d<near[e.layer].d)near[e.layer]={d:d,p:e.p};
-      }
-      var out={},k;
-      for(var L in near){var np=near[L].p;for(k in np)out[k]=np[k];}
-      for(var h=0;h<hits.length;h++){var hp=hits[h];for(k in hp)out[k]=hp[k];}
-      return out;
-    };
-    /* nearest condition segment's full props (for the PCI engine) */
-    KL.segAt=function(road,ch){
-      var arr=KL.byRoad[road];if(!arr)return null;var best=null,bd=Infinity;
-      for(var i=0;i<arr.length;i++){var e=arr[i];if(e.layer!=='segments'&&e.layer!=='segs')continue;var d=Infinity;
-        if(!isNaN(e.from)&&!isNaN(e.to)){var lo=Math.min(e.from,e.to),hi=Math.max(e.from,e.to);d=(ch>=lo&&ch<=hi)?0:Math.min(Math.abs(ch-lo),Math.abs(ch-hi));}
-        else d=0;
-        if(d<bd){bd=d;best=e.p;}}
-      return best;
-    };
-    /* PCI computed LIVE by the real IRC:82-2023 engine (segPCI): avg=Composite, worst=Worst-Lane.
-       Works at any chainage without generating the layer; persists per road. */
-    KL.pci=function(road,ch){
-      KL.sync();
-      var compKeys=['pci_def_avg','pci_avg','composite_pci','comp_pci','avg_pci','road_pci','pci_composite','pci'],worstKeys=['pci_def_worst','pci_worst','worst_pci','worst_lane_pci','lane_worst_pci'];
-      function rd(p,keys){if(!p)return null;for(var i=0;i<keys.length;i++){var x=p[keys[i]];if(x!=null&&x!==''){var n=+x;if(!isNaN(n)&&n>=0)return n;}}return null;}
-      function calc(p,basis){if(typeof segPCI==='function'){try{var v=segPCI(p,basis);if(v!=null&&!isNaN(v))return Math.round(v*10)/10;}catch(e){}}return null;}
-      var sp=KL.segAt(road,ch),comp=null,worst=null;
-      if(sp){comp=calc(sp,'avg');if(comp==null)comp=rd(sp,compKeys);worst=calc(sp,'worst');if(worst==null)worst=rd(sp,worstKeys);}
-      var cache=KL._pciCache[road]||(KL._pciCache[road]={comp:null,worst:null});
-      if(comp!=null)cache.comp=comp;if(worst!=null)cache.worst=worst;
-      if(cache.comp==null||cache.worst==null){var arr=KL.byRoad[road]||[],aC=[],aW=[];
-        for(var i=0;i<arr.length;i++){if(arr[i].layer!=='segments'&&arr[i].layer!=='segs')continue;var p=arr[i].p;
-          var cc=calc(p,'avg');if(cc==null)cc=rd(p,compKeys);if(cc!=null)aC.push(cc);
-          var ww=calc(p,'worst');if(ww==null)ww=rd(p,worstKeys);if(ww!=null)aW.push(ww);}
-        if(cache.comp==null&&aC.length)cache.comp=Math.round((aC.reduce(function(x,y){return x+y;},0)/aC.length)*10)/10;
-        if(cache.worst==null&&aW.length)cache.worst=Math.min.apply(null,aW);}
-      return {comp:(comp!=null?comp:cache.comp),worst:(worst!=null?worst:cache.worst)};
-    };
-    if(window.fetch&&!window.__klFetchWrapped){window.__klFetchWrapped=true;var of=window.fetch;
-      window.fetch=function(input){var url=(typeof input==='string')?input:(input&&input.url)||'';var pr=of.apply(this,arguments);
-        if(/\/api\//i.test(url)&&!/\/segments\//i.test(url)){pr.then(function(res){try{res.clone().json().then(function(j){KL.ingestUrl(url,j);}).catch(function(){});}catch(e){}});}
-        return pr;};}
-    /* once the map exists, also capture sources as soon as they receive data */
-    (function hook(){var m=window.map;if(m&&m.on){m.on('sourcedata',function(e){if(e&&e.isSourceLoaded)KL.sync();});}else setTimeout(hook,400);})();
-  })();
-  </script>
+  <script src="/js/map-datastore.js?v=3"></script>
 
   <!-- Deployment settings (glyph server, routing service, opening view) as
        window.KL_CONFIG. Generated by ClientConfigController from app.map.*
        / app.routing.* — no ?v= because it is served no-cache. -->
   <script src="js/runtime-config.js"></script>
-  <script src="js/00-attr-catalog.js?v=3"></script>
+  <script src="js/00-attr-catalog.js?v=5"></script>
   <!-- Data tables shared with map-lite.html (colours, PARAMS, decode tables,
        road fields, dec()). Must precede 01-config.js, and 00-attr-catalog.js
        must precede it so the label/unit overrides can attach. -->
-  <script src="js/00-shared-config.js?v=1"></script>
-  <script src="js/01-config.js?v=123"></script>
+  <script src="js/00-shared-config.js?v=3"></script>
+  <script src="js/01-config.js?v=125"></script>
   <!-- Points the PCI engine, the PCI report's area weighting and the network
        scope card at the saved Calculation Rules. Must come after 01-config.js
        (it mutates PARAMS) but nothing waits on it — see the file header. -->
-  <script src="js/00-calc-rules.js?v=2"></script>
-  <script src="js/02-map-core.js?v=120"></script>
-  <script src="js/02b-layer-registry.js?v=4"></script>
+  <script src="js/00-calc-rules.js?v=4"></script>
+  <script src="js/02-map-core.js?v=122"></script>
+  <script src="js/02b-layer-registry.js?v=6"></script>
   <!-- wraps map.on before any module registers a popup — must stay ahead of them all -->
-  <script src="js/02e-active-layer.js?v=5"></script>
-  <script src="js/02c-segment-data.js?v=2"></script>
-  <script src="js/02d-road-index.js?v=2"></script>
-  <script src="js/03-condition-style-filter.js?v=185"></script>
-  <script src="js/04-geo-helpers-boundaries.js?v=137"></script>
-  <script src="js/05-road-network.js?v=190"></script>
-  <script src="js/06-assets.js?v=187"></script>
-  <script src="js/07-data-loaders.js?v=185"></script>
-  <script src="js/08-condition-popup-nsv.js?v=172"></script>
-  <script src="js/09-dashboard-core.js?v=125"></script>
-  <script src="js/10-pci-report.js?v=125"></script>
-  <script src="js/11-dashboard-charts.js?v=125"></script>
-  <script src="js/12-nsv-video.js?v=174"></script>
-  <script src="js/13-search.js?v=122"></script>
-  <script src="js/14-pci-engine.js?v=175"></script>
-  <script src="js/15-main.js?v=128"></script>
-  <script src="js/16-traffic.js?v=175"></script>
-  <script src="js/17-measure.js?v=118"></script>
-  <script src="js/18-filters.js?v=121"></script>
-  <script src="js/19-asset-register.js?v=121"></script>
-  <script src="js/20-asset-dashboard.js?v=117"></script>
-  <script src="js/21-report-hub.js?v=122"></script>
-  <script src="js/22-road-merged.js?v=119"></script>
-  <script src="js/24-fwd.js?v=165"></script>
-  <script src="js/25-nsv-module.js?v=166"></script>
-  <script src="js/26-layers-collapse.js?v=3"></script>
-  <script src="js/27-survey-dashboard.js?v=5"></script>
-  <script src="js/28-fwd-dashboard.js?v=6"></script>
-  <script src="js/31-traffic-dashboard.js?v=3"></script>
-  <script src="js/30-condition-dashboard.js?v=5"></script>
-  <script src="js/29-export.js?v=13"></script>
-  <script src="js/32-iri-2km.js?v=5"></script>
-  <script src="js/33-user-layers.js?v=10"></script>
-  <script src="js/kl-symbols.js?v=1"></script>
-  <script src="js/34-layer-style.js?v=6"></script>
-  <script src="js/35-live-location.js?v=1"></script>
-  <script src="js/36-chainage-locator.js?v=2"></script>
-  <script src="js/37-layer-filters.js?v=6"></script>
+  <script src="js/02e-active-layer.js?v=7"></script>
+  <script src="js/02c-segment-data.js?v=4"></script>
+  <script src="js/02d-road-index.js?v=4"></script>
+  <script src="js/03-condition-style-filter.js?v=187"></script>
+  <script src="js/04-geo-helpers-boundaries.js?v=139"></script>
+  <script src="js/05-road-network.js?v=192"></script>
+  <script src="js/06-assets.js?v=189"></script>
+  <script src="js/07-data-loaders.js?v=187"></script>
+  <script src="js/08-condition-popup-nsv.js?v=174"></script>
+  <script src="js/09-dashboard-core.js?v=127"></script>
+  <script src="js/10-pci-report.js?v=127"></script>
+  <script src="js/11-dashboard-charts.js?v=127"></script>
+  <script src="js/12-nsv-video.js?v=176"></script>
+  <script src="js/13-search.js?v=124"></script>
+  <script src="js/14-pci-engine.js?v=177"></script>
+  <script src="js/15-main.js?v=130"></script>
+  <script src="js/16-traffic.js?v=177"></script>
+  <script src="js/17-measure.js?v=120"></script>
+  <script src="js/18-filters.js?v=123"></script>
+  <script src="js/19-asset-register.js?v=123"></script>
+  <script src="js/20-asset-dashboard.js?v=119"></script>
+  <script src="js/21-report-hub.js?v=124"></script>
+  <script src="js/22-road-merged.js?v=121"></script>
+  <script src="js/24-fwd.js?v=167"></script>
+  <script src="js/25-nsv-module.js?v=168"></script>
+  <script src="js/26-layers-collapse.js?v=5"></script>
+  <script src="js/27-survey-dashboard.js?v=7"></script>
+  <script src="js/28-fwd-dashboard.js?v=8"></script>
+  <script src="js/31-traffic-dashboard.js?v=5"></script>
+  <script src="js/30-condition-dashboard.js?v=7"></script>
+  <script src="js/29-export.js?v=15"></script>
+  <script src="js/32-iri-2km.js?v=7"></script>
+  <script src="js/33-user-layers.js?v=12"></script>
+  <script src="js/kl-symbols.js?v=3"></script>
+  <script src="js/34-layer-style.js?v=8"></script>
+  <script src="js/35-live-location.js?v=3"></script>
+  <script src="js/36-chainage-locator.js?v=4"></script>
+  <script src="js/37-layer-filters.js?v=8"></script>
   <!-- Map Composer: the engine first, then the screen that drives it. -->
-  <script src="js/38-map-composer.js?v=10"></script>
-  <script src="js/39-heatmap.js?v=4"></script>
-  <script src="js/38b-composer-ui.js?v=9"></script>
+  <script src="js/38-map-composer.js?v=12"></script>
+  <script src="js/39-heatmap.js?v=6"></script>
+  <script src="js/38b-composer-ui.js?v=11"></script>
   <!-- Groups Dashboard / Composer / Reports into one rail button + flyout. -->
-  <script src="js/40-module-menu.js?v=1"></script>
-  <script src="js/launcher.js?v=163"></script>
+  <script src="js/40-module-menu.js?v=3"></script>
+  <script src="js/launcher.js?v=165"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page
        scrollbar was revealing the hidden dock below the fold. */
@@ -1289,59 +1038,8 @@
     #dock{position:fixed!important;display:none!important;pointer-events:none}
     #dock.klshow{display:flex!important;transform:translateY(0)!important;pointer-events:auto}
   </style>
-  <script>
-  /* Build 90 — bulletproof, self-contained dock guard (lives in map.html so it
-     works regardless of which JS files are deployed). The survey-video dock is
-     shown ONLY when: it is open AND a real video frame has loaded AND
-     "Video on click" is on. An empty or leftover dock can never appear. */
-  (function(){
-    var dock=document.getElementById('dock'), vid=document.getElementById('video');
-    if(!dock) return;
-    function vclickOn(){return !!(((document.getElementById('videoMode')||{}).checked)||((document.getElementById('videoMode2')||{}).checked));}
-    /* readyState>=1 (HAVE_METADATA): mobile browsers defer decoding a frame
-       until a play gesture, so gating on >=2 kept the dock hidden on phones. */
-    function hasRealVideo(){return !!(vid&&(vid.currentSrc||vid.getAttribute('src'))&&vid.readyState>=1);}
-    function refresh(){var show=dock.classList.contains('open')&&hasRealVideo()&&vclickOn();dock.classList.toggle('klshow',show);}
-    try{new MutationObserver(refresh).observe(dock,{attributes:true,attributeFilter:['class']});}catch(e){}
-    if(vid)['loadeddata','canplay','playing','seeked','emptied','error','loadstart','pause'].forEach(function(ev){vid.addEventListener(ev,refresh);});
-    ['videoMode','videoMode2'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',refresh);});
-    dock.classList.remove('open','loaded','klshow');   /* always start fully closed */
-    setTimeout(refresh,0);
-  })();
-  </script>
-  <script>
-  /* Signed-in user profile chip — shows the role as the prominent label
-     (the permissions level is what matters at a glance). The account's
-     full name and username stay available in the hover tooltip.
-     Roles: SUPER_ADMIN → "Super Admin", ADMIN → "Admin", USER → "User". */
-  (function(){
-    var chip=document.getElementById('userChip');
-    function label(r){ return r==='SUPER_ADMIN'?'Super Admin':r==='ADMIN'?'Admin':'User'; }
-    fetch('/api/me',{headers:{'Accept':'application/json'},credentials:'same-origin'})
-      .then(function(r){ return r.ok?r.json():null; })
-      .then(function(me){
-        if(!me||!me.authenticated) return;
-        var role=me.role||'USER';
-        /* Exposed for other modules (e.g. 28-fwd-dashboard.js) that need to
-           show/hide Super-Admin-only actions without their own /api/me call. */
-        window.__klRole=role;
-        document.dispatchEvent(new CustomEvent('kl-role-ready',{detail:role}));
-        if(!chip) return;
-        var avatar=document.getElementById('ucAvatar'),
-            nameEl=document.getElementById('ucName'),
-            roleEl=document.getElementById('ucRole');
-        var display=me.fullName||me.username||'User';
-        /* Single neat line: role only. The name span is hidden; the full
-           name + username go into the tooltip so the chip stays compact. */
-        nameEl.style.display='none';
-        roleEl.textContent=label(role);
-        avatar.textContent=(display.trim()[0]||'U');
-        chip.title=display+' · '+label(role)+(me.username?(' ('+me.username+')'):'');
-        chip.style.display='inline-flex';
-      })
-      .catch(function(){});
-  })();
-  </script>
+  <script src="/js/map-panels.js?v=3"></script>
+  <script src="/js/map-tabs.js?v=3"></script>
   <style id="ui-polish">
   /* ============================================================
      Build 92 panel/toggle/dropdown/header polish used to live here.
@@ -1469,7 +1167,7 @@
   @media(max-width:480px){#kbPanel{height:calc(100vh - 80px);right:16px;left:16px;width:auto}}
   </style>
 
-  <button id="kbFab" onclick="kbOpen()" aria-label="Open KLRAMS assistant">
+  <button id="kbFab" data-act="kbOpen" aria-label="Open KLRAMS assistant">
     <span class="kb-pulse"></span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.5 7.5L3 21l2-5.5A8.5 8.5 0 1 1 21 11.5z"/><path d="M8.5 12h7M8.5 9h7M8.5 15h4"/></svg>
     Ask Sahaayi
@@ -1479,290 +1177,18 @@
     <div class="kb-head">
       <span class="kb-av"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="2.6"/><path d="M12 21s-6.5-5.6-6.5-10A6.5 6.5 0 0 1 18.5 11c0 4.4-6.5 10-6.5 10z"/></svg></span>
       <div class="kb-id"><b>Sahaayi</b><span class="kb-on">KLRAMS Assistant · online</span></div>
-      <button class="kb-x" onclick="kbClose()" aria-label="Close">&times;</button>
+      <button class="kb-x" data-act="kbClose" aria-label="Close">&times;</button>
     </div>
     <div class="kb-msgs" id="kbMsgs"></div>
     <div class="kb-chips" id="kbChips"></div>
     <div class="kb-input">
       <input id="kbInput" type="text" placeholder="Ask about KLRAMS…" autocomplete="off"
-             onkeydown="if(event.key==='Enter'){kbSend();}">
-      <button class="kb-send" onclick="kbSend()" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+             data-enter="kbSend">
+      <button class="kb-send" data-act="kbSend" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
     </div>
   </div>
 
-  <script>
-  /* ===== Sahaayi — in-app KLRAMS help assistant =====
-     A self-contained, knowledge-base guide. It only explains how to USE KLRAMS;
-     it declines questions about the system's internals/technical build. */
-  (function(){
-    var KB=[
-      {k:['missing data','no data shown','empty field','dash symbol','grey road','gray road','no information','blank data','what is missing'],
-       a:"**Missing Data Explained:**\n\n\u2022 **Grey/neutral coloured road** = No condition survey data recorded for that segment yet\n\u2022 **Popup shows '\u2014' (dash)** = That field/measurement hasn't been recorded\n\u2022 **'No survey done' message** = Condition data collection hasn't reached that chainage\n\u2022 **FWD shows no points** = No structural testing data at that location\n\nMissing data usually means the survey hasn't covered that area yet. Check the Dashboard for overall coverage (how many km surveyed). Contact RMMS Cell if you expect data that's not showing."},
-      {k:['empty layer','layer has no data','why no results','search returns nothing','filter shows nothing'],
-       a:"**Why you see no results:**\n\n1. **Layer not turned on** \u2192 Open Layers panel and toggle the layer ON\n2. **No matching data** \u2192 Try removing filters or change your search\n3. **Data not uploaded yet** \u2192 Check Data Console to see if that dataset is imported\n4. **Survey not done there** \u2192 Some areas may not have been surveyed yet\n5. **Chainage mismatch** \u2192 Make sure the chainage/location you're searching exists\n\nTip: Always turn on the 'Road network' layer first to see all available roads."},
-      {k:['how to start','getting started','first steps','where to begin','tutorial','beginner'],
-       a:"**Getting Started with KLRAMS:**\n\n1. **View the map** \u2192 Open Layers panel, turn on 'Road network' to see all roads\n2. **See condition** \u2192 Turn on 'Road Condition Data', pick a metric (IRI, Crack, etc)\n3. **Click a road** \u2192 Popup shows condition values for that location\n4. **Explore data** \u2192 Try Dashboard for network summary, or go to Data Console to import new data\n5. **Need help?** \u2192 Open this Assistant (Sahaayi) anytime\n\nStart simple: just turn on layers and click roads to explore."},
-      {k:['report hub','reports module','report module','survey report','data report','reports section'],
-       a:"The Report Hub turns each survey dataset into a filterable, exportable table. Open it with the Reports icon on the left rail (or from the module launcher, grid icon, top-left). Tabs: FWD, Road Condition Data, Sub-Grade Soil, Bituminous Core and Pavement Crust. Every report shows Road Name and PWD Section and exports to Excel or PDF."},
-      {k:['export excel','export pdf','download excel','download pdf','excel report','pdf report','export the data','save report','download report'],
-       a:"In the Report Hub each dataset has Excel and PDF buttons in the toolbar \u2014 they export exactly what is on screen, so your search and filters are applied. The Asset Register and the Dashboards' PCI views also export."},
-      {k:['filter report','report filter','filter the report','report by district','filter by road name','filter by district','filter by section','report search','narrow report'],
-       a:"Each Report Hub report has a search box plus dropdown filters for Road Name, District and Section Label. Combine them to narrow the rows; the Excel/PDF export then matches what you see."},
-      {k:['fwd report','fwd data','deflection report','d0 report'],
-       a:"The FWD report (Report Hub) lists the Falling Weight Deflectometer readings \u2014 D0 and the other deflections \u2014 with Road Name and PWD Section, exportable to Excel or PDF."},
-      {k:['sub grade report','subgrade report','soil report','cbr report','soil data'],
-       a:"The Sub-Grade Soil report (Report Hub) lists the soil investigation results (such as CBR) per section, with Road Name and PWD Section, exportable to Excel or PDF."},
-      {k:['bituminous core report','core report','pavement crust report','crust report','layer thickness report'],
-       a:"The Report Hub has Bituminous Core and Pavement Crust reports \u2014 each lists those survey columns per section with Road Name and PWD Section, exportable to Excel or PDF."},
-      {k:['lane 1','lane 2','lane columns','condition report lane','two lane values','consolidated lane'],
-       a:"In the Report Hub's Road Condition Data report, each section's two lane readings appear as Lane 1 and Lane 2 for every metric (IRI, Crack, Pothole, Rutting, Texture, Patch Work, Ravelling). The first lane present becomes Lane 1 and the second Lane 2, regardless of whether they were CL1/CR1, CL1/CL2 or CR1/CR2."},
-      {k:['full road network','full road','by road name','merged road','road wise','whole road','consolidated road','road merged','only one road network','one road network at a time','one network at a time'],
-       a:"Full Road Network is a second road layer, by road name, so you can see whole-road information like total length. Turn it on under the Road network group in Layers. Only one road network shows at a time \u2014 it automatically switches off the section-based 'Road network' to avoid confusion."},
-      {k:['import layer','import road','import a road','import network','import road network','upload road network','add road network','second road network','import shapefile','import geojson'],
-       a:"Use the 'Import layer' button next to Full Road Network in the Layers panel to load a road network by road name. Pick a local GeoJSON (recommended) or a zipped shapefile in WGS84 \u2014 it loads in your browser; nothing is uploaded to the server."},
-      {k:['blinking road','road blink','full road popup','road info card','road length popup','full road details'],
-       a:"On the Full Road Network, clicking a road makes it blink as selected and opens a card (top-left) with Road Name, Road Number, Road Class, Road Start & End Chainage, Total Length and Start/End Location. Fields with no data show a dash."},
-      {k:['culvert dashboard','culverts dashboard','culvert analytics','culvert count','culvert chart','culvert summary'],
-       a:"The Culvert Dashboard shows culverts by district and road class \u2014 total count, colourful donuts, ranked bars and a district-by-class table. Open the Dashboard (grid icon) and pick the Culverts tab."},
-      {k:['bridge dashboard','bridges dashboard','bridge analytics','bridge count','bridge chart','total bridge length','bridge summary'],
-       a:"The Bridge Dashboard shows bridges by district and road class \u2014 total count, total bridge length, donuts, ranked bars and a district-by-class table. Open the Dashboard (grid icon) and pick the Bridges tab."},
-      {k:['attribute filter','attribute value','filter attribute','register filter','filter the register','asset filter'],
-       a:"In the Asset Register, choosing an attribute makes the value filter adapt: a text attribute gives a dropdown of its values, while a numeric attribute gives comparison operators (=, \u2260, <, \u2264, >, \u2265) and a number box. You can also filter by class and district, then export to Excel or PDF."},
-      {k:['road chainage','culvert report','culvert columns','bridge report','bridge columns','bridge length report'],
-       a:"In the Asset Register, the Culvert report shows Asset Id, Section Label, District, Road Name, Chainage and Road Chainage. The Bridge report adds Bridge Start Chainage, Bridge End Chainage and Length of Bridge."},
-      {k:['route direction','location to location','start location to end','survey direction location','direction location'],
-       a:"While playing an NSV video, the player shows the road's route as Start Location \u2192 End Location in the Front direction, and End Location \u2192 Start Location in the Back direction. Switch Front/Back to flip it."},
-      {k:['fullscreen hud','live track','video overlay','vehicle on track','hud card','fullscreen video info','track and iri'],
-       a:"In the NSV player, 'Fullscreen with live track & IRI' shows an overlay card with the Road Name, Road Class, Section Label, the Start\u2192End route, the live IRI and chainage, and a mini map track with a moving vehicle marker."},
-      {k:['pwd section','pwd sec','which pwd','section office','sub division'],
-       a:"PWD Section is the PWD sub-division a road belongs to. It is shown in the Report Hub reports, where you can also filter by it."},
-      {k:['lane average','lane-averaged','lane avg','average pci','laneaverage'],
-       a:"Composite PCI is a road section's overall Pavement Condition Index, combining all the surveyed lanes (for example CL1 and CR1) by an area-weighted distress average \u2014 the lane distresses are pooled across the carriageway and a single PCI is computed. It gives a balanced picture of overall pavement health.\n\nTurn it on under the PCI group in the Layers panel, or open the Dashboard → PCI Analysis to see the network split by rating."},
-      {k:['worst lane','worst-lane','worst pci','worstlane'],
-       a:"Worst-Lane PCI uses the lowest-scoring lane for each section instead of the average — so it highlights the most distressed lane that may need attention first.\n\nToggle 'Worst-Lane PCI' under the PCI group in the Layers panel."},
-      {k:['composite pci','what is composite pci','composite index','lane average pci','averaged pci','combined pci'],
-       a:"**COMPOSITE PCI (Pavement Condition Index — IRC:82-2023):**\n\n**What it is:**\nComposite PCI gives ONE overall condition score (0–100) for each road SEGMENT, pooling the distress from all surveyed lanes.\n\n**How it's calculated (per segment):**\n\n**Step 1 — Pool distress across lanes:**\nFor each distress parameter separately (IRI, Crack, Rutting, Pothole, Ravelling, Patch), average its value across the lanes present (CC, CL1, CL2, CR1, CR2). Lanes are treated as equal area, so this is a plain average per parameter.\n\n**Step 2 — Compute ONE PCI from the pooled distress:**\nEach pooled distress is turned into a 0–100 sub-index, then blended using IRC:82-2023 PARAMETER weights (not lane area):\n• IRI = 0.40 (heaviest)\n• Crack = 0.16\n• Rutting = 0.14\n• Ravelling = 0.12\n• Patch work = 0.10\n• Pothole = 0.08\n\n**Important — order matters:**\n• Composite = pool distress FIRST, then compute ONE PCI\n• Worst-Lane = compute a PCI per lane, then take the MINIMUM\nPCI is non-linear, so the order changes the result.\n\n**Network-average PCI (Dashboard):**\nThe single network figure is LENGTH-weighted: Σ(segment PCI × segment length) ÷ Σ(length). Longer segments count more.\n\n**Why use Composite:**\n✓ Single balanced number for overall road health\n✓ Averages out 'good' and 'bad' lanes\n✓ Best for network-level planning\n\n**Rating scale:**\n• 90–100 = Excellent · 80–90 = Good · 60–80 = Satisfactory\n• 40–60 = Fair · 20–40 = Poor · 0–20 = Fail\n\n**Where to see it:**\nLayers → PCI group → 'Composite PCI', or Dashboard → PCI Analysis tab"},
-      {k:['worst lane pci','what is worst lane pci','worst pci','worstlane pci','most distressed lane','lane pci'],
-       a:"**WORST-LANE PCI (Most Distressed Lane — IRC:82-2023):**\n\n**What it is:**\nWorst-Lane PCI is the LOWEST per-lane PCI for each segment — it highlights the worst-condition lane that may need urgent repair.\n\n**How it's calculated (per segment):**\n1. Compute a FULL IRC:82-2023 PCI for EACH lane on its own (CC, CL1, CL2, CR1, CR2), from that lane's own distresses\n2. Take the MINIMUM of those per-lane PCIs\n\nExample: if CL1's PCI = 70 and CR1's PCI = 65 → Worst-Lane = 65.\n\n**How this differs from Composite:**\n• **Composite** = pool the lane DISTRESSES first, then compute ONE PCI (a balanced view of the whole carriageway)\n• **Worst-Lane** = compute a PCI per lane, then take the MIN\n\nNote: Composite does NOT simply average the lane PCIs — it averages the raw distresses per parameter, then runs one PCI. Because PCI is non-linear, the two methods give different numbers.\n\n**Why use it:**\n✓ Finds urgent problem areas (won't miss a distressed lane)\n✓ Conservative / safety-focused (worst conditions drive the score)\n✓ Better for targeting repairs\n\n**Same rating scale as Composite (90–100 Excellent → 0–20 Fail)**\n\n**When to use each:**\n• **Composite** → Network planning, overall priorities\n• **Worst-Lane** → Maintenance, safety, targeting repairs\n\n**Where to see it:**\nLayers → PCI group → 'Worst-Lane PCI', or Dashboard → PCI Analysis tab"},
-      {k:['what is pci','pci band','pci rating','pci range','pavement condition index','meaning of pci','about pci'],
-       a:"**PCI — PAVEMENT CONDITION INDEX (0–100 Scale):**\n\n**What it measures:**\nPCI is a single number (0–100) that tells you the OVERALL HEALTH of the pavement/road.\n\n**Rating Breakdown:**\n\n| Rating | Score | Condition | Action |\n|--------|-------|-----------|--------|\n| **Excellent** | 90–100 | Like new, perfect condition | Monitor regularly |\n| **Good** | 80–90 | Minor wear, still safe | Routine maintenance |\n| **Satisfactory** | 60–80 | Noticeable distress | Plan maintenance |\n| **Fair** | 40–60 | Significant damage visible | Schedule repair soon |\n| **Poor** | 20–40 | Heavy distress, unsafe | Urgent repair needed |\n| **Fail** | 0–20 | Critical damage | Emergency action |\n\n**Where PCI comes from:**\n• Based on metrics like IRI, Crack, Pothole, Rutting, Texture, Ravelling, Patch work\n• Different lane values (CL1, CR1) → averaged into Composite or worst selected for Worst-Lane\n\n**Two types of PCI:**\n• **Composite PCI** → Average of all lanes (balanced view)\n• **Worst-Lane PCI** → Worst lane only (safety/urgent focus)\n\n**See your PCI:**\n• Click any road → popup shows PCI if available\n• Dashboard → PCI Analysis tab → see network PCI by rating"},
-      {k:['dashboard','dash board','analytics','network average','reports','summary'],
-       a:"Open the Dashboard from the module launcher (the grid icon, top-left). It has 7 tiles:\n• **Network Overview** — length, classification, ownership\n• **Culverts** / **Bridges** — count and distribution by district & class\n• **Surveys** — year-wise field survey volumes (NSV, FWD, traffic, soil, cores) by district\n• **Traffic** — station ADT rankings, vehicle-class mix, 24-hour peak profile\n• **FWD Deflection** — D0 lower-to-higher by SH/MDR & district, pavement/air temperatures\n• **Condition Data** — IRI/crack/pothole etc Low/High/Mean by surface type & class, with a threshold segment list\n\nThere's also a PCI Analysis view (% of network length in each rating, network-average PCI, per-class breakdown) — switch between Composite and Worst-Lane there."},
-      {k:['nsv','video','survey video','footage','watch video','see video','play video'],
-       a:"To watch survey (NSV) videos:\n1. Open the Video panel (camera icon in the left rail).\n2. Turn on 'Video on click'.\n3. Click a road that has survey footage.\n\nThe player opens at the bottom and stays in sync with the map — a vehicle marker drives along the road showing live chainage and lane-wise IRI. Use Front/Back, the speed buttons (0.25×–2×), or 'Fullscreen with live track & IRI'. Press × to close."},
-      {k:['filter','filtering','filter road','filter condition','funnel','narrow down','only show'],
-       a:"Open the Filter panel (funnel icon in the left rail). You can filter by road class, district and PWD section, and by condition thresholds for the chosen metric. Only the matching segments stay highlighted and the map zooms to them. Clear the filter to show everything again."},
-      {k:['condition data','road condition','iri','metric','which parameter','condition layer'],
-       a:"Turn on 'Road Condition Data' in the Layers panel, then pick a metric from the dropdown — IRI, Crack, Pothole, Rutting, Texture, Patch work or Ravelling. The roads colour by that metric, green (good) through red (poor).\n\nClick a road to see the lane-wise values and the average at that chainage. (IRI = roughness in m/km — lower is smoother.)"},
-      {k:['fwd','d0','deflection','falling weight','structural','fwd test','structural testing','pavement strength'],
-       a:"**FWD — FALLING WEIGHT DEFLECTOMETER (Structural Testing):**\n\n**What it is:**\nA vehicle-mounted machine that drops a heavy weight on the road and measures how much the PAVEMENT DEFLECTS (bends) — tells you STRUCTURAL STRENGTH.\n\n**The test:**\n1. Heavy weight (63–300 kN) dropped from height\n2. Sensors measure surface deflection (bending) at impact point\n3. Results: D0 (center), D1, D2, D3, etc. at increasing distances\n\n**D0 — Peak Deflection (mm):**\n\n| D0 Value | Condition | Structural Health | Action |\n|----------|-----------|-------------------|--------|\n| **<0.20 mm** | Excellent | Very strong, new | Monitor |\n| **0.20–0.30** | Good | Strong structure | Routine maintenance |\n| **0.30–0.50** | Fair | Acceptable but aging | Plan maintenance |\n| **0.50–0.80** | Poor | Weak, needs attention | Schedule repair |\n| **0.80+ mm** | Very Poor | Critical failure risk | Emergency action |\n\n**What D0 tells you:**\n✓ Road's load-bearing capacity\n✓ Structural integrity (layers intact?)\n✓ Whether base/subgrade is failing\n✓ When reconstruction needed (not just patching)\n\n**Why FWD matters:**\n• **Surface distress** (IRI, Crack) ≠ **Structural strength** (FWD)\n• Road can LOOK good but be STRUCTURALLY WEAK underneath\n• FWD detects subsurface problems early\n• Critical for rehabilitation design\n\n**Example:**\n• Road A: IRI=3 (smooth), D0=0.60 (weak structure) → needs full rebuild\n• Road B: IRI=6 (rough), D0=0.15 (strong) → just needs resurfacing\n\n**Other deflection readings (D1–D7):**\n• D0 = directly under load (immediate response)\n• D1, D2, etc. = at 0.3m, 0.6m, etc. away from impact\n• Show how stress spreads through layers\n• Used by engineers to model pavement behavior\n\n**See it on map:**\nLayers → Toggle 'FWD (D0)' ON → Click FWD points → Popup shows D0 in mm"},
-      {k:['what is chainage','chainage distance','chainage location','distance along road','road chainage','ch'],
-       a:"**CHAINAGE — DISTANCE ALONG A ROAD (metres):**\n\n**What it is:**\nCHAINAGE is the DISTANCE measured along a road from its START POINT, shown in METRES.\n\n**Examples:**\n• Chainage 0 m = Road START\n• Chainage 1000 m = 1 km along the road\n• Chainage 5000 m = 5 km along the road\n• Chainage 25,500 m = 25.5 km along (if road is 30 km long)\n\n**Why chainage matters:**\n✓ **Precise location** → \"Pothole at chainage 2450 m\" = exact spot\n✓ **Consistent measurement** → Same regardless of curved roads, coordinates\n✓ **Easy for field teams** → Drive along road, odometer shows progress\n✓ **Tie data to location** → Survey photos labeled with chainage\n✓ **Maintenance tracking** → \"Repair chainage 5000–5500 m\"\n\n**How chainage works:**\n• Always measured from road START\n• Increases as you go toward END\n• Works for any road length\n• Independent of road direction (North/South, East/West)\n\n**In KLRAMS:**\n• **Road network** → Each section has start/end chainage\n• **Condition survey** → Data recorded at specific chainages\n• **Video player** → Shows live chainage as vehicle drives\n• **Popups** → Show chainage at clicked point\n• **FWD/Structures** → Placed at specific chainage\n\n**Example scenario:**\n\"Road SH-15 from chainage 0 m to 8000 m (8 km long)\"\n- Section 1: 0–2000 m (2 km)\n- Section 2: 2000–5000 m (3 km)  \n- Section 3: 5000–8000 m (3 km)\n\nPothole reported at chainage 3500 m → You know EXACTLY which section and where\n\n**Related terms:**\n• **Start Chainage** = 0 m for that road\n• **End Chainage** = Total road length\n• **Road Chainage** = Distance from chainage 0 (same as chainage on that road)\n\n**In the popup:**\nWhen you click a road: \"Chainage: 5450\" means you clicked 5.45 km along that road"},
-      {k:['what is lane','lane label','cl1','cr1','cl2','cr2','cc','centre line','centerline','left carriageway','right carriageway'],
-       a:"**LANE LABELS — UNDERSTANDING ROAD SIDES AND LANES:**\n\n**Basic structure:**\nMost highways have TWO sides (carriageways) separated by a centre line:\n```\n        ← TRAFFIC FLOW →\n    [CL1] [CL2]  CC  [CR1] [CR2]\n  Left side        Center   Right side\n```\n\n**The labels explained:**\n\n| Label | Meaning | Example |\n|-------|---------|----------|\n| **CL** | Centre Line LEFT | Left side of road |\n| **CR** | Centre Line RIGHT | Right side of road |\n| **CC** | Centre line (center between carriageways) | Dividing line |\n| **CL1** | LEFT side, lane 1 (inner/median) | Closer to divider |\n| **CL2** | LEFT side, lane 2 (outer) | Away from divider |\n| **CR1** | RIGHT side, lane 1 (inner/median) | Closer to divider |\n| **CR2** | RIGHT side, lane 2 (outer) | Away from divider |\n\n**Typical two-lane highway (4 lanes total):**\n```\n         ← Traffic ←              ← Traffic ←\n    [CL2] [CL1] | CC | [CR1] [CR2]\n     Lane 2 Lane 1  |  Lane 1 Lane 2\n     Left side  | Center | Right side\n                (divider)\n```\n\n**Why separate lanes?**\n✓ Traffic flows opposite directions (safety)\n✓ Weather/sun exposure different per side\n✓ Wear patterns different per lane\n✓ Survey records condition per lane\n✓ Engineers need lane-wise data for repairs\n\n**In condition surveys:**\nEach lane surveyed separately:\n- **CL1 condition:** IRI=5, Crack=8%\n- **CR1 condition:** IRI=6, Crack=12%\n- **Average:** IRI=5.5, Crack=10%\n\nWhy? Lane 1 (median) has less traffic; Lane 2 (outer) gets more wear.\n\n**In KLRAMS popups:**\nWhen you click a road, you see:\n- **CL1:** Values for left lane 1\n- **CR1:** Values for right lane 1\n- **Average:** Mean of all lanes\n\n**Road class affects lanes:**\n• **National Highway (NH)** → Often 4–6 lanes (CL1, CL2, CR1, CR2, etc.)\n• **State Highway (SH)** → Usually 2 lanes (CL1, CR1)\n• **Major District Road (MDR)** → 2 lanes or single lane (CL1 only or combined)\n• **Other District Road (ODR)** → Often single lane or minimal lanes\n\n**Composite vs Worst-Lane PCI (uses lane data):**\n• **Composite:** Averages CL1 + CR1 = balanced view\n• **Worst-Lane:** Takes minimum of CL1 vs CR1 = focuses on damaged lane\n\n**See lane data:**\nClick any road → Popup shows:\n- Lane 1 (CL1) condition\n- Lane 1 (CR1) condition\n- Average\n- Other metrics same structure"},
-      {k:['what is section','road section','section label','section id','pwd section','subsection'],
-       a:"**SECTION — A SEGMENT OF ROAD WITH CONSISTENT DATA:**\n\n**What it is:**\nA ROAD SECTION is a portion of a road (usually 1–20 km) treated as ONE unit for survey and data collection.\n\n**Why sections exist:**\n✓ Roads are too long to survey as one unit\n✓ Sections have CONSISTENT attributes (class, width, layers, etc.)\n✓ Data collected per section (one average per section)\n✓ Easier to manage maintenance (repair by section)\n✓ Historical tracking (repair history per section)\n\n**Section identifiers:**\n\n| ID Type | Example | Meaning |\n|---------|---------|----------|\n| **Section Label** | 'SH-01', 'MDR-A5' | Official PWD identifier |\n| **Section ID** | '10234' | Database unique ID |\n| **Start Chainage** | '0 m' | Where section begins |\n| **End Chainage** | '5000 m' | Where section ends |\n| **Length** | '5 km' | 5000–0 = 5000 m = 5 km |\n\n**In a typical road breakdown:**\n```\nRoad: State Highway 15 (30 km total)\n├─ Section SH-15-01 (0–5000 m, 5 km)\n├─ Section SH-15-02 (5000–12000 m, 7 km)\n├─ Section SH-15-03 (12000–20000 m, 8 km)\n└─ Section SH-15-04 (20000–30000 m, 10 km)\n```\n\n**Section attributes (stay consistent within section):**\n• Road name & number\n• Road class (SH, MDR, etc.)\n• PWD Section/Subdivision\n• Lane count\n• Pavement type\n• Survey date\n\n**Condition data in sections:**\n• One IRI value per lane per section\n• One Crack % per lane per section\n• One FWD reading per section (usually)\n• Average values computed per section\n\n**In KLRAMS:**\n• Click on road → Popup shows section data\n• Filter by section label → Filter panel\n• Search section → Search bar\n• Dashboard breaks down by section\n• Report Hub lists all sections\n\n**PWD Section (administrative):**\nDifferent from \"Road Section\":\n• **PWD Section** = Administrative division (Kerala PWD office/sub-division)\n• **Road Section** = Physical segment of a road\n\nExample:\n- Road SH-15 might be in multiple PWD Sections (e.g., Thiruvananthapuram PWD Section, Kollam PWD Section)\n- Each road section shows its PWD Section in the popup\n\n**Related searches:**\nSearch by section label (e.g., 'SH-01') → Map jumps to that section"},
-      {k:['click','popup','inspect road','road details','what happens when'],
-       a:"Click any road on the map to open a popup. With 'Road network' on you'll see the section's average across all condition metrics. With only 'Road Condition Data' on you'll see the metric you've selected for the exact lane you clicked, plus the average."},
-      {k:['search','find road','find a road','road name','section label','look up'],
-       a:"Use the search box at the top of the map — type a road name, number, or section label and the map will zoom to it."},
-      {k:['road network','inventory','network layer'],
-       a:"'Road network' draws the full road inventory. Turn it on in Layers and click any road to see its details (class, length, ownership) and section condition averages."},
-      {k:['base map','basemap','satellite','terrain','night mode','dark mode','dark map'],
-       a:"Open 'Base map' in the left rail to switch the underlying map — Streets, Satellite, Terrain, Light or Dark. For Night mode, open the module launcher (grid icon, top-left) and flip the Night mode switch — it changes the map to the dark basemap and remembers your choice."},
-      {k:['measure','distance','route','ruler','length between'],
-       a:"The Measure tool (ruler icon in the left rail) lets you measure distances and trace routes directly on the map."},
-      {k:['asset register','register','list of assets','asset list','culvert list','bridge list'],
-       a:"The Asset Register lists road assets — roads, culverts and bridges — in a browsable table. Open it from the module launcher (grid icon, top-left)."},
-      {k:['boundary','border','district','constituency','administrative'],
-       a:"Under 'Administrative boundary' in Layers you can overlay the District boundary and the Constituency boundary."},
-      {k:['bridge','culvert','furniture','structure','road sign','signboard'],
-       a:"Under 'Structures & furniture' in Layers you can show Bridges, Culverts and road Furniture (line and point). Toggle any of them and click a feature for its details."},
-      {k:['threshold','irc','reset','colouring','good fair poor','cut-off','cutoff'],
-       a:"In the Road Condition Data group you can adjust the colour thresholds for the selected metric. Use 'Reset to IRC defaults' to restore the IRC-based good / fair / poor cut-offs."},
-      {k:['what is klrams','about klrams','about','what is this','what does klrams','klrams stand'],
-       a:"KLRAMS — the Kerala Road Asset Management System — is a GIS platform by the RMMS Cell, KHRI (Kerala PWD) for surveying, assessing and managing the condition of Kerala's roads."},
-      {k:['chainage'],
-       a:"Chainage is the distance along a road from its start, shown in metres. The popup and the video player both show the chainage at the point you're looking at."},
-      {k:['layer','layers panel','turn on','toggle','show layer'],
-       a:"The Layers panel (left) groups everything you can show on the map: Road network, Road Condition Data & FWD, Administrative boundary, Structures & furniture, PCI and Traffic stations. Flip a toggle to show or hide each one."},
-      {k:['go portal','government order','g.o','gos portal','circular','notification order'],
-       a:"The GO Portal holds Government Orders (GOs) for the road programme. Open it from the module launcher (grid icon, top-left), or use the 'GOs' tab on the public site, then search and open any order."},
-      {k:['data console','import','upload data','load data','add data','console'],
-       a:"The Data Console is where survey and GIS data is imported and managed. Open it from the module launcher (grid icon, top-left)."},
-      {k:['module','launcher','grid icon','switch module','home screen','other modules','apps ','open module'],
-       a:"Tap the grid icon at the top-left to open the module launcher — your home screen. From there you can jump to the GIS Viewer, Data Console, Survey Archive, GO Portal, User Manual, Drone, Layer Management, Style & Label Management, Lookup & Short Code, Calculation Rules and (for admins) Site Control and User Management, reach the viewer tools (Dashboard, Asset Register, PCI, Road Condition Data, Filters, Chainage Locator, Heat Map Analysis, Map Composer), and flip Night mode."},
-      {k:['what modules','list of modules','all modules','platform modules','which modules','every module'],
-       a:"**KLRAMS Modules:**\n\n**Viewer tools (inside the GIS Viewer):** Layers, Road Network, Filter, NSV Video, Base map, Measure & Route, Chainage Locator, Heat Map Analysis, Dashboard, Report Hub, Asset Register, Map Composer\n\n**Standalone modules (from the Home portal, grid icon):**\n• **Data Console** — import road network, survey and test data\n• **Survey Archive** — browse older survey periods (condition, FWD, traffic, soil, core, crust) on the map\n• **GO Portal** — Government Orders\n• **User Manual** — the full guide\n• **Drone** — drone survey projects, orthomosaic/DEM upload, Drone Viewer\n• **Layer Management** — the registry of every map layer, and creating new ones\n• **Style & Label Management** — colour, symbol and label rules per layer\n• **Lookup & Short Code** — what codes like FLX, CLY, NB stand for\n• **Calculation Rules** — the corrections behind published figures (dual carriageway, PCI weights, etc)\n• **Site Control**, **User Management**, **Login Activity** — admin only\n\nAsk me about any one by name for details."},
-      {k:['traffic station','traffic count','aadt','vehicle count','count station'],
-       a:"'Traffic stations' marks the traffic survey/count locations. Toggle it under Traffic stations in the Layers panel and click a station for its details."},
-      {k:['cl1','cr1','cl2','cr2','lane label','lane name','what lane','lane wise','lanewise','what is cc'],
-       a:"Lanes are labelled by side and number — CL1/CL2 on the left and CR1/CR2 on the right of the centreline (CC is the road centre). Condition values are recorded per lane, and the popup shows each lane plus the average."},
-      {k:['what is iri','iri metric','iri meaning','international roughness index','roughness','road roughness','iri value'],
-       a:"**IRI — INTERNATIONAL ROUGHNESS INDEX (m/km):**\n\n**What it measures:**\nHow ROUGH or BUMPY the road is. Lower = smoother, Higher = rougher.\n\n**Scale (in m/km — metres per kilometre):**\n\n| IRI Value | Condition | Feel | Rating | Action |\n|-----------|-----------|------|--------|--------|\n| **0–2** | Excellent | Smooth, comfortable ride | Excellent | Monitor |\n| **2–4** | Good | Slightly noticeable bumps | Good | Routine care |\n| **4–8** | Fair | Noticeable vibration, bumpy | Satisfactory | Plan maintenance |\n| **8–12** | Poor | Very bumpy, uncomfortable | Poor | Repair soon |\n| **12+** | Very Poor | Severe, unsafe at speed | Fail | Emergency repair |\n\n**What causes high IRI:**\n• Cracking and breaking apart\n• Pothole formation\n• Rutting (wheel-path depressions)\n• Pavement settling unevenly\n• Age and wear\n\n**Why it matters:**\n✓ Directly affects ride comfort\n✓ Impacts vehicle safety and fuel efficiency\n✓ Indicator of structural health\n✓ Used to prioritize repair budgets\n\n**Example:**\n• New road: IRI = 1.2 (smooth)\n• 5-year-old road: IRI = 4.5 (slightly bumpy, needs work)\n• 15-year-old road: IRI = 10 (very bumpy, urgent repair)\n\n**See it on map:**\nLayers → 'Road Condition Data' → Select 'IRI' metric → roads color green (good IRI) to red (high IRI)"},
-      {k:['what is crack','cracking','crack %','crack percentage','cracking extent','surface cracking'],
-       a:"**CRACK — CRACKING EXTENT (% of surface):**\n\n**What it measures:**\nWhat PERCENTAGE of the road surface shows visible CRACKS.\n\n**Scale (percentage):**\n\n| Crack % | Condition | Appearance | Rating | Action |\n|---------|-----------|------------|--------|--------|\n| **0–5%** | Excellent | Minimal/no cracks visible | Excellent | Monitor |\n| **5–10%** | Good | Few, small cracks | Good | Routine care |\n| **10–20%** | Fair | Noticeable cracking pattern | Fair | Plan repair |\n| **20–40%** | Poor | Extensive cracks, interconnected | Poor | Repair soon |\n| **40%+** | Very Poor | Severe, spalling/breaking | Fail | Emergency |\n\n**Types of cracks:**\n• **Hairline cracks** → Thin, minor (low %)\n• **Alligator cracks** → Interconnected pattern (high %)\n• **Linear/block cracks** → Wider, distinct (medium %)\n\n**What causes cracking:**\n• Asphalt aging and oxidation\n• Thermal stress (hot/cold cycling)\n• Structural failure underneath\n• Heavy traffic loading\n• Poor construction or materials\n\n**Why it matters:**\n✓ Early sign of deterioration\n✓ Allows water infiltration → further damage\n✓ Reduces ride quality\n✓ Can lead to potholes if ignored\n\n**See it on map:**\nLayers → 'Road Condition Data' → Select 'Crack' metric → green (low %) to red (high %)"},
-      {k:['what is pothole','pothole extent','potholes','surface damage','breaking apart'],
-       a:"**POTHOLE — POTHOLE EXTENT/DEPTH:**\n\n**What it measures:**\nThe extent and severity of POTHOLES (holes where road surface is missing/broken).\n\n**Scale (varies by survey method):**\n\n| Pothole Level | Appearance | Impact | Action |\n|----------------|-----------|--------|--------|\n| **0–5%** | No/minimal holes | No impact | Monitor |\n| **5–15%** | Few small potholes | Minor discomfort | Schedule repair |\n| **15–30%** | Multiple visible holes | Unsafe for vehicles | Repair soon |\n| **30%+** | Extensive damage, large holes | Dangerous, risk damage | Emergency repair |\n\n**What causes potholes:**\n• Water enters through cracks\n• Frost/freeze cycle breaks asphalt\n• Cracking spreads → material missing\n• Weak base layer underneath\n• Heavy vehicle impact on weakened surface\n\n**Why potholes are dangerous:**\n✓ Risk vehicle damage (tire, suspension, alignment)\n✓ Unsafe for motorcycles and bicycles\n✓ Hazard if swerving around them\n✓ Quickly worsen if not repaired\n✓ Lead to complete pavement failure\n\n**Relationship to other metrics:**\n• High Crack % → potholes develop next\n• High IRI → potholes present\n• Low Crack → likely no potholes yet\n\n**See it on map:**\nLayers → 'Road Condition Data' → Select 'Pothole' metric → green (safe) to red (dangerous)"},
-      {k:['what is rutting','rutting depth','rut depth','wheel path','deformation','ruts mm'],
-       a:"**RUTTING — RUT DEPTH (millimetres):**\n\n**What it measures:**\nThe DEPTH of wheel-path DEPRESSIONS — how much the road surface has sunk where vehicles drive repeatedly.\n\n**Scale (in millimetres — mm):**\n\n| Rut Depth | Condition | Appearance | Hazard | Action |\n|-----------|-----------|-----------|--------|--------|\n| **<3mm** | Excellent | Nearly invisible | None | Monitor |\n| **3–6mm** | Good | Slight depression visible | Minimal | Routine care |\n| **6–10mm** | Fair | Clear ruts, noticeable | Water pooling | Plan repair |\n| **10–15mm** | Poor | Deep ruts, visible from afar | Water trapping, unsafe | Repair soon |\n| **15mm+** | Very Poor | Severe rutting | Hydroplaning risk, structural damage | Emergency |\n\n**What causes rutting:**\n• Heavy, repeated traffic (trucks, buses)\n• Weak asphalt under heat\n• Poor compaction at construction\n• Base layer failure\n• Asphalt deformation over time\n\n**Why rutting matters:**\n✓ Reduces traction/grip (slipping risk)\n✓ Water collects in ruts → more damage\n✓ Unsafe in rain (hydroplaning)\n✓ Indicates structural weakness\n✓ Reduces ride comfort\n✓ Shows areas needing stronger materials\n\n**Difference between IRI and Rutting:**\n• **IRI** = overall roughness (many causes)\n• **Rutting** = specific wheel-path depressions (traffic load)\n\nExample: Road with high IRI + high Rutting = rough + deep wheel paths = needs urgent repair\n\n**See it on map:**\nLayers → 'Road Condition Data' → Select 'Rutting' metric → green (<6mm) to red (15mm+)"},
-      {k:['what is texture','surface texture','macrotexture','grip','friction grip','pavement texture'],
-       a:"**TEXTURE — SURFACE TEXTURE QUALITY:**\n\n**What it measures:**\nThe ROUGHNESS of the asphalt SURFACE — affects grip and drainage.\n\n**Two types:**\n\n1. **Macrotexture** (what KLRAMS measures)\n   • Large bumps/grooves on surface (visible to eye)\n   • Affects water drainage and grip\n\n2. **Microtexture** (microscopic)\n   • Tiny roughness at aggregate level\n   • Affects friction\n\n**Scale (varies):**\n\n| Texture | Appearance | Grip Level | Drainage | Rating |\n|---------|-----------|------------|----------|--------|\n| **Excellent** | Coarse, very bumpy | Excellent | Very good | Safe |\n| **Good** | Visibly textured | Good | Good | Safe |\n| **Fair** | Some texture visible | Acceptable | Adequate | Acceptable |\n| **Poor** | Smooth, polished | Slippery | Poor | Risk |\n| **Very Poor** | Very smooth, shiny | Very slippery | Very poor | Unsafe |\n\n**Why texture matters:**\n✓ **Safety** → Good texture = better grip, safer braking\n✓ **Drainage** → Coarse texture channels water away\n✓ **Wet conditions** → Smooth roads are dangerous (hydroplaning)\n✓ **Motorcycle safety** → Critical for two-wheelers\n✓ **Noise** → Coarse texture reduces tire noise\n\n**What degrades texture:**\n• Polishing by repeated heavy traffic\n• Wearing away of aggregate\n• Deposition (dirt/mud filling grooves)\n• Asphalt oxidation (hardening)\n• Age\n\n**Relationship to other metrics:**\n• Poor texture often correlates with age\n• Doesn't directly cause IRI (separate metric)\n• Can occur on otherwise smooth roads\n\n**See it on map:**\nLayers → 'Road Condition Data' → Select 'Texture' metric → green (good grip) to red (slippery)"},
-      {k:['what is ravelling','raveling','aggregate loss','surface loss','fraying','stripping'],
-       a:"**RAVELLING — AGGREGATE LOSS (% of surface):**\n\n**What it measures:**\nThe PERCENTAGE of road surface where small stones (aggregate) are MISSING or LOOSE — the road is \"fraying.\"\n\n**Scale (percentage):**\n\n| Ravelling % | Appearance | Severity | Action |\n|-------------|-----------|----------|--------|\n| **0–5%** | No visible loose stones | Minimal | Monitor |\n| **5–15%** | Few loose/missing stones visible | Minor | Routine care |\n| **15–30%** | Noticeable spalling, exposed binder | Plan repair |\n| **30%+** | Large areas bare, fast deterioration | Urgent repair |\n\n**What it looks like:**\n• Road surface looks \"rough\" or \"fuzzy\"\n• Small pebbles loose or missing\n• Exposed dark binder showing through\n• Can spread quickly if untreated\n\n**What causes ravelling:**\n• Loss of bond between stones and asphalt binder\n• Water infiltration breaking the bond\n• Asphalt aging (hardening, brittleness)\n• Poor construction or materials\n• Freeze-thaw cycles\n\n**Why it matters:**\n✓ Early warning sign of failure\n✓ Reduces skid resistance (less grip)\n✓ Allows water to reach base layers\n✓ Spreads quickly to potholes if ignored\n\n**Difference from pothole:**\n• **Ravelling** = small stones missing (surface fraying)\n• **Pothole** = large chunks missing (deep hole)\n• Ravelling often LEADS TO pothole if untreated\n\n**See it on map:**\nLayers → 'Road Condition Data' → Select 'Ravelling' metric → green (none) to red (extensive)"},
-      {k:['what is patch work','patchwork','patching','repairs','surface patches','temporary repair','overlay patch'],
-       a:"**PATCH WORK — PATCHED/REPAIRED SURFACE (% of area):**\n\n**What it measures:**\nThe PERCENTAGE of road surface that has been REPAIRED/PATCHED (not original surface).\n\n**Scale (percentage):**\n\n| Patch % | Appearance | Quality | Meaning | Action |\n|---------|-----------|---------|---------|--------|\n| **0–5%** | Original surface (or minimal patches) | Good | Well-maintained | Monitor |\n| **5–15%** | Some patches visible | Acceptable | Some age/repairs done | Routine care |\n| **15–30%** | Multiple patches evident | Fair | Road has been repaired several times | Plan overlay |\n| **30–50%** | Heavily patched | Poor | Many repairs, structure aging | Resurfacing soon |\n| **50%+** | Majority patched | Very Poor | Almost entirely repaired | Major rehabilitation |\n\n**Why roads get patched:**\n• Fixing potholes → temporary patch\n• Repairing cracked areas → filling\n• Sealing cracks → crack-seal patches\n• Previous maintenance → asphalt overlay\n• Utility work → patches for pipes/cables\n\n**Patch quality:**\n• **Good patches** → Well-compacted, integrated, last years\n• **Poor patches** → Loose, separate, fail quickly\n• **Mismatched** → Different color/texture = visible repair\n\n**What it tells you:**\n• **Low patch %** → Road is new or well-maintained\n• **Medium patch %** → Road is mature, aging normally\n• **High patch %** → Road is OLD, multiple repairs done, major work soon needed\n\n**Relationship to PCI:**\n• High patch % usually correlates with lower PCI\n• Many patches = sign of advanced deterioration\n• Patching is temporary; long-term needs overlay/resurface\n\n**Typical progression:**\n1. New road → 0% patches, high PCI\n2. 5 years → 5–10% patches, PCI still good\n3. 10 years → 15–25% patches, PCI declining\n4. 15+ years → 30–50% patches, PCI poor → needs major repair\n\n**See it on map:**\nLayers → 'Road Condition Data' → Select 'Patch work' metric → green (new/well-maintained) to red (heavily repaired)"},
-      {k:['skid','friction','grip test'],
-       a:"Skid Resistance testing measures the surface friction (grip) of the pavement — important for safety. It's one of the field surveys carried out for the network."},
-      {k:['bituminous core','bituminous','core sample','layer thickness'],
-       a:"Bituminous Core extraction takes core samples from the pavement to check layer thickness and material properties in the lab."},
-      {k:['sub grade','sub-grade','subgrade','soil','cbr'],
-       a:"Sub-Grade Soil investigation samples the soil beneath the pavement to assess its strength (e.g. CBR) — a key input for design and rehabilitation."},
-      {k:['what is nsv','network survey vehicle','survey vehicle'],
-       a:"NSV stands for Network Survey Vehicle — a vehicle fitted with cameras and sensors that records road video and condition data (like IRI and rutting) at traffic speed."},
-      {k:['survey','surveys','field survey','data collection','how is data collected','what surveys'],
-       a:"KLRAMS data comes from several field surveys: NSV (road video + condition), FWD (structural strength), Bituminous Core (layer thickness), Sub-Grade Soil (CBR) and Skid Resistance (grip). You can see survey photos on the public site's home page."},
-      {k:['road class','classification','national highway','state highway','major district road','mdr','odr','nh','sh','what is road class'],
-       a:"**ROAD CLASSES — ADMINISTRATIVE ROAD CATEGORIES:**\n\n**What they are:**\nRoads are classified by ADMINISTRATIVE IMPORTANCE — who manages them, traffic volume, and standards.\n\n**Four main classes in Kerala:**\n\n| Class | Full Name | Abbr. | Who Manages | Traffic | Lanes | Examples |\n|-------|-----------|-------|-------------|---------|-------|----------|\n| **National Highway** | National Highway | **NH** | Central Govt (NH Authority) | Very High | 4–6+ | NH-66, NH-544 |\n| **State Highway** | State Highway | **SH** | State Govt (Kerala PWD) | High | 2–4 | SH-1, SH-10 |\n| **Major District Road** | Major District Road | **MDR** | District Authority | Medium | 2 | Various MDR |\n| **Other District Road** | Other District Road | **ODR** | District Authority | Low–Medium | 1–2 | Local ODR |\n\n**Detailed breakdown:**\n\n### **NH — National Highway (Highest Priority)**\n• **Purpose:** Connect major cities across India\n• **Standards:** Highest (strict specifications)\n• **Traffic:** Heavy, 24/7 mixed traffic\n• **Width:** 7–12 m (often divided)\n• **Speed limit:** 80–100 km/h\n• **Maintenance:** Central Govt responsibility\n• **Priority:** Highest (major commerce/tourism)\n• **Examples:** Delhi-Chennai, Mumbai-Bangalore routes\n\n### **SH — State Highway (High Priority)**\n• **Purpose:** Connect state capitals and major towns\n• **Standards:** High (regulated by state)\n• **Traffic:** Heavy during peak, commercial vehicles common\n• **Width:** 7–9 m (usually 2–3 lanes)\n• **Speed limit:** 60–80 km/h\n• **Maintenance:** State PWD responsibility\n• **Priority:** High (state commerce)\n• **Examples:** Routes connecting district capitals\n\n### **MDR — Major District Road (Medium Priority)**\n• **Purpose:** Connect towns within district, to state highways\n• **Standards:** Adequate for traffic\n• **Traffic:** Moderate, mix of vehicles\n• **Width:** 5.5–7 m (usually 2 lanes)\n• **Maintenance:** District Panchayat/Local authority\n\n### **ODR — Other District Road (Lower Priority)**\n• **Purpose:** Local connectivity, villages to towns\n• **Standards:** Basic (minimum specifications)\n• **Traffic:** Light to moderate, local traffic\n• **Width:** 3.5–5.5 m (often single lane)\n• **Maintenance:** District Panchayat/Local authority\n\n**Why classes matter:**\n✓ **Budget allocation** → NH gets more funds than ODR\n✓ **Standards** → NH has stricter specs than ODR\n✓ **Repair priorities** → Poor NH gets fixed before poor ODR\n\n**In KLRAMS:**\n• **Filter by class** → Funnel icon → pick NH/SH/MDR/ODR\n• **Dashboard** → PCI Analysis shows % in each rating BY class\n• **Map legend** → Roads colored by class when 'Road network' ON"},
-      {k:['what is district','district boundary','which district','administrative division','district roads'],
-       a:"**DISTRICT — ADMINISTRATIVE REGION:**\n\n**What it is:**\nA DISTRICT is a large administrative division of Kerala, each with its own local government, PWD offices, and road maintenance authority.\n\n**Kerala districts (14 total):**\nThiruvananthapuram, Kollam, Pathanamthitta, Alappuzha, Kottayam, Idukki, Ernakulam, Thrissur, Palakkad, Malappuram, Kozhikode, Wayanad, Kannur, Kasaragod\n\n**Why districts matter in KLRAMS:**\n\n✓ **Maintenance responsibility** → Each district manages its roads\n✓ **Budget tracking** → Funds allocated per district\n✓ **Performance comparison** → Compare one district's road condition to another\n✓ **Local governance** → District officials manage repairs\n✓ **Area coverage** → Which districts have survey data\n✓ **Resource planning** → Which districts need more investment\n\n**In KLRAMS:**\n\n• **Filter by district** → Funnel icon → Select district → See only that district's roads\n• **Dashboard** → See network summary by district\n• **District boundary layer** → Toggle 'District boundary' in Layers to see borders on map\n• **Tag on header** → Top-right shows which district you're viewing ('Kerala PWD')\n• **Search** → Can search roads within a district\n• **Report** → Group reports by district\n\n**Example use case:**\n\"Thiruvananthapuram district has 40% roads in Poor condition → needs urgent repair budget allocation\"\n\n**Related: PWD Section**\nNot the same as district:\n• **District** = Large region (Thiruvananthapuram, Kollam, etc.)\n• **PWD Section** = Sub-division within district (one PWD office manages one section)\n• One district may have MULTIPLE PWD Sections\n\n**Relationship to road classes:**\n```\nThiruvananthapuram District\n├─ NH routes (managed by NH Authority)\n├─ SH routes (managed by State PWD)\n└─ MDR/ODR routes (managed by District Panchayat)\n```\n\nAll shown on the same map; can be filtered by district."},
-      {k:['what is survey','field survey','nsv survey','survey data','data collection','how is data collected','survey type','fwd survey','soil survey'],
-       a:"**SURVEYS — FIELD DATA COLLECTION METHODS:**\n\n**What they are:**\nDifferent types of FIELD TESTS and MEASUREMENTS taken on roads to assess condition and structure.\n\n**Main survey types in KLRAMS:**\n\n### **1. NSV — Network Survey Vehicle (Road Condition + Video)**\n• **What:** Vehicle-mounted cameras and sensors record road video at traffic speed\n• **Measures:** IRI (roughness), Rutting, Cracking, and captures video footage\n\n• **Output:** Video + IRI/Rutting values; can calculate other metrics\n\n• **In KLRAMS:** Watch NSV videos in Video panel; IRI/Rutting from NSV\n\n### **2. FWD — Falling Weight Deflectometer (Structural Testing)**\n• **What:** Heavy weight dropped on road; measures deflection (bending)\n• **Measures:** D0 (peak deflection) + other deflection readings at distance\n• **Determines:** Pavement structural strength, remaining life\n• **In KLRAMS:** Toggle 'FWD (D0)' layer; click points to see readings\n\n### **3. Bituminous Core (Layer Thickness)**\n• **What:** Drill cores from road surface to check asphalt layer thickness\n• **Measures:** Thickness of asphalt layers, condition, material properties\n• **In KLRAMS:** View in Report Hub; shows layer thickness data\n\n### **4. Sub-Grade Soil (Soil Strength)**\n• **What:** Dig pits to extract soil samples from below pavement\n• **Measures:** CBR (California Bearing Ratio), soil type, bearing capacity\n• **In KLRAMS:** View in Report Hub; shows CBR and soil properties\n\n### **5. Skid Resistance (Friction/Grip Testing)**\n• **What:** Measure surface friction (grip) using specialized equipment\n• **Measures:** Skid resistance value (0–100 scale)\n• **In KLRAMS:** May be shown as separate data if available\n\n**Why multiple surveys?**\n✓ **Surface condition** (IRI) ≠ **Structural strength** (FWD)\n✓ Each tells a different story\n✓ Engineers need both for the best decisions\n\n**Example:**\n\"Road looks smooth (IRI=3) but FWD=700 (weak)\" → Needs full reconstruction, not just patching."},
-      {k:['what is ownership','road ownership','who owns','management','maintained by'],
-       a:"**OWNERSHIP & MANAGEMENT — WHO CONTROLS THE ROAD:**\n\n**Types of road ownership:**\n\n| Ownership | Manager | Who Funds | Examples |\n|-----------|---------|-----------|----------|\n| **National** | Ministry of Road Transport (NH Authority) | Central Government | NH-66, NH-544 |\n| **State** | State PWD (Public Works Dept) | State Government | SH-1, SH-10 |\n| **District** | District Panchayat/Local Authority | District Budget | MDR, ODR roads |\n| **Private/Other** | Private entities or other agencies | Various | Toll roads, special projects |\n\n**What ownership means:**\n\n✓ **Maintenance responsibility** → National roads maintained by NH Authority\n✓ **Budget source** → State roads get state budget allocation\n✓ **Standards** → National roads follow stricter standards\n✓ **Toll collection** → Some national roads have tolls\n✓ **Response time** → National roads get faster repairs\n✓ **Accountability** → Clear authority for each road\n\n**In KLRAMS:**\n• Click road → Popup shows 'Ownership' field\n• Usually shown as: National, State, or District\n• Helps understand maintenance priorities\n• Explains why some roads better/worse maintained\n\n**Management hierarchy:**\n```\nCentral (Ministry)\n  ↓\nNH Authority (manages all NH)\n  ├─ State PWD (manages all SH)\n  │   ├─ District Panchayat (manages MDR/ODR)\n  │   └─ Local authorities\n```\n\n**Example scenario:**\nPoor NH road → Report to NH Authority (will be prioritized)\nvs.\nPoor ODR road → Report to District Panchayat (may take longer)"},
-      {k:['export','download','excel','csv','pdf','save data','get the data'],
-       a:"You can export to Excel or PDF from the Report Hub (each survey dataset), the Asset Register (Road, Culvert and Bridge) and the Dashboard's PCI views. Every layer in the Layers panel also has its own export button — see 'export layer' below. All exports match your current search and filters."},
-      {k:['export layer','layer export','shapefile export','geojson export','kml export','kmz export','export to shapefile','export as kml','download layer','export map layer','export shapefile zip'],
-       a:"**Exporting a layer:**\n\nEvery row in the Layers panel has its own export button — click it to choose **Shapefile (zip)**, **GeoJSON**, **KML**, **KMZ** or **CSV**. It exports exactly what the map is showing: your active attribute filters, and for Road Condition Data, the parameter you have selected.\n\n**KML/KMZ is single-parameter** — it always carries the map's classified colours (Good/Fair/Poor etc) for the ONE parameter currently selected, meant for opening in Google Earth. For every parameter at once, use CSV or Shapefile.\n\nShapefile column names are shortened to fit the 10-character DBF limit, but the full names travel in the zip as a QGIS alias file and a lookup CSV, so nothing is lost."},
-      {k:['my location','gps','locate me','find my location','where am i','blue dot','gps dot','my position','current location'],
-       a:"The **My Location** control (near the zoom buttons) shows a live GPS dot on the map with an accuracy circle — useful for checking your position against the mapped network in the field. Your browser will ask for location permission the first time; it needs a secure (https) connection. Click the control again to stop tracking."},
-      {k:['my layers','user layer','user layers','temporary layer','shared layer','discard layer','add my own layer','custom layer'],
-       a:"**My layers** (in the Layers panel) shows layers created in Layer Management — including layers others have **shared** and your own **temporary** ones, which get a one-click discard button right there in the panel. To add a new layer, go to Layer Management (Home portal → 'Layer Management') and upload GeoJSON, shapefile or KML."},
-      {k:['mobile','phone','tablet','use on phone','android','iphone','touch screen','small screen'],
-       a:"KLRAMS works on a phone or tablet browser — no app to install. Panels switch to a touch-friendly bottom-sheet layout on a narrow screen automatically, and all core viewer functions (layers, Road Inspector, condition, PCI, search) work the same way. Dense screens like multi-tab dashboards and the Data Console are easier on a larger screen."},
-      {k:['no data','grey road','gray road','no survey','why is the road grey','not coloured','no colour','blank'],
-       a:"If a road appears in a neutral/grey colour, or the popup says 'No survey done at this chainage', it means condition data hasn't been recorded for that segment yet."},
-      {k:['legend','what do the colours','colour mean','color mean','green yellow red','what does green','colour code'],
-       a:"On condition layers the colours run green = good, yellow/amber = fair, and orange/red = poor, based on the thresholds for the chosen metric. A legend is shown alongside the layer."},
-      {k:['collapse','hide panel','close panel','minimise','minimize','arrow button','expand panel','more map'],
-       a:"Use the small arrow (‹) at the top-right of the Layers panel to collapse it and give the map more room; click it again to bring the panel back."},
-      {k:['zoom','pan ','navigate','move map','zoom in','zoom out','plus minus'],
-       a:"Use the + / − buttons at the top-right, your mouse wheel, or pinch to zoom; click and drag to pan around the map."},
-      {k:['sign out','log out','logout','sign in','login','log in'],
-       a:"Use 'Sign out' at the top-right to leave the session. To sign back in, open the login page from the public site."},
-      {k:['reset view','show all','whole network','zoom to all','full network','clear filter','see all roads'],
-       a:"Clearing any active filter brings back the full network. Turning a layer off and on again redraws it and fits the view; you can also zoom out to see the whole network."},
-      {k:['units','m/km','micron','measurement unit','what unit','mm','percent','%'],
-       a:"**UNDERSTANDING MEASUREMENT UNITS:**\n\n| Metric | Unit | Meaning | Examples |\n|--------|------|---------|----------|\n| **IRI** | m/km | Metres per kilometre (roughness) | 0–2 (smooth), 8+ (rough) |\n| **Rutting** | mm | Millimetres (depth) | 5 mm = deep rut |\n| **D0 (FWD)** | mm | Millimetres of deflection | 0.2 mm = strong, 0.8 mm = weak |\n| **Crack %** | % | Percentage of surface | 10% = 10% of surface cracked |\n| **Pothole** | % or extent | Percentage/extent | 15% = significant damage |\n| **Texture** | Scale/rating | Qualitative or numeric | 0–10 scale or verbal rating |\n| **Ravelling %** | % | Percentage of surface | 20% = 1/5 of surface losing stones |\n| **Patch work %** | % | Percentage of surface | 30% = 30% is patched/repaired |\n| **PCI** | 0–100 | Index (no unit) | 75 = Good condition (index number) |\n\n**Common conversions:**\n• 1 km = 1000 metres\n• 1% = 0.01 (as decimal)\n\n**Reading metric values:**\n• **Lower IRI is BETTER** (0–2 = smooth)\n• **Lower Rutting is BETTER** (<6mm = good)\n• **Lower D0 is BETTER** (<0.20 mm = strong)\n• **Lower % for damage is BETTER** (10% crack = less damage)\n• **Higher PCI is BETTER** (90–100 = excellent)"},
-      {k:['what is rating','condition rating','road rating','good fair poor','rating system'],
-       a:"**CONDITION RATINGS — CATEGORIZING ROAD HEALTH:**\n\n**Rating categories (from best to worst):**\n\n| Rating | PCI | Condition | Maintenance Need | Timeline |\n|--------|-----|-----------|------------------|----------|\n| **Excellent** | 90–100 | Like new, perfect condition | Routine monitoring | 10+ years |\n| **Good** | 80–90 | Minor wear visible | Routine maintenance | 7–10 years |\n| **Satisfactory** | 60–80 | Noticeable wear | Planned maintenance | 3–7 years |\n| **Fair** | 40–60 | Significant damage | Prioritize repairs | 1–3 years |\n| **Poor** | 20–40 | Heavy distress, unsafe | Urgent repair | Now–1 year |\n| **Fail** | 0–20 | Critical damage | Emergency action | Immediate |\n\n**What each rating means:**\n\n### **Excellent (90–100)**\n• Road looks new\n• Smooth, no visible cracks\n• Safe, comfortable driving\n• Example: Newly built road\n\n### **Good (80–90)**\n• Minor signs of wear\n• Occasional small cracks\n• Still very safe\n• Example: 2–3 year old road\n\n### **Satisfactory (60–80)**\n• Visible wear and tear\n• Some cracks, slight roughness\n• Still usable, but not ideal\n• Example: 5 year old road\n\n### **Fair (40–60)**\n• Obvious damage\n• Multiple cracks, potholes forming\n• Uncomfortable driving\n• Example: 8–10 year old road needing work\n\n### **Poor (20–40)**\n• Significant distress\n• Many potholes, deep cracks\n• Safety concerns\n• Example: 12+ year old road, urgent repair needed\n\n### **Fail (0–20)**\n• Critical condition\n• Heavy damage, very unsafe\n• Should not be in use\n• Example: Road beyond repair, needs reconstruction\n\n**Using ratings for decisions:**\n\n1. **Excellent/Good (80+)** → Monitor, routine maintenance\n2. **Satisfactory (60–80)** → Plan repairs for next fiscal year\n3. **Fair (40–60)** → Schedule repairs in current year\n4. **Poor (20–40)** → Emergency repairs or temporary closure\n5. **Fail (0–20)** → Full reconstruction, consider closure\n\n**In KLRAMS:**\n• **Dashboard PCI Analysis** → See % of network in each rating\n• **Color-coded map** → Green (Excellent) to Red (Fail)\n• **Popup** → Shows PCI number + rating category\n• **Export** → Group roads by rating for repair planning"},
-      {k:['what is threshold','threshold value','good fair poor cutoff','irc standard','irc threshold','reset to irc'],
-       a:"**THRESHOLDS — DEFINING GOOD/FAIR/POOR BOUNDARIES:**\n\n**What thresholds are:**\nTHRESHOLDS are the BOUNDARY VALUES that separate condition ratings:\n• **Good threshold** = Below this, condition is 'Good'\n• **Fair threshold** = Between Good and Fair thresholds\n• **Poor threshold** = Above this, condition is 'Poor'\n\n**IRC Standards (Indian Roads Congress):**\nIRC sets recommended thresholds based on engineering research:\n\n| Metric | Good | Fair | Poor | Source |\n|--------|------|------|------|--------|\n| **IRI** | <4 | 4–8 | >8 | IRC-103 |\n| **Rutting** | <6mm | 6–10mm | >10mm | IRC-103 |\n| **Crack %** | <10% | 10–30% | >30% | IRC-103 |\n| **Pothole** | <5% | 5–20% | >20% | IRC-103 |\n| **Ravelling %** | <10% | 10–30% | >30% | IRC-103 |\n| **Patch %** | <10% | 10–30% | >30% | IRC-103 |\n\n**Example (IRI thresholds):**\n```\nGood             Fair            Poor\n0---2---4 (threshold)---8 (threshold)---20\n      ↓                   ↓\n  IRI < 4            IRI > 8\n  Smooth             Rough\n```\n\n**In KLRAMS:**\n• **Road Condition Data layer** → Shows condition colored by IRC defaults\n• **Adjust thresholds** → Click threshold values to customize\n• **Reset to IRC defaults** → Restore original IRC standards\n• **Color legend** → Shows current good/fair/poor boundaries\n\n**Why thresholds matter:**\n\n✓ **Consistent standards** → Same criteria everywhere\n✓ **Comparable data** → Road A vs Road B on same scale\n✓ **Budget decisions** → Know which roads fall below acceptable standard\n✓ **IRC alignment** → Follow national standards\n✓ **Customization** → Adjust if local conditions different\n\n**Customizing thresholds:**\n\nExample: Your state decides IRI < 3 is 'Good' (stricter than IRC):\n1. Click current IRI good threshold in Layer panel\n2. Change from 4 to 3\n3. Map re-colors to show stricter standard\n4. More roads now appear in 'Fair/Poor' category\n\n**IRC — Indian Roads Congress:**\n• National standard-setting body\n• Publishes guidelines for road quality (IRC-103 is main one)\n• Used across India for consistent measurement\n• KLRAMS uses IRC thresholds by default\n• Can be customized per state policy\n\n**Reset button:**\n• Returns all thresholds to official IRC values\n• Useful if you've customized and want to revert"},
-      {k:['coverage','coverage area','survey coverage','how many roads','which area','how many km surveyed','survey status'],
-       a:"**COVERAGE — WHICH AREAS HAVE SURVEY DATA:**\n\n**What coverage means:**\nCOVERAGE tells you WHAT PERCENTAGE of the road network has been surveyed and has data in KLRAMS.\n\n**Coverage metrics:**\n\n| Metric | Example | Meaning |\n|--------|---------|----------|\n| **Total roads surveyed** | 5,234 | Number of individual roads with data |\n| **Total kilometres** | 34,567 km | Total road length with data |\n| **% of network** | 65% | Portion of entire state covered |\n| **By class** | SH: 80%, MDR: 50% | Coverage varies by road type |\n| **By district** | Some districts 100%, others 20% | Regional variation |\n\n**Example coverage scenario:**\n```\nKerala Total Road Network: ~100,000 km\nKLRAMS Current Coverage: 34,567 km (35%)\n\n- NH roads: ~2,000 km (100% covered)\n- SH roads: ~15,000 km (90% covered)\n- MDR roads: ~12,000 km (40% covered)\n- ODR roads: ~5,567 km (5% covered)\n```\n\n**Understanding gaps:**\n\n✓ **No grey roads expected** → Area is covered\n✓ **Many grey roads** → Area not yet surveyed\n✓ **By class** → Which road types still need survey\n✓ **By district** → Which regions need data collection\n\n**In KLRAMS:**\n• **Dashboard** → Shows exact coverage (total roads, total km, %)\n• **Grey roads on map** → Indicate unsurveyed areas\n• **Data Console** → Where new surveys are uploaded to expand coverage\n• **Report Hub** → Only includes surveyed roads\n\n**Why coverage matters:**\n\n✓ **Data gaps** → Can't plan repairs for unsurveyed roads\n✓ **Budget planning** → Only surveyed roads can be prioritized\n✓ **Network picture** → Incomplete coverage = incomplete assessment\n✓ **Future planning** → Know which areas need survey next\n✓ **Comparison** → Can't compare roads that aren't surveyed\n\n**Improving coverage:**\n1. Plan new surveys for grey/unsurveyed areas\n2. Upload data to Data Console\n3. Build segments\n4. Coverage % increases\n5. More roads available for analysis\n\n**Related term:**\n• **Survey status** = Is survey done (in KLRAMS) or planned/pending?"},
-      {k:['combined metrics','reading multiple','understand together','correlation','what if','scenario'],
-       a:"**INTERPRETING COMBINED METRICS — THE COMPLETE PICTURE:**\n\n**Why single metrics aren't enough:**\nOne metric tells part of the story; together they tell the FULL PICTURE.\n\n**Example scenarios (combining IRI + Crack + Rutting):**\n\n### **Scenario 1: Smooth but cracked**\n```\nIRI = 2 (Excellent/smooth)\nCrack = 35% (Poor/extensive)\nRutting = 5mm (Good)\n→ Interpretation: Road LOOKS smooth but has SEVERE cracking\n   Problem: Cracks are shallow/fine; pavement hasn't broken up yet\n   Action: Seal cracks NOW before potholes form\n   Timeline: Urgent (prevent deterioration)\n```\n\n### **Scenario 2: Rough but no cracking**\n```\nIRI = 9 (Poor/very rough)\nCrack = 3% (Good/minimal)\nRutting = 12mm (Poor/deep)\n→ Interpretation: Road is rough due to RUTTING, not cracking\n   Problem: Heavy vehicles have worn wheel paths deep\n   Action: Asphalt overlay to fill ruts and smooth\n   Timeline: Soon (prevents hydroplaning)\n```\n\n### **Scenario 3: Everything poor**\n```\nIRI = 12 (Very Poor)\nCrack = 50% (Very Poor)\nPothole = 25% (Poor)\nRutting = 18mm (Critical)\n→ Interpretation: Road is FAILING\n   Problem: Multiple severe distresses, structural breakdown\n   Action: Full reconstruction (patching won't help)\n   Timeline: Emergency (unsafe, prioritize highest)\n```\n\n### **Scenario 4: Good overall**\n```\nIRI = 3 (Good)\nCrack = 5% (Good)\nPothole = 2% (Good)\nRutting = 4mm (Good)\n→ Interpretation: Road in EXCELLENT condition\n   Problem: None\n   Action: Routine maintenance (sweeping, drainage)\n   Timeline: Monitor regularly (10+ years before major work)\n```\n\n**Key relationships:**\n\n**IRI ↔ Crack %:**\n• High IRI + High Crack % = Advanced deterioration\n• High IRI + Low Crack % = Rutting or settling (not cracking)\n• Low IRI + High Crack % = Early stage, seal cracks now\n\n**Crack % ↔ Pothole %:**\n• High Crack % but no potholes = Preventable (seal them)\n• High Crack % + High Pothole % = Deterioration advanced\n• Pothole % usually appears AFTER high Crack %\n\n**Rutting ↔ FWD (D0):**\n• High Rutting + High D0 (weak) = Asphalt deformation (weak material)\n• High Rutting + Low D0 (strong) = Traffic damage to strong base\n• Low Rutting + High D0 = Structural failure brewing (will crack soon)\n\n**Patch % ↔ All other metrics:**\n• High Patch % + Poor other metrics = Road has been repaired multiple times (aging)\n• High Patch % + Good other metrics = Recent overlay worked (monitor)\n• Low Patch % + Good metrics = New or well-maintained road\n\n**Composite PCI ↔ Individual metrics:**\n• PCI = weighted combination of all metrics\n• High PCI (80+) = All metrics good\n• Medium PCI (60–80) = Some metrics fair\n• Low PCI (<40) = Multiple metrics poor\n\n**Using combined view:**\n1. Look at PCI first (quick overall picture)\n2. Check individual metrics (what's causing poor PCI?)\n3. Look at FWD if available (is it structural?)\n4. Check Patch % (is it an old road?)\n5. Decide: Patch/Seal → Overlay → Reconstruct\n\n**Dashboard analysis:**\nExample: Thiruvananthapuram district\n• 60% roads in Good/Excellent PCI\n• But look deeper: Most have high Crack % → Need sealing\n• Some have high Rutting → Need overlay\n• Few have poor FWD → Need reconstruction\n→ Budget allocation: 40% sealing, 50% overlay, 10% reconstruction\n\n**Report export:**\nExport to Excel to see all metrics together, spot patterns across roads"},
-      {k:['coverage','which area','which district','how many roads','area covered','how many km'],
-       a:"The Dashboard shows the exact coverage — the number of road sections and the total kilometres surveyed."},
-      {k:['contact','support','help desk','who maintains','phone','email','reach you','who made'],
-       a:"KLRAMS is run by the RMMS Cell at KHRI (Kerala PWD). For data or access requests, please contact the RMMS Cell team."},
-      {k:['average row','what is average','avg row','section average','meaning of average'],
-       a:"In a condition popup, the 'Average' row is the mean of the lane values shown — a single quick figure for that point. With Road Network on, the popup instead shows section-level averages for every metric."},
-      {k:['pci analysis','rating split','length weighted','% of network','network length','length-weighted'],
-       a:"The Dashboard's PCI Analysis shows the share of network length in each PCI rating (Excellent → Fail), the area-weighted network-average PCI, and a per-road-class breakdown. Switch between Composite and Worst-Lane to compare."},
-      {k:['print','printout','take a print','hard copy'],
-       a:"You can print the current view with your browser's print (Ctrl+P). For formatted reports, use the Dashboard."},
-      {k:['layers panel','turn on layer','how to show','what is layer','enable feature','activate feature'],
-       a:"**How Layers Work:**\n\nThe Layers panel (left side) controls what appears on the map:\n• **Toggle ON/OFF** = Click the switch to show or hide that data\n• **Dropdown (⋮)** = Some layers (like Condition Data) let you choose which metric to display\n• **Only one at a time** = Road network and Full Road Network auto-switch (you can't show both)\n• **Hovering** = Shows a color legend for that layer's data\n\nAlways start with 'Road network' ON to see the base roads."},
-      {k:['metric dropdown','choose metric','select parameter','which metric','pci metric','what metric','condition metric'],
-       a:"**Choosing a Metric (Condition Data layer):**\n\nThe metric dropdown shows what data colors the roads:\n• **IRI** = Roughness (m/km) — lower is smoother\n• **Crack** = Cracking % — higher is more distressed\n• **Pothole** = Pothole extent — more is worse\n• **Rutting** = Rut depth (mm) — deeper is worse\n• **Texture** = Surface texture quality\n• **Ravelling** = Surface aggregate loss %\n• **Patch work** = Repaired patches %\n\nEach metric uses green (good) → red (poor) coloring."},
-      {k:['toggle on off','enable layer','disable layer','switch','checkbox','turn off'],
-       a:"**Toggling Layers On/Off:**\n\n• **Click the toggle switch** next to any layer name to show/hide it\n• **Blue (ON)** = Layer is visible on map\n• **Grey (OFF)** = Layer is hidden\n• **Multiple layers** = You can have many ON at once (they overlay)\n• **Search works anyway** = Even with layers OFF, search still finds roads\n• **Popup adapts** = What you see when clicking depends on which layers are ON\n\nTip: Toggle layers off if the map feels crowded."},
-      {k:['what does popup show','click popup','popup information','when i click','inspecting road','road popup','what are those numbers'],
-       a:"**What the Popup Shows When You Click a Road:**\n\nDepends on which layers are ON:\n• **With Road Network ON** → Section ID, Road Name, Class, Section Label, Ownership, length, and section-average condition for every metric\n• **With Condition Data ON** → The metric you chose, lane-wise values (CL1, CR1, etc), the average at that chainage, and road info\n• **With FWD ON** → D0 (peak deflection in mm) and other deflection readings\n• **With structures ON** → Asset ID, type (Bridge/Culvert), location, chainage, and measurements\n\nIf a field shows '—' (dash), that data hasn't been recorded."},
-      {k:['filter operation','how to filter','filtering explained','what does filter','apply filter','remove filter','clear filter'],
-       a:"**How to Use Filters:**\n\n1. **Open Filter panel** (funnel icon, left rail)\n2. **Choose what to filter by:**\n   - Road class (SH/MDR/ODR/NH)\n   - District\n   - PWD Section\n   - Condition thresholds (IRI > 4, Crack < 15%, etc)\n3. **Set your limits** → Input values or select from dropdown\n4. **Watch the map** → Only matching roads stay highlighted; map auto-zooms\n5. **Multiple filters** → Combine them (e.g., 'SH roads + IRI > 5 in District X')\n6. **Clear filter** → Click 'Clear' button to show all roads again\n\n**Pro tip:** Filters only work if that layer is turned ON in Layers."},
-      {k:['search operation','how search works','search bar','find road','search tips','search for section'],
-       a:"**Using the Search Bar:**\n\n1. **Click the search box** at the top of the map\n2. **Type:**\n   - Road name (e.g., 'MC Road')\n   - Road number (e.g., 'SH-10')\n   - Section label (e.g., 'KNR-01')\n3. **See results** → Matching roads appear in a dropdown\n4. **Click to jump** → Map zooms to that road and highlights it\n5. **Case insensitive** → 'sh-10' and 'SH-10' both work\n6. **Partial match** → 'kochi' finds all roads containing 'kochi'\n\n**Note:** Search works even if layers are OFF."},
-      {k:['dashboard operation','how dashboard works','viewing analytics','dashboard tabs','what does dashboard show'],
-       a:"**Understanding the Dashboard:**\n\n**Open it:** Grid icon (top-left) → select 'Dashboard'\n\n**Its 7 tiles:**\n• **Network Overview** → Total roads, total length, length by class (SH/MDR/ODR/NH), ownership\n• **Culverts** / **Bridges** → count, total length, district & class breakdown\n• **Surveys** → year-wise NSV/FWD/traffic/soil/core volumes by district\n• **Traffic** → station rankings by ADT, vehicle-class mix, peak-hour profile\n• **FWD Deflection** → D0 lower-to-higher by SH/MDR & district, temperatures\n• **Condition Data** → IRI/crack/pothole etc Low/High/Mean by surface & class, threshold segment list\n\n**PCI Analysis** → % of network in each rating (Excellent/Good/Satisfactory/Fair/Poor/Fail), network-average PCI, per-class breakdown\n• **Switch metrics** → Toggle between Composite PCI (average of lanes) and Worst-Lane PCI (most distressed lane)\n• **Export** → Download data as Excel or PDF\n\nUse it to get a quick snapshot of the entire network's condition."},
-      {k:['asset register operation','browsing assets','asset table','asset list explained','culvert report','bridge report'],
-       a:"**The Asset Register:**\n\n**Open it:** Grid icon → 'Asset Register'\n\n**What you can do:**\n1. **Browse assets** → Road, Culvert, Bridge tables with all recorded assets\n2. **Search** → Use the search box to narrow by asset name or ID\n3. **Filter by attribute** → Click 'Filter by attribute', pick a field, enter criteria\n4. **Sort** → Click column headers to sort A-Z or numerically\n5. **Export** → Download the current (filtered) table as Excel or PDF\n6. **View details** → Each asset shows its full recorded information\n\n**Note:** Only assets that have been imported/uploaded appear here. Check Data Console if you don't see what you expect."},
-      {k:['video player operation','how to play video','video controls','play pause speed','video direction','front back direction'],
-       a:"**Playing NSV Survey Videos:**\n\n1. **Turn on Video on click** → Layers panel → Interaction group\n2. **Click a road** → If survey video exists, player opens at bottom\n3. **Controls at bottom:**\n   - **Play/Pause** → Start/stop the video\n   - **Speed (0.25×–2×)** → Slow down or fast forward\n   - **Direction (Front/Back)** → Switch which way the vehicle is driving\n4. **Live info** → Shows chainage, lane-wise IRI, and road details\n5. **Fullscreen mode** → Click 'Fullscreen with track & IRI' to see live vehicle movement on map\n6. **Close** → Click × button\n\nTip: Front = start to end; Back = end to start."},
-      {k:['measure tool operation','how to measure','distance measurement','trace route','ruler tool'],
-       a:"**Using the Measure Tool:**\n\n1. **Open Measure panel** → Ruler icon in left rail\n2. **Pick a mode:**\n   - **Length** → Straight-line distance between clicks\n   - **Area** → Polygon area (click multiple points)\n   - **Route** → Follows OSM roads (start → destination → stops)\n3. **Click on map** → Add measurement points\n4. **See result** → Distance/area shown in the panel and on map\n5. **Undo point** → Remove the last click\n6. **Clear** → Start a new measurement\n\nUseful for estimating road segments, verifying lengths, or planning work areas."},
-      {k:['search results','why search empty','search no results','nothing found','search not working'],
-       a:"**Search Returned No Results?**\n\nCheck:\n1. **Spelling** → Typos? Try partial matches\n2. **Data uploaded?** → Confirm in Data Console that road shapefile is imported\n3. **Exact name** → Some roads use special characters; try variations\n4. **Layer visibility** → Turn on 'Road network' or relevant layer first\n5. **Coverage area** → Is that road part of your dataset? Check Dashboard coverage\n\nIf still stuck: Ask Sahaayi 'what roads are available?' or check the Data Console."},
-      {k:['data console','import data','upload data','how to add data','load survey','add survey data'],
-       a:"**The Data Console (Data Management):**\n\n**Open it:** Grid icon (top-left) → 'Data Console'\n\n**What you can do:**\n1. **Upload road network** → Add/update the shapefile with section labels\n2. **Upload condition CSV** → Import survey data (IRI, Crack, Pothole, etc)\n3. **Upload videos** → Add NSV survey footage and catalogue\n4. **Upload structures** → Add Bridge, Culvert, Furniture data\n5. **Upload test data** → Add FWD, soil, bituminous core results\n6. **Build segments** → Process condition data against the road network\n\n**Note:** Data uploaded here appears in the viewer only after 'Building segments'. Only admin users can upload."},
-      {k:['thank','thanks','bye','goodbye','well done','that helps','that helped'],
-       a:"You're welcome! 🙂 I'm here whenever you need help with KLRAMS — just tap 'Ask Sahaayi' again."},
-      {k:['data quality','why different','data mismatch','discrepancy','conflicting data','data inconsistent'],
-       a:"**Understanding Data Differences:**\n\nYou might see different values because:\n1. **Different layers** → Road Network shows section averages; Condition Data shows exact chainage values\n2. **Different metrics** → Each metric (IRI, Crack, Rutting) is independent\n3. **Lane data** → CL1, CR1 have separate values; 'Average' pools them\n4. **Data versions** → If multiple surveys done, you're seeing one survey's results\n5. **Partial coverage** → Some chainages may not have been surveyed\n\nClick roads with 'Road network' ON to see the section average. Switch layers to compare."},
-      {k:['data interpretation','what does value mean','how to read','understanding numbers','what is good','what is bad'],
-       a:"**Interpreting Road Condition Values:**\n\n**IRI (Roughness in m/km):**\n• 0–2 = Excellent (very smooth)\n• 2–4 = Good\n• 4–8 = Fair\n• 8+ = Poor (rough/uncomfortable)\n\n**Crack % (Cracking extent):**\n• 0–5% = Good (minimal)\n• 5–20% = Fair\n• 20%+ = Poor (needs repair)\n\n**Rutting (Depth in mm):**\n• <6mm = Good\n• 6–10mm = Fair\n• >10mm = Poor (unsafe)\n\n**Pothole, Ravelling, Patch (%):** Higher % = more distress. Same color scale: green (good) → red (poor)."},
-      {k:['why popup empty','no data in popup','popup shows dashes','null value','empty values'],
-       a:"**Why Your Popup Shows Dashes (—):**\n\nDashes mean **no recorded data** for that field. Common reasons:\n1. **That survey type not done** → FWD not conducted at that location\n2. **Survey didn't reach there** → Condition survey stopped before that chainage\n3. **Data not yet uploaded** → Check Data Console; you may need to import it\n4. **Optional field** → Some measurements aren't collected everywhere\n5. **Chainage mismatch** → You clicked between surveyed points\n\n**Solution:** Ask your data manager if that survey was done, or upload it via Data Console."},
-      {k:['why all grey','entire road grey','no colour','not coloured','why not colored'],
-       a:"**Why a Road Appears Grey (No Color):**\n\nThis means:\n1. **Turn on 'Road Condition Data'** → It won't color if the layer is OFF\n2. **Choose a metric** → Drop down and pick IRI, Crack, etc (may default to none)\n3. **No survey at that location** → Condition data hasn't been collected there yet\n4. **Data not uploaded** → Check if the survey CSV was imported in Data Console\n5. **Only 'Road network' ON** → Road Network shows structure, not condition; add Condition Data layer\n\nTry: 1) Turn on 'Road Condition Data', 2) Pick 'IRI' from dropdown, 3) Click the road again."},
-      {k:['no popup','click nothing happens','clicking not working','map not responding'],
-       a:"**If Clicking on Roads Doesn't Show a Popup:**\n\n1. **No layers ON?** → Open Layers panel, turn on 'Road network' or 'Road Condition Data'\n2. **Clicked wrong spot?** → Make sure you're clicking *on* a road (not empty map)\n3. **Zoomed out too far?** → Roads may be hard to see; zoom in closer (+ button)\n4. **Popup hidden?** → Look for a card at the top-left; may be off-screen\n5. **Layer empty?** → Check Data Console: has that road shapefile been imported?\n\n**Debug tip:** Try search bar first — if roads appear there, data exists; if not, import it."},
-      {k:['how to compare','compare metrics','side by side','two metrics','which is better','metric comparison'],
-       a:"**Comparing Metrics or Roads:**\n\n**To compare two metrics:**\n1. Note values from one metric (e.g., IRI = 4.5)\n2. Switch metric dropdown to another (e.g., Crack = 12%)\n3. See how condition changes; poor IRI often correlates with high Crack\n\n**To compare districts/classes:**\n1. Use **Filter** (funnel icon) → pick District or Road Class\n2. Note condition ranges\n3. Clear filter, apply new one, compare\n\n**To see network-wide comparison:**\n1. Open **Dashboard** (grid icon)\n2. View PCI Analysis → see all classes' ratings side-by-side\n3. Switch Composite ↔ Worst-Lane to compare approaches\n\n**Export to Excel** for detailed analysis of multiple roads."},
-      {k:['who are you','your name','sahaayi','are you a bot','are you ai','what are you'],
-       a:"I'm Sahaayi, the KLRAMS in-app assistant — here to help you **use** the platform. I explain every feature, operation, and data interpretation. Ask me about condition data, PCI, NSV videos, filtering, missing data, the Dashboard and more."},
-      {k:['hello','hi ','hey','help','what can you','namaskaram','start','good morning','good evening'],
-       a:"Hello! 👋 I'm Sahaayi, your KLRAMS assistant. I'm here to explain **every operation** and **missing data**. Ask me about:\n• Using layers, filtering, searching, watching videos\n• Understanding condition metrics (IRI, Crack, Rutting, etc)\n• Why data is missing, grey roads, empty popups\n• Dashboards, reports, and other modules\n\nTap a question below or just ask!"},
-      {k:['chainage locator','locate chainage','find chainage','go to chainage','jump to chainage','pin chainage'],
-       a:"**Chainage Locator (ruler icon labelled 'Chainage' in the left rail):**\n\nType a road and a chainage value (e.g. '2/400' or '2400 m') and it finds the section that covers that chainage and drops a pin at the exact offset within it — it does NOT use lat/lng, only chainage + section.\n\nIf the chainage falls on a link road, or on both the A and B carriageway of a dual road, every section that covers that chainage gets its own pin, so you can see all of them at once.\n\nThe road list only shows roads within your current network scope (filter)."},
-      {k:['heat map','heatmap','density map','heat map analysis','traffic density map','soil density map'],
-       a:"**Heat Map Analysis (the 'Heat map' icon in the left rail):**\n\nBuilds a colour density surface over point data — either **Traffic stations** (by ADT) or **Sub-Grade Soil test points** (by CBR/plasticity). You can also launch it directly from the Traffic or Soil panels ('Heat Map Analysis' button).\n\nTwo modes:\n• **Density** — just shows where points cluster\n• **Attribute-weighted** — colours the surface by the value of the chosen attribute (e.g. ADT, CBR)\n\nColours are normalised using the 2nd–98th percentile of the data so a few extreme points don't wash out the rest. A district outline can be shown for reference but does not clip the heat surface.\n\nThis runs entirely in your browser — nothing is uploaded or saved."},
-      {k:['map composer','print map','print sheet','make a map','export map as pdf','printable map','map layout'],
-       a:"**Map Composer (rail button in the module flyout):**\n\nBuilds a print-ready map sheet from whatever is currently on screen — the layers, styling and filter you've set up in the viewer. Pick a paper size/orientation and a layout template, add a title, north arrow, scale bar and legend, then export as a PDF.\n\nIt uses a second, offscreen map to render your chosen extent at print quality, so it doesn't disturb your main map view while composing."},
-      {k:['survey archive','archived survey','old survey data','previous survey period','historical survey','past survey year'],
-       a:"**Survey Archive (Home portal → 'Survey Archive'):**\n\nLets you browse every past survey period on the map — older condition, FWD, traffic, soil, bituminous-core and pavement-crust data — separately from the CURRENT data shown in the main GIS Viewer. Pick the survey year/period, then view it the same way you'd view current data."},
-      {k:['layer management','manage layers','layers module','create a layer','new layer','layer registry','layer folder','add a new layer type'],
-       a:"**Layer Management (Home portal → 'Layer Management'):**\n\nThe registry behind every map layer — shows how each layer's features are placed (e.g. by chainage, by coordinates, by boundary) and lets Admins:\n• Create new layer **folders** to group related layers\n• Create new **layers** with their own upload format (GeoJSON/shapefile/KML) and attribute mapping\n• Mark a layer as **temporary** (deletable from the map or here) or **shared to all users**\n\nWhether a layer is editable depends on its source type. Sharing and deleting a shared layer is restricted to its owner or a Super Admin."},
-      {k:['style management','label management','style layers','layer colour','layer color','graduated colour','style template','symbol layer','label layer'],
-       a:"**Style & Label Management (Home portal → 'Style & Label Management'):**\n\nControls how a layer is drawn — colour, outline, symbol and label — in one of several modes:\n• **Single colour**\n• **By class/category** (categorical)\n• **By range** (classified bands)\n• **Graduated ramp** (continuous)\n\nStyles are reusable as templates across layers. If a layer has no style row, it keeps its original built-in appearance. Note: Condition Data and PCI layers are excluded here — their colouring is controlled by the condition thresholds instead."},
-      {k:['lookup','short code','what does flx mean','what does cly mean','code meaning','abbreviation meaning','decode attribute','soil code'],
-       a:"**Lookup & Short Code (Home portal → 'Lookup & Short Code'):**\n\nThe dictionary behind every short code in the data — e.g. FLX (Flexible pavement), CLY (Clay), NB (Nil Bituminous). Both the code AND its full word resolve to the same looked-up value, and you can see which data attribute uses which code list.\n\nOnce set up, codes are shown expanded (in plain words) on every map popup and report — you don't need to remember what a code means."},
-      {k:['calculation rules','how is it calculated','correction rule','dual carriageway correction','traffic station correction','pavement width band','pci weight rule'],
-       a:"**Calculation Rules (Home portal → 'Calculation Rules'):**\n\nDocuments the corrections behind every published figure as editable data — with a before/after value and 'where used' for each:\n• Dual-carriageway grouping (A/B pair averaging)\n• Traffic station grouping\n• Pavement-width bands\n• PCI parameter weights\n\nRoad class, surface type and ownership are deliberately NOT here — those live in the road-network attributes and the Lookup module instead."},
-      {k:['drone','orthomosaic','dem','drone viewer','drone survey','aerial imagery','drone project'],
-       a:"**Drone (Home portal → 'Drone', plus the 'Drone Viewer' link):**\n\n• **Drone module** — create drone survey projects tied to a road/location, upload the orthomosaic and DEM (GeoTIFF), and publish them (Admins only)\n• **Drone Viewer** — a standalone map that overlays the published orthomosaic/DEM imagery on the KLRAMS road network, with pixel-size (GSD), coordinate-reference info and (for a DEM) elevation contours\n\nOpen the Drone Viewer from the rail's Drone icon in the GIS Viewer, or from the Home portal's 'Drone Viewer' chip."},
-      {k:['fwd dashboard','fwd summary','deflection dashboard'],
-       a:"The **FWD Deflection** dashboard tile ranks D0 (peak deflection) from lower to higher, split by road class (SH/MDR) and district, plus pavement and air temperature readings where recorded. Open it from Dashboard → FWD Deflection tile."},
-      {k:['survey dashboard','surveys tab','survey volume','survey summary dashboard'],
-       a:"The **Surveys** dashboard tile shows year-wise field survey volumes — NSV lane-km, FWD points, traffic stations, soil tests and bituminous cores — with a district-wise breakdown, so you can see how much of each survey type was done and when. Open it from Dashboard → Surveys tile."},
-      {k:['traffic dashboard','traffic analytics','adt ranking','vehicle class mix','peak hour'],
-       a:"The **Traffic** dashboard tile shows classified traffic-count stations state-wide and district-wise — top stations by ADT (Average Daily Traffic), the vehicle-class mix, and the 24-hour peak-hour profile. Open it from Dashboard → Traffic tile."},
-      {k:['condition dashboard','condition data dashboard','condition analytics tab'],
-       a:"The **Condition Data** dashboard tile summarises road-condition parameters (IRI, cracks, potholes, etc) state-wide and district-wise as Low/High/Mean by surface type and road class (SH/MDR), plus a list of segments crossing your chosen threshold. Open it from Dashboard → Condition Data tile."}
-    ];
-    var TECH=['backend','database','db ','postgres','postgis','sql','java','spring','redis','mongo','server','source code','codebase','api key','password','credential','token','tech stack','framework','how is it built','how was it built','built with','hosting','deploy','port number','which port','what port','localhost','repository','github','programming','algorithm code','schema'];
-    var CHIPS=["Getting Started","What is missing data?","How to filter roads?","Watch NSV videos?","What is Composite PCI?","Dashboard explained?"];
-    var greeted=false;
-    function el(id){return document.getElementById(id);}
-    function add(text,who){var d=document.createElement('div');d.className='kb-b '+(who==='user'?'kb-user':'kb-bot');d.innerHTML=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');var m=el('kbMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;return d;}
-    function chips(){var c=el('kbChips');c.innerHTML='';CHIPS.forEach(function(q){var b=document.createElement('button');b.className='kb-chip';b.textContent=q;b.onclick=function(){kbAsk(q);};c.appendChild(b);});}
-    function answer(q){
-      var s=(q||'').toLowerCase();
-      if(!s.trim())return "Ask me about **using KLRAMS**:\n• **Getting started** — layers, clicking roads, understanding popups\n• **Operations** — filtering, searching, watching videos, measuring\n• **Data** — condition metrics (IRI, Crack, Rutting, etc), PCI, FWD\n• **Missing data** — why roads are grey, why fields show dashes\n• **Dashboard** — network summaries, coverage, PCI ratings\n• **Modules** — Data Console, Reports, Asset Register, GO Portal\n• **Tools** — zoom, pan, export, base maps, Night mode\n\nJust type your question or pick a suggestion below!";
-      for(var i=0;i<TECH.length;i++){if(s.indexOf(TECH[i])>=0)return "I'm here to help you *use* KLRAMS — finding roads, reading condition and PCI, watching survey videos, filtering, and so on. I can't share the system's technical or internal details, though. Try asking me how to do something in the app!";}
-      var best=null,score=0;
-      for(var j=0;j<KB.length;j++){var sc=0;for(var k=0;k<KB[j].k.length;k++){if(s.indexOf(KB[j].k[k])>=0)sc+=KB[j].k[k].length;}if(sc>=score){score=sc;best=KB[j];}}
-      if(best&&score>0)return best.a;
-      return "Hmm, I'm not sure about that one yet.\n\n**I can help with:**\n• **Getting started** — how to use layers, click roads\n• **Operations** — filter, search, watch videos, measure, export\n• **Layers & data** — condition metrics, PCI, FWD, structures\n• **Understanding data** — what metrics mean, missing data, grey roads\n• **Dashboards & reports** — network summaries, coverage, ratings\n• **Modules** — Data Console, Reports, Asset Register\n\n**Try asking:** 'How do I filter?', 'What is missing data?', 'How to watch videos?', 'What is IRI?'";
-    }
-    window.kbAsk=function(q){add(q,'user');el('kbInput').value='';var t=answer(q);setTimeout(function(){add(t,'bot');},260);};
-    window.kbSend=function(){var v=el('kbInput').value;if(v&&v.trim())kbAsk(v.trim());};
-    window.kbOpen=function(){el('kbPanel').classList.add('open');el('kbFab').style.display='none';if(!greeted){greeted=true;chips();setTimeout(function(){add("Hello! 👋 I'm *Sahaayi*, your KLRAMS assistant. I'll teach you **every operation** and explain **missing data**.\n\n**I can help with:**\n• How to use layers, search, filter, and interact with the map\n• What condition metrics (IRI, Crack, Rutting, etc) mean\n• Why roads appear grey or show missing data\n• How dashboards, videos, and reports work\n• Data Console and other modules\n\nPick a suggestion below or ask me anything!",'bot');},150);}setTimeout(function(){el('kbInput').focus();},60);};
-    window.kbClose=function(){el('kbPanel').classList.remove('open');el('kbFab').style.display='';};
-    document.addEventListener('keydown',function(e){if(e.key==='Escape'&&el('kbPanel').classList.contains('open'))kbClose();});
-  })();
-  </script>
+  <script src="/js/map-ui.js?v=3"></script>
 <style id="mobile-css">
 #fpaneBackdrop{position:fixed;inset:0;background:rgba(8,14,24,.5);z-index:7;opacity:0;visibility:hidden;transition:opacity .22s;display:none}
 /* panel collapsed by default everywhere; shown only when body.panel-open (set by my toggle) */
@@ -1846,35 +1272,7 @@ html body #fpanes.hidden{display:none!important}
   .vidhud .vh-roadname{bottom:8px!important;font-size:14px!important}
 }
 </style>
-<script id="mobile-ux">
-(function(){
-  var bd=document.createElement('div');bd.id='fpaneBackdrop';
-  (function add(){if(document.body)document.body.appendChild(bd);else setTimeout(add,60);})();
-  function fp(){return document.getElementById('fpanes');}
-  function clearActive(){document.querySelectorAll('#iconrail .railbtn').forEach(function(b){b.classList.remove('active');});}
-  /* A full-screen module (Dashboard, Report Hub, PCI/Condition/Register/NSV)
-     hides the panel column but keeps its own rail button lit, so "no panel
-     showing" is not on its own a reason to drop the highlight. */
-  function moduleOpen(){return !!document.querySelector('#dashboard.open,#reportHub.open,#pciScreen.open,#condScreen.open,#regScreen.open,#nsvScreen.open');}
-  function sync(){var f=fp();var open=f&&!f.classList.contains('hidden');document.body.classList.toggle('panel-open',!!open);if(!open&&!moduleOpen())clearActive();}
-  function close(){var f=fp();if(f)f.classList.add('hidden');clearActive();document.body.classList.remove('panel-open');}
-  bd.addEventListener('click',close);window.klClosePanes=close;
-  (function wrap(){
-    if(typeof window.openPane!=='function'||typeof window.togglePanes!=='function')return setTimeout(wrap,140);
-    if(window.__paneWrapped)return;window.__paneWrapped=true;
-    var oOpen=window.openPane,oTog=window.togglePanes;
-    window.openPane=function(id){
-      var f=fp();var btn=document.querySelector('#iconrail .railbtn[data-pane="'+id+'"]');
-      var visible=f&&!f.classList.contains('hidden');var active=btn&&btn.classList.contains('active');
-      if(visible&&active){close();return;}        /* re-tap active tool -> collapse */
-      oOpen(id);sync();
-    };
-    window.togglePanes=function(){oTog();sync();};  /* the < chevron now collapses/restores cleanly */
-  })();
-  function collapse(){var f=fp();if(f)f.classList.add('hidden');clearActive();document.body.classList.remove('panel-open');}
-  if(document.readyState!=='loading')collapse();else document.addEventListener('DOMContentLoaded',collapse);
-})();
-</script>
+<script src="/js/map-mobile-ux.js?v=3"></script>
 <style id="layer-cards">
   .fpane .grp .switch .ldot{width:15px!important;height:15px!important;border-radius:5px!important;box-shadow:0 1px 3px rgba(0,0,0,.22),inset 0 0 0 1.5px rgba(255,255,255,.55)}
   .fpane .grp .switch .lname{font-weight:700}
@@ -1890,79 +1288,14 @@ html body #fpanes.hidden{display:none!important}
   .lx-op{flex:1;height:5px;accent-color:#34d399;cursor:pointer}
   .lx-val{font-weight:800;color:#0e2038;min-width:40px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
 </style>
-<script id="layer-controls">
-(function(){
-  function init(){
-    if(typeof map==='undefined'||!map||!map.getLayer){return setTimeout(init,300);}
-    var LMAP={
-      showRoads:{layers:['roadnet','roadnet-casing'],color:'#8a4d1f'},
-      showRoads2:{layers:['roadnet2','roadnet2-casing','fullnet','fullnet-casing','roads2','roads2-line'],color:'#3a4ad6'},
-      showCond:{layers:['seg-CC','seg-CL1','seg-CL2','seg-CR1','seg-CR2'],color:'#2ba66a',grad:1},
-      showFwd:{layers:['as-fwd','as-fwd-pt','as-fwd-icon'],color:'#7b1fa2'},
-      showIri2km:{layers:['iri2km'],color:'#c2410c',grad:1},
-      showDist:{layers:['district-fill','district-casing','district-line','district-label'],color:'#0e2038'},
-      showCons:{layers:['cons-fill','cons-line','cons-label'],color:'#0d7a51'},
-      showBridge:{layers:['as-bridge','as-bridge-icon'],color:'#8a5cb8'},
-      showCulvert:{layers:['as-culvert','as-culvert-icon'],color:'#e07b2a'},
-      showFurnL:{layers:['as-furnl','as-furnl-icon'],color:'#0fa3a3'},
-      showFurnP:{layers:['as-furnp','as-furnp-icon'],color:'#3b6fa0'},
-      showPciAvg:{layers:['pci-avg'],color:'#157f3c',grad:1},
-      showPciWorst:{layers:['pci-worst'],color:'#e8590c',grad:1},
-      showTraffic:{layers:['trafficstn-lyr'],color:'#1565c0'},
-      showSoil:{layers:['as-soil','as-soil-icon'],color:'#8a4d1f'},
-      showCore:{layers:['as-core','as-core-icon'],color:'#2b2b2b'},
-      showCrust:{layers:['as-crust','as-crust-icon'],color:'#b8860b'}
-    };
-    var NAMES={'#8a4d1f':'Brown','#3a4ad6':'Blue','#2ba66a':'Green','#7b1fa2':'Purple','#0e2038':'Navy','#0d7a51':'Green','#8a5cb8':'Violet','#e07b2a':'Orange','#0fa3a3':'Teal','#3b6fa0':'Steel','#157f3c':'Green','#e8590c':'Orange','#1565c0':'Blue','#2b2b2b':'Black','#b8860b':'Gold'};
-    function setOpacity(layers,v){
-      /* Road network keeps zoom-based opacity (thin + no dark casing when zoomed
-         out). A flat setPaintProperty(line-opacity, 1) was wiping that curve and
-         restoring the statewide dark blotch whenever the Layers card refreshed. */
-      if(layers.indexOf('roadnet')>=0&&typeof applyNetUserOpacity==='function'){
-        applyNetUserOpacity(v);
-        return;
-      }
-      layers.forEach(function(id){if(!map.getLayer(id))return;var t=map.getLayer(id).type;try{
-      if(t==='line')map.setPaintProperty(id,'line-opacity',v);
-      else if(t==='circle')map.setPaintProperty(id,'circle-opacity',v);
-      else if(t==='symbol'){try{map.setPaintProperty(id,'icon-opacity',v);}catch(e){}try{map.setPaintProperty(id,'text-opacity',v);}catch(e){}}
-      else if(t==='fill')map.setPaintProperty(id,'fill-opacity',Math.min(0.6,v*0.45));
-    }catch(e){}});}
-    Object.keys(LMAP).forEach(function(id){
-      var cb=document.getElementById(id);if(!cb)return;
-      var sw=cb.closest?cb.closest('.switch'):null;if(!sw||sw.__lx)return;sw.__lx=1;
-      var cfg=LMAP[id];
-      var lx=document.createElement('div');lx.className='lx';
-      var swatch;
-      if(cfg.grad){
-        /* PCI uses the IRC 6-band scale; condition / IRI use Good→Fair→Poor. */
-        var g=(id==='showPciAvg'||id==='showPciWorst')
-          ?'linear-gradient(90deg,#c92a2a,#e8590c,#f08c00,#f2c200,#7cb518,#157f3c)'
-          :'linear-gradient(90deg,#2ba66a,#FFC400,#da4b43)';
-        swatch='<span class="lx-grad" style="background:'+g+'"></span>Graded scale';
-      }else{
-        swatch='<i style="background:'+cfg.color+'"></i>'+(NAMES[cfg.color.toLowerCase()]||'');
-      }
-      lx.innerHTML='<div class="lx-div"></div>'+
-        '<div class="lx-row"><span class="lx-k">Colour</span><span class="lx-col">'+swatch+'</span></div>'+
-        '<div class="lx-row"><span class="lx-k">Opacity</span><input type="range" class="lx-op" min="15" max="100" value="100"><span class="lx-val">100%</span></div>';
-      sw.parentNode.insertBefore(lx,sw.nextSibling);
-      var rng=lx.querySelector('.lx-op'),val=lx.querySelector('.lx-val');
-      rng.addEventListener('input',function(){val.textContent=rng.value+'%';setOpacity(cfg.layers,+rng.value/100);});
-      function reflect(){lx.classList.toggle('on',cb.checked);if(cb.checked)[140,700,1700].forEach(function(d){setTimeout(function(){if(cb.checked)setOpacity(cfg.layers,+rng.value/100);},d);});}
-      cb.addEventListener('change',reflect);reflect();
-    });
-  }
-  if(document.readyState!=='loading')init();else document.addEventListener('DOMContentLoaded',init);
-})();
-</script>
+<script src="/js/map-layer-controls.js?v=3"></script>
 <!-- Refined Dark Pro theme owns all panel/chrome/overlay styling; the legacy
      #panel-dark override block that lived here was removed in favour of
      css/klrams-dark.css (loaded in <head> after app.css). -->
 <!-- Mobile app layer. Deliberately last: the phone overrides above live in an
      inline <style> mid-document, so a <head> link would lose every !important
      tie against them. -->
-<link rel="stylesheet" href="css/mobile-app.css?v=4">
-<script src="js/mobile-app.js?v=4"></script>
+<link rel="stylesheet" href="css/mobile-app.css?v=6">
+<script src="js/mobile-app.js?v=6"></script>
 </body>
 </html>

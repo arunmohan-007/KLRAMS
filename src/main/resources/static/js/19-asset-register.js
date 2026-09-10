@@ -148,10 +148,10 @@ function renderReg(cols,rows,extra,countText){
   const head='<tr>'+cols.map(c=>'<th'+(c.n?' class="n"':'')+'>'+escH(c.l)+'</th>').join('')+'</tr>';
   let tb=''; rows.forEach((r,i)=>{tb+='<tr>'+cols.map(c=>'<td'+(c.n?' class="n"':(c.cls?' class="'+c.cls+'"':''))+'>'+cf(c.g(r,i))+'</td>').join('')+'</tr>';});
   const toolbar='<div class="reg-bar">'
-    +'<input id="regSearch" class="reg-search" placeholder="Search&hellip;" value="'+escH(regSearch)+'" oninput="regSetSearch(this.value)">'
+    +'<input id="regSearch" class="reg-search" placeholder="Search&hellip;" value="'+escH(regSearch)+'" data-input="klValue" data-args="regSetSearch">'
     +(extra||'')
     +'<span class="reg-count">'+countText+'</span>'
-    +'<span class="reg-exp"><button class="btn ghost" onclick="exportRegExcel()">Excel</button><button class="btn ghost" onclick="printReg()">PDF</button></span>'
+    +'<span class="reg-exp"><button class="btn ghost" data-act="exportRegExcel">Excel</button><button class="btn ghost" data-act="printReg">PDF</button></span>'
     +'</div>';
   body.innerHTML=toolbar+'<div class="reg-tablewrap"><table class="reg-table"><thead>'+head+'</thead><tbody>'
     +(tb||'<tr><td colspan="'+cols.length+'" style="text-align:center;color:#8a93a3;padding:18px">No rows match.</td></tr>')+'</tbody></table></div>';
@@ -161,29 +161,29 @@ function regAttrValControl(){
   if(!regAttr){return '<input id="regAttrVal" class="reg-search" style="max-width:170px;min-width:130px" placeholder="attribute value&hellip;" disabled>';}
   if(regAttrIsNumeric(regAttr)){
     const ops=[['=','='],['\u2260','!='],['<','<'],['\u2264','<='],['>','>'],['\u2265','>=']];
-    const opsel='<select id="regAttrOp" class="reg-sel" style="max-width:62px;min-width:56px;text-align:center" onchange="regSetAttrOp(this.value)">'+ops.map(o=>'<option value="'+o[1]+'"'+(regAttrOp===o[1]?' selected':'')+'>'+o[0]+'</option>').join('')+'</select>';
-    const inp='<input id="regAttrVal" type="number" class="reg-search" style="max-width:118px;min-width:92px" placeholder="value&hellip;" value="'+escH(regAttrVal)+'" oninput="regSetAttrVal(this.value)">';
+    const opsel='<select id="regAttrOp" class="reg-sel" style="max-width:62px;min-width:56px;text-align:center" data-change="klValue" data-args="regSetAttrOp">'+ops.map(o=>'<option value="'+o[1]+'"'+(regAttrOp===o[1]?' selected':'')+'>'+o[0]+'</option>').join('')+'</select>';
+    const inp='<input id="regAttrVal" type="number" class="reg-search" style="max-width:118px;min-width:92px" placeholder="value&hellip;" value="'+escH(regAttrVal)+'" data-input="klValue" data-args="regSetAttrVal">';
     return opsel+inp;
   }
   const vals=regAttrDistinct(regAttr);
-  return '<select id="regAttrVal" class="reg-sel" style="max-width:210px;min-width:140px" onchange="regSetAttrVal(this.value)"><option value="">All values</option>'+vals.map(v=>'<option value="'+escH(v)+'"'+(regAttrVal===v?' selected':'')+'>'+escH(v)+'</option>').join('')+'</select>';
+  return '<select id="regAttrVal" class="reg-sel" style="max-width:210px;min-width:140px" data-change="klValue" data-args="regSetAttrVal"><option value="">All values</option>'+vals.map(v=>'<option value="'+escH(v)+'"'+(regAttrVal===v?' selected':'')+'>'+escH(v)+'</option>').join('')+'</select>';
 }
 function renderRoadReg(){
   const rows=filteredRoadRows();
-  const extra='<select class="reg-sel" onchange="regSetClass(this.value)">'+regClassOptions()+'</select>'
-    +'<select class="reg-sel" onchange="regSetDistrict(this.value)">'+regDistrictOptions(REG_ROADS)+'</select>'
-    +'<select class="reg-sel" onchange="regSetAttr(this.value)">'+regAttrOptions()+'</select>'
+  const extra='<select class="reg-sel" data-change="klValue" data-args="regSetClass">'+regClassOptions()+'</select>'
+    +'<select class="reg-sel" data-change="klValue" data-args="regSetDistrict">'+regDistrictOptions(REG_ROADS)+'</select>'
+    +'<select class="reg-sel" data-change="klValue" data-args="regSetAttr">'+regAttrOptions()+'</select>'
     +regAttrValControl();
   renderReg(roadCols(),rows,extra,rows.length+' roads');
 }
 function renderCulvReg(){
   const rows=filteredCulvRows();
-  const extra='<select class="reg-sel" onchange="regSetDistrict(this.value)">'+regDistrictOptions(REG_CULV)+'</select>';
+  const extra='<select class="reg-sel" data-change="klValue" data-args="regSetDistrict">'+regDistrictOptions(REG_CULV)+'</select>';
   renderReg(culvCols(),rows,extra,rows.length+' culverts');
 }
 function renderBridReg(){
   const rows=filteredBridRows();
-  const extra='<select class="reg-sel" onchange="regSetDistrict(this.value)">'+regDistrictOptions(REG_BRID)+'</select>';
+  const extra='<select class="reg-sel" data-change="klValue" data-args="regSetDistrict">'+regDistrictOptions(REG_BRID)+'</select>';
   renderReg(bridCols(),rows,extra,rows.length+' bridges');
 }
 

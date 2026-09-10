@@ -54,7 +54,7 @@ function renderSurveyDash(){
       ?'<div class="dash-loading">Your session has expired (the server was restarted). '+
        '<a href="/login.html" style="color:#15976a;font-weight:700">Sign in again</a></div>'
       :'<div class="dash-loading">Could not load survey figures ('+escH(e.message)+'). '+
-       '<a href="#" onclick="renderSurveyDash();return false" style="color:#15976a;font-weight:700">Retry</a></div>';
+       '<a href="#" data-act="renderSurveyDash" style="color:#15976a;font-weight:700">Retry</a></div>';
   });
 }
 
@@ -83,10 +83,10 @@ function svyPaint(){
 
   /* ---- controls: period pills + district chips ---- */
   const pills='<div class="svy-bar"><div class="svy-years">'+
-    (svyData.periods||[]).map(pp=>'<button type="button" class="svy-pill'+(pp.id===svyPeriodId?' on':'')+'" title="'+escH(pp.range||'')+'" onclick="svySetPeriod('+(+pp.id)+')">'
+    (svyData.periods||[]).map(pp=>'<button type="button" class="svy-pill'+(pp.id===svyPeriodId?' on':'')+'" title="'+escH(pp.range||'')+'" data-act="svySetPeriod" '+KLAct.args((+pp.id))+'>'
       +'<span class="svy-pill-cap">Survey Period'+(pp.is_active?' · current':'')+'</span><span class="svy-pill-yr">'+escH(pp.name)+'</span></button>').join('')+
-    '</div><div class="svy-dists"><button type="button" class="svy-chip'+(svyDistrict?'':' on')+'" onclick="svyDistrict=null;svyPaint()">All Districts</button>'+
-    dists.map(d=>'<button type="button" class="svy-chip'+(d.district===svyDistrict?' on':'')+'" onclick="svySetDistrict(\''+qq(d.district)+'\')">'+escH(d.district)+'</button>').join('')+
+    '</div><div class="svy-dists"><button type="button" class="svy-chip'+(svyDistrict?'':' on')+'" data-act="svyClearDistrict">All Districts</button>'+
+    dists.map(d=>'<button type="button" class="svy-chip'+(d.district===svyDistrict?' on':'')+'" data-act="svySetDistrict" '+KLAct.args(qq(d.district))+'>'+escH(d.district)+'</button>').join('')+
     '</div></div>';
 
   /* ---- KPI cards ---- */
@@ -126,7 +126,7 @@ function svyPaint(){
   let head='<tr><th>District \\ Survey</th>'+SVY_MET.map(m=>'<th class="n"><span class="amx-dot" style="background:'+m.col+'"></span>'+m.name+(m.k==='nsv_lane_km'?' (lane km)':'')+'</th>').join('')+'</tr>';
   let rows='';
   dists.forEach(d=>{
-    rows+='<tr'+(d.district===svyDistrict?' class="svy-sel"':'')+' onclick="svySetDistrict(\''+qq(d.district)+'\')" style="cursor:pointer">'+
+    rows+='<tr'+(d.district===svyDistrict?' class="svy-sel"':'')+' data-act="svySetDistrict" '+KLAct.args(qq(d.district))+' style="cursor:pointer">'+
       '<td>'+escH(d.district)+'</td>'+
       SVY_MET.map(m=>{const v=+d[m.k]||0;return '<td class="n">'+(v?svyFmt(m.k,v):'<span class="z">·</span>')+'</td>';}).join('')+'</tr>';
   });
@@ -143,3 +143,6 @@ function svyPaint(){
 
   body.innerHTML=pills+kpi+'<div class="comp-row">'+mixCard+nsvCard+'</div>'+fwdCard+matrix+note;
 }
+
+/* was onclick="svyDistrict=null;svyPaint()" — clears the district filter */
+function svyClearDistrict(){ svyDistrict=null; svyPaint(); }

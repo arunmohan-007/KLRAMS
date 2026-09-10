@@ -124,8 +124,16 @@ public class SecurityConfig {
             "frame-src 'none'",
             "frame-ancestors 'none'",
             "form-action 'self'",
-            // 'unsafe-inline' is Phase-2 debt, not an oversight — see above.
-            "script-src 'self' 'unsafe-inline' https://unpkg.com",
+            /* No 'unsafe-inline': every inline <script> is now an external file
+             * and every on*= handler dispatches through js/00-actions.js, so an
+             * injected inline script or onerror= no longer executes. This is the
+             * directive the whole Phase-2 refactor existed to make possible.
+             *
+             * style-src below DOES keep 'unsafe-inline' — the pages carry inline
+             * style="" attributes throughout, and CSS is not an execution vector
+             * in the way script is. Removing it is a much larger job for far less
+             * benefit, so it is a deliberate stopping point rather than an oversight. */
+            "script-src 'self' https://unpkg.com",
             "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com",
             "font-src 'self' data: https://fonts.gstatic.com",
             "img-src 'self' data: blob: https://unpkg.com "

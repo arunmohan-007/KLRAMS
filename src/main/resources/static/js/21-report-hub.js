@@ -273,12 +273,12 @@ function rhOptions(setKey,allRows){
 function rhToolbar(setKey,allRows,countHtml){
   const o=rhOptions(setKey,allRows);
   return '<div class="reg-bar">'
-    +'<input id="rhSearch" class="reg-search" placeholder="Search any value&hellip;" value="'+escH(rhSearch)+'" oninput="rhSetSearch(this.value)">'
-    +'<select id="rhRoadSel" class="reg-sel" onchange="rhSetRoad(this.value)" title="Filter by road name">'+o.road+'</select>'
-    +'<select id="rhDistSel" class="reg-sel" onchange="rhSetDistrict(this.value)" title="Filter by district">'+o.district+'</select>'
-    +'<select id="rhSecSel" class="reg-sel" onchange="rhSetSec(this.value)" title="Filter by section label">'+o.sec+'</select>'
+    +'<input id="rhSearch" class="reg-search" placeholder="Search any value&hellip;" value="'+escH(rhSearch)+'" data-input="klValue" data-args="rhSetSearch">'
+    +'<select id="rhRoadSel" class="reg-sel" data-change="klValue" data-args="rhSetRoad" title="Filter by road name">'+o.road+'</select>'
+    +'<select id="rhDistSel" class="reg-sel" data-change="klValue" data-args="rhSetDistrict" title="Filter by district">'+o.district+'</select>'
+    +'<select id="rhSecSel" class="reg-sel" data-change="klValue" data-args="rhSetSec" title="Filter by section label">'+o.sec+'</select>'
     +'<span class="reg-count">'+countHtml+'</span>'
-    +'<span class="reg-exp"><button class="btn ghost" onclick="rhExportExcel()">Excel</button><button class="btn ghost" onclick="rhPrint()">PDF</button></span>'
+    +'<span class="reg-exp"><button class="btn ghost" data-act="rhExportExcel">Excel</button><button class="btn ghost" data-act="rhPrint">PDF</button></span>'
     +'</div>';
 }
 function rhCell(v){return (v==null||v==='')?'\u2013':escH(v);}
@@ -294,7 +294,7 @@ function rhColumnsFor(set){
 }
 function rhPager(pages){
   if(pages<=1)return '';
-  const btn=(label,p,dis)=>'<button class="btn ghost" style="min-width:70px'+(dis?';opacity:.45;cursor:default':'')+'"'+(dis?' disabled':' onclick="rhGoPage('+p+')"')+'>'+label+'</button>';
+  const btn=(label,p,dis)=>'<button class="btn ghost" style="min-width:70px'+(dis?';opacity:.45;cursor:default':'')+'"'+(dis?' disabled':' data-act="rhGoPage" '+KLAct.args(p)+'')+'>'+label+'</button>';
   return '<div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 0 16px">'
     +btn('&lsaquo; Prev',rhPage-1,rhPage<=0)
     +'<span style="font-size:12px;color:#5a6b82">Page '+(rhPage+1)+' of '+pages+'</span>'
