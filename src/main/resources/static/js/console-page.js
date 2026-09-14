@@ -335,6 +335,7 @@ async function upRoads(force){
     const raw=await r.text();
     const ct=r.headers.get('content-type')||'';
     if(r.redirected || /text\/html/i.test(ct) || /^\s*</.test(raw)){
+      if(r.status===413){ show(out,false,'Upload rejected as too large by the server/proxy in front of KLRAMS (HTTP 413) — the parsed GeoJSON ('+Math.round(JSON.stringify(gj).length/1024)+' KB) exceeds its request-size limit, even though the original file is smaller. Ask whoever administers the server to raise client_max_body_size (nginx) or the equivalent proxy limit — see deploy/nginx-klrams.conf.sample.'); return; }
       show(out,false,'Session expired or not signed in (HTTP '+r.status+'). Sign out, sign back in, then upload again.'); return;
     }
     let j; try{ j=JSON.parse(raw); }catch(pe){ show(out,false,'Server returned non-JSON (HTTP '+r.status+'): '+raw.slice(0,400)); return; }
