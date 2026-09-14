@@ -193,6 +193,13 @@ public class LayerRegistryService {
            ADMIN who is not the owner cannot share, or delete, someone else's
            layer once it is shared — see deleteLayer(). */
         jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS shared boolean NOT NULL DEFAULT false");
+
+        /* A second table a layer's data spills into that isn't the layer's own
+           geometry table — e.g. traffic_stations places the points, but the
+           actual count records live in traffic_counts. Shown alongside the
+           layer's table in Layer Management so that data isn't invisible to
+           someone looking the layer up there. */
+        jdbc.execute("ALTER TABLE layer_definition ADD COLUMN IF NOT EXISTS related_table text");
     }
 
     /* ------------------------------------------------------------------
@@ -362,6 +369,7 @@ public class LayerRegistryService {
         trf.sourceType = "BUILT_IN";
         trf.uploadFormats = "CSV";
         trf.sourceTable = "traffic_stations";
+        trf.relatedTable = "traffic_counts";
         trf.attributeMapping = true;
         trf.sectionField = "section";
         trf.chainageField = "chainage";
@@ -419,9 +427,9 @@ public class LayerRegistryService {
         jdbc.update("""
             INSERT INTO layer_definition
                 (layer_key, folder_id, name, geometry_type, placement, source_type,
-                 upload_formats, attribute_mapping, source_table, derived_from,
+                 upload_formats, attribute_mapping, source_table, related_table, derived_from,
                  section_field, chainage_field, notes, sort_order, created_by, seeded_name)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'system',?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'system',?)
             ON CONFLICT (layer_key) DO UPDATE
                SET folder_id = EXCLUDED.folder_id,
                    -- Label only while nobody has renamed it. Everything else on
@@ -436,6 +444,7 @@ public class LayerRegistryService {
                    upload_formats = EXCLUDED.upload_formats,
                    attribute_mapping = EXCLUDED.attribute_mapping,
                    source_table = EXCLUDED.source_table,
+                   related_table = EXCLUDED.related_table,
                    derived_from = EXCLUDED.derived_from,
                    section_field = EXCLUDED.section_field,
                    chainage_field = EXCLUDED.chainage_field,
@@ -444,7 +453,7 @@ public class LayerRegistryService {
              WHERE layer_definition.source_type <> 'USER'
             """,
             l.key, folderId, l.name, l.geometry, l.placement, l.sourceType,
-            l.uploadFormats, l.attributeMapping, l.sourceTable, l.derivedFrom,
+            l.uploadFormats, l.attributeMapping, l.sourceTable, l.relatedTable, l.derivedFrom,
             l.sectionField, l.chainageField, l.notes, l.sort, l.name);
     }
 
@@ -494,6 +503,7 @@ public class LayerRegistryService {
             m.put("attributeMapping", rs.getBoolean("attribute_mapping"));
             m.put("physicalTable", rs.getString("physical_table"));
             m.put("sourceTable", rs.getString("source_table"));
+            m.put("relatedTable", rs.getString("related_table"));
             m.put("derivedFrom", rs.getString("derived_from"));
             m.put("sectionField", rs.getString("section_field"));
             m.put("chainageField", rs.getString("chainage_field"));
@@ -1005,7 +1015,7 @@ public class LayerRegistryService {
     /** Mutable seed carrier — keeps the seed list readable instead of 15-argument calls. */
     private static final class Layer {
         final String key, folderKey, name;
-        String geometry, placement, sourceType, uploadFormats, sourceTable, derivedFrom;
+        String geometry, placement, sourceType, uploadFormats, sourceTable, relatedTable, derivedFrom;
         String sectionField, chainageField, notes, assetType, boundaryType;
         boolean attributeMapping;
         int sort = 100;

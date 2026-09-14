@@ -156,6 +156,12 @@
     if (el) el.style.display = 'none';
   };
 
+  /** onclick="this.parentNode.classList.toggle('open')" */
+  window.klToggleParent = function (cls) {
+    var el = currentEl;
+    if (el && el.parentNode) el.parentNode.classList.toggle(cls || 'open');
+  };
+
   /* Filter and search controls used to read the control inline, as
      onchange + "setThing(this.value)" written straight into the attribute.
      Rather than a near-identical adapter for each of the ~20 of them, these two

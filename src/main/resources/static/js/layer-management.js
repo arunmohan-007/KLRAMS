@@ -113,7 +113,7 @@
   function folderHtml(f) {
     var n = (f.layers || []).length;
     return '<div class="folder">' +
-      '<div class="fhead" data-act="this.parentNode.classList.toggle" data-args="open">' +
+      '<div class="fhead" data-act="klToggleParent" data-args="open">' +
         '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>' +
         '<span class="fname">' + esc(f.name) + '</span>' +
         '<span class="fcount">' + n + ' layer' + (n === 1 ? '' : 's') + '</span>' +
@@ -175,6 +175,7 @@
     if (l.features) meta.push(Number(l.features).toLocaleString() + ' features');
     if (l.physicalTable) meta.push(l.physicalTable);
     else if (l.sourceTable) meta.push(l.sourceTable);
+    if (l.relatedTable) meta.push(l.relatedTable);
     if (l.sectionField && l.placement === 'LINEAR_REFERENCE') {
       meta.push(l.sectionField + (l.chainageField ? ' · ' + l.chainageField : ''));
     }
