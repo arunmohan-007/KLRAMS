@@ -173,6 +173,38 @@ var KLStyle = (function () {
   }
 
   /**
+   * The styled attribute's value, as a CATEGORY match reads it.
+   *
+   * Upper-cased, because a class list is a list of codes and the code is
+   * the same code whether the file spelled it `SH`, `Sh` or `sh`. The
+   * viewer's own road paint has always read `Road_Class` through
+   * ['upcase'] for exactly that reason (`roadClassKey` in
+   * 04-geo-helpers-boundaries.js); a style keyed on the same column
+   * matching case-sensitively meant the built-in colouring worked and
+   * the saved one painted every feature its fallback.
+   *
+   * Two values that differ only in case therefore collapse into one
+   * class. That is the intended reading of a code list, and the value
+   * rows are deduplicated on the same normalised key so the collapse
+   * cannot produce a `match` with a repeated label — which is invalid
+   * and would drop the layer's colour entirely.
+   *
+   * SURROUNDING WHITESPACE IS NOT HANDLED HERE, and cannot be: ["trim"]
+   * is not in the MapLibre style spec (naming it silently invalidates
+   * the whole expression — see the note above CLS_BY_MODE). The data
+   * side is trimmed where a trim is actually available instead, in the
+   * SQL that builds the tile — see RoadTileService's `__style`.
+   */
+  function catValue(key) {
+    return ['upcase', ['to-string', raw(key)]];
+  }
+
+  /** One class row's value, normalised the same way catValue() normalises the data. */
+  function catLabel(v) {
+    return String(v == null ? '' : v).trim().toUpperCase();
+  }
+
+  /**
    * The layer's declared geometry, as the registry records it.
    *
    * Attached to each style by the server (LayerStyleService.allStyles) and
@@ -235,7 +267,7 @@ var KLStyle = (function () {
       var pairs = [];
       var seen = {};
       (c.categories || []).forEach(function (cat) {
-        var v = String(cat.value == null ? '' : cat.value);
+        var v = catLabel(cat.value);
         // A `match` cannot list the same label twice, and an empty value
         // is what `blank` already answers for — either would make the
         // whole expression invalid and silently drop the layer's colour.
@@ -244,7 +276,7 @@ var KLStyle = (function () {
         pairs.push(v, cat.color);
       });
       if (!pairs.length) return fallback;
-      return ['match', ['to-string', raw(key)]].concat(pairs).concat([fallback]);
+      return ['match', catValue(key)].concat(pairs).concat([fallback]);
     }
 
     if (c.mode === 'RANGE') {
@@ -397,13 +429,13 @@ var KLStyle = (function () {
       if (c.mode === 'CATEGORY') {
         var pairs = [], seen = {};
         (c.categories || []).forEach(function (cat) {
-          var v = String(cat.value == null ? '' : cat.value);
+          var v = catLabel(cat.value);
           if (!v || seen[v]) return;
           seen[v] = 1;
           pairs.push(v, img(cat.color));
         });
         if (!pairs.length) return img(c.fallback);
-        return ['match', ['to-string', raw(c.attribute)]].concat(pairs).concat([img(c.fallback)]);
+        return ['match', catValue(c.attribute)].concat(pairs).concat([img(c.fallback)]);
       }
 
       if (c.mode === 'RANGE') {

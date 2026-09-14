@@ -27,6 +27,7 @@ public class RoadTileService {
 
     private final JdbcTemplate jdbc;
     private final RoadColumns columns;
+    private final LayerStyleService styles;
 
     private final int extent;
     private final int buffer;
@@ -34,10 +35,12 @@ public class RoadTileService {
 
     public RoadTileService(JdbcTemplate jdbc,
                            RoadColumns columns,
+                           LayerStyleService styles,
                            @Value("${app.tile.extent:4096}") int extent,
                            @Value("${app.tile.buffer:64}") int buffer,
                            @Value("${app.tile.max-zoom:20}") int maxZoom) {
         this.jdbc = jdbc;
+        this.styles = styles;
         this.columns = columns;
         this.extent = extent;
         this.buffer = buffer;
@@ -60,14 +63,21 @@ public class RoadTileService {
      *             {@link RoadColumns#isValid}.
      */
     byte[] tile(TileCoordinate t, String attr) {
-        byte[] tile = jdbc.queryForObject(sqlFor(attr), byte[].class,
+        /* The attribute a saved style colours and labels the network by, lifted out under the
+           fixed names the client reads. Both null unless someone has styled the layer, and the
+           built-in class colouring is untouched either way. Read per tile, the same way
+           FwdTileService reads it, so a style saved on the management screen shows on the next
+           pan rather than after a restart — the endpoint is `no-cache` with an ETag, so a tile
+           whose bytes changed is re-sent and one that did not is still a 304. */
+        String[] keys = styles.tileKeys("roads");
+        byte[] tile = jdbc.queryForObject(sqlFor(attr, keys[0], keys[1]), byte[].class,
                 t.z(), t.x(), t.y(), extent, buffer, extent);
 
         return (tile == null || tile.length == 0) ? null : tile;
     }
 
     /**
-     * The tile query, cached per colour-by attribute.
+     * The tile query, cached per projection.
      *
      * <p>This used to project {@link RoadColumns#selectList} — every one of the roads table's 29
      * columns, on every road, in every tile, at every zoom. In an MVT the per-feature tag list is
@@ -81,16 +91,41 @@ public class RoadTileService {
      * that set. The Road Network filter no longer needs its attribute in the tile either: it scopes
      * the road layers by matched section label ({@code applyNetScope}), the same mechanism that
      * already scoped {@code roadnet-hit} and every road-linked data layer.
+     *
+     * <p>A saved Style &amp; Label Management style adds up to two more, {@code __style} and
+     * {@code __label}, and the narrowed projection above is precisely why it has to. {@code ?attr=}
+     * carries the VIEWER's own colour-by dropdown, nothing else, so the only column a saved style
+     * could actually paint by was {@code Road_Class}; every other one had been dropped from the
+     * tile, {@code ["get", …]} answered null on every feature, and the whole network rendered in
+     * the style's fallback colour with nothing on screen explaining why.
+     *
+     * <p>They are lifted under those two fixed names, rather than the column's own name, because
+     * that is the contract {@code raw()} in {@code 34-layer-style.js} already reads for every
+     * jsonb-backed layer — one paint expression then works whatever kind of source is underneath.
+     * Lifting also puts the value through {@code btrim} ({@link RoadColumns#selectAs}), which is
+     * the only point in the chain where whitespace CAN be stripped: the style spec has no
+     * {@code ["trim"]}, so {@code "SH "} is unmatchable once it reaches the browser.
+     *
+     * <p>Cached per (attr, style key, label key) rather than per attr alone, or the first style
+     * saved after boot would go on being served the attribute-less SQL the cache already held.
      */
     private final Map<String, String> sqlByAttr = new ConcurrentHashMap<>();
 
-    private String sqlFor(String attr) {
-        return sqlByAttr.computeIfAbsent(attr == null ? "" : attr, a -> {
+    private String sqlFor(String attr, String styleKey, String labelKey) {
+        String a = attr == null ? "" : attr;
+        String sk = styleKey == null ? "" : styleKey;
+        String lk = labelKey == null ? "" : labelKey;
+        return sqlByAttr.computeIfAbsent(a + '\n' + sk + '\n' + lk, k -> {
             StringBuilder extra = new StringBuilder();
             // Road_Class only if the schema still has it — a re-imported shapefile could drop or
             // rename it, and the paint already falls back to its own default for a missing key.
             if (columns.isValid(CLASS_COLUMN)) extra.append(columns.selectOne("r", CLASS_COLUMN));
             if (!a.isEmpty() && !a.equals(CLASS_COLUMN)) extra.append(columns.selectOne("r", a));
+            /* Silently skipped when the style names a column this schema no longer has — a style
+               outliving the shapefile that justified it is a stale style, not a bad request, and
+               the client already draws its fallback for an attribute it cannot read. */
+            if (columns.isValid(sk)) extra.append(columns.selectAs("r", sk, "__style"));
+            if (columns.isValid(lk)) extra.append(columns.selectAs("r", lk, "__label"));
             return
                 """
                 WITH bounds AS (

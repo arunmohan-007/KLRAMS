@@ -15,7 +15,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Serves road centrelines as GeoJSON. Properties include EVERY shapefile column
  * (via to_jsonb, so no column name is hard-coded and a rename can't break it),
- * plus convenience aliases road/name/len used by the map for geometry + sync.
+ * plus convenience aliases road/name/len used by the map for geometry + sync,
+ * plus __style/__label when a saved style needs a column trimmed (see styleKeys).
  *
  * The road network is effectively static, so the assembled GeoJSON is built once
  * and cached in memory. Subsequent requests are served instantly from the cache.
@@ -28,14 +29,43 @@ public class RoadController {
 
     private final JdbcTemplate jdbc;
     private final RoadAttrService attrs;
+    private final RoadColumns columns;
+    private final LayerStyleService styles;
     private volatile String cachedGeojson;
     private volatile String cachedEtag;
+    /** The style/label keys {@link #cachedGeojson} was built for — see {@link #styleKeys}. */
+    private volatile String cachedStyleKeys;
     private volatile String cachedIndex;
     private volatile String cachedIndexEtag;
 
-    public RoadController(JdbcTemplate jdbc, RoadAttrService attrs) {
+    public RoadController(JdbcTemplate jdbc, RoadAttrService attrs,
+                          RoadColumns columns, LayerStyleService styles) {
         this.jdbc = jdbc;
         this.attrs = attrs;
+        this.columns = columns;
+        this.styles = styles;
+    }
+
+    /**
+     * The attribute a saved style colours and labels the network by, as one cache-key string.
+     *
+     * <p>GeoJSON mode already carries every column under its own name, so unlike the tile it has
+     * no MISSING-attribute problem — but it has the other half of it. A value stored as
+     * {@code "SH "} cannot be matched against a class list browser-side, because the MapLibre
+     * style spec has no {@code ["trim"]}. So the styled column is lifted here too, under the same
+     * {@code __style} / {@code __label} names {@code raw()} in {@code 34-layer-style.js} reads
+     * first, and {@link RoadColumns#trimmedText} strips the whitespace on the way past.
+     *
+     * <p>Which makes the assembled GeoJSON depend on something outside the roads table, and this
+     * is the cache key for that. Comparing it per request — rather than having the style module
+     * reach in and clear this cache — keeps the dependency pointing one way: a style save needs
+     * to know nothing about road caching, and there is no invalidation call anyone can forget to
+     * make. It costs one indexed single-row lookup on a response that is otherwise revalidated
+     * by ETag anyway.
+     */
+    private String styleKeys() {
+        String[] k = styles.tileKeys("roads");
+        return (k[0] == null ? "" : k[0]) + '\n' + (k[1] == null ? "" : k[1]);
     }
 
     /** Builds the caches if they aren't already warm. Called on startup so the first real request
@@ -44,10 +74,7 @@ public class RoadController {
     public void warm() {
         if (cachedGeojson == null) {
             synchronized (this) {
-                if (cachedGeojson == null) {
-                    cachedGeojson = buildGeojson();
-                    cachedEtag = GeoJsonResponse.contentTag(cachedGeojson);
-                }
+                if (cachedGeojson == null) rebuildGeojson(styleKeys());
             }
         }
         if (cachedIndex == null) {
@@ -62,13 +89,14 @@ public class RoadController {
 
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> geojson(@RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        String want = styleKeys();
         String body = cachedGeojson, tag = cachedEtag;
-        if (body == null || tag == null) {
+        // Rebuilt when the style moves as well as when the data does: the payload now carries
+        // the styled column, so a cache built before someone saved a style is stale in exactly
+        // the way an upload makes it stale.
+        if (body == null || tag == null || !want.equals(cachedStyleKeys)) {
             synchronized (this) {
-                if (cachedGeojson == null) {
-                    cachedGeojson = buildGeojson();
-                    cachedEtag = GeoJsonResponse.contentTag(cachedGeojson);
-                }
+                if (cachedGeojson == null || !want.equals(cachedStyleKeys)) rebuildGeojson(want);
                 body = cachedGeojson;
                 tag = cachedEtag;
             }
@@ -86,6 +114,7 @@ public class RoadController {
         synchronized (this) {
             cachedGeojson = null;
             cachedEtag = null;
+            cachedStyleKeys = null;
             cachedIndex = null;
             cachedIndexEtag = null;
         }
@@ -333,7 +362,15 @@ public class RoadController {
         return out;
     }
 
-    private String buildGeojson() {
+    /** Rebuild the GeoJSON cache and record the style it was built for. Caller holds the lock. */
+    private void rebuildGeojson(String keys) {
+        cachedGeojson = buildGeojson(keys);
+        cachedEtag = GeoJsonResponse.contentTag(cachedGeojson);
+        cachedStyleKeys = keys;
+    }
+
+    private String buildGeojson(String keys) {
+        String[] k = keys.split("\n", -1);
         String sql = """
             SELECT json_build_object(
                 'type','FeatureCollection',
@@ -347,6 +384,9 @@ public class RoadController {
                                  'name', r."Road_Name",
                                  'len',  r."Measrd_Len"
                                )
+            """
+            + lifted(k[0], "__style") + lifted(k.length > 1 ? k[1] : "", "__label")
+            + """
                     )
                 ), '[]'::json)
             )::text
@@ -354,5 +394,17 @@ public class RoadController {
             WHERE r.geom IS NOT NULL
             """;
         return jdbc.queryForObject(sql, String.class);
+    }
+
+    /**
+     * The styled column lifted under a fixed name, or nothing.
+     *
+     * <p>Nothing when no style names it, and nothing when the style names a column this schema no
+     * longer has — a style outliving the shapefile that justified it is a stale style, not an
+     * error, and the client already draws its fallback for an attribute it cannot read.
+     */
+    private String lifted(String column, String as) {
+        if (column == null || column.isEmpty() || !columns.isValid(column)) return "";
+        return "        || jsonb_build_object('" + as + "', " + columns.trimmedText("r", column) + ")\n";
     }
 }

@@ -120,4 +120,37 @@ class RoadColumns {
         }
         return ", " + alias + ".\"" + column + "\" AS \"" + column + "\"";
     }
+
+    /**
+     * One column as text, trimmed, under a fixed alias — the shape a saved style's lifted
+     * {@code __style} / {@code __label} property needs.
+     *
+     * <p>Text because a MapLibre {@code match} compares strings and its {@code to-number} parses
+     * a numeric string back, so one projection serves a class list and a numeric band alike.
+     *
+     * <p>{@code btrim} because this is the only place in the chain where a trim is available at
+     * all: the style spec has no {@code ["trim"]}, so a value stored as {@code "SH "} can never
+     * be matched against a class list browser-side. It is stripped here instead.
+     *
+     * <p>{@code as} is a literal this class chooses, never request input; {@code column} is
+     * re-checked against {@link #SAFE_NAME} for the same reason {@link #selectOne} checks it.
+     */
+    String selectAs(String alias, String column, String as) {
+        return ", " + trimmedText(alias, column) + " AS \"" + as + "\"";
+    }
+
+    /**
+     * One column as a trimmed text SQL expression, for a projection that has to build the value
+     * inline rather than as a SELECT-list entry — {@code jsonb_build_object} in
+     * {@code RoadController.buildGeojson}, which needs the same lifted value the tile carries.
+     *
+     * <p>{@code column} is re-checked against {@link #SAFE_NAME} here, next to the interpolation,
+     * for the same reason {@link #selectOne} checks it.
+     */
+    String trimmedText(String alias, String column) {
+        if (column == null || !column.matches(SAFE_NAME)) {
+            throw new IllegalStateException("unsafe column name from roads schema: " + column);
+        }
+        return "btrim(" + alias + ".\"" + column + "\"::text)";
+    }
 }
