@@ -72,8 +72,32 @@ class RoadColumns {
                     if (EXCLUDED.contains(name)) return;
                     byName.put(name, NUMERIC_TYPES.contains(rs.getString("data_type")));
                 });
+            // An empty answer is never cached. It means the catalogue could not see a `roads`
+            // table at that instant — mid-import, before the schema was created, or under a role
+            // that could not yet see it (information_schema is privilege-filtered). Caching that
+            // would pin "this network has no columns" for the life of the PROCESS: an empty
+            // colour-by dropdown and an empty Road Network filter, on a map that still draws
+            // roads perfectly, because the tiles carry their own geometry and never consult this
+            // list. That failure is invisible until someone opens the filter, and survives every
+            // cache refresh — only a restart clears it. Leave the fields null and ask again next
+            // call instead.
+            if (byName.isEmpty()) return;
             numeric = byName;
             columns = List.copyOf(byName.keySet());
+        }
+    }
+
+    /**
+     * Drops the cached column list so the next call re-reads {@code information_schema}.
+     *
+     * <p>Cleared on the same event as {@link RoadAttrService#clearCache()}: a road upload can add,
+     * drop or rename a column, and until this existed the list a tile projection was built from
+     * outlived the schema it described.
+     */
+    void clearCache() {
+        synchronized (this) {
+            columns = null;
+            numeric = null;
         }
     }
 

@@ -127,6 +127,44 @@ function buildAttrMetaFromServer(){
     (list||[]).forEach(a=>{ATTRS[a.attr]={numeric:!!a.numeric,values:[],valuesByFreq:[],_full:false};});
   }).then(populateColorBySelect);
 }
+/* The Road Network filter (and the colour-by dropdown) offer whatever is in
+   ATTRS, and ATTRS is filled by whichever load path ran: buildAttrMeta() in
+   GeoJSON mode, buildAttrMetaFromServer() in tile mode. BOTH hang off
+   loadRoads(), which short-circuits the moment the layer already exists
+   (roadsReady(), 07-data-loaders.js) and which swallows a failed
+   /api/roads/attrs into a status line. Either way the map keeps drawing roads
+   — the tiles carry their own geometry and need no attribute list at all — so
+   the network is on screen while "Filter by attribute" offers an EMPTY column
+   dropdown. That reads as "this road network has no attributes", not as "the
+   list never arrived", which is why it goes unreported as a load failure.
+
+   So fill it on demand, from whatever is reachable: /api/roads/attrs first
+   (authoritative, and carries each column's declared numeric flag), then the
+   road index — the same /api/roads/index the inspection card reads, which
+   carries every column without geometry and is already loaded on this page.
+   If the card can name a column, the filter can now offer it. */
+let _netAttrsP=null, _netAttrsTried=false;
+function netAttrsLoaded(){return Object.keys(ATTRS).length>0;}
+function ensureNetAttrs(force){
+  if(netAttrsLoaded())return Promise.resolve(ATTRS);
+  if(_netAttrsP)return _netAttrsP;
+  if(_netAttrsTried&&!force)return Promise.resolve(ATTRS);
+  const fromServer=(typeof buildAttrMetaFromServer==='function')
+    ? Promise.resolve().then(buildAttrMetaFromServer).catch(function(){return null;})
+    : Promise.resolve(null);
+  _netAttrsP=fromServer.then(function(){
+    if(netAttrsLoaded()||typeof RoadsIndex==='undefined')return ATTRS;
+    /* The index rows are plain attribute bags, so they can be handed to the
+       GeoJSON-mode scanner as-is — same ATTRS shape, same numeric sniffing,
+       same SKIP_ATTRS handling, and _full is honest here because the index
+       covers every road. */
+    return RoadsIndex.ensure().then(function(rows){
+      if(rows&&rows.length)buildAttrMeta({features:rows.map(function(r){return {properties:r};})});
+      return ATTRS;
+    }).catch(function(){return ATTRS;});
+  }).then(function(a){_netAttrsP=null;_netAttrsTried=true;return a;});
+  return _netAttrsP;
+}
 /* Fill in one attribute's distinct values (or min/max) on demand, once.
    Resolves to the ATTRS entry, full or stub -- a failed fetch leaves the stub
    in place, which colours the network by the default class palette rather
@@ -231,7 +269,16 @@ function renderNetLegend(attr){
   }
 }
 function setNetMode(m){netMode=m;document.getElementById('nAll').classList.toggle('on',m==='all');document.getElementById('nAny').classList.toggle('on',m==='any');applyNetFilter();}
-function addNetFilter(){netFilters.push({attr:netAttrKeys()[0]||'',op:'=',val:''});renderNetFilters();}
+function addNetFilter(){
+  netFilters.push({attr:netAttrKeys()[0]||'',op:'=',val:''});
+  renderNetFilters();
+  /* Clicking "+ Add condition" with no columns to offer is the user asking for
+     the list, so it forces a retry even after one has already failed. */
+  if(!netAttrsLoaded())ensureNetAttrs(true).then(function(){
+    netFilters.forEach(function(f){if(!f.attr)f.attr=netAttrKeys()[0]||'';});
+    renderNetFilters();
+  });
+}
 function clearNetFilters(){netFilters=[];renderNetFilters();applyNetFilter();}
 /* Build 167 — multi-value conditions via a click-to-open picker, not typing.
    The value cell is a BUTTON (never a free-text field) showing the chosen
@@ -343,6 +390,18 @@ window.addEventListener('resize',nfCloseValPop);
 function renderNetFilters(){
   nfCloseValPop();
   const box=document.getElementById('netFilters');box.innerHTML='';
+  /* No columns to offer: say so and go get them, rather than drawing a row
+     whose attribute dropdown is empty — an empty dropdown is indistinguishable
+     from "the network genuinely has no attributes". */
+  if(!netAttrsLoaded()){
+    const n=document.createElement('div');n.className='note';
+    n.textContent=_netAttrsTried
+      ? 'Road attributes could not be loaded — reload the page to try again.'
+      : 'Loading road attributes…';
+    box.appendChild(n);
+    ensureNetAttrs().then(function(){if(netAttrsLoaded())renderNetFilters();});
+    return;
+  }
   netFilters.forEach((f,i)=>{
     const m=nfAttrMetaForRow(i,f);
     const row=document.createElement('div');row.className='frow';

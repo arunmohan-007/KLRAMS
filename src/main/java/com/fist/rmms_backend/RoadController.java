@@ -122,6 +122,9 @@ public class RoadController {
         // event, so it is cleared here rather than needing its own refresh call nobody would know
         // to make.
         attrs.clearCache();
+        // The column LIST goes stale on the same event too — an upload can add, drop or rename a
+        // column — and it is what every attribute dropdown is built from.
+        columns.clearCache();
         return "{\"ok\":true,\"message\":\"road geojson cache cleared\"}";
     }
 

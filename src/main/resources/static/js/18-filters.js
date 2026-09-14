@@ -219,6 +219,14 @@ function refreshFilterLocks(){
   if(brgOn) brgOn.addEventListener('change',()=>{ if(brgOn.checked) ensureAssetFilterUI('bridge','brgType',BRIDGE_TYPE_KEYS); });
   if(culvOn) culvOn.addEventListener('change',()=>{ if(culvOn.checked) ensureAssetFilterUI('culvert','culvType',CULVERT_TYPE_KEYS); });
   if(soilOn) soilOn.addEventListener('change',()=>{ if(soilOn.checked) ensureAssetFilterUI('subgrade','soilType',SOIL_TYPE_KEYS); });
+  /* Same idea for the Road Network section, whose column list can be missing
+     for its own reasons (see ensureNetAttrs in 05-road-network.js): opening the
+     section is the moment it is needed, so that is when it is fetched. */
+  const secNet=document.getElementById('fsecNet');
+  if(secNet) secNet.addEventListener('toggle',()=>{
+    if(secNet.open&&typeof ensureNetAttrs==='function'&&!netAttrsLoaded())
+      ensureNetAttrs().then(()=>{if(typeof renderNetFilters==='function')renderNetFilters();});
+  });
   const secBrg=document.getElementById('fsecBridge'), secCulv=document.getElementById('fsecCulv'), secSoil=document.getElementById('fsecSoil');
   if(secBrg) secBrg.addEventListener('toggle',()=>{ if(secBrg.open&&fLayerOn('showBridge')) ensureAssetFilterUI('bridge','brgType',BRIDGE_TYPE_KEYS); });
   if(secCulv) secCulv.addEventListener('toggle',()=>{ if(secCulv.open&&fLayerOn('showCulvert')) ensureAssetFilterUI('culvert','culvType',CULVERT_TYPE_KEYS); });
