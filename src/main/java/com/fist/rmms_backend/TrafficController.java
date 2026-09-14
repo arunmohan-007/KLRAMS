@@ -31,11 +31,13 @@ public class TrafficController {
 
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
+    private final PlacementService placement;
     private final ObjectMapper om = new ObjectMapper();
 
-    public TrafficController(JdbcTemplate jdbc, SurveyPeriodService periods) {
+    public TrafficController(JdbcTemplate jdbc, SurveyPeriodService periods, PlacementService placement) {
         this.jdbc = jdbc;
         this.periods = periods;   // also orders startup: survey_periods migration runs first
+        this.placement = placement;
     }
 
     @PostConstruct
@@ -63,6 +65,30 @@ public class TrafficController {
                         "but the app will keep starting", t, e);
             }
         }
+
+        // Stored geometry, exactly as road_assets does it for culverts / sub-grade soil /
+        // bituminous core: the chainage linear reference is resolved ONCE at import and the
+        // resulting point is kept, instead of being recomputed on every request. Placement
+        // is unchanged — same ST_LineInterpolatePoint over the same reference length — only
+        // *when* it runs. lat/lng stay display-only columns and are still never used to
+        // place a station (see placeStations()).
+        try {
+            jdbc.execute("ALTER TABLE traffic_stations ADD COLUMN IF NOT EXISTS geom geometry(Point,4326)");
+            jdbc.execute("CREATE INDEX IF NOT EXISTS traffic_stations_geom_idx ON traffic_stations USING GIST(geom)");
+            // Rows imported before the column existed have no point yet. Deliberately NOT
+            // followed by the unmatched-row delete that saveStations() runs: a backfill is
+            // not an import, and silently deleting existing rows at boot is not something
+            // a restart should ever do.
+            int n = placeStations(null);
+            if (n > 0) log.info("traffic_stations: stored linear-referenced geom for {} existing rows", n);
+        } catch (Exception e) {
+            log.error("traffic_stations geom migration failed — traffic endpoints keep working, " +
+                    "stations without a stored point are just not returned", e);
+        }
+    }
+
+    private int placeStations(Integer periodId) {
+        return placement.placeTrafficStations(periodId);
     }
 
     /** Add/update stations by (name, survey period) — additive. Body: JSON array of
@@ -83,24 +109,29 @@ public class TrafficController {
             for (JsonNode s : arr) {
                 String name = txt(s, "name");
                 if (name == null || name.isEmpty()) continue;
+                // geom is cleared on update, not carried over: this row's section or chainage
+                // may have just changed, and a stored point from the previous import would
+                // then be a stale position that the placement pass below would skip.
                 jdbc.update("INSERT INTO traffic_stations(name,road,section,chainage,lat,lng,xsp,period_id,updated_at) " +
                                 "VALUES(?,?,?,?,?,?,?,?,now()) ON CONFLICT(name,period_id) DO UPDATE SET " +
                                 "road=EXCLUDED.road,section=EXCLUDED.section,chainage=EXCLUDED.chainage," +
-                                "lat=EXCLUDED.lat,lng=EXCLUDED.lng,xsp=EXCLUDED.xsp,updated_at=now()",
+                                "lat=EXCLUDED.lat,lng=EXCLUDED.lng,xsp=EXCLUDED.xsp,geom=NULL,updated_at=now()",
                         name, txt(s, "road"), txt(s, "section"), dbl(s, "ch"),
                         dbl(s, "lat"), dbl(s, "lng"), txt(s, "xsp"), periodId);
                 n++;
             }
         }
 
+        // Store the linear-referenced point for everything just imported, then reject whatever
+        // could not be placed — the same two steps, in the same order, as AssetController.
+        // "Could not be placed" now means geom IS NULL, which covers a blank section, a blank
+        // chainage, a section label matching no road, AND a matched road with no geometry;
+        // the old text-only EXISTS check missed that last case and kept an unplaceable row.
+        placeStations(periodId);
         List<Map<String, Object>> skipped = jdbc.queryForList(
-            "SELECT t.name, t.section FROM traffic_stations t " +
-            "WHERE t.period_id = ? AND (t.section IS NULL OR t.chainage IS NULL OR NOT EXISTS " +
-            "  (SELECT 1 FROM roads r WHERE r.\"Section_La\" = t.section)) ORDER BY t.name", periodId);
+            "SELECT name, section FROM traffic_stations WHERE period_id = ? AND geom IS NULL ORDER BY name", periodId);
         if (!skipped.isEmpty()) {
-            jdbc.update(
-                "DELETE FROM traffic_stations t WHERE t.period_id = ? AND (t.section IS NULL OR t.chainage IS NULL OR NOT EXISTS " +
-                "  (SELECT 1 FROM roads r WHERE r.\"Section_La\" = t.section))", periodId);
+            jdbc.update("DELETE FROM traffic_stations WHERE period_id = ? AND geom IS NULL", periodId);
         }
 
         Map<String, Object> res = new LinkedHashMap<>();
@@ -168,27 +199,20 @@ public class TrafficController {
         return out;
     }
 
-    /** Stations as a GeoJSON FeatureCollection, placed by linear reference (chainage
-     *  along the matching roads."Section_La" centreline) — same method the map viewer
-     *  uses client-side, not the station's stored lat/lng. Defaults to the active
-     *  survey period; ?period_id= selects another. */
+    /** Stations as a GeoJSON FeatureCollection, read from the stored point — the linear
+     *  reference (chainage along the matching roads."Section_La" centreline) was resolved
+     *  at import, not here. The station's lat/lng is returned as a property but is still
+     *  not what places it. Defaults to the active survey period; ?period_id= selects another. */
     @GetMapping("/stations/geojson")
     public Map<String, Object> stationsGeojson(@RequestParam(value = "period_id", required = false) Integer periodId) {
         int pid = periods.resolve(periodId);
-        String lenExpr = """
-            COALESCE(
-                NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
-                NULLIF(r."Measrd_Len"::double precision, 0),
-                ST_Length(r.geom::geography))
-            """;
         List<Map<String, Object>> feats = jdbc.query("""
                 SELECT t.name, t.road, t.section, t.chainage, t.lat, t.lng, t.xsp,
-                       ST_X(ST_LineInterpolatePoint(ST_LineMerge(r.geom), GREATEST(LEAST(t.chainage / %1$s, 1.0), 0.0))) AS px,
-                       ST_Y(ST_LineInterpolatePoint(ST_LineMerge(r.geom), GREATEST(LEAST(t.chainage / %1$s, 1.0), 0.0))) AS py
-                FROM traffic_stations t JOIN roads r ON r."Section_La" = t.section
-                WHERE t.chainage IS NOT NULL AND r.geom IS NOT NULL AND t.period_id = ?
+                       ST_X(t.geom) AS px, ST_Y(t.geom) AS py
+                FROM traffic_stations t
+                WHERE t.geom IS NOT NULL AND t.period_id = ?
                 ORDER BY t.name
-                """.formatted(lenExpr),
+                """,
                 (rs, i) -> {
                     Map<String, Object> geom = new LinkedHashMap<>();
                     geom.put("type", "Point");

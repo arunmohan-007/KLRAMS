@@ -352,10 +352,10 @@ public class LayerRegistryService {
         }
 
         /* ---- Traffic stations ----
-           The odd one out: traffic_stations has lat/lng COLUMNS but no geom,
-           and placement ignores them. Position is computed live from section +
-           chainage at request time, so an unmatched section is rejected at
-           import rather than silently falling back to a coordinate. */
+           traffic_stations carries lat/lng COLUMNS that placement ignores: the point in
+           its geom is linear-referenced from section + chainage at import and stored,
+           exactly as the road-asset layers do it, so an unmatched section is rejected
+           rather than silently falling back to a coordinate. */
         Layer trf = new Layer("traffic_stations", "traffic", "Traffic Stations");
         trf.geometry = "POINT";
         trf.placement = "LINEAR_REFERENCE";
@@ -366,7 +366,8 @@ public class LayerRegistryService {
         trf.sectionField = "section";
         trf.chainageField = "chainage";
         trf.notes = "Placed by chainage + section only; the lat/lng columns are not used for "
-                + "placement. Position is computed live, never stored. A/B section pairs count "
+                + "placement. The point is resolved at import and stored in traffic_stations.geom, "
+                + "the same way the road-asset layers store theirs. A/B section pairs count "
                 + "as one station in the dashboards.";
         trf.sort = 10;
         seed(trf);

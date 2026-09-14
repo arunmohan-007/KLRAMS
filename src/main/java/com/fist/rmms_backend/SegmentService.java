@@ -310,6 +310,19 @@ public class SegmentService {
         return sql;
     }
 
+    /**
+     * Drops the assembled GeoJSON from memory so the next read rebuilds it from the table.
+     *
+     * <p>For an edit that changes what the segments SAY without changing which rows exist
+     * or where they are drawn — a section rename ({@link SectionRenameService}) — where a
+     * full {@link #buildSegments()} would give the identical result at the cost of
+     * re-cutting every segment onto the centrelines.
+     */
+    public void clearCache() {
+        cachedGeoJson = null;
+        cachedEtag = null;
+    }
+
     public long count() {
         try {
             Long n = jdbc.queryForObject("SELECT count(*) FROM condition_segments", Long.class);

@@ -987,6 +987,15 @@ const PANELS={
     +'<button class="btn" data-act="upRoads">Upload road network</button>'
     +'<div class="out" id="oRoad"></div>'
     +'<p class="hint">The file must carry a <code>Section_La</code> for every road. Validation runs first — if it fails, nothing is changed. In add/update mode, if any Section_La in the file already exists you’ll be asked to confirm before those roads are replaced. After upload, run <b>Build segments</b> to re-cut condition data.</p>',
+  'net-replace':'<div class="ip-title">Re-place features on the network</div>'
+    +'<p class="ip-sub">Bridges, culverts, furniture, FWD, Sub-Grade Soil, Bituminous Core, Pavement Crust and traffic stations are positioned by <b>Section_Label + chainage</b>, but the resolved point is worked out once, at import, and <b>stored</b>. Re-upload the road network with a redrawn alignment or a corrected chainage and those features stay where the <i>old</i> geometry put them — the rows are all there, the map still draws them, they are simply in the wrong place. Nothing detects this on its own. Run this after every road network upload.</p>'
+    +'<div id="placeAdmin" class="hint">Loading…</div>'
+    +'<button class="btn" data-act="placeReplaceEl">Re-place all layers</button> '
+    +'<button class="btn ghost" data-act="placeRenderAdmin">Refresh status</button>'
+    +'<div class="out" id="oPlace"></div>'
+    +'<div id="placeSamples"></div>'
+    +'<p class="hint">Chainage is kept; only the coordinate is recomputed — a culvert at 1&nbsp;250&nbsp;m moves to wherever 1&nbsp;250&nbsp;m along the new line falls. Safe to repeat: re-running when positions already agree changes nothing. <b>It never deletes a row</b> — anything whose Section_Label is no longer on the network comes back unplaced and is named below, so the label can be corrected and the row re-placed.</p>'
+    +'<p class="hint">This moves stored positions only. Condition segments, Avg IRI 2&nbsp;km bins and FWD segments are not stored the same way — they are re-cut by <b>Build segments</b> and <b>Build FWD segments</b>.</p>',
   'full-net':'<div class="ip-title">Full road network (by Road Name)</div>'
     +'<p class="ip-sub">The second road layer in the viewer (no Section Label). Stored permanently, so it survives refresh and restart. Roads are matched by <code>Road_id</code> (then road number, then name).</p>'
     +'<div class="ip-field"><label class="ip-label">Mode</label><div class="ip-modes">'
@@ -1060,7 +1069,8 @@ const HUB=[
     {id:'iri-2km-build',label:'Build Avg IRI (2 km)',fmt:'Action — no file'}
   ]},
   {id:'network',cat:'Road Network',icon:'road',types:[
-    {id:'road-net',label:'Road network',fmt:'Shapefile & ZIP / GeoJSON'}
+    {id:'road-net',label:'Road network',fmt:'Shapefile & ZIP / GeoJSON'},
+    {id:'net-replace',label:'Re-place features on network',fmt:'Action — no file'}
   ]},
   {id:'fullnet',cat:'Full Road Network',icon:'net',types:[
     {id:'full-net',label:'Full road network',fmt:'Shapefile & ZIP / GeoJSON'}
@@ -1262,6 +1272,7 @@ function selectType(id){
   if(document.getElementById('spSel'))spFillSel();
   if(id==='svy-periods')spRenderAdmin();
   if(id==='cleanup-orphans')cleanupRenderAdmin();
+  if(id==='net-replace')placeRenderAdmin();
   if(id && id.indexOf('bnd-')===0){
     var bkey=(t&&t.boundaryKey)||id.slice(4);
     loadBndStatus(bkey);
@@ -1768,6 +1779,87 @@ async function spDelete(id){
 /* ===================== Data Cleanup (orphaned survey points) ===================== */
 const CLEANUP_LABEL={fwd:'FWD (deflection)',subgrade:'Sub-grade soil',bituminous_core:'Bituminous core',pavement_crust:'Pavement crust',
   bridge:'Bridges',culvert:'Culverts',furniture_line:'Road furniture — line',furniture_point:'Road furniture — point'};
+/* ============ Re-place stored linear-referenced geometry (PlacementController) ============
+   The counterpart to Build segments: those layers are RE-CUT from the roads table on
+   every build, so they follow a redrawn centreline on their own. Road assets and traffic
+   stations do not — their resolved point is stored at import and never revisited, so a
+   road re-upload silently leaves them against the old geometry. This panel is the only
+   place in the UI that fixes that. */
+const PLACE_LABEL=Object.assign({traffic_stations:'Traffic stations'},CLEANUP_LABEL);
+
+async function placeRenderAdmin(){
+  const el=document.getElementById('placeAdmin');if(!el)return;
+  el.innerHTML='Loading…';
+  let layers=[];
+  try{const j=await (await fetch('/api/placement/status',{cache:'no-store'})).json();layers=j.layers||[];}catch(e){}
+  if(!layers.length){el.innerHTML='Could not read placement status.';return;}
+  el.innerHTML='<table class="wiz-table"><thead><tr><th>Layer</th>'
+    +'<th style="text-align:right">Rows</th><th style="text-align:right">Placed</th>'
+    +'<th style="text-align:right">Unplaced</th><th></th></tr></thead><tbody>'
+    +layers.map(function(r){
+      const un=Number(r.unplaced)||0;
+      return '<tr><td>'+escLog(PLACE_LABEL[r.layer]||r.layer)+'</td>'
+        +'<td style="text-align:right">'+Number(r.rows||0).toLocaleString()+'</td>'
+        +'<td style="text-align:right">'+Number(r.placed||0).toLocaleString()+'</td>'
+        +'<td style="text-align:right'+(un?';color:#e8590c;font-weight:600':'')+'">'+un.toLocaleString()+'</td>'
+        +'<td style="text-align:right"><button class="btn ghost" style="padding:2px 10px;font-size:12px" '
+        +'data-act="placeReplaceEl" data-args="'+escAttr(JSON.stringify([r.layer]))+'">Re-place</button></td></tr>';
+    }).join('')
+    +'</tbody></table>';
+}
+
+async function placeReplace(layer,btn){
+  const el=document.getElementById('oPlace');if(!el)return;
+  const name=layer?(PLACE_LABEL[layer]||layer):'all layers';
+  const samples=document.getElementById('placeSamples');
+  if(samples)samples.innerHTML='';
+  if(btn){btn.disabled=true;}
+  show(el,true,'Re-placing '+name+'… this reads every row of the layer, so it can take a moment.');
+  try{
+    const r=await fetch('/api/placement/replace'+(layer?('?layer='+encodeURIComponent(layer)):''),{method:'POST'});
+    const j=await r.json();
+    if(j.status!=='ok'){
+      show(el,false,'Error: '+(j.message||'failed'));
+      logUpload('Re-place on network','—',false,j.message||'failed');
+      return;
+    }
+    const un=Number(j.unplaced)||0;
+    show(el,true,'✓ Re-placed '+Number(j.replaced||0).toLocaleString()+' feature(s) against the current network.'
+      +(un?' '+un.toLocaleString()+' still unplaced — their Section_Label matches no road. Nothing was deleted.':' Everything resolves to a road section.'));
+    logUpload('Re-place on network','—',true,
+      'Re-placed '+(j.replaced||0)+' ('+name+'), '+(j.orphaned||0)+' orphaned, '+un+' unplaced');
+    placeUnplacedDetail(j.layers||[]);
+    placeRenderAdmin();
+    refresh();
+  }catch(e){
+    show(el,false,'Failed: '+e.message);
+    logUpload('Re-place on network','—',false,e.message);
+  }finally{
+    if(btn){btn.disabled=false;}
+  }
+}
+
+/* The section labels behind an "unplaced" count. The count alone says something is wrong;
+   the labels say WHICH road to go and look for, which is the only actionable part. */
+function placeUnplacedDetail(layers){
+  const box=document.getElementById('placeSamples');if(!box)return;
+  const bad=layers.filter(function(r){return (Number(r.unplaced)||0)>0 && (r.unplaced_sample||[]).length;});
+  if(!bad.length){box.innerHTML='';return;}
+  box.innerHTML=bad.map(function(r){
+    const key=r.unplaced_sample_key||'section_label';
+    const vals=(r.unplaced_sample||[]).map(function(s){
+      return key==='name' ? (s.name+' ('+(s.section||'blank')+')') : String(s[key]==null?'':s[key]);
+    }).filter(Boolean);
+    return '<div style="border:1px solid #e2e7ee;border-radius:10px;padding:10px 12px;margin:8px 0;color:#1f2a3d">'
+      +'<b>'+escLog(PLACE_LABEL[r.layer]||r.layer)+'</b> — '
+      +Number(r.unplaced).toLocaleString()+' unplaced'
+      +'<div class="hint" style="margin:6px 0 0;word-break:break-all">'+escLog(vals.join(' · '))
+      +(Number(r.unplaced)>vals.length?' …':'')+'</div></div>';
+  }).join('')
+  +'<p class="hint">These rows are kept, not deleted — they simply have no position until their Section_Label matches a road. '
+  +'Correct the label in the source file and re-import, or check the section still exists in the road network.</p>';
+}
+
 async function cleanupRenderAdmin(){
   const el=document.getElementById('cleanupAdmin');if(!el)return;
   el.innerHTML='Loading…';
@@ -1817,3 +1909,5 @@ switchTab('count');
    from KLAct rather than being smuggled through the attribute as `this`. */
 function vidQueueAddEl(){ vidQueueAdd(KLAct.el().files); }
 function cleanupDeleteEl(type,periodId){ cleanupDelete(type,periodId,KLAct.el()); }
+/* layer is undefined for the "all layers" button, which carries no data-args. */
+function placeReplaceEl(layer){ placeReplace(layer,KLAct.el()); }

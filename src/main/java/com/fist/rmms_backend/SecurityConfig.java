@@ -182,6 +182,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/site/**").hasRole("SUPER_ADMIN")  // site settings writes
                 // permanently deletes survey points — stricter than the general ADMIN delete rule below
                 .requestMatchers(HttpMethod.DELETE, "/api/assets/*/orphans").hasRole("SUPER_ADMIN")
+                // rewrites the join key every linear-referenced layer hangs off, in every
+                // table at once — stricter than the general ADMIN write rule below
+                .requestMatchers(HttpMethod.POST, "/api/roads/section/rename").hasRole("SUPER_ADMIN")
 
                 // --- self-service: change own password ---
                 .requestMatchers("/api/account/**").authenticated()

@@ -191,6 +191,14 @@ public class IriSegmentService {
         }
     }
 
+    /** Drops the assembled GeoJSON from memory so the next read rebuilds it — for an edit
+     *  that changes the bins' labels without moving them. See
+     *  {@link SegmentService#clearCache()}. */
+    public void clearCache() {
+        cachedGeoJson = null;
+        cachedEtag = null;
+    }
+
     public long count() {
         try {
             Long n = jdbc.queryForObject("SELECT count(*) FROM iri_2km_segments", Long.class);

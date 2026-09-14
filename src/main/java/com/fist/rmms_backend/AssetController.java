@@ -40,8 +40,10 @@ public class AssetController {
 
     private static final Logger log = LoggerFactory.getLogger(AssetController.class);
 
-    private static final Set<String> LINE_TYPES  = Set.of("bridge", "furniture_line", "fwd");
-    private static final Set<String> POINT_TYPES = Set.of("culvert", "furniture_point", "subgrade", "bituminous_core", "pavement_crust");
+    /* Package-visible: PlacementController re-places every one of these and has to know
+       which are stretches and which are points. */
+    static final Set<String> LINE_TYPES  = Set.of("bridge", "furniture_line", "fwd");
+    static final Set<String> POINT_TYPES = Set.of("culvert", "furniture_point", "subgrade", "bituminous_core", "pavement_crust");
     /* Field-survey streams belong to a survey period; permanent inventory
        (bridge, culvert, furniture) does not. */
     private static final Set<String> SURVEY_TYPES = Set.of("fwd", "subgrade", "bituminous_core", "pavement_crust");
@@ -69,13 +71,15 @@ public class AssetController {
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
     private final LayerAttributeService attributes;
+    private final PlacementService placement;
     private final ObjectMapper om = new ObjectMapper();
 
     public AssetController(JdbcTemplate jdbc, SurveyPeriodService periods,
-                           LayerAttributeService attributes) {
+                           LayerAttributeService attributes, PlacementService placement) {
         this.jdbc = jdbc;
         this.periods = periods;
         this.attributes = attributes;
+        this.placement = placement;
     }
 
     private void ensure() {
@@ -110,7 +114,10 @@ public class AssetController {
      * {@code ST_LineSubstring} for FWD rows that still carry a point (legacy) or no geom.
      * Latitude/Longitude in attrs are left alone — display only, never used for placement.
      */
-    private void relocateFwdLineGeoms() {
+    /* Package-visible: PlacementController runs this before re-placing FWD, so a legacy
+       row whose From..To is still only in attrs gets its end_chainage back before the
+       re-place would otherwise judge it unplaceable and orphan it. */
+    void relocateFwdLineGeoms() {
         try {
             Boolean built = jdbc.queryForObject(
                     "SELECT to_regclass('road_assets') IS NOT NULL", Boolean.class);
@@ -305,32 +312,10 @@ public class AssetController {
                 loaded++;
             }
 
-            // linear-reference geometry in one pass
-            String lenExpr = """
-                COALESCE(
-                    NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
-                    NULLIF(r."Measrd_Len"::double precision, 0),
-                    ST_Length(r.geom::geography))
-                """;
-            int placed;
-            if (isLine) {
-                placed = jdbc.update("""
-                    UPDATE road_assets a SET geom = ST_LineSubstring(
-                        ST_LineMerge(r.geom),
-                        GREATEST(LEAST(a.start_chainage / %s, 1.0), 0.0),
-                        GREATEST(LEAST(a.end_chainage   / %s, 1.0), 0.0))
-                    FROM roads r
-                    WHERE a.asset_type = ? AND a.geom IS NULL AND r."Section_La" = a.section_label AND r.geom IS NOT NULL
-                    """.formatted(lenExpr, lenExpr), type);
-            } else {
-                placed = jdbc.update("""
-                    UPDATE road_assets a SET geom = ST_LineInterpolatePoint(
-                        ST_LineMerge(r.geom),
-                        GREATEST(LEAST(a.start_chainage / %s, 1.0), 0.0))
-                    FROM roads r
-                    WHERE a.asset_type = ? AND a.geom IS NULL AND r."Section_La" = a.section_label AND r.geom IS NOT NULL
-                    """.formatted(lenExpr), type);
-            }
+            // linear-reference geometry in one pass. The SQL lives in PlacementService so
+            // that re-placing an existing dataset against a re-imported road network
+            // (POST /api/placement/replace) computes positions the same way this does.
+            placement.placeAssets(type, isLine);
             int unmatched = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND geom IS NULL", type);
 
             r.put("status","ok");
