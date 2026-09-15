@@ -242,6 +242,11 @@
         <button class="btn" id="u-go">Upload</button>
         <span class="hint" id="u-status"></span>
       </div>
+      <div class="fld wide" id="u-progress-fld" style="display:none;margin-top:0">
+        <div style="height:8px;background:#eef1f5;border-radius:5px;overflow:hidden">
+          <div id="u-progress-bar" style="height:100%;width:0%;background:#2d6cdf;transition:width .2s"></div>
+        </div>
+      </div>
     </div>
 
     <div class="meta" id="u-meta">
@@ -263,7 +268,7 @@
      division the Layer Management importer uses; nothing parses them server-side. -->
 <script src="https://unpkg.com/shpjs@6.1.0/dist/shp.min.js"></script>
 <script src="/js/kml-reader.js?v=3"></script>
-<script src="/js/drone-console.js?v=12" defer></script>
+<script src="/js/drone-console.js?v=13" defer></script>
 <script src="/js/role-gate.js" defer></script>
 </body>
 </html>

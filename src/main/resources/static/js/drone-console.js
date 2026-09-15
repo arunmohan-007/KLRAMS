@@ -387,9 +387,11 @@
 
   var TYPE_UI = {
     ORTHOMOSAIC: { label: 'GeoTIFF File', accept: '.tif,.tiff,image/tiff',
-                   hint: 'Large files take a while to upload — leave this page open until it finishes.' },
+                   hint: 'Large files take a while to upload — leave this page open until it finishes. '
+                       + 'If it is interrupted, choosing the same file and pressing Upload again resumes it.' },
     DEM:         { label: 'GeoTIFF File', accept: '.tif,.tiff,image/tiff',
-                   hint: 'Large files take a while to upload — leave this page open until it finishes.' },
+                   hint: 'Large files take a while to upload — leave this page open until it finishes. '
+                       + 'If it is interrupted, choosing the same file and pressing Upload again resumes it.' },
     CONTOUR:     { label: 'Contour File', accept: '.zip,.kml,.kmz,.geojson,.json',
                    hint: 'Zipped shapefile, KML/KMZ or GeoJSON. Lines with a height attribute — '
                        + 'the file is read here in your browser, so only the contours are sent.' }
@@ -444,11 +446,69 @@
     return [];
   }
 
+  /* ---------------- resumable GeoTIFF upload ---------------- */
+
+  var DRONE_CHUNK = 5 * 1024 * 1024; // 5 MB per chunk, same as the video uploader
+
+  /** Stable across retries of the same file, so a resumed upload lands on the same staged bytes. */
+  function droneUploadToken(projectId, type, file) {
+    return projectId + '_' + type + '_' + file.size + '_' + file.name.replace(/[^A-Za-z0-9._-]/g, '_');
+  }
+
+  /**
+   * Upload a GeoTIFF in 5 MB chunks, resuming from whatever the server already
+   * holds for this token. A dropped connection only loses the current chunk —
+   * pressing Upload again (even after a page reload, as long as the same file is
+   * reselected) picks up from there instead of restarting the whole transfer.
+   */
+  function droneUploadChunked(projectId, type, file, onProgress) {
+    var token = droneUploadToken(projectId, type, file);
+    return fetch('/api/drone/upload-status?token=' + encodeURIComponent(token), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var uploaded = (j && Number(j.uploaded)) || 0;
+        if (uploaded > file.size) uploaded = 0;
+        return sendFrom(uploaded);
+      })
+      .catch(function () { return sendFrom(0); });
+
+    function sendFrom(uploaded) {
+      if (uploaded >= file.size) return Promise.resolve(token);
+      var start = uploaded, end = Math.min(start + DRONE_CHUNK, file.size);
+      var fd = new FormData();
+      fd.append('token', token);
+      fd.append('offset', start);
+      fd.append('total', file.size);
+      fd.append('chunk', file.slice(start, end), 'chunk');
+      return new Promise(function (resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/drone/upload-chunk');
+        xhr.upload.onprogress = function (e) {
+          if (e.lengthComputable && onProgress) onProgress(Math.min(100, Math.floor((start + e.loaded) / file.size * 100)));
+        };
+        xhr.onload = function () {
+          if (xhr.status < 200 || xhr.status >= 300) { reject(new Error('HTTP ' + xhr.status)); return; }
+          var res = {}; try { res = JSON.parse(xhr.responseText); } catch (e) {}
+          if (res.status === 'error') { reject(new Error(res.message || 'Upload failed.')); return; }
+          var next = res.status === 'resync' ? (Number(res.uploaded) || 0)
+                   : res.status === 'complete' ? file.size
+                   : (res.uploaded != null ? Number(res.uploaded) : end);
+          if (onProgress) onProgress(Math.min(100, Math.floor(next / file.size * 100)));
+          resolve(sendFrom(next));
+        };
+        xhr.onerror = function () { reject(new Error('Network error — check your connection and press Upload to resume.')); };
+        xhr.send(fd);
+      });
+    }
+  }
+
   document.getElementById('u-go').addEventListener('click', function () {
     var file = document.getElementById('u-file').files[0];
     var projectId = document.getElementById('u-project').value;
     var type = document.getElementById('u-type').value;
     var status = document.getElementById('u-status');
+    var progressFld = document.getElementById('u-progress-fld');
+    var progressBar = document.getElementById('u-progress-bar');
     if (!projectId) { say('Create a drone project before uploading.', 'err'); return; }
     if (!file) { say('Choose a file to upload.', 'err'); return; }
 
@@ -471,26 +531,40 @@
         });
       });
     } else {
-      var fd = new FormData();
-      fd.append('project_id', projectId);
-      fd.append('dataset_type', type);
-      fd.append('dataset_name', document.getElementById('u-name').value);
-      fd.append('geoid_model', document.getElementById('u-geoid').value);
-      fd.append('file', file);
-      status.textContent = 'Uploading ' + fmtBytes(file.size) + '…';
-      work = api('/api/drone/datasets', { method: 'POST', body: fd });
+      progressFld.style.display = '';
+      progressBar.style.width = '0%';
+      status.textContent = 'Checking for a previous attempt to resume…';
+      work = droneUploadChunked(projectId, type, file, function (pct) {
+          progressBar.style.width = pct + '%';
+          status.textContent = 'Uploading ' + pct + '% of ' + fmtBytes(file.size) + '…';
+        })
+        .then(function (token) {
+          status.textContent = 'Finalizing…';
+          return jsonPost('/api/drone/datasets/finalize', {
+            project_id: projectId,
+            dataset_type: type,
+            dataset_name: document.getElementById('u-name').value,
+            geoid_model: document.getElementById('u-geoid').value,
+            token: token,
+            file_name: file.name
+          });
+        });
     }
 
     work.then(function (res) {
         lastUploadedId = res.id;
         status.textContent = 'Uploaded.';
+        progressFld.style.display = 'none';
         showMeta(res.dataset);
         say(type === 'CONTOUR'
               ? 'Contours imported. They are on the map already — open the Drone Viewer.'
               : 'Upload accepted. Review the metadata, then publish it to the map.', 'ok');
         return refreshAll();
       })
-      .catch(function (e) { status.textContent = ''; say(e.message, 'err'); })
+      .catch(function (e) {
+        status.textContent = type === 'CONTOUR' ? '' : 'Upload paused — press Upload to resume from where it left off.';
+        say(e.message, 'err');
+      })
       .finally(function () { btn.disabled = false; });
   });
 

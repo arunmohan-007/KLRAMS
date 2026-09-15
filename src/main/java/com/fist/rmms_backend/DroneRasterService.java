@@ -20,8 +20,10 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -111,68 +113,173 @@ public class DroneRasterService {
         String original = safeFileName(file == null ? null : file.getOriginalFilename());
         if (file == null || file.isEmpty())
             throw new IllegalArgumentException("Choose a GeoTIFF file to upload.");
-        String lower = original.toLowerCase(Locale.ROOT);
-        if (!lower.endsWith(".tif") && !lower.endsWith(".tiff"))
-            throw new IllegalArgumentException(
-                    "Only GeoTIFF (.tif / .tiff) is accepted. Export the " + kind.toLowerCase(Locale.ROOT)
-                  + " as a GeoTIFF with its coordinate system embedded.");
-
-        if (jdbc.queryForObject("SELECT count(*) FROM drone_dataset WHERE project_id = ? AND dataset_type = ?",
-                Integer.class, projectId, kind) > 0)
-            throw new IllegalArgumentException(
-                    "This project already has " + (DroneService.DEM.equals(kind) ? "a DEM" : "an orthomosaic")
-                  + ". Delete it first, or create a new project for the re-flight.");
+        checkGeoTiffName(original, kind);
+        checkNoExistingDataset(projectId, kind);
 
         Path staging = Files.createTempFile(drone.root(), "upload-", ".tif");
         try {
             try (InputStream in = file.getInputStream()) {
                 Files.copy(in, staging, StandardCopyOption.REPLACE_EXISTING);
             }
-
-            GeoTiffMeta meta = GeoTiffMeta.read(staging);
-            double[] elev = DroneService.DEM.equals(kind) ? sampleElevationRange(staging, meta) : null;
-            // Measured now rather than at publish, so the upload screen can show what
-            // is actually in the file before anyone commits to building tiles from it.
-            RasterBandStats stats = sampleBandStats(staging, meta);
-            if (elev != null && elev[0] >= elev[1])
-                throw new IllegalArgumentException(
-                        "The DEM contains no usable elevation values — every pixel is nodata.");
-
-            String warnings = validate(meta, stats, kind);
-
-            double[] b = meta.wgs84Bounds();
-            String name = DroneService.blankToNull(datasetName);
-            if (name == null) name = original;
-
-            Integer id = jdbc.queryForObject("""
-                INSERT INTO drone_dataset
-                    (project_id, dataset_name, dataset_type, file_name, file_path, file_size, format,
-                     epsg, crs_name, res_x, res_y, raster_width, raster_height,
-                     min_x, min_y, max_x, max_y, elevation_min, elevation_max,
-                     band_count, data_type, colour_interp, band_stats, no_data, warnings, geo_details,
-                     geoid_model, footprint, status, created_by)
-                VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, CAST(? AS jsonb), ?, ?, CAST(? AS json),
-                        ?, ST_MakeEnvelope(?, ?, ?, ?, 4326), ?, ?)
-                RETURNING id
-                """, Integer.class,
-                    projectId, name, kind, original, file.getSize(), meta.pixelSummary(),
-                    meta.crs.epsg(), meta.crs.label(), meta.resX(), meta.resY(), meta.width, meta.height,
-                    b[0], b[1], b[2], b[3],
-                    elev == null ? null : elev[0], elev == null ? null : elev[1],
-                    meta.samplesPerPixel, meta.dataType(), meta.colourInterpretation(),
-                    stats.toJson(meta), Double.isNaN(meta.noData) ? null : meta.noData, warnings,
-                    meta.detailsJson(), DroneService.blankToNull(geoidModel),
-                    b[0], b[1], b[2], b[3], DroneService.UPLOADED, user);
-
-            Path target = originalFile(id, original);
-            Files.createDirectories(target.getParent());
-            Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING);
-            jdbc.update("UPDATE drone_dataset SET file_path = ? WHERE id = ?", target.toString(), id);
-            return id;
+            return finishStore(projectId, kind, datasetName, geoidModel, staging, original, user);
         } finally {
             Files.deleteIfExists(staging);
         }
+    }
+
+    /**
+     * Finish an upload whose bytes have already been assembled on disk via the
+     * resumable {@link #putChunk} endpoint. Same validation and dataset-row
+     * creation as {@link #store}, just fed from a staged chunk file instead of a
+     * single multipart body.
+     */
+    int finalizeChunkedUpload(int projectId, String type, String datasetName, String geoidModel,
+                               String token, String originalFilename, String user) throws IOException {
+        drone.project(projectId);
+        String kind = normaliseType(type);
+        String original = safeFileName(originalFilename);
+        checkGeoTiffName(original, kind);
+        checkNoExistingDataset(projectId, kind);
+
+        Path staged = chunkPart(token);
+        if (!Files.isRegularFile(staged))
+            throw new IllegalArgumentException(
+                    "That upload was not found on the server — it may have expired. Choose the file and upload it again.");
+        try {
+            return finishStore(projectId, kind, datasetName, geoidModel, staged, original, user);
+        } finally {
+            Files.deleteIfExists(staged);
+        }
+    }
+
+    private void checkGeoTiffName(String original, String kind) {
+        String lower = original.toLowerCase(Locale.ROOT);
+        if (!lower.endsWith(".tif") && !lower.endsWith(".tiff"))
+            throw new IllegalArgumentException(
+                    "Only GeoTIFF (.tif / .tiff) is accepted. Export the " + kind.toLowerCase(Locale.ROOT)
+                  + " as a GeoTIFF with its coordinate system embedded.");
+    }
+
+    private void checkNoExistingDataset(int projectId, String kind) {
+        if (jdbc.queryForObject("SELECT count(*) FROM drone_dataset WHERE project_id = ? AND dataset_type = ?",
+                Integer.class, projectId, kind) > 0)
+            throw new IllegalArgumentException(
+                    "This project already has " + (DroneService.DEM.equals(kind) ? "a DEM" : "an orthomosaic")
+                  + ". Delete it first, or create a new project for the re-flight.");
+    }
+
+    private int finishStore(int projectId, String kind, String datasetName, String geoidModel,
+                             Path staging, String original, String user) throws IOException {
+        GeoTiffMeta meta = GeoTiffMeta.read(staging);
+        double[] elev = DroneService.DEM.equals(kind) ? sampleElevationRange(staging, meta) : null;
+        // Measured now rather than at publish, so the upload screen can show what
+        // is actually in the file before anyone commits to building tiles from it.
+        RasterBandStats stats = sampleBandStats(staging, meta);
+        if (elev != null && elev[0] >= elev[1])
+            throw new IllegalArgumentException(
+                    "The DEM contains no usable elevation values — every pixel is nodata.");
+
+        String warnings = validate(meta, stats, kind);
+
+        double[] b = meta.wgs84Bounds();
+        String name = DroneService.blankToNull(datasetName);
+        if (name == null) name = original;
+
+        Integer id = jdbc.queryForObject("""
+            INSERT INTO drone_dataset
+                (project_id, dataset_name, dataset_type, file_name, file_path, file_size, format,
+                 epsg, crs_name, res_x, res_y, raster_width, raster_height,
+                 min_x, min_y, max_x, max_y, elevation_min, elevation_max,
+                 band_count, data_type, colour_interp, band_stats, no_data, warnings, geo_details,
+                 geoid_model, footprint, status, created_by)
+            VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, CAST(? AS jsonb), ?, ?, CAST(? AS json),
+                    ?, ST_MakeEnvelope(?, ?, ?, ?, 4326), ?, ?)
+            RETURNING id
+            """, Integer.class,
+                projectId, name, kind, original, Files.size(staging), meta.pixelSummary(),
+                meta.crs.epsg(), meta.crs.label(), meta.resX(), meta.resY(), meta.width, meta.height,
+                b[0], b[1], b[2], b[3],
+                elev == null ? null : elev[0], elev == null ? null : elev[1],
+                meta.samplesPerPixel, meta.dataType(), meta.colourInterpretation(),
+                stats.toJson(meta), Double.isNaN(meta.noData) ? null : meta.noData, warnings,
+                meta.detailsJson(), DroneService.blankToNull(geoidModel),
+                b[0], b[1], b[2], b[3], DroneService.UPLOADED, user);
+
+        Path target = originalFile(id, original);
+        Files.createDirectories(target.getParent());
+        Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING);
+        jdbc.update("UPDATE drone_dataset SET file_path = ? WHERE id = ?", target.toString(), id);
+        return id;
+    }
+
+    /* ------------------------------------------------------------------
+       Resumable chunked upload
+       The browser sends the GeoTIFF in ~5 MB chunks keyed by a token (derived
+       from project + type + file name + size, stable across retries of the same
+       file); each chunk is appended to "<token>.part" under a staging directory.
+       A dropped connection only loses the current chunk — uploadedBytes() lets
+       the client resume from there instead of restarting the whole file. Mirrors
+       VideoService's chunk protocol.
+       ------------------------------------------------------------------ */
+
+    private Path chunksDir() throws IOException {
+        Path dir = drone.root().resolve("_chunks");
+        Files.createDirectories(dir);
+        return dir;
+    }
+
+    private static String safeToken(String raw) {
+        String s = raw == null ? "" : raw.trim();
+        s = s.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (s.isEmpty()) throw new IllegalArgumentException("Missing upload token.");
+        return s.length() > 150 ? s.substring(s.length() - 150) : s;
+    }
+
+    private Path chunkPart(String token) throws IOException {
+        return chunksDir().resolve(safeToken(token) + ".part");
+    }
+
+    /** Bytes already staged for this upload token, so the client can resume. */
+    long uploadedBytes(String token) throws IOException {
+        Path part = chunkPart(token);
+        return Files.exists(part) ? Files.size(part) : 0L;
+    }
+
+    /**
+     * Append one chunk. {@code offset} must equal the bytes already staged; if the
+     * client is out of step we reply "resync" with the true offset instead of
+     * corrupting the file. Returns "complete" once {@code total} bytes are in.
+     */
+    Map<String, Object> putChunk(String token, long offset, long total, MultipartFile chunk) throws IOException {
+        Path part = chunkPart(token);
+        Map<String, Object> r = new HashMap<>();
+
+        long current = Files.exists(part) ? Files.size(part) : 0L;
+        if (offset != current) {
+            r.put("status", "resync");
+            r.put("uploaded", current);
+            return r;
+        }
+
+        long written = 0;
+        byte[] buf = new byte[8192];
+        try (InputStream in = chunk.getInputStream();
+             java.io.OutputStream os = Files.newOutputStream(part,
+                     StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+            int n;
+            while ((n = in.read(buf)) > 0) { os.write(buf, 0, n); written += n; }
+        }
+
+        long newLen = current + written;
+        if (total > 0 && newLen >= total) {
+            r.put("status", "complete");
+            r.put("uploaded", total);
+        } else {
+            r.put("status", "partial");
+            r.put("uploaded", newLen);
+        }
+        return r;
     }
 
     /**

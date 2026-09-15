@@ -26,7 +26,10 @@ import java.util.Map;
  *   PUT    /api/drone/projects/{id}                        edit
  *   DELETE /api/drone/projects/{id}                        delete (cascades to datasets)
  *   GET    /api/drone/datasets?project_id=                 dataset list + full metadata
- *   POST   /api/drone/datasets                             upload a GeoTIFF (multipart)
+ *   POST   /api/drone/datasets                             upload a GeoTIFF (multipart, single request)
+ *   GET    /api/drone/upload-status?token=                 bytes staged for a resumable upload
+ *   POST   /api/drone/upload-chunk                          append one chunk of a resumable upload
+ *   POST   /api/drone/datasets/finalize                     register a dataset from staged chunks
  *   POST   /api/drone/datasets/{id}/publish                queue the tile build
  *   POST   /api/drone/datasets/{id}/unpublish              take it off the map
  *   DELETE /api/drone/datasets/{id}                        delete row + files
@@ -137,10 +140,15 @@ public class DroneController {
     }
 
     /**
-     * Upload one orthomosaic or DEM. The response carries the extracted metadata
-     * straight back, so the upload screen can show CRS, extent and resolution
-     * without a second request — and so a georeferencing problem is visible at the
-     * moment of upload rather than at publish.
+     * Upload one orthomosaic or DEM in a single request. The response carries the
+     * extracted metadata straight back, so the upload screen can show CRS, extent
+     * and resolution without a second request — and so a georeferencing problem is
+     * visible at the moment of upload rather than at publish.
+     *
+     * <p>Kept for small files; the console uses the resumable
+     * {@code /upload-chunk} + {@code /datasets/finalize} pair below for GeoTIFFs,
+     * since a multi-gigabyte orthomosaic on a dropped connection would otherwise
+     * restart from byte zero.
      */
     @PostMapping("/datasets")
     public Map<String, Object> upload(@RequestParam("project_id") int projectId,
@@ -157,6 +165,58 @@ public class DroneController {
             return res;
         } catch (Exception e) {
             return fail("drone upload", e);
+        }
+    }
+
+    /** How many bytes the server already holds for this upload token, so the client can resume. */
+    @GetMapping("/upload-status")
+    public Map<String, Object> uploadStatus(@RequestParam("token") String token) {
+        Map<String, Object> r = new HashMap<>();
+        try {
+            r.put("status", "ok");
+            r.put("uploaded", rasters.uploadedBytes(token));
+        } catch (Exception e) {
+            r.put("status", "error");
+            r.put("message", ApiErrors.safe("drone upload status", e));
+            r.put("uploaded", 0);
+        }
+        return r;
+    }
+
+    /**
+     * Append one chunk of a GeoTIFF being uploaded. The client sends ~5 MB pieces
+     * keyed by a stable token; a failure only loses the current chunk, never the
+     * whole file. Returns {status: complete|partial|resync, uploaded: bytes}.
+     */
+    @PostMapping("/upload-chunk")
+    public Map<String, Object> uploadChunk(@RequestParam("token") String token,
+                                           @RequestParam("offset") long offset,
+                                           @RequestParam("total") long total,
+                                           @RequestParam("chunk") MultipartFile chunk) {
+        try {
+            return rasters.putChunk(token, offset, total, chunk);
+        } catch (Exception e) {
+            Map<String, Object> r = new HashMap<>();
+            r.put("status", "error");
+            r.put("message", ApiErrors.safe("drone chunk upload", e));
+            return r;
+        }
+    }
+
+    /** Validate and register a dataset once its bytes have all landed via {@code /upload-chunk}. */
+    @PostMapping("/datasets/finalize")
+    public Map<String, Object> finalize(@RequestBody Map<String, String> body, Authentication auth) {
+        try {
+            int id = rasters.finalizeChunkedUpload(
+                    Integer.parseInt(body.get("project_id")), body.get("dataset_type"),
+                    body.get("dataset_name"), body.get("geoid_model"),
+                    body.get("token"), body.get("file_name"),
+                    auth == null ? null : auth.getName());
+            Map<String, Object> res = ok("id", id);
+            res.put("dataset", drone.dataset(id));
+            return res;
+        } catch (Exception e) {
+            return fail("drone upload finalize", e);
         }
     }
 
