@@ -889,6 +889,13 @@
 #dock .vh-gapbanner{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:9;display:none;align-items:center;gap:8px;background:rgba(184,38,29,.94);color:#fff;font:700 13px/1.3 Inter,system-ui,sans-serif;padding:8px 16px;border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.4);pointer-events:none;letter-spacing:.2px;white-space:nowrap}
 #dock .vh-gapbanner.show{display:flex}
 #dock .vh-gapbanner .gap-ic{font-size:15px;line-height:1}
+#dock .vh-clipend{position:absolute;inset:0;z-index:10;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(9,16,28,.82);color:#fff;font:600 15px/1.4 Inter,system-ui,sans-serif;text-align:center;padding:20px}
+#dock .vh-clipend.show{display:flex}
+#dock .vh-clipend button{background:#1d9e75;color:#fff;border:none;border-radius:9px;padding:10px 22px;font:700 14px Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.35)}
+#dock .vh-clipend button:hover{background:#22b483}
+.clip-switch button{background:transparent;border:none;color:#9fb2cc;font:700 13px Inter,system-ui,sans-serif;cursor:pointer;padding:2px 6px}
+.clip-switch button:disabled{opacity:.35;cursor:default}
+.clip-switch button:not(:disabled):hover{color:#fff}
 .vidhud{display:none;position:fixed;inset:0;z-index:8;pointer-events:none;font-family:Inter,system-ui,sans-serif;color:#eaf2ff}
 .vidhud *{box-sizing:border-box}
 .vid:fullscreen .vidhud,.vid:-webkit-full-screen .vidhud{display:block}
@@ -950,7 +957,7 @@
 </style>
     <div id="dock">
       <span class="close" data-act="closeDock">&times;</span>
-      <div class="vid"><video id="video" controls playsinline webkit-playsinline preload="metadata"></video><div class="vidloading" id="vidloading" style="display:none"><div class="vl-spin"></div><div class="vl-txt">Loading footage&hellip;</div></div><div class="vidempty" id="vidempty" style="display:none"></div><div class="vh-gapbanner" id="hudGapBanner"><span class="gap-ic">&#9888;</span> No NSV survey data for this chainage</div><div class="vidhud" id="vidhud"><div class="vh-left"><div class="vh-id"><div class="vh-route" id="hudRoute">&mdash;</div><div class="vh-meta"><span class="vh-cls" id="hudClass">&mdash;</span><span class="vh-sec" id="hudSec">&mdash;</span></div><div class="vh-chrow"><span class="vh-chip" id="hudCh">CH &ndash; m</span><span class="vh-chip dir" id="hudDir">Forward</span></div><div class="vh-attrs" id="hudAttrs"></div></div><div class="vh-iri" id="hudIri">AVG IRI &ndash;</div><div class="vh-pci" id="hudPci"></div></div><div class="vh-right"><svg class="vidhud-trk" id="hudTrack" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg><div class="vh-cond" id="hudCond"></div><div class="vh-chain" id="hudChain"></div></div><div class="vh-roadname" id="hudRoad">&mdash;</div></div></div>
+      <div class="vid"><video id="video" controls playsinline webkit-playsinline preload="metadata"></video><div class="vidloading" id="vidloading" style="display:none"><div class="vl-spin"></div><div class="vl-txt">Loading footage&hellip;</div></div><div class="vidempty" id="vidempty" style="display:none"></div><div class="vh-gapbanner" id="hudGapBanner"><span class="gap-ic">&#9888;</span><span id="hudGapText">No NSV survey data for this chainage</span></div><div class="vh-clipend" id="hudClipEnd"></div><div class="vidhud" id="vidhud"><div class="vh-left"><div class="vh-id"><div class="vh-route" id="hudRoute">&mdash;</div><div class="vh-meta"><span class="vh-cls" id="hudClass">&mdash;</span><span class="vh-sec" id="hudSec">&mdash;</span></div><div class="vh-chrow"><span class="vh-chip" id="hudCh">CH &ndash; m</span><span class="vh-chip dir" id="hudDir">Forward</span></div><div class="vh-attrs" id="hudAttrs"></div></div><div class="vh-iri" id="hudIri">AVG IRI &ndash;</div><div class="vh-pci" id="hudPci"></div></div><div class="vh-right"><svg class="vidhud-trk" id="hudTrack" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg><div class="vh-cond" id="hudCond"></div><div class="vh-chain" id="hudChain"></div></div><div class="vh-roadname" id="hudRoad">&mdash;</div></div></div>
       <div class="instr">
         <div class="road-eyebrow">Now playing</div>
         <div class="road-name" id="dRoadName">—</div>
@@ -958,6 +965,7 @@
         <div class="road-route" id="dRoute">—</div>
         <div class="meter"><span class="val" id="dCh">0</span><span class="unit">m</span><span class="cap">Chainage</span><span class="val" id="dIri" style="font-size:26px;margin-left:20px">–</span><span class="cap">IRI m/km</span></div>
         <div class="covrow" id="dCoverage" style="display:none"><div class="cov-head">NSV survey coverage<span class="cov-pct" id="dCovPct">—</span></div><div class="cov-bar" id="dCovBar"></div><div class="cov-gaps" id="dCovGaps"></div></div>
+        <div class="dirrow clip-switch" id="dClipSwitch" style="display:none"><span class="lbl">Clip</span><button data-act="prevClip">&larr; Prev</button><span class="lbl" id="dClipLabel" style="color:#cdd9ea">1 of 1</span><button data-act="nextClip">Next &rarr;</button></div>
         <div class="dirrow"><span class="lbl">Direction</span><span class="seg-dark"><button id="fwd" class="on" data-act="setDir" data-args='["fwd"]'>Front</button><button id="rev" data-act="setDir" data-args='["rev"]'>Back</button></span><span class="lbl" style="margin-left:auto">Length</span><span class="road-id" id="dLen" style="font-size:13px;color:#cdd9ea">—</span></div>
         <div class="dirrow"><span class="lbl">Speed</span><span class="seg-dark" id="speedSeg"><button data-spd="0.25" data-act="setSpeedEl" data-args="[0.25]">0.25&times;</button><button data-spd="0.5" data-act="setSpeedEl" data-args="[0.5]">0.5&times;</button><button data-spd="1" class="on" data-act="setSpeedEl" data-args="[1]">1&times;</button><button data-spd="1.5" data-act="setSpeedEl" data-args="[1.5]">1.5&times;</button><button data-spd="2" data-act="setSpeedEl" data-args="[2]">2&times;</button></span></div>
         <div class="dirrow"><button class="trackfs-btn" data-act="toggleVidFs">&#10530; Fullscreen with live track &amp; IRI</button></div>
@@ -991,12 +999,12 @@
   <script src="js/04-geo-helpers-boundaries.js?v=139"></script>
   <script src="js/05-road-network.js?v=193"></script>
   <script src="js/06-assets.js?v=189"></script>
-  <script src="js/07-data-loaders.js?v=187"></script>
-  <script src="js/08-condition-popup-nsv.js?v=174"></script>
+  <script src="js/07-data-loaders.js?v=188"></script>
+  <script src="js/08-condition-popup-nsv.js?v=175"></script>
   <script src="js/09-dashboard-core.js?v=127"></script>
   <script src="js/10-pci-report.js?v=127"></script>
   <script src="js/11-dashboard-charts.js?v=127"></script>
-  <script src="js/12-nsv-video.js?v=176"></script>
+  <script src="js/12-nsv-video.js?v=179"></script>
   <script src="js/13-search.js?v=124"></script>
   <script src="js/14-pci-engine.js?v=177"></script>
   <script src="js/15-main.js?v=130"></script>
@@ -1008,7 +1016,7 @@
   <script src="js/21-report-hub.js?v=124"></script>
   <script src="js/22-road-merged.js?v=121"></script>
   <script src="js/24-fwd.js?v=167"></script>
-  <script src="js/25-nsv-module.js?v=168"></script>
+  <script src="js/25-nsv-module.js?v=169"></script>
   <script src="js/26-layers-collapse.js?v=5"></script>
   <script src="js/27-survey-dashboard.js?v=7"></script>
   <script src="js/28-fwd-dashboard.js?v=8"></script>

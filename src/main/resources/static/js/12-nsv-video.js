@@ -60,21 +60,32 @@ function onPick(roadId,lngLat,lane,scope){
     else{new maplibregl.Popup({maxWidth:'300px'}).setLngLat(lngLat).setHTML(buildPopup(feature.properties,roadId,chainage,lane)).addTo(map);}
     return;
   }
-  const entry=CATALOG[roadId];
-  if(!(entry&&entry.file)){
+  const rawClips=CATALOG[roadId];
+  if(!(rawClips&&rawClips.length)){
     // No survey video for this road — leave the dock hidden, just show a brief notice.
     new maplibregl.Popup({maxWidth:'260px'}).setLngLat(lngLat).setHTML('<div class="pop"><div class="sec">'+escH(name)+'</div><div style="font-size:12px;color:#64718a;padding:3px 0 1px">No survey video for this road yet.</div></div>').addTo(map);
     return;
   }
+  const clips=normalizeClips(rawClips,len);
+  if(!chainageInClips(clips,chainage)){
+    /* No clip covers this exact stretch of the road (a "not filmed" gap between
+       clips, or before/after all of them) — the vehicle only ever appears where
+       footage actually exists, so decline the click instead of snapping to
+       whichever clip happens to be nearest. If the dock is already open for
+       this road, this just leaves it exactly as it was. */
+    const nearest=nearestClipRange(clips,chainage);
+    const msg=nearest?('No survey video for this stretch. Nearest footage: '+Math.round(nearest[0]).toLocaleString()+'–'+Math.round(nearest[1]).toLocaleString()+' m.'):'No survey video for this stretch.';
+    new maplibregl.Popup({maxWidth:'280px'}).setLngLat(lngLat).setHTML('<div class="pop"><div class="sec">'+escH(name)+'</div><div style="font-size:12px;color:#64718a;padding:3px 0 1px">'+msg+'</div></div>').addTo(map);
+    return;
+  }
   if(!cur||cur.road!==roadId){
-    cur={road:roadId,name,len,line,geoLenKm,cls:nsvLoc(feature.properties,['Road_Class','ROAD_CLASS','RoadClass','Class']),rnum:nsvLoc(feature.properties,['Road_Num','Road_No','RoadNumber','road_num']),rtype:nsvLoc(feature.properties,['Road_Type','RoadType','road_type']),carriage:nsvLoc(feature.properties,['Single_Du','Carriageway','carriageway']),cons:nsvLoc(feature.properties,['Cons_Type','Construction_Type','cons_type']),startCh:nsvLoc(feature.properties,['Rd_Str_cha','Start_Chai','start_chainage']),endCh:nsvLoc(feature.properties,['Rd_End_cha','End_Chaina','end_chainage']),startLoc:nsvLoc(feature.properties,['Rd_Str_Loc','Start_Loc','Start_Location','Strt_Loc','start_location']),endLoc:nsvLoc(feature.properties,['Rd_End_Loc','End_Loc','End_Location','end_location'])};
+    cur={road:roadId,name,len,line,geoLenKm,cls:nsvLoc(feature.properties,['Road_Class','ROAD_CLASS','RoadClass','Class']),rnum:nsvLoc(feature.properties,['Road_Num','Road_No','RoadNumber','road_num']),rtype:nsvLoc(feature.properties,['Road_Type','RoadType','road_type']),carriage:nsvLoc(feature.properties,['Single_Du','Carriageway','carriageway']),cons:nsvLoc(feature.properties,['Cons_Type','Construction_Type','cons_type']),startCh:nsvLoc(feature.properties,['Rd_Str_cha','Start_Chai','start_chainage']),endCh:nsvLoc(feature.properties,['Rd_End_cha','End_Chaina','end_chainage']),startLoc:nsvLoc(feature.properties,['Rd_Str_Loc','Start_Loc','Start_Location','Strt_Loc','start_location']),endLoc:nsvLoc(feature.properties,['Rd_End_Loc','End_Loc','End_Location','end_location']),clips,clipIdx:0};
     document.getElementById('dRoadName').textContent=name;
     document.getElementById('dRoadId').textContent=roadId;
     document.getElementById('dLen').textContent=Math.round(len).toLocaleString()+' m';
     updateRouteLabel();syncHudInfo();
-    const src=/^https?:\/\//i.test(entry.file)?entry.file:('/videos/'+encodeURIComponent(entry.file));
-    applyDirAvailability(entry.direction);video.style.display='';vidempty.style.display='none';video.src=src;video.load();
     document.getElementById('dock').classList.add('open','loaded');
+    playClip(pickClipIndex(cur.clips,chainage),chainage);
     renderCoverageSummary();
     /* condition segments may still be loading — refresh coverage once they arrive */
     /* roadCoverageRanges / roadGapRanges / coveragePieces all read segsByRoad[road]
@@ -83,44 +94,150 @@ function onPick(roadId,lngLat,lane,scope){
     /* Same deal for the HUD's FWD D0 / temperature rows — fetched when footage
        actually opens rather than at login, then re-seek so the row appears. */
     try{if(window.FWD&&FWD.load){const _rf2=roadId;FWD.load().then(function(){if(cur&&cur.road===_rf2&&video.duration&&!isNaN(video.duration))seek(lastChainage);});}}catch(e){}
+  }else{
+    const idx=pickClipIndex(cur.clips,chainage);
+    if(idx!==cur.clipIdx){playClip(idx,chainage);}
   }
   setChainage(frac);placeCar(frac);seek(chainage);if(typeof buildVidTrack==='function'){buildVidTrack();updateVidHud();}
 }
+/* A road can now carry several video clips, each covering its own chainage
+   stretch. Rows imported before per-clip chainage existed have fromCh/toCh
+   null — normalize those to span the whole road, exactly like the old
+   single-video behaviour. */
+function normalizeClips(raw,len){
+  return raw.map(c=>({file:c.file,direction:c.direction,fromCh:(c.fromCh==null?0:c.fromCh),toCh:(c.toCh==null?len:c.toCh)}));
+}
+/** Merged chainage stretches actually covered by some clip (a road's video
+   footage is rarely one contiguous file, so this can have several pieces). */
+function clipCoverageRanges(clips){
+  const ranges=clips.map(c=>[Math.min(c.fromCh,c.toCh),Math.max(c.fromCh,c.toCh)]).sort((a,b)=>a[0]-b[0]);
+  const merged=[];
+  ranges.forEach(r=>{if(merged.length&&r[0]<=merged[merged.length-1][1]+2)merged[merged.length-1][1]=Math.max(merged[merged.length-1][1],r[1]);else merged.push(r.slice());});
+  return merged;
+}
+/** A few metres of slack for click-projection imprecision (turf.nearestPointOnLine
+   rarely lands exactly on a typed clip boundary). */
+function chainageInClips(clips,ch){
+  return clipCoverageRanges(clips).some(r=>ch>=r[0]-2&&ch<=r[1]+2);
+}
+/** [lo,hi] of whichever covered stretch is closest to ch, or null if there are none. */
+function nearestClipRange(clips,ch){
+  const ranges=clipCoverageRanges(clips);if(!ranges.length)return null;
+  let best=ranges[0],bestD=Infinity;
+  ranges.forEach(r=>{const d=ch<r[0]?(r[0]-ch):(ch>r[1]?(ch-r[1]):0);if(d<bestD){bestD=d;best=r;}});
+  return best;
+}
+/** The clip whose [fromCh,toCh] contains ch, or the nearest one if none does. */
+function pickClipIndex(clips,ch){
+  for(let i=0;i<clips.length;i++){
+    const lo=Math.min(clips[i].fromCh,clips[i].toCh),hi=Math.max(clips[i].fromCh,clips[i].toCh);
+    if(ch>=lo-1e-6&&ch<=hi+1e-6)return i;
+  }
+  let best=0,bestD=Infinity;
+  clips.forEach((c,i)=>{const lo=Math.min(c.fromCh,c.toCh),hi=Math.max(c.fromCh,c.toCh);const d=ch<lo?(lo-ch):(ch>hi?(ch-hi):0);if(d<bestD){bestD=d;best=i;}});
+  return best;
+}
 /* ============================================================
-   Build 162 — gap-aware NSV playback engine.
+   Build 162/163 — gap-aware, clip-aware NSV playback engine.
    The survey video holds ONLY surveyed footage (gap stretches were
    not recorded), so video-time maps to SURVEYED distance, not total
-   chainage. buildTravelPlan() cuts the road into ordered video/gap
-   segments. During a video segment the footage drives the chainage;
-   when it reaches the end of a surveyed stretch we PAUSE the video,
-   animate the chainage + vehicle across the gap at the same visual
-   speed, then RESUME into the next stretch. Roads with full coverage
-   (no gaps) fall back to the original linear mapping untouched. */
+   chainage. buildTravelPlan() cuts the ACTIVE CLIP's own chainage
+   window into ordered video/gap segments. During a video segment the
+   footage drives the chainage; when it reaches the end of a surveyed
+   stretch we PAUSE the video, animate the chainage + vehicle across
+   the gap at the same visual speed, then RESUME into the next
+   stretch. A clip with no internal gaps just gets one 'video' segment
+   spanning its whole window, so every clip goes through the same
+   plan-driven path — there is no separate linear fallback. Reaching
+   the end of the LAST segment in the plan is not a data gap, it's the
+   edge of that clip's own footage: onClipEnd() stops playback and
+   waits for the viewer to click Next rather than crossing it. */
 let _gapRAF=null,_segIdx=0;
 function _local2ch(cl){return dir==='rev'?(cur.len-cl):cl;}   /* local (ascending, travel order) -> actual chainage */
 function _ch2local(ch){return dir==='rev'?(cur.len-ch):ch;}   /* actual chainage -> local */
+function activeClip(){return (cur&&cur.clips)?cur.clips[cur.clipIdx]:null;}
+/* Build 163 — buildTravelPlan() used to span the whole road (0..len); now it is
+   scoped to the ACTIVE CLIP's own [fromCh,toCh] window, so the same gap-aware
+   engine works identically whether a road has one clip or several. A plan is
+   ALWAYS produced (a clip with no internal gaps just gets one 'video' segment
+   spanning its whole window) so seekPlan/planTick are the only playback path —
+   there is no separate linear fallback to keep in sync. */
 function buildTravelPlan(){
-  if(!cur||!(cur.len>0)||!video.duration||isNaN(video.duration))return;
-  const D=video.duration,len=cur.len;
-  let rs=(typeof roadCoverageRanges==='function'?roadCoverageRanges(cur.road):[])
-    .map(r=>[Math.max(0,Math.min(len,r[0])),Math.max(0,Math.min(len,r[1]))]).filter(r=>r[1]-r[0]>1e-6);
+  const clip=activeClip();
+  if(!cur||!clip||!(cur.len>0)||!video.duration||isNaN(video.duration))return;
+  const D=video.duration;
+  const a0=_ch2local(clip.fromCh),b0=_ch2local(clip.toCh);
+  const lo=Math.min(a0,b0),hi=Math.max(a0,b0),span=hi-lo;
   cur._planDir=dir;
-  if(!rs.length){cur.hasGaps=false;cur._plan=null;cur._m=len/D;return;}          /* no condition data -> linear */
-  if(dir==='rev')rs=rs.map(r=>[len-r[1],len-r[0]]);
+  let rs=(typeof roadCoverageRanges==='function'?roadCoverageRanges(cur.road):[]);
+  if(dir==='rev')rs=rs.map(r=>[cur.len-r[1],cur.len-r[0]]);
+  rs=rs.map(r=>[Math.max(lo,Math.min(hi,r[0])),Math.max(lo,Math.min(hi,r[1]))]).filter(r=>r[1]-r[0]>1e-6);
   rs.sort((a,b)=>a[0]-b[0]);
+  if(!rs.length){                             /* no condition data in this clip's window -> assume it's all real footage */
+    clip.hasGaps=false;cur.hasGaps=false;
+    cur._m=span/D;
+    cur._plan=[{type:'video',clStart:lo,clEnd:hi,tStart:0,tEnd:D}];
+    return;
+  }
   let S=0;rs.forEach(r=>S+=r[1]-r[0]);
   cur._m=S/D;                                                                     /* surveyed metres per second of footage */
-  cur.hasGaps=(len-S)>Math.max(1,len*0.005);
-  if(!cur.hasGaps){cur._plan=null;return;}
-  const segs=[];let acc=0,cursor=0;
+  clip.hasGaps=(span-S)>Math.max(1,span*0.005);cur.hasGaps=clip.hasGaps;
+  const segs=[];let acc=0,cursor=lo;
   for(let i=0;i<rs.length;i++){
     const a=rs[i][0],b=rs[i][1];
     if(a>cursor+1e-6)segs.push({type:'gap',clStart:cursor,clEnd:a,tFreeze:acc/S*D});
     segs.push({type:'video',clStart:a,clEnd:b,tStart:acc/S*D,tEnd:(acc+(b-a))/S*D});
     acc+=(b-a);cursor=b;
   }
-  if(cursor<len-1e-6)segs.push({type:'gap',clStart:cursor,clEnd:len,tFreeze:D});
+  if(cursor<hi-1e-6)segs.push({type:'gap',clStart:cursor,clEnd:hi,tFreeze:D});
   cur._plan=segs;
+}
+/* ------------------------------------------------------------------
+   Clip switching. A clip boundary is NOT a data gap (the camera simply
+   wasn't rolling for a different reason — a separate file) so, unlike an
+   internal gap, it is never crossed automatically: playback stops and
+   waits for the viewer to click Next. */
+function playClip(idx,seekToCh){
+  if(!cur||!cur.clips||!cur.clips[idx])return;
+  cur.clipIdx=idx;const clip=cur.clips[idx];
+  _stopGapAnim();_segIdx=0;cur._plan=null;
+  hideClipEndPrompt();
+  const src=/^https?:\/\//i.test(clip.file)?clip.file:('/videos/'+encodeURIComponent(clip.file));
+  applyDirAvailability(clip.direction);video.style.display='';vidempty.style.display='none';
+  cur._pendingSeek=(seekToCh!=null?seekToCh:Math.min(clip.fromCh,clip.toCh));
+  video.src=src;video.load();
+  renderClipSwitcher();
+}
+function nextClip(){if(cur&&cur.clipIdx+1<cur.clips.length)playClip(cur.clipIdx+1);}
+function prevClip(){if(cur&&cur.clipIdx>0)playClip(cur.clipIdx-1);}
+function renderClipSwitcher(){
+  const row=document.getElementById('dClipSwitch');if(!row||!cur)return;
+  const n=cur.clips.length;
+  row.style.display=n>1?'':'none';
+  if(n<=1)return;
+  const lbl=document.getElementById('dClipLabel');
+  if(lbl){const c=cur.clips[cur.clipIdx];lbl.textContent='Clip '+(cur.clipIdx+1)+' of '+n+' · '+Math.round(Math.min(c.fromCh,c.toCh)).toLocaleString()+'–'+Math.round(Math.max(c.fromCh,c.toCh)).toLocaleString()+' m';}
+  row.querySelectorAll('button').forEach(function(b){
+    if(b.getAttribute('data-act')==='prevClip')b.disabled=(cur.clipIdx<=0);
+    if(b.getAttribute('data-act')==='nextClip')b.disabled=(cur.clipIdx>=n-1);
+  });
+}
+function hideClipEndPrompt(){const el=document.getElementById('hudClipEnd');if(el){el.classList.remove('show');el.innerHTML='';}}
+/** Reached the physical end of the active clip's footage. */
+function onClipEnd(){
+  try{video.pause();}catch(e){}
+  _stopGapAnim();
+  const el=document.getElementById('hudClipEnd');if(!el||!cur)return;
+  const clip=activeClip();if(!clip)return;
+  const from=Math.round(Math.min(clip.fromCh,clip.toCh)).toLocaleString(),to=Math.round(Math.max(clip.fromCh,clip.toCh)).toLocaleString();
+  if(cur.clipIdx+1<cur.clips.length){
+    const nc=cur.clips[cur.clipIdx+1];
+    const nfrom=Math.round(Math.min(nc.fromCh,nc.toCh)).toLocaleString(),nto=Math.round(Math.max(nc.fromCh,nc.toCh)).toLocaleString();
+    el.innerHTML='<div>This stretch ('+from+'–'+to+' m) is over.</div><button data-act="nextClip">Next: '+nfrom+'–'+nto+' m &rarr;</button>';
+  }else{
+    el.innerHTML='<div>End of surveyed footage for this road ('+from+'–'+to+' m).</div>';
+  }
+  el.classList.add('show');
 }
 function _applyLocal(cl){
   const frac=cur.len>0?(_local2ch(cl)/cur.len):0;
@@ -142,6 +259,8 @@ function _startGapAnim(gapSeg,resumeAfter){
     if(_segIdx+1<cur._plan.length){
       _segIdx+=1;const ns=cur._plan[_segIdx];
       if(ns&&ns.type==='video'){seeking=true;try{video.currentTime=ns.tStart;}catch(e){}setTimeout(()=>seeking=false,60);if(resumeAfter){try{video.play();}catch(e){}}}
+    }else{
+      onClipEnd();                                                                /* that gap was the last segment in this clip's plan */
     }
   })(performance.now());
 }
@@ -161,6 +280,14 @@ function seekPlan(ch){
 function planTick(){
   if(!cur||!cur._plan||seeking||_gapRAF)return;
   const segs=cur._plan,t=video.currentTime;let s=segs[_segIdx];
+  /* A gap's tFreeze always equals the tStart of the video segment that follows it
+     (no video time elapses during a gap), so a native 'timeupdate' arriving late
+     after our own seekPlan/gap-pause — the seek() to a gap's tFreeze can take
+     longer to settle than the seeking-flag window on a slow/unbuffered file —
+     would otherwise misread "still parked at this gap" as "playing that next
+     video segment" and silently drop the gap. Only re-derive when we've actually
+     moved away from the freeze point. */
+  if(s&&s.type==='gap'&&Math.abs(t-s.tFreeze)<0.06)return;
   if(!(s&&s.type==='video'&&t>=s.tStart-0.06&&t<=s.tEnd+0.06)){                   /* scrub / jump -> re-derive segment */
     for(let i=0;i<segs.length;i++){if(segs[i].type==='video'&&t>=segs[i].tStart-1e-6&&t<=segs[i].tEnd+1e-6){_segIdx=i;break;}}
     s=segs[_segIdx];
@@ -172,7 +299,9 @@ function planTick(){
       const wasPlaying=!video.paused;seeking=true;try{video.currentTime=s.tEnd;}catch(e){}setTimeout(()=>seeking=false,50);try{video.pause();}catch(e){}
       _segIdx+=1;_startGapAnim(next,wasPlaying);return;
     }
-    _applyLocal(s.clEnd);return;
+    _applyLocal(s.clEnd);
+    if(!next)onClipEnd();                                                        /* no gap AND no more segments -> the clip's footage just ended */
+    return;
   }
   const fr=(s.tEnd>s.tStart)?(t-s.tStart)/(s.tEnd-s.tStart):0;
   _applyLocal(s.clStart+fr*(s.clEnd-s.clStart));
@@ -180,22 +309,24 @@ function planTick(){
 function seek(ch){
   if(!cur||!video.duration||isNaN(video.duration))return;
   if(cur._planDir!==dir)buildTravelPlan();
-  if(cur.hasGaps){seekPlan(ch);return;}
-  const fch=cur.len>0?ch/cur.len:0;const tf=dir==='fwd'?fch:(1-fch);
-  seeking=true;video.currentTime=Math.max(0,Math.min(tf,1))*video.duration;setTimeout(()=>seeking=false,50);
+  seekPlan(ch);
 }
-video.addEventListener('loadedmetadata',()=>{video.playbackRate=playSpeed;buildTravelPlan();seek(lastChainage);});
+video.addEventListener('loadedmetadata',()=>{
+  video.playbackRate=playSpeed;buildTravelPlan();
+  const sk=(cur&&cur._pendingSeek!=null)?cur._pendingSeek:lastChainage;
+  if(cur)cur._pendingSeek=null;
+  seek(sk);
+});
 video.addEventListener('play',()=>{follow=true;if(curCarLL)followTo(curCarLL,700);
   if(cur&&cur.hasGaps&&!_gapRAF){const s=cur._plan&&cur._plan[_segIdx];if(s&&s.type==='gap')_startGapAnim(s,true);}});
 video.addEventListener('pause',()=>{follow=false;});
+video.addEventListener('ended',()=>{if(cur&&cur._plan)onClipEnd();});
 video.addEventListener('timeupdate',()=>{
   if(!cur||!video.duration||seeking)return;
   if(cur._planDir!==dir)buildTravelPlan();
-  if(cur.hasGaps){planTick();return;}
-  const tf=video.currentTime/video.duration;const fch=dir==='fwd'?tf:(1-tf);
-  setChainage(fch);placeCar(fch);updateVidHud();if(follow&&curCarLL)followTo(curCarLL,260);
+  planTick();
 });
-function closeDock(){document.getElementById('dock').classList.remove('open','loaded');if(marker)marker.remove();if(typeof _stopGapAnim==='function')_stopGapAnim();_segIdx=0;cur=null;if(video){try{video.pause();}catch(e){}}/* Build 87 — closing the dock also switches "Video on click" OFF, so it won't pop back up on the next map click. Setting .checked here does not fire 'change', so no recursion. */['videoMode','videoMode2'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});syncVClick();}
+function closeDock(){document.getElementById('dock').classList.remove('open','loaded');if(marker)marker.remove();if(typeof _stopGapAnim==='function')_stopGapAnim();_segIdx=0;cur=null;if(video){try{video.pause();}catch(e){}}if(typeof hideClipEndPrompt==='function')hideClipEndPrompt();var _cs=document.getElementById('dClipSwitch');if(_cs)_cs.style.display='none';/* Build 87 — closing the dock also switches "Video on click" OFF, so it won't pop back up on the next map click. Setting .checked here does not fire 'change', so no recursion. */['videoMode','videoMode2'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});syncVClick();}
 /* Build 88 — reflect "Video on click" state on <body class="vclick-on">.
    CSS force-hides #dock whenever this class is absent, so the dock can NEVER
    stay visible while Video-on-click is off, regardless of how it was opened. */
@@ -423,7 +554,21 @@ function updateVidHud(){
   var dc=document.getElementById('dCh');var chTxt=dc?dc.textContent:'0';var chNum=parseFloat(String(chTxt).replace(/,/g,''))||0;
   var hc=document.getElementById('hudCh');if(hc)hc.textContent='CH '+Math.round(chNum).toLocaleString()+' m';
   var c=(typeof condAt==='function'&&cur.road)?condAt(cur.road,chNum):null;
-  var gapBanner=document.getElementById('hudGapBanner');if(gapBanner)gapBanner.classList.toggle('show',!c);
+  var gapBanner=document.getElementById('hudGapBanner');
+  if(gapBanner){
+    /* A missing condition record is NOT the same thing as a gap: a clip with no
+       condition data at all (nothing uploaded yet) is treated as full genuine
+       footage (see buildTravelPlan's rs.length===0 branch) and must stay silent
+       here too. Only a real 'gap' segment in the active plan — a surveyed clip
+       with a hole in its own coverage — shows the banner. */
+    var gs=(cur._plan&&cur._plan[_segIdx]&&cur._plan[_segIdx].type==='gap')?cur._plan[_segIdx]:null;
+    gapBanner.classList.toggle('show',!!gs);
+    var gt=document.getElementById('hudGapText');
+    if(gt){
+      if(gs){var ga=_local2ch(gs.clStart),gb=_local2ch(gs.clEnd);gt.textContent='No NSV survey data · '+Math.round(Math.min(ga,gb)).toLocaleString()+'–'+Math.round(Math.max(ga,gb)).toLocaleString()+' m';}
+      else gt.textContent='No NSV survey data for this chainage';
+    }
+  }
   var iv=c?((c.avg_iri!=null)?+c.avg_iri:(c.iri!=null?+c.iri:NaN)):NaN;
   var col=(!isNaN(iv)&&typeof rating==='function')?rating('iri',iv):'#3a465c';
   var hi=document.getElementById('hudIri');if(hi){hi.textContent='AVG IRI '+(isNaN(iv)?'\u2013':iv.toFixed(2));hi.style.background=col;}

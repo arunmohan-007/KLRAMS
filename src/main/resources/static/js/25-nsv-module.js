@@ -37,7 +37,8 @@
     var rows=[];
     if(typeof CATALOG==='undefined'||typeof RoadsIndex==='undefined')return rows;
     Object.keys(CATALOG).forEach(function(roadId){
-      var entry=CATALOG[roadId];if(!(entry&&entry.file))return;
+      var clips=CATALOG[roadId];if(!(clips&&clips.length))return;
+      var entry=clips[0];
       var p=RoadsIndex.byRoad(roadId);if(!p)return;           /* only roads present in the network */
       var len=nsvRoadLen(p);
       rows.push({
@@ -46,6 +47,7 @@
         num:_prop(p,['Road_Num','Road_No','RoadNumber','road_num']),
         len:len,
         gap:nsvGapLen(roadId,len),
+        clips:clips.length,
         dir:(entry.direction&&/rev|back/i.test(entry.direction))?'Reverse':'Forward'
       });
     });
@@ -86,7 +88,7 @@
       +'<span class="reg-count">'+rows.length+' road'+(rows.length===1?'':'s')+' with footage</span>'
       +'<span class="reg-exp"><button class="btn ghost" data-act="nsvExportExcel">Excel</button><button class="btn ghost" data-act="nsvPrint">PDF</button></span>'
       +'</div>';
-    var head='<tr><th class="n">Sl</th><th>Road Name</th><th class="m">Section Label</th><th class="n">Length of Road</th><th class="n">Gap Length</th><th>Direction</th><th>View Video</th></tr>';
+    var head='<tr><th class="n">Sl</th><th>Road Name</th><th class="m">Section Label</th><th class="n">Length of Road</th><th class="n">Gap Length</th><th>Direction</th><th class="n">Clips</th><th>View Video</th></tr>';
     var tb='';
     rows.forEach(function(r,i){
       /* sec goes inside data-act="nsvViewVideo" data-args='["..."]': JS-string-escape first
@@ -102,11 +104,12 @@
         +'<td class="n">'+_m(r.len)+'</td>'
         +'<td class="n">'+(r.gap==null?'–':(r.gap<=1?'<span style="color:#2ba66a">None</span>':'<b style="color:#d9822b">'+_m(r.gap)+'</b>'))+'</td>'
         +'<td>'+escH(r.dir)+'</td>'
+        +'<td class="n">'+(r.clips>1?r.clips:'1')+'</td>'
         +'<td><button class="nsv-viewbtn" data-act="nsvViewVideo" '+KLAct.args(sec)+'>&#9658;&nbsp;View Video</button></td>'
         +'</tr>';
     });
     body.innerHTML=toolbar+'<div class="reg-tablewrap"><table class="reg-table"><thead>'+head+'</thead><tbody>'
-      +(tb||'<tr><td colspan="7" style="text-align:center;color:#8a93a3;padding:18px">No survey footage matches.</td></tr>')+'</tbody></table></div>';
+      +(tb||'<tr><td colspan="8" style="text-align:center;color:#8a93a3;padding:18px">No survey footage matches.</td></tr>')+'</tbody></table></div>';
     var si=document.getElementById('nsvSearch');if(si&&nsvSearch){si.focus();si.setSelectionRange(si.value.length,si.value.length);}
   }
   window.nsvSetSearch=function(v){nsvSearch=v;renderNsv();};

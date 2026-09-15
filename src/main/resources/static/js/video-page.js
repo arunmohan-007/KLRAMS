@@ -29,7 +29,8 @@ Promise.all([
   fetch('/api/video/catalog').then(r=>r.json()).catch(()=>[]),
   new Promise(res=>{ if(map.loaded()) res(); else map.on('load',res); })
 ]).then(([gj, cat])=>{
-  (cat||[]).forEach(e=>{ if(e.road) CATALOG[e.road]={file:e.file, direction:e.direction}; });
+  (cat||[]).forEach(e=>{ if(!e.road) return; (CATALOG[e.road]=CATALOG[e.road]||[]).push({file:e.file, direction:e.direction, fromCh:(e.from_ch!=null?+e.from_ch:null), toCh:(e.to_ch!=null?+e.to_ch:null)}); });
+  Object.keys(CATALOG).forEach(r=>CATALOG[r].sort((a,b)=>(a.fromCh==null?0:a.fromCh)-(b.fromCh==null?0:b.fromCh)));
   if(!gj || !gj.features || !gj.features.length){ document.getElementById('roadId').textContent='No road geometry returned by the server.'; return; }
   addRoads(gj);
 }).catch(e=>{ document.getElementById('roadId').textContent='Could not load roads: '+e.message; });
@@ -60,7 +61,7 @@ function onRoadClick(e){
     document.getElementById('lenVal').textContent=Math.round(len)+' m';
     document.getElementById('vfile').disabled=false;
     map.setFilter('roads-hi',['==',['get','road'],road]);
-    const entry=CATALOG[road]; const srcChip=document.getElementById('srcChip');
+    const entry=(CATALOG[road]||[])[0]; const srcChip=document.getElementById('srcChip'); /* this preview page plays the first clip only; the full clip/gap/next machinery lives in map.html's dock */
     if(entry && entry.file){
       const src=/^https?:\/\//i.test(entry.file)?entry.file:('/videos/'+encodeURIComponent(entry.file));
       setDir(entry.direction==='reverse'?'rev':'fwd');

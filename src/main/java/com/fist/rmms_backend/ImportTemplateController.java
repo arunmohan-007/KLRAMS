@@ -717,7 +717,9 @@ public class ImportTemplateController {
         seed("video_catalog", List.of(
             new Col("section_label", "text", null, true, "TVM_MDR_0001"),
             new Col("video_file", "text", null, true, "TVM_MDR_0001_front.mp4"),
-            new Col("direction", "text", null, true, "front")));
+            new Col("direction", "text", null, true, "front"),
+            new Col("from_chainage", "number", "Meters", true, "0"),
+            new Col("to_chainage", "number", "Meters", true, "1200")));
 
         seed("traffic_stations", List.of(
             new Col("Station Name", "text", null, true, "TVM_STN_021"),

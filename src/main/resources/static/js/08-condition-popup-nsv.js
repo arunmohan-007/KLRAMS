@@ -394,7 +394,7 @@ function buildPopup(props,roadId,ch,lane){
   H+='</div>'; /* /kc-panes */
 
   /* ---- footer actions (always visible) ---- */
-  var hasVid=(typeof CATALOG!=='undefined'&&CATALOG[roadId]&&CATALOG[roadId].file);
+  var hasVid=(typeof CATALOG!=='undefined'&&CATALOG[roadId]&&CATALOG[roadId].length>0);
   H+='<div class="kc-foot">';
   if(hasVid)H+='<button class="kc-playbtn" data-act="playSurveyFromPopup" '+KLAct.args(rid, (+ch||0))+'>&#9658;&nbsp; Play footage</button>';
   H+='<button class="kc-exportbtn" data-act="exportRoadCSV" '+KLAct.args(rid)+'>&#8681;&nbsp; Export CSV</button>';

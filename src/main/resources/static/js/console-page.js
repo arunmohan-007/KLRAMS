@@ -970,13 +970,15 @@ const PANELS={
     +'<div class="out" id="oVid"></div>'
     +'<p class="hint">Files are split into 5&nbsp;MB chunks and stored on the server under the video folder. After uploading, use <b>Video catalogue</b> to link each file to its road section and driving direction.</p>',
   'vid-cat':'<div class="ip-title">Video catalogue</div>'
-    +'<p class="ip-sub">Link each road section to its video file and direction. The NSV video is recorded during a survey cycle, so the catalogue is stored per survey period — like the condition and FWD data it was filmed with.</p>'
+    +'<p class="ip-sub">Link each road section to its video file(s), direction and chainage stretch. The NSV video is recorded during a survey cycle, so the catalogue is stored per survey period — like the condition and FWD data it was filmed with.</p>'
     +spSelField()
     +'<div class="ip-field"><label class="ip-label">Catalogue CSV</label><input type="file" id="vfile" accept=".csv"></div>'
     +'<div id="wiz_vfile" class="wiz-box"></div>'
     +'<button class="btn" id="btn_vfile" data-act="up" data-args="catalog">Upload catalogue</button>'
     +'<div class="out" id="oCat"></div>'
-    +'<p class="hint">Columns: <code>section_label</code>, <code>video_file</code>, <code>direction</code> (front or back). <code>video_file</code> is the file name inside the zip, or a full <code>https://</code> link &mdash; in which case nothing needs uploading here at all.</p>'
+    +'<p class="hint">Columns: <code>section_label</code>, <code>video_file</code>, <code>direction</code> (front or back), <code>from_chainage</code>, <code>to_chainage</code> (metres — both mandatory). <code>video_file</code> is the file name inside the zip, or a full <code>https://</code> link &mdash; in which case nothing needs uploading here at all.</p>'
+    +'<p class="hint">A road can have several video <b>clips</b> covering different stretches (e.g. 0&ndash;1200&nbsp;m, then 1200&ndash;3000&nbsp;m) &mdash; give each one its own row with the same <code>section_label</code>. Re-uploading rows for a section replaces that section&rsquo;s whole clip list, so you only need to include the sections you are changing.</p>'
+    +'<p class="hint"><b>Chainage is checked against the road itself</b>: <code>section_label</code> must match a real road, and <code>to_chainage</code> cannot go past that road&rsquo;s own length &mdash; a row that does either is rejected and nothing is imported until it is fixed.</p>'
     +'<p class="hint">A link must be <b>https://</b> (plain <code>http://</code> will not play) and must point <b>directly at the video file</b>, ending in something like <code>.mp4</code>. A YouTube, Google&nbsp;Drive, OneDrive or Dropbox <i>share</i> link is a web page, not a video file, and will not play. Bad rows are listed on import and nothing is saved until they are fixed.</p>'
     +'<a class="viewer" href="/map.html">Open the viewer to play videos &rarr;</a>',
   'road-net':'<div class="ip-title">Road network</div>'

@@ -33,7 +33,8 @@ import java.util.zip.ZipInputStream;
 /**
  * Handles retained survey videos:
  *  - storeZip:    extract an uploaded .zip of videos into the video folder (kept on disk).
- *  - loadCatalog: read a CSV (section_label, video_file, direction) into road_video table.
+ *  - loadCatalog: read a CSV (section_label, video_file, direction, from_chainage, to_chainage)
+ *                 into road_video table; a road can have several rows (clips).
  *  - catalog:     return the catalog for the map to look up videos by road.
  */
 @Service
@@ -74,10 +75,19 @@ public class VideoService {
         // swap it for a surrogate id + (section, period) uniqueness, and adopt
         // pre-period rows into the current (active) period.
         jdbc.execute("ALTER TABLE road_video ADD COLUMN IF NOT EXISTS period_id integer");
+        // A section can now have several clips (one per surveyed chainage stretch),
+        // so from_ch/to_ch identify a clip's own span; NULL means a pre-existing
+        // "legacy" row that the frontend treats as spanning the whole road.
+        jdbc.execute("ALTER TABLE road_video ADD COLUMN IF NOT EXISTS from_ch double precision");
+        jdbc.execute("ALTER TABLE road_video ADD COLUMN IF NOT EXISTS to_ch double precision");
         try {
             periods.ensureSurrogatePk("road_video", "section_label");
             periods.dedupeKeepingLatest("road_video", "section_label", "period_id");
-            jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS road_video_sec_period_ux ON road_video(section_label, period_id)");
+            // Was a UNIQUE index on (section_label, period_id) — that enforced exactly
+            // one video per section per period, which no longer holds once a section
+            // can have multiple clips. Drop it and keep a plain lookup index instead.
+            jdbc.execute("DROP INDEX IF EXISTS road_video_sec_period_ux");
+            jdbc.execute("CREATE INDEX IF NOT EXISTS road_video_sec_period_idx ON road_video(section_label, period_id)");
             jdbc.execute("CREATE INDEX IF NOT EXISTS road_video_period_idx ON road_video(period_id)");
         } catch (Exception e) {
             // Never let a schema-migration hiccup here take down the whole app at
@@ -86,6 +96,32 @@ public class VideoService {
                     "but the app will keep starting", e);
         }
         jdbc.update("UPDATE road_video SET period_id = ? WHERE period_id IS NULL", periods.activePeriodId());
+        backfillLegacyChainage();
+    }
+
+    /**
+     * Rows imported before per-clip chainage existed have from_ch/to_ch NULL. We now
+     * know each road's own measured chainage (roads."Measrd_Len" - the same value the
+     * viewer already uses as a road's length), so fill those old rows in with the
+     * road's full span (0..len) instead of leaving the frontend to guess it — a
+     * legacy single video keeps covering the whole road exactly as it always did.
+     * Roads with no usable length are left NULL; the frontend still falls back to
+     * 0..len (from the clicked feature) for those.
+     */
+    private void backfillLegacyChainage() {
+        try {
+            jdbc.update("""
+                UPDATE road_video v
+                SET from_ch = 0, to_ch = r."Measrd_Len"
+                FROM roads r
+                WHERE v.section_label = r."Section_La"
+                  AND v.from_ch IS NULL AND v.to_ch IS NULL
+                  AND r."Measrd_Len" IS NOT NULL AND r."Measrd_Len" > 0
+                """);
+        } catch (Exception e) {
+            // roads table may not exist yet on a brand-new database — harmless, nothing to backfill.
+            log.debug("Video catalogue legacy-chainage backfill skipped", e);
+        }
     }
 
     /** Extract every file from the uploaded zip into the video folder (retained). */
@@ -190,51 +226,140 @@ public class VideoService {
         Integer iRoad = first(idx, "section_label", "section_la", "road");
         Integer iFile = first(idx, "video_file", "video", "file", "link");
         Integer iDir  = first(idx, "direction", "dir");
+        // "chiange" is not a typo here — it is the spelling several survey
+        // spreadsheets actually use for "chainage" (see LayerAttributeCatalog
+        // and AssetController, which tolerate it for the same reason).
+        Integer iFrom = first(idx, "from_chainage", "from_chiange", "from_ch", "start_chainage",
+                "start_chiange", "start_ch", "start");
+        Integer iTo   = first(idx, "to_chainage", "to_chiange", "to_ch", "end_chainage",
+                "end_chiange", "end_ch", "end");
         if (iRoad == null || iFile == null) {
             throw new IllegalArgumentException("CSV must have columns: section_label and video_file (and optionally direction).");
+        }
+        if (iFrom == null || iTo == null) {
+            throw new IllegalArgumentException(
+                    "CSV must also have from_chainage and to_chainage columns - a road can now carry "
+                            + "several video clips, so each row must state the chainage stretch its clip covers.");
         }
         /* Read and check the whole file BEFORE writing anything, the same way the
          * road-network upload does: a catalogue is edited by hand in a spreadsheet,
          * so a bad row is usually one of several, and importing the good half would
          * leave the admin guessing which sections actually took. */
-        List<String[]> rows = new ArrayList<>();     // {road, file, dir}
-        List<String> problems = new ArrayList<>();
+        List<String[]> rawRows = new ArrayList<>();
+        List<Integer> rawLineNos = new ArrayList<>();
         int lineNo = 1;                              // the header was line 1
         String line;
         while ((line = br.readLine()) != null) {
             lineNo++;
             if (line.trim().isEmpty()) continue;
-            String[] c = parse(line);
+            rawRows.add(parse(line));
+            rawLineNos.add(lineNo);
+        }
+        // A clip's own chainage must fall within the road it belongs to — otherwise
+        // a typo (an extra digit, a road confused with a longer one) silently creates
+        // a clip that claims footage past the end of the actual road. Look every
+        // section up once, in bulk, rather than a query per row.
+        Set<String> roadLabels = new java.util.LinkedHashSet<>();
+        for (String[] c : rawRows) { String r = val(c, iRoad); if (r != null) roadLabels.add(r); }
+        Map<String, Double> roadLens = roadLengths(roadLabels);
+
+        List<Object[]> rows = new ArrayList<>();     // {road, file, dir, fromCh, toCh}
+        List<String> problems = new ArrayList<>();
+        for (int i = 0; i < rawRows.size(); i++) {
+            String[] c = rawRows.get(i);
+            int ln = rawLineNos.get(i);
             String road = val(c, iRoad);
             String file = val(c, iFile);
             String dir  = normDir(iDir != null ? val(c, iDir) : null);
             if (road == null || file == null) continue;
             String bad = checkVideoRef(file);
+            if (bad == null) bad = checkChainage(val(c, iFrom), val(c, iTo));
+            Double f = null, t = null;
+            if (bad == null) {
+                f = Double.valueOf(val(c, iFrom));
+                t = Double.valueOf(val(c, iTo));
+                if (roadLens != null) {
+                    Double roadLen = roadLens.get(road);
+                    if (roadLen == null) {
+                        bad = "section_label not found in the road network - cannot verify its chainage range";
+                    } else if (t > roadLen + CHAINAGE_TOLERANCE_M) {
+                        bad = "to_chainage " + Math.round(t) + " m is beyond this road's own length ("
+                                + Math.round(roadLen) + " m)";
+                    }
+                }
+            }
             if (bad != null) {
                 if (problems.size() < MAX_REPORTED_PROBLEMS)
-                    problems.add("line " + lineNo + " (" + road + "): " + bad);
+                    problems.add("line " + ln + " (" + road + "): " + bad);
                 else if (problems.size() == MAX_REPORTED_PROBLEMS)
-                    problems.add("… and further rows with the same kind of problem");
+                    problems.add("... and further rows with the same kind of problem");
                 continue;
             }
-            rows.add(new String[]{road, file, dir});
+            rows.add(new Object[]{road, file, dir, f, t});
         }
         if (!problems.isEmpty()) {
             throw new IllegalArgumentException(
-                    "The catalogue was not imported — fix these rows and upload it again:\n"
+                    "The catalogue was not imported - fix these rows and upload it again:\n"
                             + String.join("\n", problems));
         }
+        Set<String> sections = new java.util.LinkedHashSet<>();
+        for (Object[] r : rows) sections.add((String) r[0]);
+        for (String road : sections) {
+            jdbc.update("DELETE FROM road_video WHERE section_label = ? AND period_id = ?", road, periodId);
+        }
         int count = 0;
-        for (String[] r : rows) {
+        for (Object[] r : rows) {
             jdbc.update("""
-                INSERT INTO road_video (section_label, video_file, direction, period_id)
-                VALUES (?,?,?,?)
-                ON CONFLICT (section_label, period_id)
-                DO UPDATE SET video_file = EXCLUDED.video_file, direction = EXCLUDED.direction
-                """, r[0], r[1], r[2], periodId);
+                INSERT INTO road_video (section_label, video_file, direction, period_id, from_ch, to_ch)
+                VALUES (?,?,?,?,?,?)
+                """, r[0], r[1], r[2], periodId, r[3], r[4]);
             count++;
         }
         return count;
+    }
+
+    /** Rounding slack between a hand-typed chainage and the road's own stored length. */
+    private static final double CHAINAGE_TOLERANCE_M = 1.0;
+
+    /**
+     * Bulk-fetch each label's road length ("Measrd_Len" — the same value the map
+     * viewer itself uses as a road's length), for checking a clip's chainage falls
+     * within its own road. Returns null (skip the check entirely) if the lookup
+     * itself fails — a missing/broken roads table is an environment problem, not
+     * a reason to reject every row as "unmatched".
+     */
+    private Map<String, Double> roadLengths(Set<String> labels) {
+        Map<String, Double> out = new HashMap<>();
+        if (labels.isEmpty()) return out;
+        try {
+            String placeholders = String.join(",", Collections.nCopies(labels.size(), "?"));
+            List<Map<String, Object>> rs = jdbc.queryForList(
+                    "SELECT \"Section_La\" AS s, \"Measrd_Len\" AS len FROM roads WHERE \"Section_La\" IN (" + placeholders + ")",
+                    labels.toArray());
+            for (Map<String, Object> r : rs) {
+                Object lenObj = r.get("len");
+                if (lenObj instanceof Number) out.put((String) r.get("s"), ((Number) lenObj).doubleValue());
+            }
+            return out;
+        } catch (Exception e) {
+            log.warn("Video catalogue chainage-range check could not look up road lengths — skipping that check", e);
+            return null;
+        }
+    }
+
+    /** Validate one row's from/to chainage cell pair, mirroring checkVideoRef's style. */
+    private static String checkChainage(String from, String to) {
+        if (from == null || to == null) return "is missing from_chainage or to_chainage";
+        double f, t;
+        try {
+            f = Double.parseDouble(from);
+            t = Double.parseDouble(to);
+        } catch (NumberFormatException e) {
+            return "has a non-numeric from_chainage/to_chainage";
+        }
+        if (f < 0 || t < 0) return "has a negative from_chainage/to_chainage";
+        if (t <= f) return "has to_chainage not greater than from_chainage";
+        return null;
     }
 
     /** Enough to show the shape of the mistake without a wall of text. */
@@ -315,11 +440,16 @@ public class VideoService {
         return path.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
-    /** Catalog of one survey period (null = the active period the viewer shows). */
+    /** Catalog of one survey period (null = the active period the viewer shows).
+     *  A road may return several rows (clips); the frontend groups them by road,
+     *  ordered here by from_ch so it receives each road's clips in travel order.
+     *  from_ch/to_ch are null on rows imported before per-clip chainage existed -
+     *  the frontend treats those as spanning the whole road. */
     public List<Map<String, Object>> catalog(Integer periodId) {
         try {
             return jdbc.queryForList(
-                "SELECT section_label AS road, video_file AS file, direction FROM road_video WHERE period_id = ?",
+                "SELECT section_label AS road, video_file AS file, direction, from_ch, to_ch " +
+                "FROM road_video WHERE period_id = ? ORDER BY section_label, from_ch",
                 periods.resolve(periodId));
         } catch (Exception e) {
             return Collections.emptyList();
