@@ -112,30 +112,77 @@ public class LoginAuditService {
 
     /* ---------------- helpers ---------------- */
 
+    /** How many trusted reverse proxies sit in front of this app — see
+     *  {@link #clientIp}. Configured by {@code app.security.proxy-hops}. */
+    private static volatile int proxyHops = 1;
+
+    @org.springframework.beans.factory.annotation.Value("${app.security.proxy-hops:1}")
+    void setProxyHops(int hops){ proxyHops = Math.max(1, hops); }
+
+    /** The configured hop count, for {@link ConnectionDiagnosticsController} to report. */
+    static int proxyHops(){ return proxyHops; }
+
     /** Best-effort real client IP, honouring a reverse proxy's X-Forwarded-For.
      *
-     *  SECURITY: we trust only the LAST hop in X-Forwarded-For — the address our
-     *  own reverse proxy actually saw and appended (nginx sets
-     *  {@code X-Forwarded-For = "<client-supplied...>, $remote_addr"}). The
-     *  earlier, left-hand entries are copied verbatim from whatever the client
-     *  sent and are fully forgeable. Keying the login lockout / audit log on the
-     *  leftmost value (as this used to) let an attacker send a different
-     *  X-Forwarded-For on every request and never trip the 5-strike lockout, and
-     *  let them stamp any IP into the login_events audit trail. Taking the
-     *  right-most token closes both, because the client cannot influence what the
-     *  trusted proxy appends. With no proxy present, X-Forwarded-For is absent and
-     *  we fall back to the real socket address. */
+     *  SECURITY: the LEFT-hand entries of X-Forwarded-For are copied verbatim from
+     *  whatever the client sent and are fully forgeable. Keying the login lockout /
+     *  audit log on the leftmost value (as this once did) let an attacker send a
+     *  different X-Forwarded-For on every request and never trip the 5-strike
+     *  lockout, and let them stamp any IP into the login_events audit trail. So we
+     *  never read from the left — we count in from the RIGHT, which only our own
+     *  infrastructure can write.
+     *
+     *  HOW MANY TO COUNT IN. Each proxy appends the address IT saw, so the
+     *  outermost trusted proxy is the one that appended the true client. With N
+     *  trusted proxies in front, the client is therefore at {@code len - N}:
+     *  one nginx gives {@code [client]}; Cloudflare + nginx gives
+     *  {@code [client, cloudflare]}; and a forged prefix only pushes junk further
+     *  left, where we never look. Taking the last entry (which is N = 1) against a
+     *  TWO-hop chain returns the inner proxy's own address — the same value for
+     *  every visitor on earth, which collapses the whole site onto one lockout
+     *  counter. That is what {@code app.security.proxy-hops} exists to state.
+     *
+     *  With no proxy present, X-Forwarded-For is absent and we fall back to the
+     *  real socket address. */
     static String clientIp(HttpServletRequest req){
         if(req == null) return null;
         String xff = req.getHeader("X-Forwarded-For");
         if(xff != null && !xff.isBlank()){
-            int comma = xff.lastIndexOf(',');        // last hop = what our proxy saw
-            String last = (comma >= 0 ? xff.substring(comma + 1) : xff).trim();
-            if(!last.isEmpty()) return last;
+            String[] hops = xff.split(",");
+            int i = Math.max(0, hops.length - proxyHops);   // count in from the right
+            String ip = hops[i].trim();
+            if(!ip.isEmpty()) return ip;
         }
         String real = req.getHeader("X-Real-IP");
         if(real != null && !real.isBlank()) return real.trim();
         return req.getRemoteAddr();
+    }
+
+    /** True for a loopback, link-local or RFC1918/ULA address — i.e. an address
+     *  that cannot identify a distinct internet client. Resolving one of these as
+     *  "the client" means the proxy chain is not configured as
+     *  {@code app.security.proxy-hops} claims, and every visitor is landing on the
+     *  same value; {@link LoginAttemptService} refuses to rate-limit on it rather
+     *  than lock the entire user base out at once. */
+    static boolean isInternalAddress(String ip){
+        if(ip == null) return true;
+        String s = ip.trim().toLowerCase(Locale.ROOT);
+        int pct = s.indexOf('%');                    // strip IPv6 zone id
+        if(pct >= 0) s = s.substring(0, pct);
+        if(s.startsWith("[")) s = s.substring(1, Math.max(1, s.length() - (s.endsWith("]") ? 1 : 0)));
+        if(s.isEmpty() || "unknown".equals(s)) return true;
+        if(s.startsWith("::ffff:")) s = s.substring(7);          // IPv4-mapped IPv6
+        if(s.equals("::1") || s.startsWith("fc") || s.startsWith("fd") || s.startsWith("fe80:")) return true;
+        if(s.startsWith("127.") || s.startsWith("10.") || s.startsWith("192.168.")
+                || s.startsWith("169.254.") || s.equals("0.0.0.0")) return true;
+        if(s.startsWith("172.")){                                 // 172.16.0.0/12 only
+            int dot = s.indexOf('.', 4);
+            try {
+                int b = Integer.parseInt(dot > 0 ? s.substring(4, dot) : s.substring(4));
+                return b >= 16 && b <= 31;
+            } catch(NumberFormatException ignored){ return false; }
+        }
+        return false;
     }
 
     static String userAgent(HttpServletRequest req){

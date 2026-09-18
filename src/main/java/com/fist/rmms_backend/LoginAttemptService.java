@@ -63,6 +63,21 @@ public class LoginAttemptService {
 
     private final Map<String, Attempt> attempts = new ConcurrentHashMap<>();
 
+    /**
+     * IP key, or null when the address cannot identify a distinct client.
+     *
+     *  A loopback or private address here means the proxy chain is deeper than
+     *  {@code app.security.proxy-hops} says, so EVERY visitor resolves to the same
+     *  value — and five failures by any one of them would lock the entire user
+     *  base out for fifteen minutes (which is exactly what happened in production).
+     *  A brute-force throttle is not worth taking the whole site down for, so when
+     *  the address is useless we simply do not key on it: the per-username counter
+     *  still runs, and it is the one that catches distributed guessing anyway.
+     */
+    private static String ipKey(String ip) {
+        return LoginAuditService.isInternalAddress(ip) ? null : IP_PREFIX + ip;
+    }
+
     /** null-safe, case-insensitive account key; null when there is no username to key on. */
     private static String userKey(String username) {
         if (username == null) return null;
@@ -72,7 +87,7 @@ public class LoginAttemptService {
 
     /** True while EITHER this IP or this account is inside a lockout window. */
     public boolean isBlocked(String ip, String username) {
-        return isKeyBlocked(ip == null ? null : IP_PREFIX + ip) || isKeyBlocked(userKey(username));
+        return isKeyBlocked(ipKey(ip)) || isKeyBlocked(userKey(username));
     }
 
     private boolean isKeyBlocked(String key) {
@@ -88,7 +103,8 @@ public class LoginAttemptService {
     public void loginFailed(String ip, String username) {
         long now = System.currentTimeMillis();
         if (attempts.size() > MAX_TRACKED) prune(now);
-        if (ip != null) bump(IP_PREFIX + ip, now, MAX_ATTEMPTS, LOCK_MS);
+        String ik = ipKey(ip);
+        if (ik != null) bump(ik, now, MAX_ATTEMPTS, LOCK_MS);
         String uk = userKey(username);
         if (uk != null) bump(uk, now, USER_MAX_ATTEMPTS, USER_LOCK_MS);
     }
@@ -108,14 +124,15 @@ public class LoginAttemptService {
 
     /** Clear both counters after a successful sign-in. */
     public void loginSucceeded(String ip, String username) {
-        if (ip != null) attempts.remove(IP_PREFIX + ip);
+        String ik = ipKey(ip);
+        if (ik != null) attempts.remove(ik);
         String uk = userKey(username);
         if (uk != null) attempts.remove(uk);
     }
 
     /** Seconds remaining on whichever lockout runs longest (0 if neither), for messaging. */
     public long secondsUntilUnlock(String ip, String username) {
-        return Math.max(keySecondsUntilUnlock(ip == null ? null : IP_PREFIX + ip),
+        return Math.max(keySecondsUntilUnlock(ipKey(ip)),
                         keySecondsUntilUnlock(userKey(username)));
     }
 
