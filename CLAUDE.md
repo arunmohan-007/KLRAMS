@@ -162,7 +162,13 @@ Re-publishing a dataset re-reads its band metadata, so files uploaded before a f
 
 ### Place-name search (`/api/geocode`)
 
-`GeocodeController` proxies Nominatim server-side rather than letting the browser call it. Three reasons, in order of weight: it works on office networks that reach KLRAMS but not arbitrary third-party hosts; staff IPs and typed queries are not handed out one browser at a time; and Nominatim's policy (identifying User-Agent, max 1 req/s) is honourable by one server but not by thirty uncoordinated browsers. Results are cached and outbound calls throttled. Configurable via `app.geocode.*` — point `url` at a self-hosted Nominatim, or set `enabled=false`, and the viewer's search box degrades to coordinates only, which are parsed in the browser and need no service at all.
+`GeocodeController` proxies the geocoder server-side rather than letting the browser call it. Three reasons, in order of weight: it works on office networks that reach KLRAMS but not arbitrary third-party hosts; staff IPs and typed queries are not handed out one browser at a time; and a provider's rate policy is honourable by one server but not by thirty uncoordinated browsers. Results are cached and outbound calls throttled.
+
+**Photon is queried first, Nominatim is the fallback**, because the box is a type-ahead and **Nominatim's `/search` has no prefix matching** — it matches whole words only, so "vyt" returned zero results on the way to "Vythiri" and most of the typing looked like "No matching place". Photon is the OSM-based geocoder built for prefix search ("vythir" → Vythiri, "kalpett" → Kalpetta).
+
+Two things Photon needs that Nominatim does not: it has **no `countrycodes` parameter**, so India is filtered server-side on `properties.countrycode`; and it returns the same town two or three times (place node + admin boundary + relation), so results are deduped on the rebuilt display name. Its `extent` is `[west, north, east, south]` — the viewer wants `[west, south, east, north]`, the same order Nominatim's `boundingbox` is mapped into. The address arrives in separate fields and is rebuilt into one comma string (`displayName()`) because the viewer's list splits head-as-place / tail-as-context.
+
+Configurable via `app.geocode.*` — blank `photon-url` or `url` to drop that provider, point `url` at a self-hosted Nominatim, or set `enabled=false` and the search box degrades to coordinates only, which are parsed in the browser and need no service at all.
 
 ### Dual-Carriageway Handling
 
