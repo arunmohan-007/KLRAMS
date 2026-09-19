@@ -110,6 +110,24 @@ public class LoginAuditService {
         return jdbc.queryForList(sql.toString(), args.toArray());
     }
 
+    /**
+     * Sessions that never got a recorded logout, for {@link MonitorController}'s
+     * Active Sessions table. Restricted to a recent login window rather than
+     * "logout_at IS NULL" over the whole table: a session's own logout is only
+     * ever recorded if the user hits the {@code /logout} link — a closed
+     * browser tab, an idle timeout or a server restart never runs
+     * {@link #recordLogout}, so most of the historical log ends up permanently
+     * "open". Without the window, "active sessions" would list every login
+     * back to whenever the table was created rather than sessions that could
+     * plausibly still be open.
+     */
+    public List<Map<String,Object>> openSessions(int hours, int limit){
+        return jdbc.queryForList(
+                "SELECT username, full_name, role, ip, user_agent, login_at FROM login_events " +
+                "WHERE logout_at IS NULL AND login_at > now() - (? || ' hours')::interval " +
+                "ORDER BY login_at DESC LIMIT ?", hours, Math.max(1, Math.min(limit, 500)));
+    }
+
     /* ---------------- helpers ---------------- */
 
     /** How many trusted reverse proxies sit in front of this app — see

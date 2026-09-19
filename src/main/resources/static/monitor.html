@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>KLRAMS Console · Monitoring &amp; Health — Kerala PWD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0b1220; --panel:#101b2e; --panel-2:#0e1726; --edge:#20304c; --edge-soft:#1a2740;
+    --text:#eaf0fa; --muted:#93a3bb; --muted-2:#5f6e86;
+    --green:#19b277; --blue:#3b86e6; --gold:#d3aa3e; --violet:#8a68e6; --red:#e65b5b; --amber:#ffa630;
+    --disp:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{min-height:100%}
+  body{font-family:var(--body);background:var(--void);color:var(--text);-webkit-font-smoothing:antialiased}
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:radial-gradient(90% 60% at 82% -10%, rgba(59,134,230,.14) 0, transparent 60%),
+      radial-gradient(70% 50% at 8% 108%, rgba(25,178,119,.12) 0, transparent 60%), var(--void)}
+  .shell{position:relative;z-index:2;max-width:1360px;margin:0 auto;padding:24px clamp(18px,4vw,48px) 54px}
+
+  .top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:13px}
+  .glyph{width:44px;height:44px;border-radius:12px;flex:none;background:linear-gradient(135deg,#3b86e6,#2a5fb0);display:flex;align-items:center;justify-content:center;color:#fff}
+  .glyph svg{width:23px;height:23px}
+  .bk .t{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.5px}
+  .bk .s{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted-2);margin-top:2px}
+  .top-r{display:flex;align-items:center;gap:11px}
+  .rolechip{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8fc0f7;border:1px solid rgba(59,134,230,.4);background:rgba(59,134,230,.09);border-radius:999px;padding:8px 14px}
+  .link{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);border:1px solid var(--edge);border-radius:999px;padding:8px 16px;text-decoration:none;transition:.2s}
+  .link:hover{color:var(--amber);border-color:rgba(255,166,48,.5)}
+
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(24px,3.4vw,34px);letter-spacing:-.01em;margin:26px 0 6px}
+  .sub{color:var(--muted);font-size:13.5px;max-width:760px}
+
+  .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0 4px}
+  .btn{cursor:pointer;border:0;border-radius:9px;padding:10px 16px;font-family:var(--disp);font-weight:600;font-size:13px;color:#0c1320;background:linear-gradient(180deg,#5ea1f0,#3b86e6);transition:filter .18s,transform .06s}
+  .btn:hover{filter:brightness(1.06)} .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--edge)}
+  .btn.ghost:hover{color:var(--text);border-color:var(--blue)}
+  .autobox{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .spacer{flex:1}
+  .lastupd{font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+
+  /* alerts */
+  .alerts{display:flex;flex-direction:column;gap:8px;margin:14px 0}
+  .alert{display:flex;align-items:center;gap:9px;font-size:13px;padding:10px 14px;border-radius:10px;border:1px solid}
+  .alert.warn{color:#ffd9a3;background:rgba(255,166,48,.09);border-color:rgba(255,166,48,.35)}
+  .alert.error{color:#ffb4ac;background:rgba(230,91,91,.1);border-color:rgba(230,91,91,.35)}
+  .alert .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+
+  /* overview cards */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:6px}
+  .card{background:linear-gradient(165deg,var(--panel) 0,var(--panel-2) 100%);border:1px solid var(--edge-soft);border-radius:16px;padding:16px 18px}
+  .card .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2)}
+  .card .val{font-family:var(--disp);font-weight:700;font-size:25px;margin-top:6px;display:flex;align-items:center;gap:8px}
+  .card .val small{font-family:var(--body);font-weight:500;font-size:12px;color:var(--muted)}
+  .pip{width:10px;height:10px;border-radius:50%;flex:none}
+  .pip.ok{background:var(--green);box-shadow:0 0 10px rgba(25,178,119,.6)}
+  .pip.bad{background:var(--red);box-shadow:0 0 10px rgba(230,91,91,.6)}
+  .bar{height:6px;border-radius:4px;background:var(--edge-soft);margin-top:9px;overflow:hidden}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--green))}
+  .bar.hot i{background:linear-gradient(90deg,var(--amber),var(--red))}
+
+  .section{margin-top:30px}
+  .section h2{font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:.3px;margin-bottom:14px;display:flex;align-items:center;gap:9px}
+  .section h2 .dot{width:7px;height:7px;border-radius:50%;background:var(--blue)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:900px){.grid2{grid-template-columns:1fr}}
+
+  .panel{background:linear-gradient(165deg,var(--panel) 0,var(--panel-2) 100%);border:1px solid var(--edge-soft);border-radius:16px;padding:18px 18px 14px}
+  .panel .phead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .panel .phead h3{font-family:var(--disp);font-size:13.5px;font-weight:600}
+  .panel .phead .sub2{font-family:var(--mono);font-size:10px;color:var(--muted-2)}
+  .chart{width:100%;height:180px;display:block}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:11px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{width:9px;height:9px;border-radius:50%;flex:none}
+
+  /* tables */
+  .tbl-wrap{overflow-x:auto;margin-top:4px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px}
+  th{text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--edge);white-space:nowrap}
+  td{padding:9px 10px;border-bottom:1px solid var(--edge-soft);vertical-align:middle;white-space:nowrap}
+  tr:hover td{background:rgba(255,255,255,.015)}
+  .mono{font-family:var(--mono);font-size:11.5px;color:#cfe0f5}
+  .pill{display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid}
+  .pill.ok{color:#9ee8c6;border-color:rgba(25,178,119,.45);background:rgba(25,178,119,.1)}
+  .pill.bad{color:#ffb4ac;border-color:rgba(230,91,91,.45);background:rgba(230,91,91,.1)}
+  .empty{color:var(--muted-2);font-size:12.5px;text-align:center;padding:20px}
+</style>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a0f1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KLRAMS">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="stylesheet" href="/css/mobile-pages.css?v=5">
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="shell">
+    <div class="top">
+      <div class="brand">
+        <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 17l5-6 4 4 5-8 4 5"/><path d="M3 21h18"/></svg></span>
+        <span class="bk"><div class="t">Monitoring &amp; Health</div><div class="s">KLRAMS Console · Kerala PWD</div></span>
+      </div>
+      <div class="top-r">
+        <span class="rolechip" id="rolechip">—</span>
+        <a class="link" href="/home.html">&lsaquo; Home</a>
+        <a class="link" href="/logout">Sign out</a>
+      </div>
+    </div>
+
+    <h1>System monitoring dashboard</h1>
+    <p class="sub">Live health of KLRAMS — GIS layer load performance, backend API response times, PostgreSQL/PostGIS status, server resource usage and active sessions. Visible to Super Admins only.</p>
+
+    <div class="toolbar">
+      <button class="btn" id="refresh" type="button">Refresh now</button>
+      <label class="autobox"><input type="checkbox" id="autoRefresh" checked> Auto-refresh (7s)</label>
+      <div class="spacer"></div>
+      <span class="lastupd" id="lastUpd">—</span>
+    </div>
+
+    <div class="alerts" id="alerts"></div>
+
+    <div class="cards" id="cards">
+      <div class="card"><div class="lbl">System status</div><div class="val" id="cSystem"><span class="pip ok"></span>—</div></div>
+      <div class="card"><div class="lbl">Database</div><div class="val" id="cDb"><span class="pip ok"></span>—</div></div>
+      <div class="card"><div class="lbl">Active users</div><div class="val" id="cUsers">—<small>last 5 min</small></div></div>
+      <div class="card"><div class="lbl">Avg API response</div><div class="val" id="cApi">—</div></div>
+      <div class="card"><div class="lbl">CPU</div><div class="val" id="cCpu">—</div><div class="bar" id="cCpuBar"><i style="width:0%"></i></div></div>
+      <div class="card"><div class="lbl">Memory</div><div class="val" id="cMem">—</div><div class="bar" id="cMemBar"><i style="width:0%"></i></div></div>
+      <div class="card"><div class="lbl">Disk</div><div class="val" id="cDisk">—</div><div class="bar" id="cDiskBar"><i style="width:0%"></i></div></div>
+    </div>
+
+    <div class="section">
+      <h2><span class="dot"></span>Performance</h2>
+      <div class="grid2">
+        <div class="panel">
+          <div class="phead"><h3>API response time (per minute)</h3><span class="sub2">last 60 min</span></div>
+          <svg class="chart" id="apiChart" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="panel">
+          <div class="phead"><h3>Layer load time (top layers)</h3><span class="sub2">10-min buckets, last 6h</span></div>
+          <svg class="chart" id="layerChart" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+          <div class="legend" id="layerLegend"></div>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:16px">
+        <div class="panel">
+          <div class="phead"><h3>CPU / Memory (live)</h3><span class="sub2">last 3h</span></div>
+          <svg class="chart" id="sysChart" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+          <div class="legend"><span><i style="background:#3b86e6"></i>CPU</span><span><i style="background:#19b277"></i>Memory</span></div>
+        </div>
+        <div class="panel">
+          <div class="phead"><h3>DB connections</h3><span class="sub2">last 3h</span></div>
+          <svg class="chart" id="dbChart" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+          <div class="legend"><span><i style="background:#d3aa3e"></i>Active connections</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span class="dot"></span>Slow &amp; failing APIs</h2>
+      <div class="panel">
+        <div class="phead"><h3>Top endpoints by average response time</h3><button class="btn ghost" id="exportApis" type="button">Export CSV</button></div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Endpoint</th><th>Method</th><th>Calls</th><th>Avg (ms)</th><th>Max (ms)</th><th>Errors</th></tr></thead>
+          <tbody id="apiRows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span class="dot"></span>GIS layer performance</h2>
+      <div class="grid2">
+        <div class="panel">
+          <div class="phead"><h3>Average load time per layer</h3><button class="btn ghost" id="exportLayers" type="button">Export CSV</button></div>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Layer</th><th>Loads</th><th>Avg (ms)</th><th>Max (ms)</th><th>Failures</th></tr></thead>
+            <tbody id="layerRows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+        <div class="panel">
+          <div class="phead"><h3>Failed layer loads</h3><span class="sub2">last 24h</span></div>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Layer</th><th>Duration (ms)</th><th>User</th><th>When</th></tr></thead>
+            <tbody id="failedRows"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span class="dot"></span>Active sessions</h2>
+      <div class="panel">
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>User</th><th>Role</th><th>Login time</th><th>IP address</th><th>Browser</th></tr></thead>
+          <tbody id="sessionRows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/role-gate.js" defer></script>
+  <script src="/js/monitor-page.js?v=1"></script>
+</body>
+</html>

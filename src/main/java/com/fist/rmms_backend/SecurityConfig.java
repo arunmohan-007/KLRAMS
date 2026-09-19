@@ -177,8 +177,13 @@ public class SecurityConfig {
                 .requestMatchers("/admin.html").hasRole("SUPER_ADMIN")          // Site Control page
                 .requestMatchers("/users.html").hasRole("SUPER_ADMIN")          // User Management page
                 .requestMatchers("/login-report.html").hasRole("SUPER_ADMIN")   // Login activity report page
+                .requestMatchers("/monitor.html").hasRole("SUPER_ADMIN")        // Monitoring & Health dashboard page
                 .requestMatchers("/api/users/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/reports/**").hasRole("SUPER_ADMIN")
+                // Monitoring dashboard and its layer-load telemetry are SUPER_ADMIN only end
+                // to end — the viewer only sends telemetry when it detects a SUPER_ADMIN
+                // session (js/44-monitor-telemetry.js), so USER/ADMIN accounts never call this.
+                .requestMatchers("/api/monitor/**").hasRole("SUPER_ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/site/**").hasRole("SUPER_ADMIN")  // site settings writes
                 // permanently deletes survey points — stricter than the general ADMIN delete rule below
                 .requestMatchers(HttpMethod.DELETE, "/api/assets/*/orphans").hasRole("SUPER_ADMIN")
