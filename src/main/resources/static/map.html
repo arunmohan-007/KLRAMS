@@ -21,7 +21,7 @@
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
   <link rel="stylesheet" href="css/app.css?v=148">
-  <link rel="stylesheet" href="css/klrams-dark.css?v=32">
+  <link rel="stylesheet" href="css/klrams-dark.css?v=33">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
     .cond-metric-row{display:flex;align-items:center;gap:8px;margin:0 0 12px 24px;padding:0}
@@ -98,6 +98,7 @@
     <button class="railbtn modbtn" role="menuitem" data-pane="dashboard" data-act="pickDashboard" title="Dashboards — network, pavement, asset &amp; survey figures"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.2"/><rect x="13" y="3" width="8" height="5" rx="1.2"/><rect x="13" y="10" width="8" height="11" rx="1.2"/><rect x="3" y="13" width="8" height="8" rx="1.2"/></svg></span><span class="rl">Dashboard<small>Network, pavement, asset &amp; survey figures</small></span></button>
     <button class="railbtn modbtn" role="menuitem" data-pane="composer" data-act="pickComposer" title="Map Composer — build a print-ready map sheet from the layers and filter on screen"><span class="ri"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.6"/><path d="M3 9h18"/><path d="M15 9v11"/><path d="M6.5 13.5l2.5 3 2-2.2"/></svg></span><span class="rl">Map Composer<small>Print-ready map sheet from the current view</small></span></button>
     <button class="railbtn modbtn" role="menuitem" data-pane="reports" data-act="pickReportHub" title="Report Hub — filterable survey reports, Excel &amp; PDF"><span class="ri"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span><span class="rl">Report Hub<small>Filterable survey reports, Excel &amp; PDF</small></span></button>
+    <button class="railbtn modbtn" role="menuitem" data-pane="sections" data-act="pickSectionEditor" title="Section Editor — split or merge road sections and move their survey data"><span class="ri"><svg viewBox="0 0 24 24"><path d="M3 12h7"/><path d="M14 12h7"/><path d="M12 4v16"/><circle cx="12" cy="12" r="1.8"/></svg></span><span class="rl">Section Editor<small>Split or merge sections, with their survey data</small></span></button>
   </div>
   <div class="rail-bottom">
     <a class="railbtn" href="/" title="Data Console"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H4z"/><path d="M8 20h8M12 16v4"/></svg></span><span class="rl">Console</span></a>
@@ -288,7 +289,39 @@
     <div class="pane-title">Filters</div>
     <div class="note" style="margin-top:-2px">Filter each data layer below. A layer must be switched on to filter it.</div>
 
-    <details class="flt-sec" id="fsecNet" open>
+    <details class="flt-sec" id="fsecSelRoad" open>
+      <summary>Select by Road</summary>
+      <div class="flt-lock">The <b>Road network</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showRoads"]'>Turn on layer</button></div>
+      <div class="flt-body">
+        <div class="eyebrow">Pick segments straight off the map</div>
+        <div class="note" style="margin:0 0 11px">Turn picking on, then click road segments on the map — anywhere near the line, not pixel-perfect — to add or remove them. Apply turns the pick list into a filter: every road-linked layer is scoped down to exactly those roads, the same way any other filter here scopes the dataset.</div>
+        <button type="button" class="btn ghost full" id="srToggleBtn" data-act="srTogglePick">Start picking on map</button>
+        <div class="sr-summary" id="srSummary" style="display:none">
+          <div class="sr-stat"><b id="srCount">0</b><span>Segment(s)</span></div>
+          <div class="sr-stat"><b id="srLen">0.0 km</b><span>Total length</span></div>
+        </div>
+        <div class="sr-chips" id="srChips"><div class="sr-empty">No road segments picked yet — click roads on the map to add them here.</div></div>
+        <div class="row2"><button class="btn ghost" data-act="applySelectRoadFilter">Apply Filter</button><button class="btn ghost" data-act="clearSelectRoadFilter">Clear</button></div>
+        <div class="statusline" id="srStatus"></div>
+
+        <div class="eyebrow" style="margin-top:14px">Saved selections</div>
+        <div class="row2">
+          <select id="srSavedSel" style="flex:1" data-change="onSrSavedPick"><option value="">— No saved selections —</option></select>
+          <button class="btn ghost" data-act="loadSrSaved" title="Load the selected road list">Load</button>
+          <button class="btn ghost" id="srSavedDel" data-act="deleteSrSaved" title="Delete the selected saved selection" disabled>&times;</button>
+        </div>
+        <div class="row2">
+          <input type="text" id="srSaveName" placeholder="Name this selection…" maxlength="80" style="flex:1" data-enter="saveSelectRoadFilter">
+          <button class="btn ghost" data-act="saveSelectRoadFilter" title="Save the roads picked above under this name">Save</button>
+        </div>
+        <label class="row2" id="srShareRow" style="gap:6px;cursor:pointer;display:none">
+          <input type="checkbox" id="srSaveShared"><span class="note" style="margin:0">Share with all users</span>
+        </label>
+        <div class="statusline" id="srSavedInfo"></div>
+      </div>
+    </details>
+
+    <details class="flt-sec" id="fsecNet">
       <summary>Road Network</summary>
       <div class="flt-lock">The <b>Road network</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showRoads"]'>Turn on layer</button></div>
       <div class="flt-body">
@@ -626,6 +659,25 @@
   </div>
 </div>
 
+<div id="sectionEditor" style="display:none">
+  <div class="dash-inner">
+    <div class="dash-head">
+      <div>
+        <div class="dash-eyebrow">Section Editor</div>
+        <h1 class="dash-h1">Split &amp; Merge Road Sections</h1>
+        <div class="dash-h1-sub">Divide a section in two, or join adjoining sections into one &mdash; moving every condition row, asset, traffic station and video clip with it. Nothing is written until you have checked what would happen. The map is hidden while you work here.</div>
+      </div>
+      <button class="dash-close" data-act="closeSectionEditor" title="Back to map">&times;</button>
+    </div>
+    <div class="dash-tabs">
+      <button class="dash-tab on" id="seTab_split" data-act="seScreenTab" data-args='["split"]'>Split</button>
+      <button class="dash-tab" id="seTab_merge" data-act="seScreenTab" data-args='["merge"]'>Merge</button>
+      <button class="dash-tab" id="seTab_history" data-act="seScreenTab" data-args='["history"]'>History</button>
+    </div>
+    <div id="seBody"><div class="dash-loading">Loading&hellip;</div></div>
+  </div>
+</div>
+
     <div id="map"></div>
     <div id="search">
       <input id="searchInput" type="text" autocomplete="off" placeholder="Search road name, number, or section label…">
@@ -689,6 +741,33 @@
       <div id="riBody"></div>
     </aside>
     <div id="mapLegend"><div class="ml-h"><span class="ml-h-label">Road class</span><button type="button" class="ml-min" title="Minimize">&minus;</button></div><div class="ml-body"></div></div>
+    <div id="selRoadHint" role="status" aria-live="polite">
+      <span class="srh-dot"></span>
+      <span>Select by Road &mdash; click a road to add or remove it &middot; <b id="srhCount">0</b> selected</span>
+      <button type="button" data-act="srTogglePick">Done</button>
+    </div>
+    <style id="selroad-css">
+      #selRoadHint{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:7;display:none;align-items:center;gap:12px;background:linear-gradient(168deg,rgba(13,24,40,.97),rgba(9,17,30,.97));border:1px solid rgba(120,160,215,.28);border-radius:999px;box-shadow:0 18px 48px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.06);padding:9px 10px 9px 17px;color:#cfe0f5;font:600 12.5px Inter,system-ui,sans-serif;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);animation:nscIn .22s ease}
+      #selRoadHint.show{display:flex}
+      #selRoadHint .srh-dot{width:8px;height:8px;border-radius:50%;background:#ffb100;box-shadow:0 0 0 3px rgba(255,177,0,.24);animation:nscPulse 1.9s infinite;flex:0 0 auto}
+      #selRoadHint b{color:#ffd27a;font-variant-numeric:tabular-nums;font-weight:800}
+      #selRoadHint button{flex:0 0 auto;border:1px solid rgba(120,160,215,.3);background:rgba(255,255,255,.08);color:#fff;font:700 11.5px Inter,system-ui,sans-serif;padding:6px 14px;border-radius:999px;cursor:pointer}
+      #selRoadHint button:hover{background:rgba(255,255,255,.2)}
+      @media (max-width:820px){#selRoadHint{left:14px;right:14px;transform:none;top:60px;border-radius:14px}}
+      #map.mselroad .maplibregl-canvas,#map.mselroad .maplibregl-canvas-container.maplibregl-interactive{cursor:crosshair!important}
+      #fsecSelRoad .btn.ghost.on{background:#0e2038;border-color:#0e2038;color:#fff}
+      #fsecSelRoad .btn.ghost.on:hover{background:#16304f;border-color:#16304f;color:#fff}
+      .sr-summary{display:flex;gap:9px;margin:11px 0}
+      .sr-stat{flex:1;min-width:0;background:#f5f8fc;border:1px solid var(--hair,#e3e8ef);border-radius:10px;padding:8px 6px;text-align:center}
+      .sr-stat b{display:block;font:700 16px var(--mono,ui-monospace),monospace;color:#0e2038;font-variant-numeric:tabular-nums}
+      .sr-stat span{display:block;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#64718a);margin-top:2px}
+      .sr-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 4px;max-height:160px;overflow-y:auto}
+      .sr-chip{display:inline-flex;align-items:center;gap:6px;background:#fff4e0;border:1px solid #f0c98a;border-radius:999px;padding:4px 5px 4px 12px;font-size:11.5px;font-weight:600;color:#8a5a12;max-width:100%}
+      .sr-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px}
+      .sr-chip button{border:0;background:rgba(138,90,18,.14);color:#8a5a12;width:17px;height:17px;border-radius:50%;font-size:12px;line-height:1;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center;padding:0}
+      .sr-chip button:hover{background:rgba(138,90,18,.28)}
+      .sr-empty{font-size:12px;color:var(--muted,#64718a);padding:2px 0}
+    </style>
     <div id="netScopeCard" aria-live="polite">
       <div class="nsc-head">
         <span class="nsc-dot"></span>
@@ -893,9 +972,35 @@
 #dock .vh-clipend.show{display:flex}
 #dock .vh-clipend button{background:#1d9e75;color:#fff;border:none;border-radius:9px;padding:10px 22px;font:700 14px Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.35)}
 #dock .vh-clipend button:hover{background:#22b483}
+/* The hand-over into the next clip: which stretch is coming, how long until it
+   starts, and the two ways out of it. "Stay here" is the quieter button because
+   the countdown is the normal path — a road's clips are meant to play through. */
+#dock .vh-clipend .ce-done{font:700 10.5px/1.3 Inter,system-ui,sans-serif;letter-spacing:.8px;text-transform:uppercase;color:#9fb2cc}
+#dock .vh-clipend .ce-next{font:600 15px/1.4 Inter,system-ui,sans-serif;color:#fff}
+#dock .vh-clipend .ce-next b{font-family:var(--mono),ui-monospace,monospace;font-weight:700;color:#7ee6b0}
+#dock .vh-clipend .ce-in{font-size:13px;font-weight:500;color:#b9c9df}
+#dock .vh-clipend .ce-count{font-family:var(--mono),ui-monospace,monospace;font-weight:700;color:#7ee6b0;font-variant-numeric:tabular-nums}
+#dock .vh-clipend .ce-skip{font:600 12px/1.3 Inter,system-ui,sans-serif;color:#ffb37a}
+#dock .vh-clipend .ce-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+#dock .vh-clipend button.ghost{background:transparent;border:1px solid rgba(255,255,255,.28);color:#dbe6f5;box-shadow:none}
+#dock .vh-clipend button.ghost:hover{background:rgba(255,255,255,.1)}
+/* Fullscreen: the frame is now the whole screen, so the overlay type that reads
+   correctly in a 392 px dock is far too small. The card is also lifted clear of
+   the browser's own video controls, which sit at the bottom edge in fullscreen. */
+#dock .vid:fullscreen .vh-clipend,#dock .vid:-webkit-full-screen .vh-clipend{gap:18px;padding:40px}
+#dock .vid:fullscreen .vh-clipend .ce-done,#dock .vid:-webkit-full-screen .vh-clipend .ce-done{font-size:14px;letter-spacing:1.1px}
+#dock .vid:fullscreen .vh-clipend .ce-next,#dock .vid:-webkit-full-screen .vh-clipend .ce-next{font-size:27px}
+#dock .vid:fullscreen .vh-clipend .ce-in,#dock .vid:-webkit-full-screen .vh-clipend .ce-in{font-size:19px}
+#dock .vid:fullscreen .vh-clipend .ce-skip,#dock .vid:-webkit-full-screen .vh-clipend .ce-skip{font-size:16px}
+#dock .vid:fullscreen .vh-clipend button,#dock .vid:-webkit-full-screen .vh-clipend button{font-size:18px;padding:14px 32px;border-radius:12px}
+#dock .vid:fullscreen .vh-gapbanner,#dock .vid:-webkit-full-screen .vh-gapbanner{top:28px;font-size:18px;padding:12px 26px;border-radius:14px}
 .clip-switch button{background:transparent;border:none;color:#9fb2cc;font:700 13px Inter,system-ui,sans-serif;cursor:pointer;padding:2px 6px}
 .clip-switch button:disabled{opacity:.35;cursor:default}
 .clip-switch button:not(:disabled):hover{color:#fff}
+/* "then 7,860–15,000 m" — the next stretch, named before you reach the end of
+   this one, so the dock says the road continues rather than only implying it. */
+.clip-switch .clip-next{margin-left:8px;padding-left:9px;border-left:1px solid #2c466e;font:600 11px Inter,system-ui,sans-serif;color:#7ee6b0}
+.clip-switch .clip-next.last{color:#7f93b3}
 .vidhud{display:none;position:fixed;inset:0;z-index:8;pointer-events:none;font-family:Inter,system-ui,sans-serif;color:#eaf2ff}
 .vidhud *{box-sizing:border-box}
 .vid:fullscreen .vidhud,.vid:-webkit-full-screen .vidhud{display:block}
@@ -918,6 +1023,10 @@
 .vidhud .vh-chrow{display:flex;gap:8px;margin-top:12px}
 .vidhud .vh-chip{font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:6px 12px;border-radius:9px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);font-family:ui-monospace,Menlo,monospace;color:#dceaff}
 .vidhud .vh-chip.dir{background:rgba(52,211,153,.16);color:#9af0c9;border-color:rgba(52,211,153,.42)}
+/* Which clip is playing and what follows it. The dock's own clip row lives in
+   the side panel, which fullscreen hides — without this the viewer loses both
+   facts exactly when the footage is filling the screen. */
+.vidhud .vh-chip.clip{background:rgba(126,230,176,.12);color:#b6f0d2;border-color:rgba(126,230,176,.34)}
 .vidhud .vh-attrs{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
 .vidhud .vh-attr{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#e7f0ff;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:5px 10px}
 .vidhud .vh-attr i{font-style:normal;font-size:8.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#7fa8cf}
@@ -957,7 +1066,7 @@
 </style>
     <div id="dock">
       <span class="close" data-act="closeDock">&times;</span>
-      <div class="vid"><video id="video" controls playsinline webkit-playsinline preload="metadata"></video><div class="vidloading" id="vidloading" style="display:none"><div class="vl-spin"></div><div class="vl-txt">Loading footage&hellip;</div></div><div class="vidempty" id="vidempty" style="display:none"></div><div class="vh-gapbanner" id="hudGapBanner"><span class="gap-ic">&#9888;</span><span id="hudGapText">No NSV survey data for this chainage</span></div><div class="vh-clipend" id="hudClipEnd"></div><div class="vidhud" id="vidhud"><div class="vh-left"><div class="vh-id"><div class="vh-route" id="hudRoute">&mdash;</div><div class="vh-meta"><span class="vh-cls" id="hudClass">&mdash;</span><span class="vh-sec" id="hudSec">&mdash;</span></div><div class="vh-chrow"><span class="vh-chip" id="hudCh">CH &ndash; m</span><span class="vh-chip dir" id="hudDir">Forward</span></div><div class="vh-attrs" id="hudAttrs"></div></div><div class="vh-iri" id="hudIri">AVG IRI &ndash;</div><div class="vh-pci" id="hudPci"></div></div><div class="vh-right"><svg class="vidhud-trk" id="hudTrack" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg><div class="vh-cond" id="hudCond"></div><div class="vh-chain" id="hudChain"></div></div><div class="vh-roadname" id="hudRoad">&mdash;</div></div></div>
+      <div class="vid"><video id="video" controls playsinline webkit-playsinline preload="metadata"></video><div class="vidloading" id="vidloading" style="display:none"><div class="vl-spin"></div><div class="vl-txt">Loading footage&hellip;</div></div><div class="vidempty" id="vidempty" style="display:none"></div><div class="vh-gapbanner" id="hudGapBanner"><span class="gap-ic">&#9888;</span><span id="hudGapText">No NSV survey data for this chainage</span></div><div class="vh-clipend" id="hudClipEnd"></div><div class="vidhud" id="vidhud"><div class="vh-left"><div class="vh-id"><div class="vh-route" id="hudRoute">&mdash;</div><div class="vh-meta"><span class="vh-cls" id="hudClass">&mdash;</span><span class="vh-sec" id="hudSec">&mdash;</span></div><div class="vh-chrow"><span class="vh-chip" id="hudCh">CH &ndash; m</span><span class="vh-chip dir" id="hudDir">Forward</span><span class="vh-chip clip" id="hudClip" style="display:none"></span></div><div class="vh-attrs" id="hudAttrs"></div></div><div class="vh-iri" id="hudIri">AVG IRI &ndash;</div><div class="vh-pci" id="hudPci"></div></div><div class="vh-right"><svg class="vidhud-trk" id="hudTrack" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg><div class="vh-cond" id="hudCond"></div><div class="vh-chain" id="hudChain"></div></div><div class="vh-roadname" id="hudRoad">&mdash;</div></div></div>
       <div class="instr">
         <div class="road-eyebrow">Now playing</div>
         <div class="road-name" id="dRoadName">—</div>
@@ -994,23 +1103,23 @@
   <!-- wraps map.on before any module registers a popup — must stay ahead of them all -->
   <script src="js/02e-active-layer.js?v=7"></script>
   <script src="js/02c-segment-data.js?v=4"></script>
-  <script src="js/02d-road-index.js?v=4"></script>
+  <script src="js/02d-road-index.js?v=5"></script>
   <script src="js/03-condition-style-filter.js?v=187"></script>
   <script src="js/04-geo-helpers-boundaries.js?v=139"></script>
-  <script src="js/05-road-network.js?v=193"></script>
+  <script src="js/05-road-network.js?v=194"></script>
   <script src="js/06-assets.js?v=189"></script>
-  <script src="js/07-data-loaders.js?v=188"></script>
+  <script src="js/07-data-loaders.js?v=190"></script>
   <script src="js/08-condition-popup-nsv.js?v=175"></script>
   <script src="js/09-dashboard-core.js?v=127"></script>
   <script src="js/10-pci-report.js?v=127"></script>
   <script src="js/11-dashboard-charts.js?v=127"></script>
-  <script src="js/12-nsv-video.js?v=179"></script>
+  <script src="js/12-nsv-video.js?v=183"></script>
   <script src="js/13-search.js?v=125"></script>
   <script src="js/14-pci-engine.js?v=177"></script>
   <script src="js/15-main.js?v=130"></script>
   <script src="js/16-traffic.js?v=177"></script>
   <script src="js/17-measure.js?v=121"></script>
-  <script src="js/18-filters.js?v=124"></script>
+  <script src="js/18-filters.js?v=125"></script>
   <script src="js/19-asset-register.js?v=123"></script>
   <script src="js/20-asset-dashboard.js?v=119"></script>
   <script src="js/21-report-hub.js?v=124"></script>
@@ -1036,6 +1145,8 @@
   <script src="js/38b-composer-ui.js?v=11"></script>
   <!-- Groups Dashboard / Composer / Reports into one rail button + flyout. -->
   <script src="js/40-module-menu.js?v=3"></script>
+  <script src="js/41-section-editor.js?v=14"></script>
+  <script src="js/42-select-by-road.js?v=1"></script>
   <script src="js/launcher.js?v=165"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page
@@ -1251,7 +1362,7 @@ html body #fpanes.hidden{display:none!important}
      screens all reserve 74px on the left for the desktop icon rail.
      On phones the rail floats bottom-right, so reclaim that space and trim
      the generous desktop padding and type sizes. */
-  #dashboard,#pciScreen,#condScreen,#regScreen,#nsvScreen,#reportHub{inset:0!important}
+  #dashboard,#pciScreen,#condScreen,#regScreen,#nsvScreen,#reportHub,#sectionEditor{inset:0!important}
   /* clear the floating icon rail (bottom-right) with generous bottom padding */
   .dash-inner{max-width:100%!important;padding:16px 14px calc(92px + env(safe-area-inset-bottom))!important}
   .dash-head{gap:12px!important;margin-bottom:16px!important}

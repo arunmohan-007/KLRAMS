@@ -56,7 +56,7 @@ function wireRoadHandlers(){
   /* The "something else is on top" guard only applies in Auto mode: when the
      user has explicitly made the road network the active layer, an asset or
      PCI line lying over it must not swallow the click (js/02e-active-layer.js). */
-  map.on('click','roadnet-hit',e=>{const _auto=(typeof KLActive==='undefined')||KLActive.isAuto();
+  map.on('click','roadnet-hit',e=>{if(typeof srPicking!=='undefined'&&srPicking)return;const _auto=(typeof KLActive==='undefined')||KLActive.isAuto();
     /* Belt-and-suspenders: KLActive's map.on wrapper already gates this handler
        to the 'roadnet' group, but picking "Road condition" specifically must
        show ONLY condition data, not the full multi-tab card — so check again
@@ -308,7 +308,7 @@ function loadSegments(){if(_segsInflight)return _segsInflight;const _needRoads=!
 function loadCatalog(_try){
   return fetch('/api/video/catalog',{cache:'no-store'})
     .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
-    .then(function(c){(c||[]).forEach(function(e){if(!e.road)return;(CATALOG[e.road]=CATALOG[e.road]||[]).push({file:e.file,direction:e.direction,fromCh:(e.from_ch!=null?+e.from_ch:null),toCh:(e.to_ch!=null?+e.to_ch:null)});});Object.keys(CATALOG).forEach(function(r){CATALOG[r].sort(function(a,b){return (a.fromCh==null?0:a.fromCh)-(b.fromCh==null?0:b.fromCh);});});})
+    .then(function(c){(c||[]).forEach(function(e){if(!e.road)return;(CATALOG[e.road]=CATALOG[e.road]||[]).push({file:e.file,direction:e.direction,fromCh:(e.from_ch!=null?+e.from_ch:null),toCh:(e.to_ch!=null?+e.to_ch:null),fileFromCh:(e.file_from_ch!=null?+e.file_from_ch:null),fileToCh:(e.file_to_ch!=null?+e.file_to_ch:null)});});Object.keys(CATALOG).forEach(function(r){CATALOG[r].sort(function(a,b){return (a.fromCh==null?0:a.fromCh)-(b.fromCh==null?0:b.fromCh);});});})
     .catch(function(err){
       if((_try||0)<2)return new Promise(function(res){setTimeout(res,800);}).then(function(){return loadCatalog((_try||0)+1);});
       console.warn('Video catalog failed to load — "Play footage" buttons will be hidden this session:',err);

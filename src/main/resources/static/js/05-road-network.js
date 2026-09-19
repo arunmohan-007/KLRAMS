@@ -526,7 +526,20 @@ function applyNetFilter(){
      list must be checked for .length: an empty array is truthy in JS, and
      `new Set([])` would scope every layer (including roadnet-hit) to nothing
      — summary tiles all read 0 and road clicks stop firing. */
-  window.NET_SCOPE=(rows.length&&!unavailable)?(list&&list.length?new Set(list.map(f=>String((f.properties||{}).road))):new Set()):null;
+  const attrScope=(rows.length&&!unavailable)?(list&&list.length?new Set(list.map(f=>String((f.properties||{}).road))):new Set()):null;
+  /* Select by Road (42-select-by-road.js) is a second, independent source of
+     scope: picking roads on the map and clicking Apply Filter sets
+     window.SELECT_ROAD_SCOPE and calls this same function, rather than
+     inventing its own copy of everything applyNetScope/fitFeaturesBounds/
+     ensureScopeDatasets already do. With BOTH active the effective scope is
+     their intersection — "roads I clicked" AND "roads matching the attribute
+     filter" — so switching one off falls back to whichever the other alone
+     would have scoped to. */
+  const selScope=(typeof window.SELECT_ROAD_SCOPE!=='undefined')?window.SELECT_ROAD_SCOPE:null;
+  let scope;
+  if(attrScope&&selScope) scope=new Set([...attrScope].filter(r=>selScope.has(r)));
+  else scope=attrScope||selScope||null;
+  window.NET_SCOPE=scope;
   if(typeof applyNetScope==='function')applyNetScope();
   /* The Chainage Locator picks its road from this same scope, so it has to be
      told when the scope moves under it. */

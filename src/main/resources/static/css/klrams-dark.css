@@ -510,6 +510,17 @@ select option:disabled{color:var(--k-faint)!important}
 .segmented button.on{background:var(--k-accent)!important;color:#06231a!important}
 .statusline{color:var(--k-muted)!important}
 
+/* ---------- Select by Road (42-select-by-road.js) ---------- */
+#fsecSelRoad .btn.ghost.on{background:var(--k-accent)!important;border-color:var(--k-accent)!important;color:#06231a!important}
+#fsecSelRoad .btn.ghost.on:hover{background:var(--k-accent-d)!important;border-color:var(--k-accent-d)!important;color:#06231a!important}
+.sr-stat{background:rgba(255,255,255,.03)!important;border:1px solid var(--k-line)!important}
+.sr-stat b{color:#fff!important}
+.sr-stat span{color:var(--k-muted)!important}
+.sr-chip{background:rgba(255,177,0,.12)!important;border:1px solid rgba(255,177,0,.32)!important;color:#ffcf7a!important}
+.sr-chip button{background:rgba(255,177,0,.16)!important;color:#ffcf7a!important}
+.sr-chip button:hover{background:rgba(255,177,0,.3)!important}
+.sr-empty{color:var(--k-muted)!important}
+
 /* ---------- floating road search ---------- */
 #search input{
   background:var(--k-panel)!important;
@@ -745,7 +756,7 @@ select option:disabled{color:var(--k-faint)!important}
 .nsc-own .ol{color:var(--k-faint)!important}
 
 /* ---------- full-screen overlays (dashboard / PCI / register / NSV / hub) ---------- */
-#dashboard,#pciScreen,#condScreen,#regScreen,#nsvScreen,#reportHub{
+#dashboard,#pciScreen,#condScreen,#regScreen,#nsvScreen,#reportHub,#sectionEditor{
   /* NB: must be radial-gradient — the "<size> at <position>" form is invalid for
      linear-gradient, which made the browser drop this rule and fall back to the
      light base background (white rows / unreadable dark-theme text). */
@@ -753,7 +764,8 @@ select option:disabled{color:var(--k-faint)!important}
 }
 #dashboard::-webkit-scrollbar-thumb,#pciScreen::-webkit-scrollbar-thumb,
 #condScreen::-webkit-scrollbar-thumb,#regScreen::-webkit-scrollbar-thumb,
-#nsvScreen::-webkit-scrollbar-thumb,#reportHub::-webkit-scrollbar-thumb{background:var(--k-line2)!important;border:3px solid transparent!important;background-clip:padding-box!important}
+#nsvScreen::-webkit-scrollbar-thumb,#reportHub::-webkit-scrollbar-thumb,
+#sectionEditor::-webkit-scrollbar-thumb{background:var(--k-line2)!important;border:3px solid transparent!important;background-clip:padding-box!important}
 
 .dash-eyebrow{color:var(--k-accent)!important}
 .dash-h1{color:#fff!important}
@@ -1079,3 +1091,69 @@ select option:disabled{color:var(--k-faint)!important}
 .maplibregl-popup:has(.klpop) .maplibregl-popup-tip{border-top-color:rgba(15,22,32,.97)!important;border-bottom-color:rgba(15,22,32,.97)!important}
 .maplibregl-popup-content:has(.klpop) .maplibregl-popup-close-button{color:var(--k-muted)!important}
 .maplibregl-popup-content:has(.klpop) .maplibregl-popup-close-button:hover{background:rgba(255,255,255,.08)!important;color:#fff!important}
+
+
+/* ---------------------------------------------------------------------------
+   Section Editor (js/41-section-editor.js)
+
+   The screen shell is already covered by the module rules above; these are the
+   parts app.css styles on its own. Every declaration needs !important for the
+   same reason the rest of this file does — app.css loads after it.
+   --------------------------------------------------------------------------- */
+.se-form,.se-result{background:var(--k-panel)!important;border-color:var(--k-line)!important}
+.se-f{color:var(--k-muted)!important}
+.se-f input,.se-card input{background:var(--k-elev)!important;border-color:var(--k-line2)!important;color:var(--k-text)!important}
+.se-f input:focus{border-color:var(--k-accent)!important;box-shadow:0 0 0 3px rgba(45,212,160,.18)!important}
+.se-card input[readonly]{background:var(--k-bg)!important;color:var(--k-muted)!important}
+.se-u,.se-note,.se-sub,.se-hint{color:var(--k-muted)!important}
+.se-hint.se-ok{color:var(--k-accent)!important}
+.se-hint.se-bad{color:#e8907a!important}
+
+.se-card{background:var(--k-elev)!important;border-color:var(--k-line)!important}
+.se-card-h{color:var(--k-text)!important}
+.se-card label{color:var(--k-muted)!important}
+
+.se-primary{background:var(--k-accent)!important;color:#06231a!important}
+.se-primary:hover{filter:brightness(1.08)!important}
+.se-primary:disabled{background:var(--k-line2)!important;color:var(--k-muted)!important}
+/* Still the one control that writes, and still not the accent colour. */
+.se-danger{background:#c0442c!important;color:#fff!important}
+.se-danger:hover{background:#a63a25!important}
+.se-ghost{background:var(--k-elev)!important;border-color:var(--k-line2)!important;color:var(--k-text)!important}
+.se-ghost:hover{border-color:var(--k-accent)!important;color:var(--k-accent)!important}
+
+.se-chip{background:var(--k-elev)!important;border-color:var(--k-line2)!important;color:var(--k-text)!important}
+.se-chip button{background:var(--k-line2)!important;color:var(--k-text)!important}
+
+.se-apply{border-top-color:var(--k-line)!important}
+.se-table th{color:var(--k-muted)!important;border-bottom-color:var(--k-line2)!important}
+.se-table td{color:var(--k-text)!important;border-bottom-color:var(--k-line)!important}
+
+.se-warn.se-high{background:rgba(192,68,44,.14)!important;border-color:rgba(192,68,44,.42)!important;color:#f0b5a5!important}
+.se-warn.se-high .se-warn-k{background:rgba(192,68,44,.32)!important;color:#ffd9cd!important}
+.se-warn.se-medium{background:rgba(214,171,58,.13)!important;border-color:rgba(214,171,58,.38)!important;color:#e8d29a!important}
+.se-warn.se-medium .se-warn-k{background:rgba(214,171,58,.28)!important;color:#f6e7bd!important}
+.se-warn.se-info{background:rgba(45,212,160,.10)!important;border-color:rgba(45,212,160,.30)!important;color:#a6e6d1!important}
+.se-warn.se-info .se-warn-k{background:rgba(45,212,160,.22)!important;color:#cdf5e7!important}
+.se-refused{background:rgba(192,68,44,.14)!important;border-color:rgba(192,68,44,.42)!important;color:#f0b5a5!important}
+
+/* Section Editor: map-pick banner. */
+.se-pickbar{background:var(--k-panel)!important;border-color:var(--k-line)!important;
+  box-shadow:0 10px 28px rgba(0,0,0,.5)!important}
+.se-pick-t{color:var(--k-text)!important}
+.se-pick-s{color:var(--k-muted)!important}
+
+/* Section Editor: attribute grid. */
+.se-attrs{border-top-color:var(--k-line)!important}
+.se-attr-table .se-attr-n{color:var(--k-text)!important}
+.se-attr-table .se-was{color:var(--k-muted)!important}
+input.se-attr{background:var(--k-elev)!important;border-color:var(--k-line2)!important;color:var(--k-text)!important}
+input.se-attr:focus{border-color:var(--k-accent)!important;box-shadow:0 0 0 2px rgba(45,212,160,.18)!important}
+
+/* Section Editor: confirmation + outcome. */
+.se-confirm{background:rgba(192,68,44,.10)!important;border-color:rgba(192,68,44,.38)!important}
+.se-confirm .se-card-h{color:#f0b5a5!important}
+.se-done{background:rgba(45,212,160,.09)!important;border-color:rgba(45,212,160,.34)!important}
+.se-done-h{color:var(--k-accent)!important}
+.se-steps{color:var(--k-text)!important}
+.se-steps code{background:var(--k-elev)!important;color:var(--k-accent)!important}

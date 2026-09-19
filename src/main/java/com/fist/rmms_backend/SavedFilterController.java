@@ -11,10 +11,13 @@ import jakarta.annotation.PostConstruct;
 import java.util.*;
 
 /**
- * Named, reusable filters for the map viewer — currently the Road Network
- * attribute filter (kind="network"), whose state is just {mode, rows[]} from
- * 05-road-network.js. The payload is stored as opaque JSON so the same table
- * can hold other panels' filters later without a schema change.
+ * Named, reusable filters for the map viewer: the Road Network attribute
+ * filter (kind="network"), whose state is {mode, rows[]} from
+ * 05-road-network.js, and Select by Road (kind="selectroad"), whose state is
+ * {roads:[{road,name,len}]} from 42-select-by-road.js. The payload is stored
+ * as opaque JSON so the same table holds every panel's filters without a
+ * schema change — `kind` is just a caller-chosen string, never validated
+ * against a fixed list.
  *
  * Visibility: a filter belongs to the user who saved it. ADMIN / SUPER_ADMIN
  * may additionally mark one "shared", which makes it visible (read-only) to

@@ -196,7 +196,7 @@ function enableLayer(id){
   setTimeout(refreshFilterLocks,80);
 }
 function refreshFilterLocks(){
-  [['fsecNet','showRoads'],['fsecCond','showCond'],['fsecTrf','showTraffic'],
+  [['fsecSelRoad','showRoads'],['fsecNet','showRoads'],['fsecCond','showCond'],['fsecTrf','showTraffic'],
    ['fsecFwd','showFwd'],['fsecIri','showIri2km'],['fsecPci',null],
    ['fsecBridge','showBridge'],['fsecCulv','showCulvert'],['fsecSoil','showSoil'],['fsecCore','showCore']].forEach(([sec,layer])=>{
     const s=document.getElementById(sec); if(!s) return;
