@@ -150,7 +150,9 @@ function setRoads2Visible(on){
 
 /* ---- mutual exclusivity (only one road network shown) ---- */
 function setSectionHit(on){const v=on?'visible':'none';if(map.getLayer('roadnet-hit'))map.setLayoutProperty('roadnet-hit','visibility',v);}
-function r2CloseAllPopups(){ try{document.querySelectorAll('.maplibregl-popup').forEach(el=>el.remove());}catch(e){} r2CloseCard(); }
+/* :not(.locpop-pop) — keep the base-map location pins' labels; see the same
+   exemption in js/17-measure.js and locRestoreLabels() in js/13-search.js. */
+function r2CloseAllPopups(){ try{document.querySelectorAll('.maplibregl-popup:not(.locpop-pop)').forEach(el=>el.remove());}catch(e){} r2CloseCard(); }
 function hideSectionRoadNet(){
   const t=document.getElementById('showRoads'); if(t)t.checked=false;
   /* build 120 — hide only the STYLED section lines; keep the invisible

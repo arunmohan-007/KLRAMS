@@ -90,7 +90,28 @@ function locFitAll(){
   if(b.isEmpty())return;
   map.fitBounds(b,{padding:80,maxZoom:16,duration:800});
 }
+/* Re-open any location label whose popup element was torn out of the DOM.
+   Other modules sweep popups away with a blanket
+   document.querySelectorAll('.maplibregl-popup').forEach(el=>el.remove())
+   (js/17-measure.js, js/22-road-merged.js) when a tool opens or a road-network
+   toggle flips. Removing the element behind maplibre's back leaves the Popup
+   still believing it is open, so the label never comes back AND the next
+   togglePopup() closes the invisible one instead of re-showing it — which is
+   why the pins stopped labelling after visiting another tool and returning.
+   Those sweeps now skip .locpop-pop; this repairs anything that still slips
+   through (an old cached copy of them, or a future sweep). */
+function locRestoreLabels(){
+  locMarkers.forEach(m=>{
+    const p=m.getPopup&&m.getPopup();
+    if(!p)return;
+    const el=p.getElement&&p.getElement();
+    if(p.isOpen()&&el&&el.isConnected)return;
+    try{if(p.isOpen())p.remove();}catch(e){}
+    try{m.togglePopup();}catch(e){}
+  });
+}
 function placeLocation(lon,lat,label){
+  locRestoreLabels();
   /* Cap at LOC_PIN_MAX: a third search drops the oldest pin so the newest
      two always stay — place then coordinate, or two places, either order. */
   if(locMarkers.length>=LOC_PIN_MAX){
@@ -101,7 +122,12 @@ function placeLocation(lon,lat,label){
   el.innerHTML=locPinSvg(color);
   const safe=String(label).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const marker=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat([lon,lat])
-    .setPopup(new maplibregl.Popup({offset:28,closeButton:false}).setHTML('<div style="font:600 12.5px Inter,system-ui,sans-serif;color:#1f2a3d;max-width:220px;line-height:1.35">'+safe+'</div>'))
+    /* Label styling lives in .locpop (css/app.css + the dark override in
+       css/klrams-dark.css). It used to be an inline colour:#1f2a3d, which the
+       dark theme's dark popup background turned into unreadable dark-on-dark. */
+    /* className marks this as a location label so the blanket popup sweeps in
+       other modules leave it alone — see locRestoreLabels() above. */
+    .setPopup(new maplibregl.Popup({offset:28,closeButton:false,className:'locpop-pop'}).setHTML('<div class="locpop">'+safe+'</div>'))
     .addTo(map);
   marker.togglePopup();
   locMarkers.push(marker);

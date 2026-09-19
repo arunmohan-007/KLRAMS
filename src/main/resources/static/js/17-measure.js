@@ -16,7 +16,11 @@ const OSRM_URL = (window.KL_CONFIG && window.KL_CONFIG.routingUrl)
 function mEl(id){ return document.getElementById(id); }
 function setMHint(t){ const e=mEl('mHint'); if(e) e.textContent=t; }
 function setMOut(h){ const e=mEl('mOut'); if(e){ e.innerHTML=h; e.style.display=h?'block':'none'; } }
-function mKillPopups(){ document.querySelectorAll('.maplibregl-popup').forEach(el=>el.remove()); }
+/* :not(.locpop-pop) — the base-map location pins' labels are not map popups the
+   user opened by clicking a feature; they belong to pins that survive a tool
+   change, and ripping their element out leaves maplibre thinking they are still
+   open, so they never come back (js/13-search.js, locRestoreLabels). */
+function mKillPopups(){ document.querySelectorAll('.maplibregl-popup:not(.locpop-pop)').forEach(el=>el.remove()); }
 function mCursorClass(on){ const c=(map&&map.getContainer)?map.getContainer():document.getElementById('map'); if(c) c.classList.toggle('mmeasure', !!on); }
 
 function fmtLen(km){

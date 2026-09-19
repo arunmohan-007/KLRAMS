@@ -1070,6 +1070,9 @@ select option:disabled{color:var(--k-faint)!important}
 
 /* ---------- misc surface tweaks ---------- */
 .locpin{filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}
+/* place-search pin label: app.css paints it near-black for the light popup,
+   which is unreadable on the dark popup surface below. */
+.locpop{color:#fff!important}
 .kl-open{box-shadow:none!important}
 
 /* the klpop popup tip */
