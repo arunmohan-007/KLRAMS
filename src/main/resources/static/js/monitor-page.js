@@ -139,8 +139,8 @@
 
     var sys = o.system || {};
     setGauge('cCpu','cCpuBar', sys.cpu_pct);
-    setGauge('cMem','cMemBar', sys.mem_pct);
-    setGauge('cDisk','cDiskBar', sys.disk_pct);
+    setGauge('cMem','cMemBar', sys.mem_pct, fmtGb(sys.mem_used_mb/1024, sys.mem_total_mb/1024));
+    setGauge('cDisk','cDiskBar', sys.disk_pct, fmtGb(sys.disk_used_gb, sys.disk_total_gb));
 
     var box = document.getElementById('alerts');
     var alerts = o.alerts || [];
@@ -154,9 +154,16 @@
     document.getElementById(elId).innerHTML = '<span class="pip '+(ok?'ok':'bad')+'"></span>'+esc(label);
   }
 
-  function setGauge(valId, barId, pct){
+  function fmtGb(used, total){
+    used = num(used, null); total = num(total, null);
+    if(used == null || total == null) return null;
+    return used.toFixed(1) + ' / ' + total.toFixed(1) + ' GB';
+  }
+
+  function setGauge(valId, barId, pct, detail){
     pct = num(pct, null);
-    document.getElementById(valId).textContent = pct==null ? '—' : pct.toFixed(1)+'%';
+    document.getElementById(valId).innerHTML = (pct==null ? '—' : pct.toFixed(1)+'%') +
+      (detail ? '<small>'+esc(detail)+'</small>' : '');
     var bar = document.getElementById(barId);
     bar.classList.toggle('hot', pct!=null && pct > 80);
     bar.querySelector('i').style.width = (pct==null?0:Math.min(100,pct)) + '%';
