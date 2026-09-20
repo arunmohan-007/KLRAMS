@@ -141,6 +141,9 @@
     setGauge('cCpu','cCpuBar', sys.cpu_pct);
     setGauge('cMem','cMemBar', sys.mem_pct, fmtGb(sys.mem_used_mb/1024, sys.mem_total_mb/1024));
     setGauge('cDisk','cDiskBar', sys.disk_pct, fmtGb(sys.disk_used_gb, sys.disk_total_gb));
+    sysMemUsedMb = num(sys.mem_used_mb, null);
+    sysMemTotalMb = num(sys.mem_total_mb, null);
+    updateProcHeader();
 
     var box = document.getElementById('alerts');
     var alerts = o.alerts || [];
@@ -242,6 +245,34 @@
     lineChart(document.getElementById('dbChart'), [{label:'Active', color:'#d3aa3e', points:active}], {minZero:true});
   }
 
+  /* ---------- Memory by process ---------- */
+  function fmtMb(v){ v = num(v, null); return v==null ? '—' : (v>=1024 ? (v/1024).toFixed(2)+' GB' : v.toFixed(1)+' MB'); }
+
+  var sysMemTotalMb = null, sysMemUsedMb = null;
+  function updateProcHeader(){
+    var el = document.getElementById('procMemTotal');
+    if(sysMemTotalMb == null){ el.textContent = 'live, RSS'; return; }
+    el.textContent = fmtMb(sysMemUsedMb) + ' / ' + fmtMb(sysMemTotalMb) + ' RAM in use';
+  }
+
+  function renderProcesses(d){
+    var tbody = document.getElementById('procRows');
+    if(d.supported === false){
+      tbody.innerHTML = '<tr><td colspan="3" class="empty">Per-process breakdown needs Linux (ps) — not available on this box.</td></tr>';
+      return;
+    }
+    var rows = d.processes || [];
+    if(!rows.length){ tbody.innerHTML = '<tr><td colspan="3" class="empty">No process data yet.</td></tr>'; return; }
+    var maxMb = Math.max.apply(null, rows.map(function(r){ return num(r.memMb,0); }), 1);
+    tbody.innerHTML = rows.map(function(r){
+      var barPct = Math.min(100, num(r.memMb,0) / maxMb * 100);
+      var ofTotal = sysMemTotalMb ? (num(r.memMb,0) / sysMemTotalMb * 100) : null;
+      return '<tr><td class="mono">'+esc(r.name)+'</td><td>'+fmtMb(r.memMb)+'</td>' +
+        '<td><div class="bar" style="min-width:80px"><i style="width:'+barPct.toFixed(0)+'%"></i></div>' +
+        (ofTotal!=null ? '<small>'+ofTotal.toFixed(1)+'%</small>' : '') + '</td></tr>';
+    }).join('');
+  }
+
   /* ---------- Active sessions ---------- */
   function roleLabel(r){ return r==='SUPER_ADMIN'?'Super Admin':r==='ADMIN'?'Admin':r==='USER'?'User':'—'; }
   function shortUA(ua){
@@ -269,6 +300,7 @@
       getJson('/api/monitor/layers?hours=6').then(renderLayers),
       getJson('/api/monitor/system?minutes=180').then(renderSystem),
       getJson('/api/monitor/db?minutes=180').then(renderDb),
+      getJson('/api/monitor/processes').then(renderProcesses),
       getJson('/api/monitor/users').then(renderUsers)
     ]).then(function(){
       document.getElementById('lastUpd').textContent = 'Updated ' + new Date().toLocaleTimeString('en-IN');

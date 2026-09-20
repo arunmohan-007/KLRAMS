@@ -21,11 +21,16 @@ import java.io.IOException;
  * timing naturally excludes login-page redirects and auth rejections that
  * never reach a controller.
  *
- * <p>Vector/raster tile endpoints ({@code /tiles/}) and the monitoring
- * endpoints themselves ({@code /api/monitor/}) are skipped: tiles are
- * called dozens of times per pan and would swamp the log with noise that
- * duplicates the representative probe in {@link HealthCheckService}, and
- * logging the dashboard's own polling would be a feedback loop.
+ * <p>Vector/raster tile endpoints ({@code /tiles/}) are skipped entirely:
+ * they're called dozens of times per pan and would swamp the log with noise
+ * that duplicates the representative probe in {@link HealthCheckService}.
+ * The monitoring endpoints ({@code /api/monitor/}) are exempted from the
+ * {@code api_metrics} timing log only, for the same reason (the dashboard's
+ * own polling would otherwise dominate its own "avg API response" number) —
+ * but they still touch {@link SessionActivityTracker}. Skipping that too
+ * used to mean a SUPER_ADMIN who was only looking at {@code /monitor.html}
+ * (and calling nothing but {@code /api/monitor/**}) showed up as zero
+ * active users on their own dashboard.
  */
 @Component
 public class ApiMetricsFilter extends OncePerRequestFilter {
@@ -41,9 +46,7 @@ public class ApiMetricsFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
-        return !uri.startsWith(request.getContextPath() + "/api/")
-                || uri.contains("/tiles/")
-                || uri.contains("/api/monitor/");
+        return !uri.startsWith(request.getContextPath() + "/api/") || uri.contains("/tiles/");
     }
 
     @Override
@@ -59,7 +62,9 @@ public class ApiMetricsFilter extends OncePerRequestFilter {
         } finally {
             long durationMs = System.currentTimeMillis() - start;
             String username = req.getUserPrincipal() != null ? req.getUserPrincipal().getName() : null;
-            metrics.record(req.getServletPath(), req.getMethod(), res.getStatus(), durationMs, error, username);
+            if (!req.getRequestURI().contains("/api/monitor/")) {
+                metrics.record(req.getServletPath(), req.getMethod(), res.getStatus(), durationMs, error, username);
+            }
             if (username != null) activity.touch(username);
         }
     }

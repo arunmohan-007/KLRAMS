@@ -163,6 +163,15 @@
           <div class="legend"><span><i style="background:#d3aa3e"></i>Active connections</span></div>
         </div>
       </div>
+      <div class="grid2" style="margin-top:16px">
+        <div class="panel">
+          <div class="phead"><h3>Memory by process</h3><span class="sub2" id="procMemTotal">live, RSS</span></div>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Process</th><th>Memory</th><th>% of total RAM</th></tr></thead>
+            <tbody id="procRows"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+      </div>
     </div>
 
     <div class="section">
@@ -208,6 +217,6 @@
   </div>
 
   <script src="/js/role-gate.js" defer></script>
-  <script src="/js/monitor-page.js?v=2"></script>
+  <script src="/js/monitor-page.js?v=3"></script>
 </body>
 </html>

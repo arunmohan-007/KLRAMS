@@ -29,16 +29,19 @@ public class MonitorController {
     private final HealthCheckService healthChecks;
     private final SessionActivityTracker activity;
     private final LoginAuditService loginAudit;
+    private final ProcessMemoryService processMemory;
 
     public MonitorController(ApiMetricsService apiMetrics, LayerMetricsService layerMetrics,
                               SystemMetricsService systemMetrics, HealthCheckService healthChecks,
-                              SessionActivityTracker activity, LoginAuditService loginAudit) {
+                              SessionActivityTracker activity, LoginAuditService loginAudit,
+                              ProcessMemoryService processMemory) {
         this.apiMetrics = apiMetrics;
         this.layerMetrics = layerMetrics;
         this.systemMetrics = systemMetrics;
         this.healthChecks = healthChecks;
         this.activity = activity;
         this.loginAudit = loginAudit;
+        this.processMemory = processMemory;
     }
 
     @GetMapping("/overview")
@@ -91,6 +94,14 @@ public class MonitorController {
         out.put("snapshots", healthChecks.latestSnapshots());
         out.put("stats", healthChecks.latestDbStats());
         out.put("series", healthChecks.dbStatsSeries(minutes));
+        return out;
+    }
+
+    @GetMapping("/processes")
+    public Map<String, Object> processes(@RequestParam(defaultValue = "12") int limit) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("supported", processMemory.supported());
+        out.put("processes", processMemory.topByMemory(limit));
         return out;
     }
 
