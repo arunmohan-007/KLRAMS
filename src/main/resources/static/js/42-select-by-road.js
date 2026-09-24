@@ -62,10 +62,21 @@ function srEnsureHighlightLayer(){
   if(src && src.type === 'vector') def['source-layer'] = (typeof ROAD_TILE_LAYER !== 'undefined') ? ROAD_TILE_LAYER : 'roads';
   try{ map.addLayer(def); return true; }catch(e){ return false; }
 }
+/* The amber pick overlay is feedback for the act of picking, not part of
+   the filtered result — once Apply Filter has run, the picked roads must
+   render exactly like a road matched by any other filter (plain colour-by
+   styling, scoped only via setFilter on 'roadnet'), or they visibly stick
+   out in orange forever. So the overlay stays visible while actively
+   picking (or before the first Apply, as a preview), and disappears the
+   moment picks are applied and picking stops. */
+function srHighlightVisibility(){
+  return (srPicking || !srApplied) ? 'visible' : 'none';
+}
 function srUpdateHighlight(){
   if(!srEnsureHighlightLayer()) return;
   const list = Array.from(srPicks.keys());
   try{ map.setFilter('selroad-pick', ['in',['to-string',['coalesce',['get','road'],'']],['literal',list]]); }catch(e){}
+  try{ map.setLayoutProperty('selroad-pick', 'visibility', srHighlightVisibility()); }catch(e){}
 }
 
 function srStatus(msg, bad){
@@ -122,6 +133,7 @@ function srSetPicking(on){
      when called with the mode already on). */
   if(srPicking && typeof measureMode !== 'undefined' && measureMode && typeof setMeasureMode === 'function') setMeasureMode(measureMode);
   if(srPicking) srEnsureHighlightLayer();
+  if(map.getLayer('selroad-pick')){ try{ map.setLayoutProperty('selroad-pick', 'visibility', srHighlightVisibility()); }catch(e){} }
   srUpdateHintBar();
 }
 function srTogglePick(){ srSetPicking(!srPicking); }
