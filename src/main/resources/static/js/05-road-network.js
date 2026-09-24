@@ -892,6 +892,7 @@ function scopePropFor(id){
      which holds every road's attributes — but it means a road tile never has to
      carry the column being filtered on, only the one being coloured by. */
   if(id==='roadnet'||id==='roadnet-casing'||id==='roadnet-hit')return 'road';
+  if(id==='iri2km')return 'road';
   if(id.indexOf('as-')===0)return '__sec';
   return null;
 }
