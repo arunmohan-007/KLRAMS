@@ -34,7 +34,7 @@ import org.springframework.context.annotation.Configuration;
 public class SessionAuditListener {
 
     @Bean
-    public ServletListenerRegistrationBean<HttpSessionListener> sessionAuditListener(LoginAuditService audit) {
+    public ServletListenerRegistrationBean<HttpSessionListener> sessionAuditRegistration(LoginAuditService audit) {
         HttpSessionListener listener = new HttpSessionListener() {
             @Override
             public void sessionDestroyed(HttpSessionEvent se) {
