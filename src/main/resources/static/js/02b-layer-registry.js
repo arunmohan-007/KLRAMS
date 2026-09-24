@@ -402,7 +402,11 @@ var KLLayers = (function () {
   /* ---- 2 km IRI roll-up (32-iri-2km) ---- */
   L.register({
     key: 'iri2km', label: 'Avg IRI (2 km)', group: 'pavement',
-    layers: ['iri2km'], source: 'iri2km',
+    /* 'iri2km-hit' is the invisible wide click target 32-iri-2km.js binds
+       its popup to (see HIT_LAYER there) — listed here too so it counts as
+       the same family instead of showing up as its own row in the Active
+       Layer chip. */
+    layers: ['iri2km', 'iri2km-hit'], source: 'iri2km',
     toggle: 'showIri2km', z: Z.IRI_2KM,
     ensure: function () { return loadIri2km(); }
   });

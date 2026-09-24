@@ -31,6 +31,14 @@
    ============================================================ */
 (function(){
   var LAYER='iri2km', SRC='iri2km';
+  /* The visible line is thin and offset a few pixels off the road centreline
+     (see addLayerPaint), which makes it easy to miss with a click — the click
+     then lands on whatever else is under the cursor (usually the Road
+     Condition segment, at its own different chainage resolution) and pops up
+     the wrong data entirely. HIT_LAYER mirrors the same offset with a much
+     wider, invisible line and is the one click/hover are actually bound to —
+     same trick as 'roadnet-hit' in 07-data-loaders.js. */
+  var HIT_LAYER='iri2km-hit';
   var TOGGLE='showIri2km';
   /* MVT layer name inside the tile, as IriTileService names it. Every layer
      bound to a vector source must declare it or MapLibre silently renders
@@ -140,25 +148,41 @@
   function tilesOn(){return typeof TILES_ON!=='undefined'&&TILES_ON;}
   function vis(){var t=document.getElementById(TOGGLE);return (t&&t.checked)?'visible':'none';}
 
+  /* Same offset the visible line uses, so the wide hit target sits exactly
+     on top of it rather than off to one side. */
+  var LINE_OFFSET=['interpolate',['linear'],['zoom'],10,-3.5,16,-8];
+
   function wireHandlers(){
     if(_wired)return;_wired=true;
-    map.on('click',LAYER,function(e){if(e.features.length)popup(e.lngLat,e.features[0].properties);});
-    map.on('mouseenter',LAYER,function(){map.getCanvas().style.cursor='pointer';});
-    map.on('mouseleave',LAYER,function(){map.getCanvas().style.cursor='';});
+    map.on('click',HIT_LAYER,function(e){if(e.features.length)popup(e.lngLat,e.features[0].properties);});
+    map.on('mouseenter',HIT_LAYER,function(){map.getCanvas().style.cursor='pointer';});
+    map.on('mouseleave',HIT_LAYER,function(){map.getCanvas().style.cursor='';});
   }
 
   function addLayerPaint(){
     if(map.getLayer(LAYER)){
       map.setPaintProperty(LAYER,'line-color',colorExpr());
       map.setLayoutProperty(LAYER,'visibility',vis());
+      if(map.getLayer(HIT_LAYER))map.setLayoutProperty(HIT_LAYER,'visibility',vis());
     }else{
       var spec={id:LAYER,type:'line',source:SRC,
         layout:{'line-cap':'round','line-join':'round','visibility':vis()},
         paint:{'line-color':colorExpr(),
                'line-width':['interpolate',['linear'],['zoom'],10,4.5,16,10],
-               'line-offset':['interpolate',['linear'],['zoom'],10,-3.5,16,-8]}};
+               'line-offset':LINE_OFFSET}};
       if(tilesOn())spec['source-layer']=TILE_LAYER;
       map.addLayer(spec);
+      /* Invisible, much wider line on the same offset — this is what click
+         and hover actually bind to (wireHandlers), so a click a few pixels
+         off the thin visible line still lands on this bin instead of
+         whatever unrelated layer happens to sit at that exact pixel. */
+      var hitSpec={id:HIT_LAYER,type:'line',source:SRC,
+        layout:{'line-cap':'round','line-join':'round','visibility':vis()},
+        paint:{'line-color':'#000000','line-opacity':0.01,
+               'line-width':['interpolate',['linear'],['zoom'],10,14,16,24],
+               'line-offset':LINE_OFFSET}};
+      if(tilesOn())hitSpec['source-layer']=TILE_LAYER;
+      map.addLayer(hitSpec);
       wireHandlers();
     }
     /* A filter set before the layer existed (the Filters folder is reachable
@@ -251,7 +275,11 @@
     if(!isNaN(f.mn))conds.push(['>=',['to-number',['get','worst_iri']],f.mn]);
     if(!isNaN(f.mx))conds.push(['<=',['to-number',['get','worst_iri']],f.mx]);
     if(f.lane)conds.push(['==',['get','worst_lane'],f.lane]);
-    map.setFilter(LAYER, conds.length>1?conds:null);
+    var filt=conds.length>1?conds:null;
+    map.setFilter(LAYER, filt);
+    /* The hit layer must carry the same filter, or a bin hidden by the
+       filter would still answer a click with its (excluded) popup. */
+    if(map.getLayer(HIT_LAYER))map.setFilter(HIT_LAYER, filt);
     matchCount(f);
   }
 
@@ -259,6 +287,7 @@
     ['iriMin','iriMax'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
     var l=document.getElementById('iriLane');if(l)l.value='';
     if(map.getLayer(LAYER))map.setFilter(LAYER,null);
+    if(map.getLayer(HIT_LAYER))map.setFilter(HIT_LAYER,null);
     var el=document.getElementById('iriMatchInfo');if(el)el.textContent='';
   }
 
@@ -270,7 +299,11 @@
      In tile mode there is nothing to download — just register the source. */
   function loadIri2km(silent){
     if(_inflight)return _inflight;
-    if(_loaded&&map.getLayer(LAYER)){map.setLayoutProperty(LAYER,'visibility',vis());return Promise.resolve();}
+    if(_loaded&&map.getLayer(LAYER)){
+      map.setLayoutProperty(LAYER,'visibility',vis());
+      if(map.getLayer(HIT_LAYER))map.setLayoutProperty(HIT_LAYER,'visibility',vis());
+      return Promise.resolve();
+    }
     var st=document.getElementById('status');
     if(tilesOn()){
       ensureTileSource();
@@ -310,6 +343,7 @@
       if(lg)lg.style.display=e.target.checked?'block':'none';
       if(e.target.checked&&!map.getLayer(LAYER)){renderLegend();loadIri2km();return;}
       if(map.getLayer(LAYER))map.setLayoutProperty(LAYER,'visibility',e.target.checked?'visible':'none');
+      if(map.getLayer(HIT_LAYER))map.setLayoutProperty(HIT_LAYER,'visibility',e.target.checked?'visible':'none');
     });
   })();
 
