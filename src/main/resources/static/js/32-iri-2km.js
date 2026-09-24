@@ -175,8 +175,14 @@
       /* Invisible, much wider line on the same offset — this is what click
          and hover actually bind to (wireHandlers), so a click a few pixels
          off the thin visible line still lands on this bin instead of
-         whatever unrelated layer happens to sit at that exact pixel. */
-      var hitSpec={id:HIT_LAYER,type:'line',source:SRC,
+         whatever unrelated layer happens to sit at that exact pixel.
+         minzoom:9 — below that, thousands of 2 km bins collapse onto a
+         handful of screen pixels; repeatedly compositing this "invisible"
+         1%-opacity black stroke over itself that many times converges to
+         solid black (0.99^n -> 0) and washes out the real colours drawn
+         underneath. Clicking a single bin isn't meaningful at that zoom
+         anyway, so the hit layer simply doesn't need to exist there. */
+      var hitSpec={id:HIT_LAYER,type:'line',source:SRC,minzoom:9,
         layout:{'line-cap':'round','line-join':'round','visibility':vis()},
         paint:{'line-color':'#000000','line-opacity':0.01,
                'line-width':['interpolate',['linear'],['zoom'],10,14,16,24],
