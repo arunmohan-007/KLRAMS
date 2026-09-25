@@ -719,6 +719,7 @@
             d.contour_status = row.contour_status;
             d.contour_count = row.contour_count;
             d.contour_interval = row.contour_interval;
+            d.contour_message = row.contour_message;
             if (d.__paintContours) d.__paintContours();
             if (was === 'PROCESSING' && row.contour_status === 'READY') refreshContours(d);
           });

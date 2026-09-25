@@ -376,7 +376,7 @@ public class DroneService {
                    d.min_zoom, d.max_zoom, d.build_version, d.elevation_min, d.elevation_max,
                    d.epsg, d.crs_name, d.res_x, d.res_y, d.raster_width, d.raster_height, d.file_size,
                    d.band_count, d.data_type, d.colour_interp, d.band_stats::text AS band_stats, d.no_data,
-                   d.contour_interval, d.contour_status, d.contour_count, d.warnings,
+                   d.contour_interval, d.contour_status, d.contour_count, d.contour_message, d.warnings,
                    d.geo_details::text AS geo_details, d.geoid_model,
                    p.project_code, p.project_name, p.location, p.road_section, p.pwd_section, %s
             FROM drone_dataset d JOIN drone_project p ON p.id = d.project_id
