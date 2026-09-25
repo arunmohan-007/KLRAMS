@@ -33,7 +33,7 @@ import java.util.Map;
  * so accepting one here would only defer the failure to publish time, where the
  * cause would be far less obvious.
  */
-final class GeoTiffMeta {
+final class GeoTiffMeta implements RasterGeoRef {
 
     /* TIFF baseline tags */
     private static final int IMAGE_WIDTH = 256;
@@ -122,24 +122,38 @@ final class GeoTiffMeta {
     }
 
     /** Model coordinate at the CENTRE of pixel {@code (col,row)}. */
-    double[] pixelToModel(double col, double row) {
+    public double[] pixelToModel(double col, double row) {
         double c = col + 0.5, r = row + 0.5;
         return new double[]{ax * c + bx * r + cx, ay * c + by * r + cy};
     }
 
     /** Fractional pixel column/row holding the given model coordinate. */
-    double[] modelToPixel(double x, double y) {
+    public double[] modelToPixel(double x, double y) {
         return new double[]{ia * x + ib * y + ic - 0.5, id * x + ie * y + iff - 0.5};
     }
 
     /** Ground sample distance along each axis, in the CRS's own units. */
-    double resX() {
+    public double resX() {
         return Math.hypot(ax, ay);
     }
 
-    double resY() {
+    public double resY() {
         return Math.hypot(bx, by);
     }
+
+    /* ------------------------------------------------------------------
+       RasterGeoRef — thin accessors so the pyramid builder can work against
+       either this or WorldFileGeoRef without knowing which one it has.
+       ------------------------------------------------------------------ */
+
+    @Override public int width() { return width; }
+    @Override public int height() { return height; }
+    @Override public int samplesPerPixel() { return samplesPerPixel; }
+    @Override public int photometric() { return photometric; }
+    @Override public int alphaBand() { return alphaBand; }
+    @Override public double noData() { return noData; }
+    @Override public double[] fromWgs84(double lon, double lat) { return crs.fromWgs84(lon, lat); }
+    @Override public double[] toWgs84(double x, double y) { return crs.toWgs84(x, y); }
 
     /**
      * WGS84 bounding box {@code {minLon, minLat, maxLon, maxLat}}.
@@ -148,7 +162,8 @@ final class GeoTiffMeta {
      * edges are curved in lon/lat: taking only the SW and NE corners would clip a
      * sliver off the north or south edge of a UTM image.
      */
-    double[] wgs84Bounds() {
+    @Override
+    public double[] wgs84Bounds() {
         double minLon = Double.MAX_VALUE, minLat = Double.MAX_VALUE;
         double maxLon = -Double.MAX_VALUE, maxLat = -Double.MAX_VALUE;
         // Corners plus edge midpoints — enough to bound the curvature at any
@@ -166,7 +181,8 @@ final class GeoTiffMeta {
     }
 
     /** Ground sample distance in metres, whatever the CRS's units are. */
-    double resolutionMetres() {
+    @Override
+    public double resolutionMetres() {
         if (!crs.isGeographic()) return (resX() + resY()) / 2;
         double[] b = wgs84Bounds();
         double midLat = Math.toRadians((b[1] + b[3]) / 2);
@@ -573,7 +589,8 @@ final class GeoTiffMeta {
      * <p>A palette image is excluded — its single band is an index into a colour
      * table, not a channel.
      */
-    int[] displayBands() {
+    @Override
+    public int[] displayBands() {
         int[] colour = new int[samplesPerPixel];
         int n = 0;
         for (int i = 0; i < samplesPerPixel; i++)

@@ -18,6 +18,15 @@
   .switch input:checked{background:linear-gradient(135deg,#00d4ff,#00ff88);border-color:rgba(0,255,136,.5)}
   .switch input::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.3s ease;box-shadow:0 3px 8px rgba(10,22,40,.2)}
   .switch input:checked::after{transform:translateX(22px);box-shadow:0 0 12px rgba(0,212,255,.5)}
+  /* A raster layer's opacity slider (js/33-user-layers.js opacityRow()) sits
+     inside a .switch row too, so it needs its own reset back out of the
+     on/off pill styling above — the toggle rules match ANY input in .switch. */
+  .switch input[type=range].ul-opacity{appearance:none;-webkit-appearance:none;width:auto;flex:1 1 auto;height:4px;min-height:4px;border-radius:4px;background:#cbd5e0;border:none;margin:0 10px;cursor:pointer}
+  .switch input[type=range].ul-opacity::after{content:none}
+  .switch input[type=range].ul-opacity::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,#00d4ff,#00ff88);cursor:pointer;box-shadow:0 2px 6px rgba(10,22,40,.3)}
+  .switch input[type=range].ul-opacity::-moz-range-thumb{width:14px;height:14px;border-radius:50%;border:none;background:linear-gradient(135deg,#00d4ff,#00ff88);cursor:pointer}
+  .ul-opacity-row{padding-left:20px}
+  .ul-opacity-pct{flex:0 0 auto;min-width:34px;text-align:right}
   select,input[type=number]{font-family:var(--sans);border:1px solid var(--hair);border-radius:8px;padding:8px 9px;font-size:13px;color:var(--text);background:#fff}
   select:focus,input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
   select.full{width:100%}

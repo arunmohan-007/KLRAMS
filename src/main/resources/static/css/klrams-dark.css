@@ -309,6 +309,22 @@ select option:disabled{color:var(--k-faint)!important}
 }
 .switch input:checked::after{transform:translateX(18px);background:#06231a}
 
+/* raster opacity slider — reset back out of the dark toggle-pill styling
+   above, same as the light-theme override in app.css */
+.switch input[type=range].ul-opacity{
+  appearance:none!important;width:auto!important;height:4px!important;
+  border-radius:4px!important;background:#2a3645!important;border:none!important;
+  box-shadow:none!important;flex:1 1 auto!important;margin:0 10px!important;
+}
+.switch input[type=range].ul-opacity::after{content:none!important}
+.switch input[type=range].ul-opacity::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--k-accent);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+.switch input[type=range].ul-opacity::-moz-range-thumb{
+  width:14px;height:14px;border-radius:50%;border:none;background:var(--k-accent);cursor:pointer;
+}
+
 /* dropdowns, selects, metric picker */
 .fpane select,.fpane .full,.fpane .cond-metric-sel{
   background:var(--k-elev)!important;

@@ -38,6 +38,11 @@ application-*.local.properties
 drone-store/
 
 # =====================
+# Raster temporary-layer store (local dev) — same reason as drone-store/.
+# =====================
+raster-layer-store/
+
+# =====================
 # Node (if used later)
 # =====================
 node_modules/

@@ -67,16 +67,19 @@ public class LayerRegistryService {
     private final LayerStyleService styles;
     private final CalcRuleService calcRules;
     private final DataHygieneService hygiene;
+    private final UserRasterService rasters;
 
     public LayerRegistryService(JdbcTemplate jdbc, LayerAttributeService attributes,
                                 LookupService lookups, LayerStyleService styles,
-                                CalcRuleService calcRules, DataHygieneService hygiene) {
+                                CalcRuleService calcRules, DataHygieneService hygiene,
+                                UserRasterService rasters) {
         this.jdbc = jdbc;
         this.attributes = attributes;
         this.lookups = lookups;
         this.styles = styles;
         this.calcRules = calcRules;
         this.hygiene = hygiene;
+        this.rasters = rasters;
     }
 
     @PostConstruct
@@ -627,6 +630,16 @@ public class LayerRegistryService {
     public Map<String, Object> createLayer(Map<String, Object> body, String user) {
         String name = require(str(body.get("name")), "Layer name is required");
         int folderId = folderIdOrThrow(body.get("folderId"));
+
+        /* A raster layer stores pixels on disk, not rows in a PostGIS table, so
+           it takes a short-circuited path that skips validatePlacement(),
+           createPhysicalTable() and every attribute-adoption call below — none
+           of them mean anything for a raster. See UserRasterService for where
+           the actual file lands once this row exists. */
+        if ("RASTER".equalsIgnoreCase(str(body.get("geometryType")))) {
+            return createRasterLayer(name, folderId, body, user);
+        }
+
         String geometry = oneOf(str(body.get("geometryType")), "Geometry type",
                 "POINT", "LINESTRING", "MULTILINESTRING", "POLYGON");
         String placement = oneOf(str(body.get("placement")), "Placement method",
@@ -692,6 +705,34 @@ public class LayerRegistryService {
         m.put("attributeMapping", attrMapping);
         m.put("temporary", temporary);
         m.put("attributes", adopted);
+        return m;
+    }
+
+    /**
+     * A RASTER layer's registry row: no physical table, no attributes — the
+     * pixels and their metadata live in {@code layer_raster} instead, keyed by
+     * this row's id. {@code source_table} is set to the literal table name the
+     * same way {@code related_table} is reused for traffic stations, so Layer
+     * Management's "what table backs this" plumbing has an answer without a
+     * new column.
+     */
+    private Map<String, Object> createRasterLayer(String name, int folderId, Map<String, Object> body, String user) {
+        String key = uniqueLayerKey(slug(name));
+        boolean temporary = Boolean.TRUE.equals(body.get("temporary"));
+        Integer id = jdbc.queryForObject("""
+            INSERT INTO layer_definition
+                (layer_key, folder_id, name, geometry_type, placement, source_type,
+                 attribute_mapping, source_table, sort_order, created_by, temporary)
+            VALUES (?,?,?,'RASTER','RASTER','USER',false,'layer_raster',500,?,?)
+            RETURNING id
+            """, Integer.class, key, folderId, name.trim(), user, temporary);
+
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", id);
+        m.put("key", key);
+        m.put("name", name.trim());
+        m.put("geometryType", "RASTER");
+        m.put("temporary", temporary);
         return m;
     }
 
@@ -842,7 +883,7 @@ public class LayerRegistryService {
             throw new ProtectedLayerException(sourceType);
         }
         Map<String, Object> row = jdbc.queryForMap(
-                "SELECT temporary, created_by, shared, physical_table FROM layer_definition WHERE id = ?", id);
+                "SELECT temporary, created_by, shared, physical_table, geometry_type FROM layer_definition WHERE id = ?", id);
         if (!Boolean.TRUE.equals(row.get("temporary"))) {
             throw new ProtectedLayerException("PERMANENT_USER");
         }
@@ -851,6 +892,7 @@ public class LayerRegistryService {
             throw new ProtectedLayerException("NOT_OWNER");
         }
         String table = (String) row.get("physical_table");
+        boolean raster = "RASTER".equals(row.get("geometry_type"));
         jdbc.update("DELETE FROM layer_definition WHERE id = ?", id);
         if (purge && table != null) {
             // Only ever drops a table this service generated: the prefix check
@@ -860,6 +902,17 @@ public class LayerRegistryService {
                 throw new IllegalArgumentException("Refusing to drop a table this registry did not create");
             }
             jdbc.execute("DROP TABLE IF EXISTS " + table);
+        }
+        if (raster) {
+            // Unconditional, unlike the table drop above: an orphaned raster
+            // directory with no registry row pointing at it can never be found
+            // again, so there is no "keep the files but forget the row" state
+            // worth preserving the way a named PostGIS table stays reachable.
+            try {
+                rasters.deleteFiles(id);
+            } catch (java.io.IOException e) {
+                log.warn("Could not remove raster files for layer {}: {}", id, e.toString());
+            }
         }
     }
 

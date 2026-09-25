@@ -999,7 +999,10 @@ function injectExportButtons(){
  */
 function syncUserLayers(list){
   Object.keys(EXP).forEach(function(k){if(k.indexOf('ul')===0)delete EXP[k];});
-  (list||[]).forEach(function(l,i){EXP['ul'+l.id]=userLayerEntry(l,i);});
+  /* A raster layer is pixels, not features — there is nothing for
+     Shapefile/GeoJSON/KML/CSV export to write, so it gets no export button
+     rather than one that always reports "no data uploaded yet". */
+  (list||[]).forEach(function(l,i){if(l.geometryType!=='RASTER')EXP['ul'+l.id]=userLayerEntry(l,i);});
   if(_menuKey&&!EXP[_menuKey])closeExpMenu();
   injectExportButtons();
 }

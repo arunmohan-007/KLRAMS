@@ -96,6 +96,12 @@
 
       var del = row.querySelector('.ul-del');
       if (del) del.addEventListener('click', function (e) { e.preventDefault(); discard(l); });
+
+      /* Rasters get an opacity slider right under their row — a vector layer's
+         "appearance" (colour, label, popup) is set in Style & Label Management
+         instead, but that screen has no notion of a raster's pixels, and a
+         raster otherwise has no visual control here at all beyond on/off. */
+      if (l.geometryType === 'RASTER') grp.appendChild(opacityRow(l));
     });
 
     if (note) {
@@ -111,6 +117,49 @@
        few lines above — asked for any earlier, 37-layer-filters.js would find
        none of them and every section would sit permanently locked. */
     if (window.KLLayerFilters) KLLayerFilters.refresh();
+  }
+
+  /**
+   * A raster layer's opacity slider, shown right under its switch row.
+   *
+   * Reads its starting value from `viewer-layers` (see
+   * LayerDataService.viewerLayers's `opacity` field) so it shows the saved
+   * value even before the layer has ever been switched on — ensureRaster()
+   * applies that same value as the paint layer's initial `raster-opacity`. If
+   * the layer is already built (switched on earlier this session), dragging
+   * the slider updates the map immediately; saving to the server is
+   * debounced so dragging does not fire a request per pixel of travel.
+   */
+  function opacityRow(l) {
+    var row = document.createElement('div');
+    row.className = 'switch ul-opacity-row';
+    var pct = Math.round((l.opacity == null ? 0.85 : l.opacity) * 100);
+    row.innerHTML =
+      '<span class="lname r2-hint">Opacity</span>' +
+      '<input type="range" min="0" max="100" value="' + pct + '" class="ul-opacity">' +
+      '<span class="r2-hint ul-opacity-pct">' + pct + '%</span>';
+
+    var slider = row.querySelector('.ul-opacity');
+    var pctLabel = row.querySelector('.ul-opacity-pct');
+    var saveTimer = null;
+
+    slider.addEventListener('input', function () {
+      var v = Number(slider.value) / 100;
+      pctLabel.textContent = slider.value + '%';
+      var renderId = 'ul-' + l.id + '-raster';
+      try { if (map.getLayer(renderId)) map.setPaintProperty(renderId, 'raster-opacity', v); } catch (e) {}
+
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(function () {
+        fetch('/api/layer-data/' + l.id + '/raster/opacity', {
+          method: 'PUT', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ opacity: v })
+        }).catch(function () { /* the map already shows the new value either way */ });
+      }, 400);
+    });
+
+    return row;
   }
 
   /**
@@ -148,7 +197,8 @@
   }
 
   function ids(layerId) {
-    return ['ul-' + layerId + '-fill', 'ul-' + layerId + '-line', 'ul-' + layerId + '-pt'];
+    return ['ul-' + layerId + '-fill', 'ul-' + layerId + '-line', 'ul-' + layerId + '-pt',
+            'ul-' + layerId + '-raster'];
   }
 
   function setVis(layerId, v) {
@@ -185,7 +235,121 @@
        to have the pairing in hand by the time the layers appear, or a
        saved style would not reach the first one added. */
     if (window.KLStyle) KLStyle.registerUserLayer('ul-' + layer.id, layer.key);
+    if (layer.geometryType === 'RASTER') return ensureRaster(layer, i);
     return tilesOn() ? ensureTiles(layer, i) : ensureGeoJson(layer, i);
+  }
+
+  /**
+   * A raster temporary layer: PNG tiles from its own tile pyramid, not the MVT
+   * fill/line/pt trio every other user layer gets. Status is fetched once to
+   * pick up the zoom range the pyramid was actually built to and the
+   * build_version to cache-bust with, the same convention the Drone viewer's
+   * tile URLs use.
+   */
+  function ensureRaster(layer, i) {
+    var src = 'ul-' + layer.id;
+    if (map.getSource(src)) return Promise.resolve();
+    return fetch('/api/layer-data/' + layer.id + '/raster/status', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var raster = (d && d.raster) || {};
+        if (raster.status !== 'PUBLISHED') {
+          setStatus(layer, raster.status === 'FAILED' ? 'tile build failed' : 'not published yet');
+          LOADED[layer.id] = false;
+          return;
+        }
+        map.addSource(src, {
+          type: 'raster',
+          tiles: [location.origin + '/api/layer-data/' + layer.id + '/raster/tiles/{z}/{x}/{y}.png?v=' +
+                  (raster.buildVersion || 0)],
+          tileSize: 256,
+          minzoom: raster.minZoom || 0,
+          maxzoom: raster.maxZoom || 22
+        });
+        var before = (typeof KLLayers !== 'undefined' && KLLayers.beforeId)
+          ? KLLayers.beforeId(KLLayers.Z.SELECTION - 1) : undefined;
+        map.addLayer({
+          id: src + '-raster', type: 'raster', source: src,
+          layout: { visibility: 'none' },
+          paint: { 'raster-opacity': raster.defaultOpacity != null ? raster.defaultOpacity : 0.85 }
+        }, before);
+
+        /* Active Map Layers (02e-active-layer.js) only discovers a layer by
+           watching map.on('click'|'mouseenter', layerId, fn) — a raster layer
+           can't actually be feature-queried for a real click (MapLibre returns
+           no features for a raster source), which is why the pixel-value popup
+           below is a map-wide handler with its own bounds check instead. This
+           registration never fires; it exists purely so the raster layer is
+           listed — and therefore reorderable via KLActive's move() — the same
+           as every vector user layer. */
+        if (window.KLActive) {
+          map.on('click', src + '-raster', function () {});
+          KLActive.label('ul-' + layer.id, layer.name + (layer.temporary ? ' · temporary' : ''));
+        }
+        bindRasterClick(layer, raster);
+        setStatus(layer, 'raster tiles');
+      })
+      .catch(function () {
+        LOADED[layer.id] = false;
+        setStatus(layer, 'could not load');
+      });
+  }
+
+  /**
+   * Click-for-pixel-value, modeled on the Drone Viewer's DEM elevation popup
+   * (drone-viewer.js identify()/sampleElevation()): a raster layer has no
+   * discrete features to bind a feature-click to, so this is a map-level click
+   * handler scoped to whether the layer is on and the click falls inside its
+   * bounds.
+   */
+  function bindRasterClick(layer, raster) {
+    var handler = function (e) {
+      if (map.getLayoutProperty(layer._rasterLayerId, 'visibility') === 'none') return;
+      // Same "which layer answers a click" rule every other layer's popup
+      // obeys — see 02e-active-layer.js. This handler is map-wide rather than
+      // layer-scoped (MapLibre cannot feature-query a raster layer), so it has
+      // to check the gate itself instead of getting it for free the way a
+      // map.on('click', layerId, fn) registration does.
+      if (window.KLActive && !KLActive.isAuto() && KLActive.get() !== 'ul-' + layer.id) return;
+      if (raster.minX == null) return;
+      if (e.lngLat.lng < raster.minX || e.lngLat.lng > raster.maxX ||
+          e.lngLat.lat < raster.minY || e.lngLat.lat > raster.maxY) return;
+
+      var rampOn = !!raster.colourRamp;
+      var label = rampOn ? (raster.valueLabel || 'Value') : 'Value';
+      var h = '<div class="klpop"><div class="kp-head"><div class="kp-name">' + esc(layer.name) +
+        '</div><div class="kp-meta">' +
+        (layer.temporary ? '<span class="kp-chip">Temporary</span>' : '') +
+        '</div></div><div class="kp-block"><div class="kp-attrs">' +
+        '<div class="kp-attr"><span class="kp-k">' + esc(label) + '</span><span class="kp-v" id="ul-px-' + layer.id +
+        '">reading…</span></div></div></div></div>';
+      if (typeof klPopup === 'function') klPopup(e.lngLat, h);
+      else new maplibregl.Popup({ maxWidth: '280px' }).setLngLat(e.lngLat).setHTML(h).addTo(map);
+
+      fetch('/api/layer-data/' + layer.id + '/raster/pixel?lng=' + e.lngLat.lng + '&lat=' + e.lngLat.lat,
+            { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var val = document.getElementById('ul-px-' + layer.id);
+          if (!val) return;
+          if (j.ok === false || !j.bands || !j.bands.length) { val.textContent = 'no data here'; return; }
+          if (rampOn) {
+            var v = j.bands[0];
+            // The value label already carries its own unit (e.g. "Rainfall
+            // (mm)"), so no unit is appended here the way the Drone DEM popup
+            // appends " m" — that popup is elevation-only and can assume metres.
+            val.textContent = v == null ? 'no data here' : Number(v).toFixed(2);
+            return;
+          }
+          val.textContent = j.bands.map(function (v) { return v == null ? '—' : v; }).join(' / ');
+        })
+        .catch(function () {
+          var val = document.getElementById('ul-px-' + layer.id);
+          if (val) val.textContent = 'unavailable';
+        });
+    };
+    layer._rasterLayerId = 'ul-' + layer.id + '-raster';
+    map.on('click', handler);
   }
 
   function ensureTiles(layer, i) {

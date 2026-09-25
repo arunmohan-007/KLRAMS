@@ -1108,7 +1108,8 @@ const HUB=[
      every other dataset, rather than on the screen that defines them. */
   {id:'userlayers',cat:'User Layers',icon:'layers',types:[
     {id:'ul-import',label:'Import into a layer',fmt:'Shapefile & ZIP / KML / KMZ / GeoJSON / CSV'},
-    {id:'ul-temp',label:'Temporary layer from a file',fmt:'Shapefile & ZIP / KML / KMZ / GeoJSON / CSV'}
+    {id:'ul-temp',label:'Temporary layer from a file',fmt:'Shapefile & ZIP / KML / KMZ / GeoJSON / CSV'},
+    {id:'ul-temp-raster',label:'Raster layer from a file',fmt:'GeoTIFF, or JPG/PNG + world file'}
   ]}
 ];
 let curCat=HUB[0].id, curType=null;
@@ -1197,7 +1198,11 @@ function hubAddUserLayers(targets){
      two headings that sound like the same thing and are not. Everything made
      in Layer Management belongs under the one heading that says so; the
      folder is shown on the row instead. */
-  var made=(targets||[]).filter(function(l){return !l.frozen;}).map(function(l){
+  /* A raster layer is loaded once through its own "Raster layer from a file"
+     panel above (upload + publish, no re-import step) — it has no columns to
+     map and no vector import path, so it does not belong in this per-layer
+     "reload data" list, which assumes every entry opens the vector importer. */
+  var made=(targets||[]).filter(function(l){return !l.frozen&&l.geometryType!=='RASTER';}).map(function(l){
     return {
       id:'ulx-'+l.id,
       label:l.name+(l.temporary?' (temporary)':'')+(l.folder?(' — '+l.folder):''),
@@ -1266,6 +1271,7 @@ function selectType(id){
      exist and what columns the chosen file turns out to have, so they cannot be
      a static string in PANELS. */
   if(id==='ul-import'||id==='ul-temp'){ULC.show(id);wireTemplateWizards();return;}
+  if(id==='ul-temp-raster'){ULR.show();return;}
   /* A per-layer user entry is the same import panel with its target already
      chosen — the layer is what you clicked, so asking again would be odd. */
   var _ut=findType(id);

@@ -552,8 +552,9 @@ public class LayerDataService {
     public List<Map<String, Object>> viewerLayers(String user) {
         return jdbc.query("""
             SELECT d.id, d.layer_key, d.name, d.geometry_type, d.temporary, d.created_by, d.shared,
-                   f.name AS folder
+                   f.name AS folder, r.default_opacity
               FROM layer_definition d JOIN layer_folder f ON f.id = d.folder_id
+              LEFT JOIN layer_raster r ON r.layer_id = d.id
              WHERE d.source_type = 'USER'
                AND d.hidden IS NOT TRUE
                AND d.frozen IS NOT TRUE
@@ -577,6 +578,11 @@ public class LayerDataService {
             // flag only decides whether the button is worth showing at all.
             m.put("mine", user.equals(rs.getString("created_by")));
             m.put("folder", rs.getString("folder"));
+            // Only non-null for a RASTER layer; the opacity slider in the
+            // viewer's "My layers" panel needs it up front, before the layer's
+            // tiles are ever fetched, so it can't wait for /raster/status.
+            Object opacity = rs.getObject("default_opacity");
+            m.put("opacity", opacity == null ? null : ((Number) opacity).doubleValue());
             return m;
         }, user);
     }
