@@ -1,6 +1,7 @@
 package com.fist.rmms_backend;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -525,6 +526,115 @@ final class LayerAttributeCatalog {
 
     static String roadUnit(String column) {
         return column == null ? null : ROAD_UNITS.get(column.toLowerCase(Locale.ROOT));
+    }
+
+    /* ------------------------------------------------------------------
+       Road network: system attribute name -> the column that holds it
+       ------------------------------------------------------------------ */
+
+    /**
+     * The system attribute names of the road-network fields this codebase depends on
+     * structurally, as opposed to merely displays.
+     *
+     * <p>These six are different in kind from the rest of {@link #ROAD_LABELS}. "Terrain" is a
+     * value a module shows; "Road Start Chainage" is a value modules COMPUTE WITH — it is the
+     * divisor in every linear-reference query in the system. A module that hard-codes
+     * {@code "Rd_Str_cha"} is pinned to one shapefile's DBF truncation, and the next survey
+     * return that ships the field spelled differently breaks it silently.
+     *
+     * <p>So callers ask for the meaning and are handed whichever column currently carries it.
+     * The name is the stable thing; the column is not.
+     */
+    static final String SECTION_LABEL = "Section Label";
+    static final String ROAD_NAME = "Road Name";
+    static final String ROAD_START_CHAINAGE = "Road Start Chainage";
+    static final String ROAD_END_CHAINAGE = "Road End Chainage";
+    static final String SECTION_START_CHAINAGE = "Start Chainage";
+    static final String SECTION_END_CHAINAGE = "End Chainage";
+    static final String MEASURED_LENGTH = "Measured Length";
+    static final String ROAD_START_LOCATION = "Road Start Location";
+    static final String ROAD_END_LOCATION = "Road End Location";
+
+    /* Grouping attributes. Not part of the linear reference, but every dashboard groups its
+       figures by them, so a module that hard-codes one is pinned to an import's spelling in
+       exactly the same way — and the failure is quieter, because a join that matches nothing
+       produces a dashboard of plausible zeroes rather than an error. */
+    static final String DISTRICT = "District";
+    static final String ROAD_CLASS = "Road Class";
+    static final String CONSTRUCTION_TYPE = "Construction Type";
+    static final String SURFACE_TYPE = "Surface Type";
+    static final String CARRIAGEWAY = "Carriageway";
+
+    /**
+     * Column spellings other than the canonical one that mean the same system attribute.
+     *
+     * <p>A DBF field name is truncated to 10 characters, so the spelling depends on the full
+     * field name the surveyor used and changes between returns. Every spelling seen — or
+     * plausibly next — belongs here rather than in the module that needs the value.
+     *
+     * <p>Note {@code measrd_ln}: that column does NOT exist in the current schema, and a query
+     * naming it fails outright (CLAUDE.md records this as a real bug, made worse because a
+     * failure inside a transaction rolls back everything else in it). Listing it as an alias is
+     * what makes it safe — resolution only ever returns a column that is actually present, so
+     * the spelling is honoured if a future import ships it and ignored while it does not.
+     */
+    private static final Map<String, String> ROAD_COLUMN_ALIASES = new LinkedHashMap<>();
+
+    static {
+        alias(SECTION_LABEL, "section_la", "section_label", "sectionlabel", "section", "sec_label");
+        /* The road a section belongs to. NOT derivable from the section label: the label's road
+           code differs between sections of one road (KPWD/MDR/501010103/18 and
+           KPWD/MDR/501010104/5 are both "Parassala - Panachamoodu - Anappara Road"), so this
+           column is the only reliable answer to "same road?". */
+        alias(ROAD_NAME, "road_name", "roadname", "rd_name", "road_nm");
+        alias(ROAD_START_CHAINAGE, "rd_str_cha", "rd_str_ch", "rd_strt_ch", "road_start_chainage",
+                                   "rdstrcha", "rd_start_c");
+        alias(ROAD_END_CHAINAGE, "rd_end_cha", "rd_end_ch", "road_end_chainage", "rdendcha", "rd_end_c");
+        alias(SECTION_START_CHAINAGE, "start_chai", "start_chn", "start_chainage", "sec_str_ch", "str_chain");
+        alias(SECTION_END_CHAINAGE, "end_chaina", "end_chain", "end_chainage", "sec_end_ch", "end_chn");
+        alias(MEASURED_LENGTH, "measrd_len", "measrd_ln", "measured_length", "meas_len", "measurd_le");
+        alias(DISTRICT, "district", "dist", "district_n");
+        alias(ROAD_CLASS, "road_class", "roadclass", "rd_class", "class");
+        alias(CONSTRUCTION_TYPE, "cons_type", "constructi", "construction_type", "cons_typ");
+        alias(SURFACE_TYPE, "surface_ty", "surface_type", "surf_type", "surfacety");
+        alias(CARRIAGEWAY, "single_du", "carriageway", "single_dua", "carr_way");
+    }
+
+    private static void alias(String systemName, String... columns) {
+        for (String c : columns) ROAD_COLUMN_ALIASES.put(c.toLowerCase(Locale.ROOT), systemName);
+    }
+
+    /**
+     * Which of the road network's ACTUAL columns holds a given system attribute, or null when
+     * none of them does.
+     *
+     * <p>Resolved against the live column list rather than assumed, because {@code roads} is
+     * whatever the last shapefile import created. A caller passes the columns the database
+     * reports and gets back the one to put in its SQL — so renaming the field in the survey
+     * return means adding a spelling to {@link #ROAD_COLUMN_ALIASES}, not editing every module
+     * that reads it.
+     *
+     * <p>The canonical label wins over an alias: if an import somehow produced both
+     * {@code Rd_Str_cha} and {@code rd_start_c}, the declared one is the answer rather than
+     * whichever the catalogue happened to list first.
+     */
+    static String roadColumnFor(String systemName, Collection<String> actualColumns) {
+        if (systemName == null || actualColumns == null) return null;
+        String match = null;
+        for (String column : actualColumns) {
+            if (column == null) continue;
+            if (systemName.equals(roadLabel(column))) return column;
+            if (match == null && systemName.equals(ROAD_COLUMN_ALIASES.get(column.toLowerCase(Locale.ROOT))))
+                match = column;
+        }
+        return match;
+    }
+
+    /** The system attribute name for a road column, falling back to the alias table. */
+    static String roadSystemName(String column) {
+        String label = roadLabel(column);
+        if (label != null) return label;
+        return column == null ? null : ROAD_COLUMN_ALIASES.get(column.toLowerCase(Locale.ROOT));
     }
 
     /* ------------------------------------------------------------------

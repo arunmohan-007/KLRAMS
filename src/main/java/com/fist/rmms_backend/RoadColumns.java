@@ -106,6 +106,125 @@ class RoadColumns {
         return columns;
     }
 
+    /* ------------------------------------------------------------------
+       Resolving a field by meaning rather than by spelling
+       ------------------------------------------------------------------ */
+
+    /**
+     * The column currently holding a declared system attribute, or null when the network has
+     * none.
+     *
+     * <p>{@code roads} is whatever the last shapefile import created, and DBF truncates every
+     * field name to 10 characters, so {@code Rd_Str_cha} is a fact about one survey return
+     * rather than about this system. Modules ask for the meaning — {@code "Road Start
+     * Chainage"} — and get whichever column carries it; a return that spells the field
+     * differently is absorbed by adding a spelling to {@link LayerAttributeCatalog}, not by
+     * editing the modules.
+     *
+     * <p>Resolved against the cached live column list, so it follows a road upload as soon as
+     * {@link #clearCache()} runs — the same event that already invalidates everything else here.
+     */
+    String find(String systemName) {
+        load();
+        return columns == null ? null : LayerAttributeCatalog.roadColumnFor(systemName, columns);
+    }
+
+    /** True when the road network currently carries this system attribute. */
+    boolean has(String systemName) {
+        return find(systemName) != null;
+    }
+
+    /**
+     * The column for a system attribute, quoted and ready to interpolate, qualified by a table
+     * alias ({@code r."Rd_Str_cha"}). Pass a null or blank alias for the bare quoted column.
+     *
+     * <p>Throws rather than returning null: the result goes straight into SQL, and a null would
+     * build a statement that fails at the database with an error naming neither the attribute
+     * nor the module that wanted it. The message here names both.
+     */
+    String col(String alias, String systemName) {
+        String column = find(systemName);
+        if (column == null)
+            throw new IllegalStateException(
+                    "The road network has no column for the system attribute \"" + systemName
+                  + "\". Add the spelling this import used to LayerAttributeCatalog rather than "
+                  + "renaming the column.");
+        if (!column.matches(SAFE_NAME))
+            throw new IllegalStateException(
+                    "Road column \"" + column + "\" cannot be used safely in a statement.");
+        return (alias == null || alias.isBlank() ? "" : alias + ".") + "\"" + column + "\"";
+    }
+
+    /** The bare quoted column for a system attribute. */
+    String col(String systemName) {
+        return col(null, systemName);
+    }
+
+    /**
+     * Substitutes {@code @{System Attribute Name}} tokens in a SQL fragment with the resolved,
+     * quoted column — optionally alias-qualified as {@code @{r:Measured Length}}.
+     *
+     * <pre>
+     *   SELECT @{r:Road Name}, @{r:Measured Length} FROM roads r WHERE @{r:Section Label} = ?
+     *   -&gt;  SELECT r."Road_Name", r."Measrd_Len" FROM roads r WHERE r."Section_La" = ?
+     * </pre>
+     *
+     * <p>For the queries that reference a dozen road fields at once. Those could be built with
+     * positional {@code %s} arguments, but a statement with twenty of them is read by counting
+     * placeholders against a distant argument list, and a pair swapped there produces valid SQL
+     * that groups by the wrong field — the exact failure this indirection exists to prevent.
+     * Naming the attribute at the point it is used keeps the SQL readable as SQL.
+     *
+     * <p>An unresolved token throws, naming the attribute, rather than being left in the string
+     * to fail at the database as a syntax error.
+     */
+    String resolve(String sql) {
+        if (sql == null || sql.indexOf("@{") < 0) return sql;
+        StringBuilder out = new StringBuilder(sql.length());
+        java.util.regex.Matcher m = TOKEN.matcher(sql);
+        int last = 0;
+        while (m.find()) {
+            out.append(sql, last, m.start());
+            String alias = m.group(1);          // may be null
+            String attribute = m.group(2).trim();
+            out.append(col(alias, attribute));
+            last = m.end();
+        }
+        out.append(sql.substring(last));
+        return out.toString();
+    }
+
+    /** {@code @{Attribute}} or {@code @{alias:Attribute}}. */
+    private static final java.util.regex.Pattern TOKEN =
+            java.util.regex.Pattern.compile("@\\{(?:([A-Za-z_][A-Za-z0-9_]*):)?([^}]+)\\}");
+
+    /**
+     * The reference length every linear-referenced query divides by, for one table alias.
+     *
+     * <p>In the order the whole codebase agrees on: surveyed chainage span, then the measured
+     * length, then the geodesic length of the drawn line. CLAUDE.md requires every copy of this
+     * to stay identical — and it was copied into eight places, each naming the DBF columns
+     * directly, which is two problems at once: eight chances to drift, and eight modules pinned
+     * to one import's spelling. This is the single definition they now share.
+     *
+     * <p>A network missing {@code Measured Length} still gets a valid expression — that term is
+     * simply dropped, leaving the chainage span and the drawn line. Only the two chainage
+     * columns are load-bearing enough to throw for.
+     */
+    String lenExpr(String alias) {
+        String a = (alias == null || alias.isBlank()) ? "" : alias + ".";
+        String start = col(alias, LayerAttributeCatalog.ROAD_START_CHAINAGE);
+        String end = col(alias, LayerAttributeCatalog.ROAD_END_CHAINAGE);
+        String measured = has(LayerAttributeCatalog.MEASURED_LENGTH)
+                ? "NULLIF(" + col(alias, LayerAttributeCatalog.MEASURED_LENGTH) + "::double precision, 0),\n    "
+                : "";
+        return """
+               COALESCE(
+                   NULLIF(%s::double precision - %s::double precision, 0),
+                   %sST_Length(%sgeom::geography))"""
+               .formatted(end, start, measured, a);
+    }
+
     /** True if {@code attr} is a real, current roads column — the check every request-supplied
      *  attribute name must pass before it is ever interpolated into SQL. */
     boolean isValid(String attr) {
