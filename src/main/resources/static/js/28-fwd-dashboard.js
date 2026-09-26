@@ -21,6 +21,12 @@ let fdbCutoff=null;      // user-set "weak" D0 cutoff (same unit as displayed), 
 
 const FDB_SURF_LBL={all:'All pavements',flexible:'Flexible (BT)',rigid:'Rigid (CC)',unknown:'Unclassified'};
 
+/* The UNKNOWN bucket's real label for one period: the actual (lookup-resolved)
+   Construction/Surface Type behind those points (e.g. "Paver Block") from
+   FwdDashboardController's unknown_label — blank when the points genuinely
+   carry no such value, rather than being relabelled into a made-up value. */
+function fdbUnknownLbl(p){return (p&&p.unknown_label)?escH(p.unknown_label):'';}
+
 /* window.__klRole is set by map.html's profile-chip script once /api/me
    resolves; 'kl-role-ready' fires at the same time so the Delete button can
    appear without a page reload if the FWD tab was opened before it resolved. */
@@ -270,7 +276,7 @@ function fdbSurfCard(p){
     const v=p.variants&&p.variants[k];if(!v)return '';
     const s=fdbScope(v),st=s.d0,u=fdbUnit(v);
     return '<tr'+(fdbSurface===k?' class="svy-sel"':'')+' data-act="fdbSetSurface" '+KLAct.args(k)+' style="cursor:pointer">'+
-      '<td><b>'+FDB_SURF_LBL[k]+'</b></td><td class="n"><b>'+fmtN(s.points||0)+'</b></td>'+
+      '<td><b>'+(k==='unknown'?fdbUnknownLbl(p):FDB_SURF_LBL[k])+'</b></td><td class="n"><b>'+fmtN(s.points||0)+'</b></td>'+
       (st?'<td class="n">'+fdbF(st.min,u)+'</td><td class="n"><b>'+fdbF(st.mean,u)+'</b></td>'+
           '<td class="n">'+fdbF(st.max,u)+'</td><td class="n">'+u+'</td>'
          :'<td class="n" colspan="4"><span class="z">no D0 values</span></td>')+'</tr>';
@@ -431,8 +437,9 @@ function fdbPaint(){
     ?'<div class="svy-dists">'+['all','flexible','rigid','unknown'].map(k=>{
         if(k==='all')return '<button type="button" class="svy-chip'+(fdbSurface==='all'?' on':'')+'" data-act="fdbSetSurface" data-args="all">'+FDB_SURF_LBL.all+'</button>';
         const n=+mix[k]||0;
-        if(!n)return k==='unknown'?'':'<span class="svy-chip" style="opacity:.45;cursor:default" title="No '+FDB_SURF_LBL[k]+' points in this period">'+FDB_SURF_LBL[k]+' · none</span>';
-        return '<button type="button" class="svy-chip'+(fdbSurface===k?' on':'')+'" data-act="fdbSetSurface" '+KLAct.args(k)+'>'+FDB_SURF_LBL[k]+' · '+fmtN(n)+'</button>';
+        const lbl=k==='unknown'?(fdbUnknownLbl(p)||FDB_SURF_LBL.unknown):FDB_SURF_LBL[k];
+        if(!n)return k==='unknown'?'':'<span class="svy-chip" style="opacity:.45;cursor:default" title="No '+lbl+' points in this period">'+lbl+' · none</span>';
+        return '<button type="button" class="svy-chip'+(fdbSurface===k?' on':'')+'" data-act="fdbSetSurface" '+KLAct.args(k)+'>'+lbl+' · '+fmtN(n)+'</button>';
       }).join('')+'</div>'
     :'';
   const pills='<div class="svy-bar"><div class="svy-years">'+
@@ -448,7 +455,11 @@ function fdbPaint(){
   }
 
   /* ---- KPI cards ---- */
-  const surfLbl=fdbSurface!=='all'?FDB_SURF_LBL[fdbSurface]:null;
+  // For the UNKNOWN bucket, show the real (lookup-resolved) Construction/Surface
+  // Type behind those points instead of the generic word "Unclassified" — blank
+  // when the points genuinely carry no such value, rather than a made-up label.
+  const surfLbl=fdbSurface==='unknown'?fdbUnknownLbl(p)
+    :(fdbSurface!=='all'?FDB_SURF_LBL[fdbSurface]:null);
   const scopeLbl=(surfLbl?surfLbl+' · ':'')+(fdbDistrict?escH(fdbDistrict):'All districts');
   const d0=s.d0,tp=s.temps&&s.temps.pavement,ta=s.temps&&s.temps.air;
   const pcTot=(fdbDistrict&&v.points)?Math.round((s.points||0)/v.points*100):null;

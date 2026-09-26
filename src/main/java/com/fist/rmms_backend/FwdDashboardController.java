@@ -35,25 +35,70 @@ public class FwdDashboardController {
 
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
+    /** Resolves the road network's columns by system attribute name. */
+    private final RoadColumns roadColumns;
+    /** Resolves coded attributes (e.g. Cons_Type "PVB") to their catalogue label ("Paver Block"). */
+    private final LookupService lookups;
 
-    public FwdDashboardController(JdbcTemplate jdbc, SurveyPeriodService periods) {
+    public FwdDashboardController(JdbcTemplate jdbc, SurveyPeriodService periods,
+                                  RoadColumns roadColumns, LookupService lookups) {
+        this.roadColumns = roadColumns;
         this.jdbc = jdbc;
         this.periods = periods;
+        this.lookups = lookups;
     }
 
     /* One FWD test point, already joined to the road network.
-       surf = FLEXIBLE / RIGID / UNKNOWN (see surfOf). */
-    private record Pt(String district, String cls, String surf, String section, Double d0, Double pav, Double air) {}
+       surf = FLEXIBLE / RIGID / UNKNOWN (see surfOf).
+       other = the actual pavement description behind an UNKNOWN point (the FWD
+       file's own pavement-type text, or the road's Construction/Surface Type
+       resolved through the lookup catalogue) — null when nothing is set, so a
+       genuinely blank attribute stays blank rather than being papered over. */
+    private record Pt(String district, String cls, String surf, String section, Double d0, Double pav, Double air, String other) {}
+
+    /** Stored value -> the label to show for it, for a road system attribute — resolved to
+     *  whatever column the current import actually used, never a hard-coded name. */
+    private Map<String, String> labelsFor(String systemAttribute) {
+        String storageKey = roadColumns.find(systemAttribute);
+        if (storageKey == null) return Map.of();
+        try {
+            return lookups.displayLabels("roads", "default", storageKey);
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    /** First non-blank of the FWD file's own pavement-type text and the road's
+     *  (lookup-resolved) construction / surface type — same priority as
+     *  {@link #surfOf}, so the label shown matches what drove the classification.
+     *  Null when none of them carry a value, so the caller can show blank. */
+    private static String otherLabelOf(String... vals) {
+        for (String v : vals) {
+            if (v != null && !v.isBlank()) return v;
+        }
+        return null;
+    }
+
+    /** The label to show for the UNKNOWN (non flexible/rigid) bucket of one period:
+     *  the distinct {@link Pt#other} values actually behind it, comma-joined, or
+     *  null when none of those points carry any pavement description at all — a
+     *  blank stays blank rather than being forced into the word "Unclassified". */
+    private static String unknownLabel(List<Pt> pts) {
+        List<String> distinct = pts.stream().filter(x -> "UNKNOWN".equals(x.surf()))
+            .map(Pt::other).filter(Objects::nonNull).distinct().sorted().collect(Collectors.toList());
+        return distinct.isEmpty() ? null : String.join(", ", distinct);
+    }
 
     private static final String NUM = "'^-?[0-9]+(\\.[0-9]+)?$'";
 
-    private static final String SQL = """
+    private String sql() {
+        return """
         SELECT a.period_id AS pid,
                a.section_label AS section,
-               COALESCE(NULLIF(trim(r."District"),''), '(unmapped)')      AS district,
-               COALESCE(NULLIF(upper(trim(r."Road_Class")),''), 'OTHER')  AS cls,
-               r."Cons_Type"  AS cons_type,
-               r."Surface_Ty" AS surf_type,
+               COALESCE(NULLIF(trim(%4$s),''), '(unmapped)')      AS district,
+               COALESCE(NULLIF(upper(trim(%5$s)),''), 'OTHER')    AS cls,
+               %6$s AS cons_type,
+               %7$s AS surf_type,
                (SELECT e.value
                   FROM jsonb_each_text(a.attrs) e
                  WHERE regexp_replace(lower(e.key), '[^a-z0-9]', '', 'g')
@@ -62,35 +107,48 @@ public class FwdDashboardController {
                (SELECT (e.value)::double precision
                   FROM jsonb_each_text(a.attrs) e
                  WHERE regexp_replace(lower(e.key), '[^a-z0-9]', '', 'g') IN ('d0','do')
-                   AND e.value ~ %s LIMIT 1) AS d0,
+                   AND e.value ~ %1$s LIMIT 1) AS d0,
                (SELECT (e.value)::double precision
                   FROM jsonb_each_text(a.attrs) e
                  WHERE regexp_replace(lower(e.key), '[^a-z0-9]', '', 'g') ~ '(pavement|surface)temp'
-                   AND e.value ~ %s LIMIT 1) AS pav,
+                   AND e.value ~ %2$s LIMIT 1) AS pav,
                (SELECT (e.value)::double precision
                   FROM jsonb_each_text(a.attrs) e
                  WHERE regexp_replace(lower(e.key), '[^a-z0-9]', '', 'g') ~ 'airtemp'
-                   AND e.value ~ %s LIMIT 1) AS air
+                   AND e.value ~ %3$s LIMIT 1) AS air
         FROM road_assets a
-        LEFT JOIN roads r ON r."Section_La" = a.section_label
+        LEFT JOIN roads r ON %8$s = a.section_label
         WHERE a.asset_type = 'fwd' AND a.period_id IS NOT NULL
-        """.formatted(NUM, NUM, NUM);
+        """.formatted(NUM, NUM, NUM,
+                      roadColumns.col("r", LayerAttributeCatalog.DISTRICT),
+                      roadColumns.col("r", LayerAttributeCatalog.ROAD_CLASS),
+                      roadColumns.col("r", LayerAttributeCatalog.CONSTRUCTION_TYPE),
+                      roadColumns.col("r", LayerAttributeCatalog.SURFACE_TYPE),
+                      roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL));
+    }
 
     private static final int PROFILE_MAX = 140;   // points per lower→higher curve
 
     @GetMapping("/summary")
     public Map<String, Object> summary() {
 
+        Map<String, String> consLabels = labelsFor(LayerAttributeCatalog.CONSTRUCTION_TYPE);
+        Map<String, String> surfTypeLabels = labelsFor(LayerAttributeCatalog.SURFACE_TYPE);
+
         Map<Integer, List<Pt>> byPeriod = new HashMap<>();
-        for (Map<String, Object> row : jdbc.queryForList(SQL)) {
+        for (Map<String, Object> row : jdbc.queryForList(sql())) {
             Number pid = (Number) row.get("pid");
             if (pid == null) continue;
             Double d0 = (Double) row.get("d0");
+            String ptype = (String) row.get("ptype");
+            String consType = (String) row.get("cons_type");
+            String surfType = (String) row.get("surf_type");
             byPeriod.computeIfAbsent(pid.intValue(), k -> new ArrayList<>()).add(new Pt(
                 (String) row.get("district"), (String) row.get("cls"),
-                surfOf((String) row.get("ptype"), (String) row.get("cons_type"), (String) row.get("surf_type")),
+                surfOf(ptype, consType, surfType),
                 (String) row.get("section"),
-                d0, (Double) row.get("pav"), (Double) row.get("air")));
+                d0, (Double) row.get("pav"), (Double) row.get("air"),
+                otherLabelOf(ptype, LookupService.label(consLabels, consType), LookupService.label(surfTypeLabels, surfType))));
         }
 
         int activeId = periods.activePeriodId();
@@ -123,6 +181,10 @@ public class FwdDashboardController {
             }
             period.put("surface_mix", mix);
             period.put("variants", variants);
+            /* What "Unclassified" actually is: the real, lookup-resolved pavement
+               description behind those points (e.g. "Paver Block"), not a made-up
+               bucket name — blank when the points genuinely carry none. */
+            period.put("unknown_label", unknownLabel(pts));
 
             out.add(period);
             if (pid == activeId) defaultPeriod = Map.of("id", pid, "name", p.get("name"));
@@ -147,19 +209,21 @@ public class FwdDashboardController {
             SELECT a.id, a.section_label, a.start_chainage, a.end_chainage,
                    CASE WHEN GeometryType(a.geom) = 'POINT' THEN round(ST_Y(a.geom)::numeric, 6) END AS lat,
                    CASE WHEN GeometryType(a.geom) = 'POINT' THEN round(ST_X(a.geom)::numeric, 6) END AS lng,
-                   CASE WHEN r."Section_La" IS NULL THEN 'no_road' ELSE 'blank_class' END AS reason,
-                   CASE WHEN r."Section_La" IS NULL THEN
-                       (SELECT r2."Section_La" FROM roads r2
-                         WHERE regexp_replace(upper(r2."Section_La"), '[^A-Z0-9]', '', 'g')
+                   CASE WHEN %1$s IS NULL THEN 'no_road' ELSE 'blank_class' END AS reason,
+                   CASE WHEN %1$s IS NULL THEN
+                       (SELECT %2$s FROM roads r2
+                         WHERE regexp_replace(upper(%2$s), '[^A-Z0-9]', '', 'g')
                              = regexp_replace(upper(a.section_label), '[^A-Z0-9]', '', 'g')
                          LIMIT 1)
                    END AS suggestion
             FROM road_assets a
-            LEFT JOIN roads r ON r."Section_La" = a.section_label
+            LEFT JOIN roads r ON %1$s = a.section_label
             WHERE a.asset_type = 'fwd' AND a.period_id = ?
-              AND (r."Section_La" IS NULL OR NULLIF(upper(trim(r."Road_Class")), '') IS NULL)
+              AND (%1$s IS NULL OR NULLIF(upper(trim(%3$s)), '') IS NULL)
             ORDER BY a.section_label, a.start_chainage
-            """, pid);
+            """.formatted(roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL),
+                          roadColumns.col("r2", LayerAttributeCatalog.SECTION_LABEL),
+                          roadColumns.col("r", LayerAttributeCatalog.ROAD_CLASS)), pid);
     }
 
     /* ---- full stats block for one point set: period-level figures plus the
