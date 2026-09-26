@@ -91,7 +91,7 @@ function fdbScope(p){
 /* D0 is read exactly as uploaded — millimetres — with no scale detection or
    conversion; every reading here and everywhere else in the app is mm. */
 function fdbUnit(p){return 'mm';}
-function fdbF(v,unit){if(v==null||isNaN(v))return'—';return (+v).toFixed(3);}
+function fdbF(v,unit){if(v==null||isNaN(v))return'—';return (+v).toFixed(2);}
 function fdbFt(v,unit){if(v==null||isNaN(v))return'—';return (+v).toFixed(2);}
 
 /* nice ceiling for an axis maximum */
@@ -226,10 +226,10 @@ function fdbTempPanel(name,t,col){
   const l=((t.min-lo)/sp*100),w=Math.max((t.max-t.min)/sp*100,1.5),d=((t.mean-lo)/sp*100);
   return '<div class="fdb-temp-panel" style="--tc:'+col+'">'+
     '<div class="fdb-temp-name">'+name+'</div>'+
-    '<div class="fdb-temp-big">'+t.mean.toFixed(1)+'<span class="u">°C mean</span></div>'+
+    '<div class="fdb-temp-big">'+t.mean.toFixed(2)+'<span class="u">°C mean</span></div>'+
     '<div class="fdb-track"><i class="fdb-band" style="left:'+l.toFixed(1)+'%;width:'+w.toFixed(1)+'%;background:'+col+'"></i>'+
     '<i class="fdb-dot" style="left:'+d.toFixed(1)+'%;background:'+col+'"></i></div>'+
-    '<div class="fdb-temp-mm"><span>min '+t.min.toFixed(1)+' °C</span><span>max '+t.max.toFixed(1)+' °C</span></div>'+
+    '<div class="fdb-temp-mm"><span>min '+t.min.toFixed(2)+' °C</span><span>max '+t.max.toFixed(2)+' °C</span></div>'+
     '<div class="fdb-temp-n">'+t.n+' readings</div></div>';
 }
 function fdbTempCard(p){
@@ -255,7 +255,7 @@ function fdbTempCard(p){
     let rows='';
     dists.forEach(d=>{
       const tp=d.temps.pavement,ta=d.temps.air;
-      const c=t=>t==null?'<span class="z">·</span>':t.toFixed(1);
+      const c=t=>t==null?'<span class="z">·</span>':t.toFixed(2);
       rows+='<tr'+(d.district===fdbDistrict?' class="svy-sel"':'')+' data-act="fdbSetDistrict" '+KLAct.args(qq(d.district))+' style="cursor:pointer"><td>'+escH(d.district)+'</td>'+
         '<td class="n">'+c(tp&&tp.min)+'</td><td class="n"><b>'+c(tp&&tp.mean)+'</b></td><td class="n">'+c(tp&&tp.max)+'</td>'+
         '<td class="n">'+c(ta&&ta.min)+'</td><td class="n"><b>'+c(ta&&ta.mean)+'</b></td><td class="n">'+c(ta&&ta.max)+'</td></tr>';
@@ -405,16 +405,16 @@ function fdbMatrix(p,unit){
       '<td class="n">'+(d.d0?fdbF(d.d0.min,unit):'<span class="z">·</span>')+'</td>'+
       '<td class="n"><b>'+(d.d0?fdbF(d.d0.mean,unit):'<span class="z">·</span>')+'</b></td>'+
       '<td class="n">'+(d.d0?fdbF(d.d0.max,unit):'<span class="z">·</span>')+'</td>'+
-      '<td class="n">'+(tp?tp.mean.toFixed(1):'<span class="z">·</span>')+'</td>'+
-      '<td class="n">'+(ta?ta.mean.toFixed(1):'<span class="z">·</span>')+'</td></tr>';
+      '<td class="n">'+(tp?tp.mean.toFixed(2):'<span class="z">·</span>')+'</td>'+
+      '<td class="n">'+(ta?ta.mean.toFixed(2):'<span class="z">·</span>')+'</td></tr>';
   });
   const t=p;
   rows+='<tr class="amx-tot"><td><b>Total / overall</b></td><td class="n"><b>'+fmtN(t.points)+'</b></td>'+
     cls.map(c=>{const e=(t.classes||[]).find(x=>x.cls===c);return '<td class="n"><b>'+(e?fmtN(e.points):0)+'</b></td>';}).join('')+
     '<td class="n"><b>'+(t.d0?fdbF(t.d0.min,unit):'—')+'</b></td><td class="n"><b>'+(t.d0?fdbF(t.d0.mean,unit):'—')+'</b></td>'+
     '<td class="n"><b>'+(t.d0?fdbF(t.d0.max,unit):'—')+'</b></td>'+
-    '<td class="n"><b>'+((t.temps&&t.temps.pavement)?t.temps.pavement.mean.toFixed(1):'—')+'</b></td>'+
-    '<td class="n"><b>'+((t.temps&&t.temps.air)?t.temps.air.mean.toFixed(1):'—')+'</b></td></tr>';
+    '<td class="n"><b>'+((t.temps&&t.temps.pavement)?t.temps.pavement.mean.toFixed(2):'—')+'</b></td>'+
+    '<td class="n"><b>'+((t.temps&&t.temps.air)?t.temps.air.mean.toFixed(2):'—')+'</b></td></tr>';
   return '<div class="dcard"><div class="dcard-head"><h3>District-wise FWD summary</h3>'+
     '<span class="totchip">'+dists.length+' district'+(dists.length===1?'':'s')+'</span></div>'+
     '<div class="sub">Points by road class, D0 statistics ('+unit+') and mean temperatures — click a row to focus the dashboard</div>'+
@@ -479,11 +479,11 @@ function fdbPaint(){
     '<div class="kv">'+(d0?fdbF(d0.min,unit):'—')+'–'+(d0?fdbF(d0.max,unit):'—')+'<span class="u">'+unit+'</span></div>'+
     '<div class="kl">Lowest (strongest) to highest (weakest) deflection</div></div>'+
     '<div class="kpi" style="--kc:#c2603f"><div class="kcap">Pavement temp</div>'+
-    '<div class="kv">'+(tp?tp.mean.toFixed(1):'—')+'<span class="u">°C</span></div>'+
-    '<div class="kl">'+(tp?('min '+tp.min.toFixed(1)+' · max '+tp.max.toFixed(1)+' °C'):'Not in this upload')+'</div></div>'+
+    '<div class="kv">'+(tp?tp.mean.toFixed(2):'—')+'<span class="u">°C</span></div>'+
+    '<div class="kl">'+(tp?('min '+tp.min.toFixed(2)+' · max '+tp.max.toFixed(2)+' °C'):'Not in this upload')+'</div></div>'+
     '<div class="kpi" style="--kc:#3f9aa3"><div class="kcap">Air temp</div>'+
-    '<div class="kv">'+(ta?ta.mean.toFixed(1):'—')+'<span class="u">°C</span></div>'+
-    '<div class="kl">'+(ta?('min '+ta.min.toFixed(1)+' · max '+ta.max.toFixed(1)+' °C'):'Not in this upload')+'</div></div></div>';
+    '<div class="kv">'+(ta?ta.mean.toFixed(2):'—')+'<span class="u">°C</span></div>'+
+    '<div class="kl">'+(ta?('min '+ta.min.toFixed(2)+' · max '+ta.max.toFixed(2)+' °C'):'Not in this upload')+'</div></div></div>';
 
   /* ---- charts ---- */
   const profCard='<div class="dcard"><div class="dcard-head"><h3>D0 — lower to higher by road class</h3>'+
