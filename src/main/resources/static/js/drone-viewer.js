@@ -57,8 +57,14 @@
     },
     center: [76.95, 8.52],
     zoom: 8,
-    maxZoom: 23
+    maxZoom: 23,
+    // Only cost this map pays for the Snapshot tool: without it, getCanvas()
+    // reads back a cleared buffer on most GPUs the instant a frame finishes.
+    preserveDrawingBuffer: true
   });
+
+  var DEFAULT_CENTER = [76.95, 8.52];
+  var DEFAULT_ZOOM = 8;
 
   function baseSources() {
     var s = {};
@@ -166,7 +172,7 @@
     if (visible[d.id]) return;
     // An imported contour set has no raster pyramid — it IS the vector layer, so it
     // goes through the same code that draws a DEM's traced contours.
-    if (isVector(d)) { showContours(d); visible[d.id] = true; return; }
+    if (isVector(d)) { showContours(d); visible[d.id] = true; updateStatusLayers(); return; }
     map.addSource(sourceId(d), {
       type: 'raster',
       // build_version in the URL is what makes a re-published dataset a different
@@ -184,6 +190,7 @@
       paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' }
     }, roadsOnTop() ? ROAD_CASING : undefined);
     visible[d.id] = true;
+    updateStatusLayers();
   }
 
   function hideDataset(d) {
@@ -195,6 +202,7 @@
     // layer that is no longer shown.
     hideContours(d);
     if (d.__paintContours) d.__paintContours();
+    updateStatusLayers();
   }
 
   function roadsOnTop() { return document.getElementById('roads-top').checked; }
@@ -926,6 +934,39 @@
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') clearMeasure(); });
 
+  /* ---------------- view tools: reset / zoom-to-layers / snapshot ---------------- */
+
+  document.getElementById('t-home').addEventListener('click', function () {
+    map.flyTo({ center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM, duration: 900 });
+  });
+
+  /** Union of every currently-visible raster dataset's own extent. A contour set
+   *  has no raster bounds of its own — it rides on its parent DEM's checkbox, so
+   *  it never contributes a distinct extent here. */
+  document.getElementById('t-zoom-layers').addEventListener('click', function () {
+    var on = datasets.filter(function (d) { return visible[d.id] && !isVector(d); });
+    if (!on.length) return;
+    var minX = Math.min.apply(null, on.map(function (d) { return d.min_x; }));
+    var minY = Math.min.apply(null, on.map(function (d) { return d.min_y; }));
+    var maxX = Math.max.apply(null, on.map(function (d) { return d.max_x; }));
+    var maxY = Math.max.apply(null, on.map(function (d) { return d.max_y; }));
+    map.fitBounds([[minX, minY], [maxX, maxY]], { padding: 50, duration: 900 });
+  });
+
+  document.getElementById('t-snapshot').addEventListener('click', function () {
+    map.getCanvas().toBlob(function (blob) {
+      if (!blob) return;
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'klrams-drone-view-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+  });
+
   /* ---------------- basemap + road toggles ---------------- */
 
   document.getElementById('basemap').addEventListener('change', function () {
@@ -943,6 +984,64 @@
   });
 
   document.getElementById('roads-top').addEventListener('change', applyOrder);
+
+  /* ---------------- dock: tabs + collapse ---------------- */
+
+  document.querySelectorAll('.dtab').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.dtab').forEach(function (b) { b.classList.toggle('on', b === btn); });
+      var pane = btn.dataset.tab;
+      document.querySelectorAll('.dpane').forEach(function (p) {
+        p.classList.toggle('on', p.dataset.pane === pane);
+      });
+    });
+  });
+
+  var wrapEl = document.getElementById('wrap');
+  var dockEl = document.getElementById('dock');
+
+  /** The map's canvas keeps its old size until told otherwise — resizing the dock
+   *  changes the map-box width under it without ever firing a window resize event,
+   *  so MapLibre has to be nudged once the CSS width transition actually finishes. */
+  function resizeMapAfterDockChange() {
+    map.resize();
+    dockEl.addEventListener('transitionend', function once(e) {
+      if (e.propertyName !== 'width') return;
+      dockEl.removeEventListener('transitionend', once);
+      map.resize();
+    });
+  }
+
+  document.getElementById('dock-collapse').addEventListener('click', function () {
+    wrapEl.classList.add('collapsed');
+    resizeMapAfterDockChange();
+  });
+  document.getElementById('dock-expand').addEventListener('click', function () {
+    wrapEl.classList.remove('collapsed');
+    resizeMapAfterDockChange();
+  });
+
+  /* ---------------- status bar ---------------- */
+
+  var sbLayers = document.getElementById('sb-layers');
+  var sbZoom = document.getElementById('sb-zoom');
+  var sbCoords = document.getElementById('sb-coords');
+
+  /** Datasets currently drawn, including a shown-but-not-yet-tiled contour set. */
+  function updateStatusLayers() {
+    var n = Object.keys(visible).length;
+    sbLayers.textContent = n + ' layer' + (n === 1 ? '' : 's') + ' on';
+  }
+
+  function updateStatusZoom() {
+    sbZoom.textContent = 'Zoom ' + map.getZoom().toFixed(2);
+  }
+
+  map.on('zoom', updateStatusZoom);
+  map.on('mousemove', function (e) {
+    sbCoords.textContent = e.lngLat.lat.toFixed(6) + ', ' + e.lngLat.lng.toFixed(6);
+  });
+  map.on('mouseout', function () { sbCoords.textContent = '—'; });
 
   /* ---------------- search ---------------- */
 
@@ -1237,17 +1336,26 @@
   Promise.all([styleReady, listed]).then(function () {
     addRoadNetwork();
     addMeasureLayers();
+    updateStatusZoom();
+    updateStatusLayers();
 
-    // Everything published is switched on by default — a viewer that opens blank
-    // makes the user hunt for data they just published.
-    datasets.forEach(showDataset);
-    applyOrder();
+    // Nothing is switched on by default — the map opens on the Kerala basemap and
+    // each dataset is a raster pyramid fetched only once its checkbox is ticked.
+    // Auto-loading every published dataset (the old behaviour) meant a project with
+    // many datasets stalled the viewer fetching tiles for layers nobody asked to see.
     renderDatasets();
 
+    // A direct link naming a project is an explicit request to see it, so that one
+    // dataset (and only that one) is switched on and zoomed to.
     var wanted = new URLSearchParams(location.search).get('project');
-    var focus = wanted
-      ? datasets.filter(function (d) { return String(d.project_id) === String(wanted); })[0]
-      : datasets[0];
-    if (focus) zoomTo(focus);
+    if (wanted) {
+      var focus = datasets.filter(function (d) { return String(d.project_id) === String(wanted); })[0];
+      if (focus) {
+        showDataset(focus);
+        applyOrder();
+        renderDatasets();
+        zoomTo(focus);
+      }
+    }
   });
 })();
