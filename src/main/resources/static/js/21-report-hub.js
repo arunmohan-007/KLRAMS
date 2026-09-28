@@ -20,7 +20,8 @@ const RH_SETS=[
   {key:'traffic',  label:'Traffic Station & Count',kind:'traffic',                     title:'Traffic Station & Count Report',file:'traffic-station-count-report'},
   {key:'subgrade', label:'Sub-Grade Soil',     kind:'asset',    type:'subgrade',        title:'Sub-Grade Soil Report',      file:'subgrade-soil-report'},
   {key:'core',     label:'Bituminous Core',    kind:'asset',    type:'bituminous_core', title:'Bituminous Core Report',     file:'bituminous-core-report'},
-  {key:'crust',    label:'Pavement Crust',     kind:'asset',    type:'pavement_crust',  title:'Pavement Crust Report',      file:'pavement-crust-report'}
+  {key:'crust',    label:'Pavement Crust',     kind:'asset',    type:'pavement_crust',  title:'Pavement Crust Report',      file:'pavement-crust-report'},
+  {key:'gap',      label:'Gap Report (Condition Data)',kind:'gap',                     title:'Gap Report on Condition Data',file:'condition-gap-report'}
 ];
 let rhTab='fwd', rhSearch='', rhDistrict='', rhRoad='', rhSec='', rhCache={};
 /* Perf: the condition dataset is ~33k rows × ~40 columns. Rendering it all at
@@ -184,6 +185,29 @@ function rhTrafficRows(st){
   rows.sort((a,b)=>String(a.data.Station).localeCompare(String(b.data.Station),undefined,{numeric:true}));
   return rows;
 }
+/* Gap Report on Condition Data: one row per uncovered chainage stretch inside a
+   section that HAS condition data (a section with none uploaded is left out
+   server-side, not shown as one gap spanning the whole road — see
+   ConditionService.gapReport). District/Road/PWD Section are joined the same
+   way every other report does it, client-side by Section Label.
+   Sorted district-wise first (server already orders this way, but the row
+   shape here is what rhFilteredRows/rhRender show, so keep it explicit). */
+function rhGapRows(list){
+  const rows=(list||[]).map(g=>{
+    const sec=g.section_label||''; const rp=roadProps(sec);
+    return {sec:sec, road:rp.Road_Name||'', pwd:rp.PWD_Sec||'', district:rp.District||g.district||'',
+      data:{
+        'Gap Start (m)':g.gap_start_m,
+        'Gap End (m)':g.gap_end_m,
+        'Gap Length (m)':g.gap_length_m
+      }};
+  });
+  rows.sort((a,b)=>
+    String(a.district).localeCompare(String(b.district))
+    ||String(a.sec).localeCompare(String(b.sec),undefined,{numeric:true})
+    ||((a.data['Gap Start (m)']||0)-(b.data['Gap Start (m)']||0)));
+  return rows;
+}
 function rhEnsure(set){
   return Promise.resolve()
     .then(()=>(!ROADS||!Object.keys(ROADS).length)?loadRoads():null)
@@ -192,6 +216,11 @@ function rhEnsure(set){
       if(set.kind==='traffic'){
         return fetch('/api/traffic/store').then(r=>r.json())
           .then(st=>{const rows=rhTrafficRows(st);rhCache[set.key]=rows;return rows;})
+          .catch(()=>{rhCache[set.key]=[];return [];});
+      }
+      if(set.kind==='gap'){
+        return fetch('/api/condition/gap-report').then(r=>r.json())
+          .then(list=>{const rows=rhGapRows(list);rhCache[set.key]=rows;return rows;})
           .catch(()=>{rhCache[set.key]=[];return [];});
       }
       /* Reuse GeoJSON the map viewer already downloaded (condition segments are

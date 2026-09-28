@@ -9,8 +9,11 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -27,10 +30,12 @@ public class ConditionService {
 
     private final JdbcTemplate jdbc;
     private final LayerAttributeService attributes;
+    private final RoadColumns roadColumns;
 
-    public ConditionService(JdbcTemplate jdbc, LayerAttributeService attributes) {
+    public ConditionService(JdbcTemplate jdbc, LayerAttributeService attributes, RoadColumns roadColumns) {
         this.jdbc = jdbc;
         this.attributes = attributes;
+        this.roadColumns = roadColumns;
     }
 
     @Transactional
@@ -240,6 +245,121 @@ public class ConditionService {
     public long count() {
         Long n = jdbc.queryForObject("SELECT count(*) FROM condition", Long.class);
         return n == null ? 0 : n;
+    }
+
+    /** Below this, a "gap" is noise (survey rounding, adjoining rows a metre apart) rather
+     *  than a real missed stretch. */
+    private static final double GAP_MIN_M = 1.0;
+    /** Two intervals within this of each other are treated as touching, not gapped —
+     *  the same rounding slack {@link VideoService} uses for chainage checks. */
+    private static final double TOUCH_TOLERANCE_M = 1.0;
+
+    /**
+     * Chainage coverage gaps in the raw condition rows, for every Section_Label that
+     * carries at least one row in the chosen survey period — a section with no data
+     * uploaded at all is not a "gap", it simply has nothing to report, so it is left out
+     * entirely rather than showing as one gap spanning the whole road.
+     *
+     * <p>For each such section, every row's [start_chainage, end_chainage] is merged into
+     * a coverage span (independent of XSP — one lane surveyed at a stretch counts that
+     * stretch covered), then compared against the section's own reference length
+     * ({@link RoadColumns#lenExpr}, the same chainage-span/measured-length/geometry
+     * fallback every other linear-referenced module uses). Any uncovered stretch over
+     * {@link #GAP_MIN_M} — including a missed run at the very start or end of the section —
+     * is one row of the report.
+     *
+     * <p>A section whose label does not match the road network at all is skipped here
+     * (its reference length is unknown, so "gap" is not answerable) — that mismatch is
+     * already surfaced by {@code /api/survey-dashboard/unmapped?type=nsv_lane_km}.
+     *
+     * <p>Sorted district, then section, then chainage — district-wise reading is the
+     * point of the report, and {@code (unmapped)} sorts last on purpose so real
+     * districts are not pushed down by rows the roads join could not place.
+     */
+    public List<Map<String, Object>> gapReport(int periodId) {
+        Map<String, List<double[]>> bySection = new LinkedHashMap<>();
+        jdbc.query(
+            "SELECT section_label, start_chainage, end_chainage FROM condition " +
+            "WHERE period_id = ? AND section_label IS NOT NULL ORDER BY section_label, start_chainage",
+            rs -> {
+                String sec = rs.getString("section_label");
+                double s = rs.getDouble("start_chainage");
+                double e = rs.getDouble("end_chainage");
+                if (e < s) { double t = s; s = e; e = t; }
+                bySection.computeIfAbsent(sec, k -> new ArrayList<>()).add(new double[]{s, e});
+            }, periodId);
+        if (bySection.isEmpty()) return List.of();
+
+        Map<String, Double> lengths = new HashMap<>();
+        Map<String, String> districts = new HashMap<>();
+        List<String> sections = new ArrayList<>(bySection.keySet());
+        String placeholders = String.join(",", Collections.nCopies(sections.size(), "?"));
+        try {
+            jdbc.query(
+                "SELECT r.\"Section_La\" AS sec, " + roadColumns.lenExpr("r") + " AS len, " +
+                "COALESCE(NULLIF(trim(r.\"District\"),''),'(unmapped)') AS district " +
+                "FROM roads r WHERE r.\"Section_La\" IN (" + placeholders + ")",
+                rs -> {
+                    lengths.put(rs.getString("sec"), rs.getDouble("len"));
+                    districts.put(rs.getString("sec"), rs.getString("district"));
+                }, sections.toArray());
+        } catch (Exception e) {
+            // roads table missing/unavailable — nothing is answerable; report stays empty
+            // rather than guessing a length.
+            return List.of();
+        }
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map.Entry<String, List<double[]>> en : bySection.entrySet()) {
+            String sec = en.getKey();
+            Double length = lengths.get(sec);
+            if (length == null || length <= 0) continue; // unmatched road / no reference length
+
+            List<double[]> merged = mergeIntervals(en.getValue());
+            double cursor = 0;
+            for (double[] iv : merged) {
+                if (iv[0] - cursor > GAP_MIN_M) out.add(gapRow(sec, districts.get(sec), cursor, iv[0]));
+                cursor = Math.max(cursor, iv[1]);
+            }
+            if (length - cursor > GAP_MIN_M) out.add(gapRow(sec, districts.get(sec), cursor, length));
+        }
+
+        out.sort(Comparator
+            .<Map<String, Object>, String>comparing(m -> "(unmapped)".equals(m.get("district")) ? "￿" : (String) m.get("district"))
+            .thenComparing(m -> (String) m.get("section_label"), Comparator.nullsLast(String::compareTo))
+            .thenComparing(m -> (Double) m.get("gap_start_m")));
+        return out;
+    }
+
+    private static Map<String, Object> gapRow(String section, String district, double from, double to) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("section_label", section);
+        m.put("district", district == null ? "(unmapped)" : district);
+        m.put("gap_start_m", round1(from));
+        m.put("gap_end_m", round1(to));
+        m.put("gap_length_m", round1(to - from));
+        return m;
+    }
+
+    private static double round1(double v) {
+        return Math.round(v * 10) / 10.0;
+    }
+
+    /** Sorted, overlap/near-touch merged coverage intervals for one section. */
+    private static List<double[]> mergeIntervals(List<double[]> raw) {
+        List<double[]> ivs = new ArrayList<>(raw);
+        ivs.removeIf(iv -> iv[1] <= iv[0]);
+        ivs.sort(Comparator.comparingDouble(iv -> iv[0]));
+        List<double[]> out = new ArrayList<>();
+        for (double[] iv : ivs) {
+            if (!out.isEmpty() && iv[0] <= out.get(out.size() - 1)[1] + TOUCH_TOLERANCE_M) {
+                double[] last = out.get(out.size() - 1);
+                last[1] = Math.max(last[1], iv[1]);
+            } else {
+                out.add(iv.clone());
+            }
+        }
+        return out;
     }
 
     /**

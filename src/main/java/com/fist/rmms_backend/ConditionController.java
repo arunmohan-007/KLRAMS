@@ -73,4 +73,13 @@ public class ConditionController {
         result.put("count", service.count());
         return result;
     }
+
+    /** Chainage coverage gaps within every section that has condition data uploaded —
+     *  see {@link ConditionService#gapReport}. Defaults to the active survey period. */
+    @GetMapping("/gap-report")
+    public java.util.List<Map<String, Object>> gapReport(
+            @RequestParam(value = "period_id", required = false) Integer periodId) {
+        int pid = periodId != null ? periodId : periods.activePeriodId();
+        return service.gapReport(pid);
+    }
 }
