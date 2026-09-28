@@ -360,9 +360,9 @@ public class FwdDashboardController {
         if (v.length == 0) return null;
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("n", v.length);
-        m.put("min", r1(v[0]));
-        m.put("max", r1(v[v.length - 1]));
-        m.put("mean", r1(Arrays.stream(v).average().orElse(0)));
+        m.put("min", r3(v[0]));
+        m.put("max", r3(v[v.length - 1]));
+        m.put("mean", r3(Arrays.stream(v).average().orElse(0)));
         return m;
     }
 
@@ -410,7 +410,6 @@ public class FwdDashboardController {
     }
 
     private static double r3(double v) { return Math.round(v * 1000) / 1000.0; }
-    private static double r1(double v) { return Math.round(v * 10) / 10.0; }
 
     private static double[] round3(double[] v) {
         double[] out = new double[v.length];

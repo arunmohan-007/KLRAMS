@@ -60,16 +60,16 @@ public class DashboardController {
 
         Map<String, Object> tot = jdbc.queryForMap(rules.sql(CORR +
             "SELECT COUNT(*) AS corridors, " +
-            "       ROUND(SUM(corr_len)::numeric/1000,2) AS km, " +
+            "       ROUND(SUM(corr_len)::numeric/1000,3) AS km, " +
             "       SUM(CASE WHEN is_dual THEN 1 ELSE 0 END) AS dual_corridors " +
             "FROM corr"));
         long rawRoads = jdbc.queryForObject("SELECT COUNT(*) FROM roads", Long.class);
         Double rawKm = jdbc.queryForObject(
-            "SELECT ROUND(SUM(" + c("Measured Length") + "::double precision)::numeric/1000,2) FROM roads", Double.class);
+            "SELECT ROUND(SUM(" + c("Measured Length") + "::double precision)::numeric/1000,3) FROM roads", Double.class);
         Double digKm = null;
         try {
             digKm = jdbc.queryForObject(
-                "SELECT ROUND(SUM(" + c("Digitised Length") + "::double precision)::numeric/1000,2) FROM roads", Double.class);
+                "SELECT ROUND(SUM(" + c("Digitised Length") + "::double precision)::numeric/1000,3) FROM roads", Double.class);
         } catch (Exception ignore) { /* Dig_L column may be absent */ }
         out.put("total_km", tot.get("km"));
         out.put("corridors", tot.get("corridors"));
@@ -89,7 +89,7 @@ public class DashboardController {
         out.put("cons_type_by_district", jdbc.queryForList(rules.sql(CORR +
             "SELECT COALESCE(NULLIF(district,''),'(unspecified)') AS district, " +
             "       COALESCE(NULLIF(cons_type,''),'(unspecified)') AS cons_type, " +
-            "       ROUND(SUM(corr_len)::numeric/1000,2) AS km " +
+            "       ROUND(SUM(corr_len)::numeric/1000,3) AS km " +
             "FROM corr GROUP BY 1,2 ORDER BY 1,2")));
 
         out.putAll(shMdrCounts(null));
@@ -113,7 +113,7 @@ public class DashboardController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("district", name);
         out.put("total_km", jdbc.queryForObject(rules.sql(CORR +
-            "SELECT ROUND(SUM(corr_len)::numeric/1000,2) FROM corr WHERE district = ?"),
+            "SELECT ROUND(SUM(corr_len)::numeric/1000,3) FROM corr WHERE district = ?"),
             Double.class, name));
         out.put("by_class",     groupWhere("road_class", "district", name));
         out.put("by_pwd_sec",   groupWhere("pwd_sec",    "district", name));
@@ -260,7 +260,7 @@ public class DashboardController {
             "       COALESCE(string_agg(DISTINCT NULLIF(road_name,''), ' · '), '(unnamed)') AS names, " +
             "       string_agg(DISTINCT NULLIF(district,''), ', ') AS districts, " +
             "       COUNT(*) AS sections, " +
-            "       ROUND(SUM(corr_len)::numeric/1000,2) AS km " +
+            "       ROUND(SUM(corr_len)::numeric/1000,3) AS km " +
             "FROM corr WHERE upper(trim(road_class))='SH'" + distCond +
             " GROUP BY road_num ORDER BY km DESC NULLS LAST LIMIT 10"), args);
 
@@ -268,7 +268,7 @@ public class DashboardController {
             "SELECT COALESCE(NULLIF(road_name,''),'(unnamed)') AS names, " +
             "       string_agg(DISTINCT NULLIF(district,''), ', ') AS districts, " +
             "       COUNT(*) AS sections, " +
-            "       ROUND(SUM(corr_len)::numeric/1000,2) AS km " +
+            "       ROUND(SUM(corr_len)::numeric/1000,3) AS km " +
             "FROM corr WHERE upper(trim(road_class))='MDR'" + distCond +
             " GROUP BY 1 ORDER BY km DESC NULLS LAST LIMIT 10"), args);
 
@@ -283,14 +283,14 @@ public class DashboardController {
     private List<Map<String, Object>> group(String col) {
         return jdbc.queryForList(rules.sql(CORR +
             "SELECT COALESCE(NULLIF(" + col + ",''),'(unspecified)') AS label, " +
-            "       COUNT(*) AS roads, ROUND(SUM(corr_len)::numeric/1000,2) AS km " +
+            "       COUNT(*) AS roads, ROUND(SUM(corr_len)::numeric/1000,3) AS km " +
             "FROM corr GROUP BY 1 ORDER BY km DESC NULLS LAST"));
     }
 
     private List<Map<String, Object>> groupWhere(String col, String whereCol, String val) {
         return jdbc.queryForList(rules.sql(CORR +
             "SELECT COALESCE(NULLIF(" + col + ",''),'(unspecified)') AS label, " +
-            "       COUNT(*) AS roads, ROUND(SUM(corr_len)::numeric/1000,2) AS km " +
+            "       COUNT(*) AS roads, ROUND(SUM(corr_len)::numeric/1000,3) AS km " +
             "FROM corr WHERE " + whereCol + " = ? GROUP BY 1 ORDER BY km DESC NULLS LAST"), val);
     }
 }

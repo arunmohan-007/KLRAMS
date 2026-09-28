@@ -360,9 +360,9 @@ public class ConditionDashboardController {
             "       string_agg(DISTINCT NULLIF(trim(@{r:Road Name}),''), ' · ') AS road_names, " +
             "       string_agg(DISTINCT NULLIF(trim(@{r:District}),''), ', ') AS districts, " +
             "       ROUND((SUM(cs." + vcol + " * (cs.end_chainage - cs.start_chainage) * (" + widthSql() + ")) / " +
-            "              NULLIF(SUM((cs.end_chainage - cs.start_chainage) * (" + widthSql() + ")), 0))::numeric, 2) AS value, " +
-            "       ROUND(MAX(cs." + vcol + ")::numeric, 2) AS peak, " +
-            "       ROUND((SUM((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) / 1000.0)::numeric, 1) AS lane_km, " +
+            "              NULLIF(SUM((cs.end_chainage - cs.start_chainage) * (" + widthSql() + ")), 0))::numeric, 3) AS value, " +
+            "       ROUND(MAX(cs." + vcol + ")::numeric, 3) AS peak, " +
+            "       ROUND((SUM((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) / 1000.0)::numeric, 3) AS lane_km, " +
             "       COUNT(*) AS segments " +
             "FROM condition_segments cs JOIN roads r ON @{r:Section Label} = cs.section_label " +
             CalcRuleService.RULE_JOINS +
@@ -400,10 +400,10 @@ public class ConditionDashboardController {
             "       MAX(NULLIF(trim(@{r:Road Name}),'')) AS road_name, " +
             "       MAX(NULLIF(trim(@{r:District}),'')) AS district, " +
             "       ROUND((SUM(cs." + vcol + " * (cs.end_chainage - cs.start_chainage)) / " +
-            "              NULLIF(SUM(cs.end_chainage - cs.start_chainage), 0))::numeric, 2) AS value, " +
-            "       ROUND(MAX(cs." + vcol + ")::numeric, 2) AS peak, " +
+            "              NULLIF(SUM(cs.end_chainage - cs.start_chainage), 0))::numeric, 3) AS value, " +
+            "       ROUND(MAX(cs." + vcol + ")::numeric, 3) AS peak, " +
             "       MIN(cs.start_chainage) AS from_ch, MAX(cs.end_chainage) AS to_ch, " +
-            "       ROUND((SUM((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) / 1000.0)::numeric, 1) AS lane_km, " +
+            "       ROUND((SUM((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) / 1000.0)::numeric, 3) AS lane_km, " +
             "       COUNT(*) AS segments " +
             "FROM condition_segments cs JOIN roads r ON @{r:Section Label} = cs.section_label " +
             "WHERE " + where + " " +
@@ -538,14 +538,17 @@ public class ConditionDashboardController {
         Map<String, Object> toMap() {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("segments", n);
-            m.put("low", n == 0 ? null : r2(low));
-            m.put("high", n == 0 ? null : r2(high));
-            m.put("mean", (n == 0 || sumLen <= 0) ? null : r2(sumVl / sumLen));
-            m.put("lane_km", Math.round(laneM / 1000.0 * 10) / 10.0);
+            m.put("low", n == 0 ? null : r3(low));
+            m.put("high", n == 0 ? null : r3(high));
+            m.put("mean", (n == 0 || sumLen <= 0) ? null : r3(sumVl / sumLen));
+            m.put("lane_km", r3(laneM / 1000.0));
             return m;
         }
 
         private static double dbl(Object o) { return o == null ? 0 : ((Number) o).doubleValue(); }
-        private static double r2(double v) { return Math.round(v * 100) / 100.0; }
+        /* Rounded only here, at final display serialization — low/high/mean/lane_km
+           are all rolled up from full-precision doubles (see merge() above), so the
+           summation itself never sees an already-rounded intermediate value. */
+        private static double r3(double v) { return Math.round(v * 1000) / 1000.0; }
     }
 }

@@ -25,7 +25,7 @@ function consCol(l,i){return CONS_COL[l]||DPAL[i%DPAL.length];}
 function dColor(label,i){return CLASS_COL[label]||DPAL[i%DPAL.length];}
 function escH(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function qq(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
-function fmtKm(n){return (Math.round((+n||0)*10)/10).toFixed(1);}
+function fmtKm(n){return (Math.round((+n||0)*1000)/1000).toFixed(3);}
 
 function donut(rows,opts){
   opts=opts||{};const tot=rows.reduce((s,r)=>s+(+r.km||0),0)||1;let cum=0;

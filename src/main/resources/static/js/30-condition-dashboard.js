@@ -26,8 +26,8 @@ let cdDistrict=null;             // selected district or null = state-wide
 let cdView='summary';            // 'summary' | 'table'
 let cdLoading=false;
 
-/* value formatter — 2 decimals, dot for empty groups */
-function cdFmt(v){return (v==null||v==='')?'<span class="z">·</span>':(+v).toFixed(2);}
+/* aggregate value formatter (Low/High/Mean, weighted "value") — 3 decimals, dot for empty groups */
+function cdFmt(v){return (v==null||v==='')?'<span class="z">·</span>':(+v).toFixed(3);}
 function cdUnit(){return cdData?escH(cdData.param_unit||''):'';}
 function cdBasisLabel(){return cdBasis==='worst'?'Worst lane':'Lane average';}
 
@@ -127,7 +127,7 @@ function cdPaint(){
     let val;
     if(m.int)val=fmtN(ov[m.k]||0);
     else if(m.km)val=fmtKm(ov[m.k]||0);
-    else val=(ov[m.k]==null?'–':(+ov[m.k]).toFixed(2));
+    else val=(ov[m.k]==null?'–':(+ov[m.k]).toFixed(3));
     const u=(m.int)?'':(m.km?' lane km':' '+unit);
     return '<div class="kpi'+(i===2?' feature':'')+'" style="--kc:'+m.col+'">'+(i===2?'<div class="ringmark"></div>':'')+
       '<div class="kcap">'+m.cap+'</div>'+
@@ -252,8 +252,8 @@ function cdExpMeta(){
 }
 function cdExpTables(){
   const t=cdTop||{};const lbl=(cdData&&cdData.param_label)||'Value';
-  const num=v=>(v==null||v==='')?'':(+v).toFixed(2);
-  const lk=v=>(v==null||v==='')?'':(+v).toFixed(1);
+  const num=v=>(v==null||v==='')?'':(+v).toFixed(3);
+  const lk=v=>(v==null||v==='')?'':(+v).toFixed(3);
   const roadRows=arr=>(arr||[]).map((r,i)=>[i+1,r.road_num||'',r.road_names||r.road_name||'',r.districts||r.district||'',num(r.value),lk(r.lane_km),r.segments||0]);
   const secRows=arr=>(arr||[]).map((r,i)=>[i+1,r.road_num||'',r.road_name||'',r.section_label||'',r.district||'',cdKm(r.from_ch)+'–'+cdKm(r.to_ch),num(r.value),lk(r.lane_km),r.segments||0]);
   const roadHead=['#','Road No','Road name','District(s)',lbl,'Lane km','Stretches'];

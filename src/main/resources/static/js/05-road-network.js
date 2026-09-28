@@ -825,10 +825,10 @@ function renderNetScopeCard(list,rows){
   });
   let lenM=0,lenRawM=0;
   corrGroups.forEach(lens=>{lenM+=lens.reduce((a,b)=>a+b,0)/lens.length;lenRawM+=lens.reduce((a,b)=>a+b,0);});
-  const tiles=[['#19b277',L.length,'Road section'+(L.length===1?'':'s')],['#3b86e6',(lenM/1000).toFixed(1)+' km','Length'],
+  const tiles=[['#19b277',L.length,'Road section'+(L.length===1?'':'s')],['#3b86e6',(lenM/1000).toFixed(3)+' km','Length'],
     /* Raw sum of every section label's Measrd_Len, carriageway A/B counted
        separately (no dual-pair averaging) — the "pakka"/as-recorded total. */
-    ['#3b86e6',(lenRawM/1000).toFixed(1)+' km','Road Length (Carriageway considered)']];
+    ['#3b86e6',(lenRawM/1000).toFixed(3)+' km','Road Length (Carriageway considered)']];
   /* Chainage extent + start/end location are shown ONLY when the filter is a
      single condition on Road Name or Road Number with a single value. Any
      additional condition (or a multi-value comma list) hides them. */
@@ -877,7 +877,7 @@ function renderNetScopeCard(list,rows){
      contribute their own lane-km here. */
   if(Segs.collection()){
     const condM=Segs.scopedLaneMetres(window.NET_SCOPE);
-    tiles.push(['#2ba66a',(condM/1000).toFixed(1),'Condition data available (lane km)']);
+    tiles.push(['#2ba66a',(condM/1000).toFixed(3),'Condition data available (lane km)']);
   }
   const AD=(typeof ASSET_DATA!=='undefined')?ASSET_DATA:{};
   [['bridge','#8a5cb8','Bridges'],['culvert','#e07b2a','Culverts'],['fwd','#7b1fa2','FWD points'],['subgrade','#8a4d1f','Soil tests'],['bituminous_core','#5c6470','Bituminous core test']]

@@ -54,9 +54,14 @@ public class SurveyDashboardController {
         List<Map<String, Object>> soil = assetCounts("subgrade");
         List<Map<String, Object>> core = assetCounts("bituminous_core");
 
+        /* Full-precision lane-km per (district, period) — NOT rounded here. This is
+           the value that later gets summed into the period total, and a district
+           row already rounded to display precision would cascade rounding error
+           into that total; see the loop below, which rounds once, at the very end,
+           for both the district row and the total. */
         List<Map<String, Object>> nsv = jdbc.queryForList(
             "SELECT " + DIST + " AS district, c.period_id AS pid, " +
-            "       ROUND(SUM(GREATEST(c.end_chainage - c.start_chainage, 0))::numeric/1000, 1) AS lane_km " +
+            "       (SUM(GREATEST(c.end_chainage - c.start_chainage, 0))::numeric/1000)::double precision AS lane_km " +
             "FROM condition c LEFT JOIN roads r ON r.\"Section_La\" = c.section_label " +
             "WHERE c.period_id IS NOT NULL GROUP BY 1, 2");
 
@@ -105,6 +110,13 @@ public class SurveyDashboardController {
             List<Map<String, Object>> dists = new ArrayList<>();
             Map<String, Map<String, Object>> districts =
                 byPeriod.getOrDefault(pid, Collections.emptyMap());
+            /* Raw (unrounded) running totals — kept separate from the `totals` map
+               below, which only ever holds the DISPLAY value. Accumulating from the
+               previously-rounded total (as this used to) cascades rounding error
+               across districts; summing the full-precision district figures and
+               rounding once, at the end, avoids that. */
+            Map<String, Double> rawTotals = new LinkedHashMap<>();
+            for (String k : METRICS) rawTotals.put(k, 0d);
             districts.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(de -> {
@@ -112,18 +124,20 @@ public class SurveyDashboardController {
                     d.put("district", de.getKey());
                     for (String k : METRICS) {
                         double v = ((Number) de.getValue().getOrDefault(k, 0d)).doubleValue();
-                        double t = ((Number) totals.get(k)).doubleValue() + v;
+                        rawTotals.merge(k, v, Double::sum);
                         // no ternary here: mixing Double/Long branches would box both to Double
                         if (k.equals("nsv_lane_km")) {
-                            d.put(k, Math.round(v * 10) / 10.0);
-                            totals.put(k, Math.round(t * 10) / 10.0);
+                            d.put(k, Math.round(v * 1000) / 1000.0);
                         } else {
                             d.put(k, (long) v);
-                            totals.put(k, (long) t);
                         }
                     }
                     dists.add(d);
                 });
+            for (String k : METRICS) {
+                double t = rawTotals.get(k);
+                totals.put(k, k.equals("nsv_lane_km") ? Math.round(t * 1000) / 1000.0 : (long) t);
+            }
             period.put("totals", totals);
             period.put("districts", dists);
             out.add(period);
