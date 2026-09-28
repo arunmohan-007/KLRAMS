@@ -111,7 +111,7 @@
       '<div id="urStatus"></div>' +
       '<div class="out" id="urOut"></div>' +
       '<p class="hint">A raster temporary layer is visible only to you unless shared, appears in ' +
-      'the map viewer under <b>My layers</b>, and can be discarded in one action. Clicking it on ' +
+      'the map viewer under <b>Temporary Layers</b>, and can be discarded in one action. Clicking it on ' +
       'the map shows the pixel value(s) at that point.</p>';
   }
 
@@ -226,7 +226,7 @@
         if (box) box.innerHTML = '<div class="hint">Status: ' + esc(r.status || '?') + '</div>';
         if (r.status === 'PUBLISHED') {
           out('&#10003; The raster layer is published. Open the map and switch it on under ' +
-              '<b>My layers</b>.', true);
+              '<b>Temporary Layers</b>.', true);
           if (window.KLUserLayers) KLUserLayers.refresh();
           return;
         }

@@ -27,6 +27,20 @@
 
   function colorFor(i) { return COLORS[i % COLORS.length]; }
 
+  /**
+   * The "shared by" badge text for a shared layer's row.
+   *
+   * Named by role (Admin / Super Admin), not by username — the panel is
+   * already tight for space, and "who shared this" only needs to answer
+   * "can I trust this", which the role does. Falls back to a bare "Shared"
+   * for the rare row whose creator account no longer exists.
+   */
+  function sharedByLabel(l) {
+    if (l.sharedByRole === 'SUPER_ADMIN') return 'Shared by Super Admin';
+    if (l.sharedByRole === 'ADMIN') return 'Shared by Admin';
+    return 'Shared';
+  }
+
   /* ------------------------------------------------------------------
      Panel
      ------------------------------------------------------------------ */
@@ -63,7 +77,7 @@
     var title = document.createElement('div');
     title.className = 'grp-title';
     title.id = 'ul-group-title';
-    title.textContent = 'My layers';
+    title.textContent = 'Temporary Layers';
 
     var grp = document.createElement('div');
     grp.className = 'grp';
@@ -71,12 +85,14 @@
 
     LIST.forEach(function (l, i) {
       var row = document.createElement('div');
-      row.className = 'switch';
+      row.className = 'switch ul-row';
       row.innerHTML =
         '<span class="lname">' +
-          '<span class="ldot" style="background:' + colorFor(i) + '"></span>' +
-          esc(l.name) +
-          (l.temporary ? ' <span class="r2-hint">' + (l.shared ? 'temporary · shared' : 'temporary') + '</span>' : '') +
+          '<span class="lname-top">' +
+            '<span class="ldot" style="background:' + colorFor(i) + '"></span>' +
+            '<span class="lname-txt" title="' + esc(l.name) + '">' + esc(l.name) + '</span>' +
+          '</span>' +
+          (l.shared ? '<span class="r2-hint lname-sub">' + esc(sharedByLabel(l)) + '</span>' : '') +
         '</span>' +
         '<input type="checkbox" id="showUL' + l.id + '">' +
         /* Discard right from the map, not just Layer Management — the point of
@@ -97,11 +113,11 @@
       var del = row.querySelector('.ul-del');
       if (del) del.addEventListener('click', function (e) { e.preventDefault(); discard(l); });
 
-      /* Rasters get an opacity slider right under their row — a vector layer's
-         "appearance" (colour, label, popup) is set in Style & Label Management
-         instead, but that screen has no notion of a raster's pixels, and a
-         raster otherwise has no visual control here at all beyond on/off. */
-      if (l.geometryType === 'RASTER') grp.appendChild(opacityRow(l));
+      /* Every user layer gets an opacity slider under its row, not only
+         rasters — a vector layer's colour/label/popup still comes from Style
+         & Label Management, but strength-of-fill is a per-view thing someone
+         wants to dial down right here without leaving the map. */
+      grp.appendChild(opacityRow(l));
     });
 
     if (note) {
@@ -124,15 +140,22 @@
   }
 
   /**
-   * A raster layer's opacity slider, shown right under its switch row.
+   * A layer's opacity slider, shown right under its switch row.
    *
    * Reads its starting value from `viewer-layers` (see
    * LayerDataService.viewerLayers's `opacity` field) so it shows the saved
    * value even before the layer has ever been switched on — ensureRaster()
-   * applies that same value as the paint layer's initial `raster-opacity`. If
-   * the layer is already built (switched on earlier this session), dragging
-   * the slider updates the map immediately; saving to the server is
-   * debounced so dragging does not fire a request per pixel of travel.
+   * applies that same value as the raster paint layer's initial
+   * `raster-opacity`. If the layer is already built (switched on earlier
+   * this session), dragging the slider updates the map immediately.
+   *
+   * Only a RASTER layer's value is persisted server-side (there is no
+   * per-user-layer opacity column for vector layers yet, unlike the styled
+   * fill/line/point opacity Style & Label Management already owns) — for a
+   * vector layer the slider is a live, session-only override of the same
+   * fill/line/circle opacity that module paints by default, so it resets to
+   * the built-in strength on reload rather than silently drifting from what
+   * Style & Label Management thinks it set.
    */
   function opacityRow(l) {
     var row = document.createElement('div');
@@ -150,17 +173,25 @@
     slider.addEventListener('input', function () {
       var v = Number(slider.value) / 100;
       pctLabel.textContent = slider.value + '%';
-      var renderId = 'ul-' + l.id + '-raster';
-      try { if (map.getLayer(renderId)) map.setPaintProperty(renderId, 'raster-opacity', v); } catch (e) {}
 
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(function () {
-        fetch('/api/layer-data/' + l.id + '/raster/opacity', {
-          method: 'PUT', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ opacity: v })
-        }).catch(function () { /* the map already shows the new value either way */ });
-      }, 400);
+      if (l.geometryType === 'RASTER') {
+        var renderId = 'ul-' + l.id + '-raster';
+        try { if (map.getLayer(renderId)) map.setPaintProperty(renderId, 'raster-opacity', v); } catch (e) {}
+
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(function () {
+          fetch('/api/layer-data/' + l.id + '/raster/opacity', {
+            method: 'PUT', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ opacity: v })
+          }).catch(function () { /* the map already shows the new value either way */ });
+        }, 400);
+        return;
+      }
+
+      try { if (map.getLayer('ul-' + l.id + '-fill')) map.setPaintProperty('ul-' + l.id + '-fill', 'fill-opacity', v); } catch (e) {}
+      try { if (map.getLayer('ul-' + l.id + '-line')) map.setPaintProperty('ul-' + l.id + '-line', 'line-opacity', v); } catch (e) {}
+      try { if (map.getLayer('ul-' + l.id + '-pt')) map.setPaintProperty('ul-' + l.id + '-pt', 'circle-opacity', v); } catch (e) {}
     });
 
     return row;

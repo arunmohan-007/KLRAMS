@@ -562,9 +562,10 @@ public class LayerDataService {
     public List<Map<String, Object>> viewerLayers(String user) {
         return jdbc.query("""
             SELECT d.id, d.layer_key, d.name, d.geometry_type, d.temporary, d.created_by, d.shared,
-                   f.name AS folder, r.default_opacity
+                   f.name AS folder, r.default_opacity, u.role AS created_by_role
               FROM layer_definition d JOIN layer_folder f ON f.id = d.folder_id
               LEFT JOIN layer_raster r ON r.layer_id = d.id
+              LEFT JOIN app_users u ON lower(u.username) = lower(d.created_by)
              WHERE d.source_type = 'USER'
                AND d.hidden IS NOT TRUE
                AND d.frozen IS NOT TRUE
@@ -580,6 +581,11 @@ public class LayerDataService {
             m.put("geometryType", rs.getString("geometry_type"));
             m.put("temporary", rs.getBoolean("temporary"));
             m.put("shared", rs.getBoolean("shared"));
+            // Who shared it, badge-level only (Admin / Super Admin) — the map
+            // viewer's "Temporary Layers" panel has no notion of individual
+            // usernames, and the role is what tells a viewer whether to trust
+            // a shared layer's data.
+            m.put("sharedByRole", rs.getString("created_by_role"));
             // Whether THIS caller may discard it straight from the map — their
             // own layer, always; a shared one only if they are also its creator.
             // A super admin can discard any of them too, but the map viewer has

@@ -373,7 +373,7 @@
         <tr><td><b>PCI</b></td><td>Composite PCI; Worst-Lane PCI (generate first — § 4.6)</td></tr>
         <tr><td><b>Traffic stations</b></td><td>Survey stations with counts</td></tr>
         <tr><td><b>Sub-grade soil, Bituminous core &amp; Pavement crust</b></td><td>Geotechnical investigation layers</td></tr>
-        <tr><td><b>My layers</b></td><td>Layers created in Layer Management (§ 9.3) — including anyone's <i>shared</i> layers and your own <i>temporary</i> ones, which carry a one-click discard button right here in the panel</td></tr>
+        <tr><td><b>Temporary Layers</b></td><td>Layers created in Layer Management (§ 9.3) — including anyone's <i>shared</i> layers and your own <i>temporary</i> ones, which carry a one-click discard button right here in the panel</td></tr>
       </table>
       <p>The <b>Network</b> panel adds display controls for the road network itself: <b>colour by attribute</b> (e.g. road class, surface type, ownership) and <b>filter by attribute</b>, with a live legend.</p>
       <figure class="fig" data-img="fig-04-03-network-panel.png" data-hint="Capture the Network panel open with 'Colour by attribute' set (e.g. Road class) and the legend showing SH / MDR.">
@@ -570,7 +570,7 @@
 
       <h3 style="--ac:var(--violet)" id="s4-16">4.16 Filters</h3>
       <p>The <b>Filter</b> panel applies attribute filters per layer — road network, condition, PCI, FWD, traffic. Choose <i>show matching only</i>, combine multiple conditions with <b>Match all / any</b>, and clear with one click. (A section is locked until its layer is switched on — use the <i>Turn on layer</i> shortcut in the panel.)</p>
-      <p>Administrative boundary layers and any layer under <b>My layers</b> (user-created or temporary) get their own filter sections here too, built automatically from whatever attributes that layer actually carries — they are independent of the Road Network filter, since none of them is tied to a road.</p>
+      <p>Administrative boundary layers and any layer under <b>Temporary Layers</b> (user-created or temporary) get their own filter sections here too, built automatically from whatever attributes that layer actually carries — they are independent of the Road Network filter, since none of them is tied to a road.</p>
       <figure class="fig" data-img="fig-04-25-filters.png" data-hint="Capture the Filter panel with one active filter and the map showing only matching segments.">
         <figcaption><span class="fig-no">Figure 4.25</span>Attribute filters, e.g. condition IRI &gt; 3.3 — show matching only.</figcaption>
       </figure>
@@ -609,7 +609,7 @@
       <p>Every layer row in the Layers panel carries its own <b>export</b> button, opening a compact format menu: <b>Shapefile (zip)</b>, <b>GeoJSON</b>, <b>KML</b>, <b>KMZ</b> or <b>CSV</b>. Exports honour exactly what is on screen — the current attribute filters and, for Road Condition Data, the parameter you have selected — so a filtered view exports only the matching features, not the whole dataset.</p>
       <div class="note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
         <div><b>KML/KMZ is single-parameter.</b> A KML or KMZ export always carries the map's classified colours for the one parameter you currently have selected (e.g. IRI Good/Fair/Poor) — it is meant for viewing in Google Earth. For every parameter at once, export <b>CSV</b> or <b>Shapefile</b> instead.</div></div>
-      <p>Shapefile column names are abbreviated to fit the format's 10-character limit; the full names travel in the same zip as a QGIS alias file (<code>.qml</code>) and a <code>_field_names.csv</code> lookup, so nothing is lost, only shortened. Administrative boundary layers and any layer under <b>My layers</b> can be exported the same way, honouring their own Filter-panel conditions (§ 4.16).</p>
+      <p>Shapefile column names are abbreviated to fit the format's 10-character limit; the full names travel in the same zip as a QGIS alias file (<code>.qml</code>) and a <code>_field_names.csv</code> lookup, so nothing is lost, only shortened. Administrative boundary layers and any layer under <b>Temporary Layers</b> can be exported the same way, honouring their own Filter-panel conditions (§ 4.16).</p>
       <figure class="fig" data-img="fig-04-31-layer-export.png" data-hint="Capture a Layers panel row with its export button open, showing the Shapefile/GeoJSON/KML/KMZ/CSV format menu.">
         <figcaption><span class="fig-no">Figure 4.31</span>Per-layer export menu, honouring the active filters.</figcaption>
       </figure>

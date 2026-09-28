@@ -128,7 +128,7 @@
       '<div id="ulStep"></div>' +
       '<div class="out" id="ulOut"></div>' +
       '<p class="hint">A temporary layer is visible only to you and is meant for one-off ' +
-      'analysis. It appears in the map viewer under <b>My layers</b>, and can be discarded in ' +
+      'analysis. It appears in the map viewer under <b>Temporary Layers</b>, and can be discarded in ' +
       'one action from Layer Management when you are done. Once it is loaded you can set its ' +
       'colour, its label and what a click on it shows — all of it optional, and all of it ' +
       'changeable later in <a class="viewer" href="/style.html">Style &amp; Label Management</a>.</p>';
@@ -769,7 +769,7 @@
             'kept as their own field — another column of this file already has that name once ' +
             'case and punctuation are ignored: ' + st.notStored.map(esc).join(', ') + '.</div>';
         }
-        h += '<div style="margin-top:8px">It is on the map under <b>My layers</b>.</div>';
+        h += '<div style="margin-top:8px">It is on the map under <b>Temporary Layers</b>.</div>';
         out(h, true);
         // The temporary layer keeps the panel: appearance is asked for here,
         // once, while the layer is in front of whoever made it.
@@ -932,7 +932,7 @@
       .then(function () {
         document.getElementById('ulStep').innerHTML = '';
         out('&#10003; <b>' + esc(st.layerName) + '</b> is loaded and styled. Open the map and ' +
-            'switch it on under <b>My layers</b>.', true);
+            'switch it on under <b>Temporary Layers</b>.', true);
       })
       .catch(function (e) {
         if (btn) btn.disabled = false;

@@ -138,8 +138,19 @@
   .panel .phead .dotcount{font-size:10.5px;font-weight:600;color:var(--accent-d);background:#e7f6ef;border-radius:10px;padding:1px 8px}
   .searchwrap{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:3;width:min(560px,52vw)}
   .switch{padding:6px 0;border-bottom:1px solid #f0f3f7}.switch:last-child{border-bottom:0}
-  .switch .lname{display:flex;align-items:center;gap:9px}
+  /* Stacked, not inline: a "Shared by Super Admin" badge next to the name was
+     wide enough to squeeze a long name down to one letter. Splitting it onto
+     its own line under the name row keeps every row's toggle switch aligned
+     regardless of how long the name or the badge text is. */
+  .switch .lname{display:flex;flex-direction:column;align-items:flex-start;gap:2px;flex:1 1 auto;min-width:0}
+  .switch .lname-top{display:flex;align-items:center;gap:9px;min-width:0;width:100%}
   .switch .ldot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 2px #fff,0 0 0 3px rgba(0,0,0,.06)}
+  /* Temporary Layers names vary wildly in length (a raw import filename in
+     some cases); without a clamp a long one pushes the toggle switch out of
+     line with every other row's switch, which is what read as "misaligned". */
+  .switch .lname-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1 1 auto}
+  .switch .lname-sub{font-size:10px}
+  .switch input[type=checkbox]{flex:0 0 auto;margin-left:8px}
   #dock .seg-dark button{transition:background .15s}
   /* ===== icon-rail launcher ===== */
   #iconrail{width:74px;flex:0 0 auto;background:#0c1a30;display:flex;flex-direction:column;justify-content:space-between;padding:8px 0;z-index:5;overflow:hidden}
