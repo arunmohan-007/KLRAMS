@@ -63,6 +63,50 @@
     title.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   }
 
+  /**
+   * Wire up one heading + body pair as a collapsible section, exactly like
+   * every built-in group in the Layers pane. Exposed on KLLayersCollapse so
+   * a group built at runtime (e.g. "My layers" in 33-user-layers.js, added
+   * long after DOMContentLoaded) can opt into the same accordion instead of
+   * always sitting open and looking unstyled next to the others.
+   */
+  function makeCollapsible(title, body){
+    if(!title || !body) return;
+    if(title.classList.contains('grp-toggle')) return;   /* already wired */
+
+    var label = (title.textContent || '').trim();
+
+    var ic = document.createElement('span');
+    ic.className = 'grp-ic';
+    ic.setAttribute('aria-hidden', 'true');
+    ic.innerHTML = iconFor(label);
+    var tx = document.createElement('span');
+    tx.className = 'grp-tx';
+    tx.textContent = label;
+    title.textContent = '';
+    title.appendChild(ic);
+    title.appendChild(tx);
+
+    title.classList.add('grp-toggle');
+    title.setAttribute('role', 'button');
+    title.setAttribute('tabindex', '0');
+
+    /* Always start collapsed on every load/login, so only the headings
+       show by default; a click is the only thing that expands a group,
+       and that state is intentionally not remembered across reloads. */
+    setState(title, body, true);
+
+    function toggle(){
+      var collapsed = !body.classList.contains('grp-collapsed');
+      setState(title, body, collapsed, true);
+    }
+
+    title.addEventListener('click', toggle);
+    title.addEventListener('keydown', function(e){
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); }
+    });
+  }
+
   function initLayersCollapse(){
     var pane = document.getElementById('pane-layers');
     if(!pane) return;
@@ -72,41 +116,11 @@
       var body = title.nextElementSibling;
       if(!body || !body.classList.contains('grp')) return;
       if(title.style.display === 'none') return;   /* skip the hidden Interaction group */
-
-      var label = (title.textContent || '').trim();
-
-      /* rebuild the header: icon chip + label (chevron & accent stripe are CSS) */
-      var ic = document.createElement('span');
-      ic.className = 'grp-ic';
-      ic.setAttribute('aria-hidden', 'true');
-      ic.innerHTML = iconFor(label);
-      var tx = document.createElement('span');
-      tx.className = 'grp-tx';
-      tx.textContent = label;
-      title.textContent = '';
-      title.appendChild(ic);
-      title.appendChild(tx);
-
-      title.classList.add('grp-toggle');
-      title.setAttribute('role', 'button');
-      title.setAttribute('tabindex', '0');
-
-      /* Always start collapsed on every load/login, so only the headings
-         show by default; a click is the only thing that expands a group,
-         and that state is intentionally not remembered across reloads. */
-      setState(title, body, true);
-
-      function toggle(){
-        var collapsed = !body.classList.contains('grp-collapsed');
-        setState(title, body, collapsed, true);
-      }
-
-      title.addEventListener('click', toggle);
-      title.addEventListener('keydown', function(e){
-        if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); }
-      });
+      makeCollapsible(title, body);
     });
   }
+
+  window.KLLayersCollapse = { makeCollapsible: makeCollapsible };
 
   if(document.readyState === 'loading'){
     document.addEventListener('DOMContentLoaded', initLayersCollapse);

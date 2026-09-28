@@ -112,6 +112,10 @@
       pane.appendChild(grp);
     }
 
+    /* Built after DOMContentLoaded, so 26-layers-collapse.js's own sweep
+       never sees this group — wire it into the same accordion by hand. */
+    if (window.KLLayersCollapse) window.KLLayersCollapse.makeCollapsible(title, grp);
+
     /* Build the matching Filter-panel sections only now. Each one locks itself
        to its layer's switch, and those switches are the checkboxes created a
        few lines above — asked for any earlier, 37-layer-filters.js would find

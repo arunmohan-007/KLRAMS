@@ -59,9 +59,9 @@ select option:disabled{color:var(--k-faint)!important}
 
 /* ---------- top bar ---------- */
 .topbar{
-  background:var(--k-bg)!important;
+  background:linear-gradient(180deg,var(--k-panel),var(--k-bg))!important;
   border-bottom:1px solid var(--k-line)!important;
-  box-shadow:none!important;
+  box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 6px 18px rgba(0,0,0,.22)!important;
   height:56px;
 }
 /* remove the legacy rainbow stripe entirely */
@@ -121,24 +121,35 @@ select option:disabled{color:var(--k-faint)!important}
   border:1px solid var(--k-line)!important;
   color:var(--k-muted)!important;
   font-weight:600;font-size:13px;padding:7px 14px;border-radius:9px;
-  box-shadow:none!important;transition:all .18s ease;
+  box-shadow:none!important;transition:background .18s ease,border-color .18s ease,color .18s ease,transform .18s ease;
 }
 .topbar a.console:hover{
   background:rgba(45,212,191,.1)!important;
   border-color:rgba(45,212,191,.4)!important;
   color:var(--k-accent)!important;
+  transform:translateY(-1px);
 }
+.topbar a.console:active{transform:translateY(0)}
 
 /* launcher button */
 .kl-open.kl-big{
   background:rgba(255,255,255,.04)!important;
   border:1px solid var(--k-line)!important;
   color:var(--k-accent)!important;
-  box-shadow:none!important;transition:all .18s ease;
+  box-shadow:none!important;transition:background .18s ease,border-color .18s ease,transform .18s ease;
 }
 .kl-open.kl-big:hover{
   background:rgba(45,212,191,.12)!important;
   border-color:rgba(45,212,191,.4)!important;
+  transform:translateY(-1px);
+}
+.kl-open.kl-big:active{transform:translateY(0)}
+
+/* user chip — subtle lift + accent border on hover, matches console links */
+.topbar .userchip{transition:background .18s ease,border-color .18s ease}
+.topbar .userchip:hover{
+  background:rgba(45,212,191,.06)!important;
+  border-color:rgba(45,212,191,.35)!important;
 }
 
 /* ---------- icon rail ---------- */
@@ -657,6 +668,40 @@ select option:disabled{color:var(--k-faint)!important}
 #mapLegend .lg{color:var(--k-text)!important}
 #mapLegend .lg:hover{background:rgba(45,212,191,.08)!important}
 #mapLegend::-webkit-scrollbar-thumb{background:var(--k-line2)!important}
+
+/* ---------- active-layer chip (was hardcoded white/cyan in map.html#alb-css) ----------
+   NOTE: map.html's own <style id="alb-css"> is an inline block that appears
+   AFTER this stylesheet's <link> in the document, so on an !important tie its
+   rules win by source order. Every selector below is prefixed with the ids'
+   ancestor chain (html body ...) purely to out-specificity that inline block. */
+html body #albBtn{
+  background:linear-gradient(180deg,rgba(22,30,43,.97),rgba(15,22,32,.97))!important;
+  border:1px solid var(--k-line)!important;
+  color:var(--k-text)!important;
+  box-shadow:var(--k-shadow-lg)!important;
+}
+html body #albBtn:hover{border-color:var(--k-accent)!important;box-shadow:0 0 0 3px var(--k-ring),var(--k-shadow-lg)!important}
+html body #albBtn.is-picked{border-color:var(--k-accent)!important;box-shadow:0 0 0 3px var(--k-ring),var(--k-shadow-lg)!important}
+html body #albBtn.is-picked #albLabel{color:var(--k-accent)!important}
+html body #albBtn .alb-ic{color:var(--k-muted)!important}
+html body #albBtn.is-picked .alb-ic{color:var(--k-accent)!important}
+html body #albBtn .alb-cv{color:var(--k-muted)!important}
+html body #albMenu{
+  background:var(--k-panel)!important;
+  border:1px solid var(--k-line)!important;
+  box-shadow:var(--k-shadow-lg)!important;
+}
+html body .alb-head,html body .alb-sep{color:var(--k-muted)!important;border-top-color:var(--k-line)!important}
+html body .alb-hint{color:var(--k-faint)!important}
+html body .alb-row:hover{background:rgba(255,255,255,.05)!important}
+html body .alb-mv{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;color:var(--k-muted)!important}
+html body .alb-mv:hover:not(:disabled){background:var(--k-accent)!important;border-color:var(--k-accent)!important;color:#06231a!important}
+html body .alb-it:hover{background:rgba(255,255,255,.05)!important}
+html body .alb-it.on{background:rgba(45,212,191,.12)!important}
+html body .alb-it.on .alb-nm{color:var(--k-accent)!important}
+html body .alb-nm{color:var(--k-text)!important}
+html body .alb-sub{color:var(--k-muted)!important}
+html body .alb-empty{color:var(--k-muted)!important}
 
 /* ---------- road inspector + popups (already dark — retint accents) ---------- */
 #roadInspector{
