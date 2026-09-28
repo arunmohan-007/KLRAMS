@@ -94,20 +94,32 @@
           '</span>' +
           (l.shared ? '<span class="r2-hint lname-sub">' + esc(sharedByLabel(l)) + '</span>' : '') +
         '</span>' +
-        '<input type="checkbox" id="showUL' + l.id + '">' +
-        /* Discard right from the map, not just Layer Management — the point of
-           a temporary layer is to look at it once and throw it away, and going
-           to a separate admin screen to do that is the friction that leaves
-           scratch layers piling up. Only offered for a layer this list already
-           says is "mine" (see LayerDataService.viewerLayers); the server is the
-           real guard either way — see LayerRegistryService.deleteLayer. */
-        (l.temporary && l.mine
-          ? '<button class="ul-del" title="Discard this temporary layer" aria-label="Discard">&times;</button>'
-          : '');
+        '<span class="switch-actions">' +
+          '<button type="button" class="zoom-lyr-btn" title="Zoom to layer extent" ' +
+            'aria-label="Zoom to layer extent" disabled></button>' +
+          '<input type="checkbox" id="showUL' + l.id + '">' +
+          /* Discard right from the map, not just Layer Management — the point of
+             a temporary layer is to look at it once and throw it away, and going
+             to a separate admin screen to do that is the friction that leaves
+             scratch layers piling up. Only offered for a layer this list already
+             says is "mine" (see LayerDataService.viewerLayers); the server is the
+             real guard either way — see LayerRegistryService.deleteLayer. */
+          (l.temporary && l.mine
+            ? '<button class="ul-del" title="Discard this temporary layer" aria-label="Discard">&times;</button>'
+            : '') +
+        '</span>';
       grp.appendChild(row);
 
-      row.querySelector('input').addEventListener('change', function (e) {
+      var chk = row.querySelector('input');
+      var zoomBtn = row.querySelector('.zoom-lyr-btn');
+      if (window.KLAutoZoom) zoomBtn.innerHTML = KLAutoZoom.icon();
+      zoomBtn.disabled = !chk.checked;
+      chk.addEventListener('change', function (e) {
+        zoomBtn.disabled = !e.target.checked;
         toggle(l, i, e.target.checked);
+      });
+      zoomBtn.addEventListener('click', function () {
+        if (window.KLAutoZoom) KLAutoZoom.zoomToUserLayer(l.id, zoomBtn);
       });
 
       var del = row.querySelector('.ul-del');

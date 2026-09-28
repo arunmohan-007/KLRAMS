@@ -986,7 +986,7 @@ function injectExportButtons(){
       e.preventDefault();e.stopPropagation();
       if(_menuKey===key)closeExpMenu();else openExpMenu(key,b);
     });
-    row.insertBefore(b,t);
+    t.parentNode.insertBefore(b,t);
   });
 }
 /**

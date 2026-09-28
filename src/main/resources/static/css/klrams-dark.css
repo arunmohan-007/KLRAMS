@@ -696,6 +696,9 @@ html body .alb-hint{color:var(--k-faint)!important}
 html body .alb-row:hover{background:rgba(255,255,255,.05)!important}
 html body .alb-mv{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;color:var(--k-muted)!important}
 html body .alb-mv:hover:not(:disabled){background:var(--k-accent)!important;border-color:var(--k-accent)!important;color:#06231a!important}
+html body .zoom-lyr-btn{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;color:var(--k-muted)!important}
+html body .zoom-lyr-btn:hover:not(:disabled){background:var(--k-accent)!important;border-color:var(--k-accent)!important;color:#06231a!important}
+html body .zoom-lyr-btn.empty{background:rgba(255,90,90,.15)!important;border-color:#ff5a5a!important;color:#ff8a8a!important}
 html body .alb-it:hover{background:rgba(255,255,255,.05)!important}
 html body .alb-it.on{background:rgba(45,212,191,.12)!important}
 html body .alb-it.on .alb-nm{color:var(--k-accent)!important}
