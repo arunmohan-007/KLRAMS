@@ -707,6 +707,8 @@
     </div>
     <style id="alb-css">
       #activeLayerBox{position:absolute;top:14px;left:782px;z-index:7;font-family:Inter,system-ui,sans-serif}
+      /* GIS viewer only — hidden behind the full-screen dashboards/modules that cover the map (same set as moduleOpen() in map-mobile-ux.js) */
+      #dashboard.open ~ #activeLayerBox,#reportHub.open ~ #activeLayerBox,#pciScreen.open ~ #activeLayerBox,#condScreen.open ~ #activeLayerBox,#regScreen.open ~ #activeLayerBox,#nsvScreen.open ~ #activeLayerBox,#sectionEditor.open ~ #activeLayerBox{display:none}
       #activeLayerBox #albBtn{touch-action:none;cursor:grab}
       #activeLayerBox.kl-dragging #albBtn{cursor:grabbing}
       #albBtn{display:flex;align-items:center;gap:9px;padding:12px 14px;border-radius:16px;border:2px solid #00d4ff;background:#fff;color:#0f1b2e;font:600 13.5px Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 12px rgba(0,212,255,.2),0 16px 40px rgba(0,212,255,.15);transition:border-color .2s ease,box-shadow .2s ease}
