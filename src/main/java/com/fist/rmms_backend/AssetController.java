@@ -72,10 +72,14 @@ public class AssetController {
     private final SurveyPeriodService periods;
     private final LayerAttributeService attributes;
     private final PlacementService placement;
+    /** Resolves the road network's columns by system attribute name. */
+    private final RoadColumns roadColumns;
     private final ObjectMapper om = new ObjectMapper();
 
     public AssetController(JdbcTemplate jdbc, SurveyPeriodService periods,
-                           LayerAttributeService attributes, PlacementService placement) {
+                           LayerAttributeService attributes, PlacementService placement,
+                           RoadColumns roadColumns) {
+        this.roadColumns = roadColumns;
         this.jdbc = jdbc;
         this.periods = periods;
         this.attributes = attributes;
@@ -148,26 +152,21 @@ public class AssetController {
                   AND (a.end_chainage IS NULL OR a.start_chainage IS NULL)
                 """);
 
-            String lenExpr = """
-                COALESCE(
-                    NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
-                    NULLIF(r."Measrd_Len"::double precision, 0),
-                    ST_Length(r.geom::geography))
-                """;
+            String lenExpr = roadColumns.lenExpr("r");
             jdbc.update("""
                 UPDATE road_assets a SET geom = ST_LineSubstring(
                     ST_LineMerge(r.geom),
-                    GREATEST(LEAST(LEAST(a.start_chainage, a.end_chainage) / %s, 1.0), 0.0),
-                    GREATEST(LEAST(GREATEST(a.start_chainage, a.end_chainage) / %s, 1.0), 0.0))
+                    GREATEST(LEAST(LEAST(a.start_chainage, a.end_chainage) / %1$s, 1.0), 0.0),
+                    GREATEST(LEAST(GREATEST(a.start_chainage, a.end_chainage) / %2$s, 1.0), 0.0))
                 FROM roads r
                 WHERE a.asset_type = 'fwd'
                   AND a.start_chainage IS NOT NULL
                   AND a.end_chainage IS NOT NULL
                   AND a.end_chainage <> a.start_chainage
-                  AND r."Section_La" = a.section_label
+                  AND %3$s = a.section_label
                   AND r.geom IS NOT NULL
                   AND (a.geom IS NULL OR GeometryType(a.geom) IN ('POINT','MULTIPOINT'))
-                """.formatted(lenExpr, lenExpr));
+                """.formatted(lenExpr, lenExpr, roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL)));
         } catch (Exception e) {
             /* Non-fatal by design: on a first boot the roads table may not exist yet,
                and the next upload/ensure() retries. But it must not be INVISIBLE —
@@ -343,9 +342,9 @@ public class AssetController {
         type = type.toLowerCase();
         int n = periodId != null
             ? jdbc.update("DELETE FROM road_assets a WHERE a.asset_type = ? AND a.period_id = ? " +
-                "AND NOT EXISTS (SELECT 1 FROM roads r WHERE r.\"Section_La\" = a.section_label)", type, periodId)
+                "AND NOT EXISTS (SELECT 1 FROM roads r WHERE " + roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL) + " = a.section_label)", type, periodId)
             : jdbc.update("DELETE FROM road_assets a WHERE a.asset_type = ? " +
-                "AND NOT EXISTS (SELECT 1 FROM roads r WHERE r.\"Section_La\" = a.section_label)", type);
+                "AND NOT EXISTS (SELECT 1 FROM roads r WHERE " + roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL) + " = a.section_label)", type);
         Map<String, Object> r = new HashMap<>();
         r.put("status", "ok");
         r.put("deleted", n);
@@ -365,10 +364,10 @@ public class AssetController {
         List<Map<String, Object>> rows = jdbc.queryForList("""
             SELECT a.asset_type AS type, a.period_id AS period_id, count(*) AS n
             FROM road_assets a
-            WHERE NOT EXISTS (SELECT 1 FROM roads r WHERE r."Section_La" = a.section_label)
+            WHERE NOT EXISTS (SELECT 1 FROM roads r WHERE %s = a.section_label)
             GROUP BY 1, 2
             ORDER BY 1, 2
-            """);
+            """.formatted(roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL)));
         Map<Integer, String> names = new HashMap<>();
         for (Map<String, Object> p : periods.list()) names.put(((Number) p.get("id")).intValue(), (String) p.get("name"));
         for (Map<String, Object> row : rows) {

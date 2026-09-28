@@ -515,16 +515,37 @@ select option:disabled{color:var(--k-faint)!important}
   background:var(--k-panel)!important;border:1px solid var(--k-line)!important;
   box-shadow:none!important;
 }
-#pane-filter details.flt-sec[open]{box-shadow:none!important}
+/* Base rule above sets a flat neutral border; the group-dot accent (hover,
+   open, or the section's own toolbar-adjacent styling in app.css) needs to
+   win over it, so these two states get their own !important on top. */
+#pane-filter details.flt-sec:hover{border-color:var(--group-dot,var(--k-line2))!important}
+#pane-filter details.flt-sec[open]{box-shadow:none!important;border-color:var(--group-dot,var(--k-accent))!important}
 #pane-filter summary{color:var(--k-text)!important}
-#pane-filter summary::after{color:var(--k-accent)!important}
+#pane-filter summary::after{color:var(--group-dot,var(--k-accent))!important}
+#pane-filter .flt-group summary::before{background:var(--group-dot,var(--k-muted))!important}
 #pane-filter .flt-body,#pane-filter .flt-lock{color:var(--k-muted)!important}
 #pane-filter .flt-sec.locked summary{color:var(--k-faint)!important}
+#pane-filter .flt-sec.locked summary::before{background:var(--k-faint)!important}
 #pane-filter .flt-lock .btn{margin-top:9px}
 .segmented{background:var(--k-elev)!important;border:1px solid var(--k-line)!important}
 .segmented button{background:transparent!important;color:var(--k-muted)!important}
 .segmented button.on{background:var(--k-accent)!important;color:#06231a!important}
 .statusline{color:var(--k-muted)!important}
+
+/* ---------- filter toolbar + groups (43-filter-panel-ui.js) ---------- */
+.flt-toolbar{background:var(--k-panel)!important;border:1px solid var(--k-line)!important;box-shadow:none!important}
+.flt-search{background:var(--k-elev)!important;border:1px solid var(--k-line)!important}
+.flt-search:focus-within{border-color:var(--k-accent)!important}
+.flt-search input{color:var(--k-text)!important}
+.flt-search svg{color:var(--k-muted)!important}
+.flt-search-x{color:var(--k-faint)!important}
+.flt-search-x:hover{color:var(--k-text)!important}
+.flt-tb-btn{background:var(--k-elev)!important;border:1px solid var(--k-line)!important;color:var(--k-muted)!important}
+.flt-tb-btn:hover{background:var(--k-elev2)!important;color:var(--k-text)!important;border-color:var(--k-accent)!important}
+.flt-tb-btn.danger:hover{color:#ff5c7a!important;border-color:#ff5c7a!important}
+.flt-tb-hint{color:var(--k-faint)!important}
+.flt-group-h{color:var(--k-faint)!important}
+.flt-group-line{background:linear-gradient(90deg,var(--k-line),transparent)!important}
 
 /* ---------- Select by Road (42-select-by-road.js) ---------- */
 #fsecSelRoad .btn.ghost.on{background:var(--k-accent)!important;border-color:var(--k-accent)!important;color:#06231a!important}

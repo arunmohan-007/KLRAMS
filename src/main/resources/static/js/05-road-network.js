@@ -237,13 +237,43 @@ function netColorByExpr(attr){
   e.push('#9aa7b5');
   return e;
 }
+/* No colour-by attribute picked ("Road class", the default) paints from
+   whatever Style & Label Management last saved for the roads layer, via
+   KLStyle's own map.addLayer/setPaintProperty hook — that save is
+   permanent until the user changes it again, unlike a colour-by pick
+   here which resets the moment the dropdown changes. The legend has to
+   read the same saved style, or it keeps showing the built-in SH/MDR
+   swatches after the paint itself has moved on. */
+function netDefaultLegendHtml(){
+  const s=(typeof KLStyle!=='undefined'&&KLStyle.styleFor)?KLStyle.styleFor('roads'):null;
+  const c=s&&s.color;
+  if(!c||c.mode==='SINGLE'||!c.attribute){
+    return '<div class="lg"><span class="bar" style="background:'+CLS.SH+'"></span><span class="lgt">SH</span></div>'+
+      '<div class="lg"><span class="bar" style="background:'+CLS.MDR+'"></span><span class="lgt">MDR</span></div>';
+  }
+  if(c.mode==='CATEGORY'){
+    const rows=(c.categories||[]).filter(cat=>cat&&cat.value&&cat.color)
+      .map(cat=>'<div class="lg"><span class="bar" style="background:'+cat.color+'"></span><span class="lgt">'+(cat.label||cat.value)+'</span></div>').join('');
+    return rows||('<div class="lg"><span class="bar" style="background:'+(c.fallback||'#9aa0a6')+'"></span><span class="lgt">'+c.attribute+'</span></div>');
+  }
+  if(c.mode==='RANGE'){
+    return (c.ranges||[]).filter(r=>r&&r.color)
+      .sort((a,b)=>(+a.from||0)-(+b.from||0))
+      .map(r=>{const lbl=r.label||(r.from+(r.to!=null?' – '+r.to:'+'));return '<div class="lg"><span class="bar" style="background:'+r.color+'"></span><span class="lgt">'+lbl+'</span></div>';}).join('');
+  }
+  if(c.mode==='GRADIENT'){
+    const g=c.gradient||{};
+    const stops=(g.stops||[]).slice().sort((a,b)=>(+a.at||0)-(+b.at||0));
+    const css=stops.map(st=>st.color+' '+Math.round((+st.at||0)*100)+'%').join(',');
+    return '<div class="lg"><span class="bar" style="background:linear-gradient(90deg,'+css+')"></span><span class="lgt">'+g.min+' → '+g.max+'</span></div>';
+  }
+  return '<div class="lg"><span class="bar" style="background:'+CLS.SH+'"></span><span class="lgt">SH</span></div>'+
+    '<div class="lg"><span class="bar" style="background:'+CLS.MDR+'"></span><span class="lgt">MDR</span></div>';
+}
 function renderNetLegend(attr){
   const el=document.getElementById('netLegend'); el.innerHTML='';
   const m=ATTRS[attr];
-  if(!m){el.innerHTML=
-    '<div class="lg"><span class="bar" style="background:'+CLS.SH+'"></span><span class="lgt">SH</span></div>'+
-    '<div class="lg"><span class="bar" style="background:'+CLS.MDR+'"></span><span class="lgt">MDR</span></div>';
-    return;}
+  if(!m){el.innerHTML=netDefaultLegendHtml();return;}
   if(m.numeric&&/road.?num/i.test(attr)){
     el.innerHTML=ROAD_NUM_PALETTE.map(c=>`<span class="bar" style="background:${c};display:inline-block;width:14px;height:10px;margin-right:2px;border-radius:2px"></span>`).join('')
       +`<div class="lg"><span class="lgt">Each road number gets its own distinct colour (hashed, not a gradient)</span></div>`;
@@ -565,6 +595,17 @@ function refreshNetColorAndLegend(){
     renderNetLegend(attr);
   });
 }
+/* KLStyle's own fetch of saved styles (34-layer-style.js) can resolve after
+   this module has already drawn the "Road class" default legend from the
+   built-in SH/MDR colours — netDefaultLegendHtml() would then be reading
+   KLStyle.styleFor('roads') before it exists. Re-render on its
+   'klstyle:applied' event so a saved style's colours land in the legend
+   as soon as they land on the map, without polling. */
+document.addEventListener('klstyle:applied',function(){
+  const sel=document.getElementById('netColorBy');
+  const v=sel?sel.value:'__class__';
+  if(!v||v==='__class__')renderNetLegend(null);
+});
 
 /* ============================================================
    Saved Road Network filters.

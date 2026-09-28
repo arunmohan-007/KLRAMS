@@ -358,6 +358,10 @@ var KLActive = (function () {
     if (!elBtn) return;
 
     elBtn.addEventListener('click', function (e) {
+      /* 46-drag-panels.js marks the button after a real drag (pointer moved
+         before release) so the click the browser still fires right after
+         does not also toggle the menu open/closed. */
+      if (elBtn.dataset.klDragged) { delete elBtn.dataset.klDragged; return; }
       e.stopPropagation();
       var willOpen = !elMenu.classList.contains('show');
       if (willOpen) { lastSig = ''; render(); }

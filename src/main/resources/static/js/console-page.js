@@ -108,13 +108,15 @@ function vidRetry(i){var it=vidItems[i];if(!it)return;it.status='queued';it.deta
 async function vidStart(){
   if(vidRunning)return;
   if(!vidItems.length){var o=document.getElementById('oVid');if(o)show(o,false,'Choose one or more video files first.');return;}
+  var pid=spSelVal();
+  if(!pid){var o2=document.getElementById('oVid');if(o2)show(o2,false,'Select the survey period these videos were filmed in first (create one under Survey Periods).');return;}
   vidRunning=true;
   var sb=document.getElementById('vidStartBtn');if(sb)sb.disabled=true;
   vidRender();
   for(var i=0;i<vidItems.length;i++){
     var it=vidItems[i];
     if(it.status==='done'||it.status==='failed')continue;
-    await vidUploadOne(it);
+    await vidUploadOne(it,pid);
   }
   vidRunning=false;
   if(sb)sb.disabled=false;
@@ -124,7 +126,7 @@ async function vidStart(){
   if(out)show(out,failed===0,'Finished: '+done+' of '+vidItems.length+' file(s) uploaded'+(failed?', '+failed+' failed — press Retry.':'.'));
   vidRender();refresh();
 }
-function vidUploadOne(it){
+function vidUploadOne(it,periodId){
   return new Promise(function(resolve){
     it.status='resuming';it.detail='';vidRender();
     fetch('/api/video/upload-status?name='+encodeURIComponent(it.name),{cache:'no-store'})
@@ -139,6 +141,7 @@ function vidUploadOne(it){
       var start=it.uploaded,end=Math.min(start+VID_CHUNK,it.size);
       var fd=new FormData();
       fd.append('name',it.name);fd.append('offset',start);fd.append('total',it.size);
+      fd.append('periodId',periodId);
       fd.append('chunk',it.file.slice(start,end),'chunk');
       var xhr=new XMLHttpRequest();it.xhr=xhr;
       xhr.open('POST','/api/video/upload-chunk');
@@ -147,6 +150,7 @@ function vidUploadOne(it){
         if(xhr.status>=200&&xhr.status<300){
           var res={};try{res=JSON.parse(xhr.responseText);}catch(_){}
           if(res.status==='error'){finishFail(res.message||'server error');return;}
+          if(res.status==='conflict'){finishFail(res.message||'already uploaded under a different survey period');return;}
           if(res.status==='resync'){it.uploaded=Number(res.uploaded)||0;}
           else if(res.status==='complete'){it.uploaded=it.size;}
           else{it.uploaded=(res.uploaded!=null)?Number(res.uploaded):end;}
@@ -963,12 +967,13 @@ const PANELS={
     +'<p class="hint">Bins run 0&ndash;2 km, 2&ndash;4 km&hellip; from each section&rsquo;s chainage origin; a survey row is counted in the bin its <b>start</b> chainage falls in. Which lanes exist varies by section — some are surveyed as <code>CC</code> alone, and a dual carriageway&rsquo;s two centrelines each carry only their own side (&hellip;A &rarr; CL1/CL2, &hellip;B &rarr; CR1/CR2). Build segments runs this automatically.</p>',
   'vid-zip':'<div class="ip-title">Survey video files</div>'
     +'<p class="ip-sub">Select the NSV video files and upload them directly. Each file is sent to the server in small chunks with a live progress bar and its own status, so a dropped connection only re-sends the unfinished chunk — never the whole batch. If a file fails, the others keep going; press <b>Retry</b>, or just re-select the same files later to resume from where it stopped.</p>'
+    +spSelField()
     +'<div class="ip-field"><label class="ip-label">Video files (MP4, MOV, AVI, MKV…)</label><input type="file" id="vidFiles" accept="video/*,.mp4,.mov,.avi,.mkv,.m4v" multiple data-change="vidQueueAddEl"></div>'
     +'<button class="btn" id="vidStartBtn" data-act="vidStart">Upload videos</button> '
     +'<button class="btn ghost" data-act="vidClearDone">Clear finished</button>'
     +'<div id="vidList" style="margin-top:12px"></div>'
     +'<div class="out" id="oVid"></div>'
-    +'<p class="hint">Files are split into 5&nbsp;MB chunks and stored on the server under the video folder. After uploading, use <b>Video catalogue</b> to link each file to its road section and driving direction.</p>',
+    +'<p class="hint">Files are split into 5&nbsp;MB chunks and stored on the server under the video folder, tagged with the survey period chosen above. After uploading, use <b>Video catalogue</b> to link each file to its road section and driving direction.</p>',
   'vid-cat':'<div class="ip-title">Video catalogue</div>'
     +'<p class="ip-sub">Link each road section to its video file(s), direction and chainage stretch. The NSV video is recorded during a survey cycle, so the catalogue is stored per survey period — like the condition and FWD data it was filmed with.</p>'
     +spSelField()

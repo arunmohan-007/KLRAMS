@@ -289,7 +289,25 @@
     <div class="pane-title">Filters</div>
     <div class="note" style="margin-top:-2px">Filter each data layer below. A layer must be switched on to filter it.</div>
 
-    <details class="flt-sec" id="fsecSelRoad" open>
+    <div class="flt-toolbar">
+      <div class="flt-tb-row">
+        <label class="flt-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
+          <input type="text" id="fltSearchBox" placeholder="Search filters&hellip; (bridge, CBR, district&hellip;)" autocomplete="off">
+          <button type="button" class="flt-search-x" id="fltSearchClear" title="Clear search" style="display:none">&times;</button>
+        </label>
+        <button type="button" class="flt-tb-btn" id="fltCollapseBtn" data-act="fltToggleCollapse">Collapse all</button>
+      </div>
+      <div class="flt-tb-row">
+        <span class="flt-tb-hint" id="fltSearchHint"></span>
+        <button type="button" class="flt-tb-btn danger" id="fltClearAllBtn" data-act="fltClearAll" style="margin-left:auto">Clear all filters</button>
+      </div>
+    </div>
+
+    <div class="flt-group" style="--group-dot:#2dd4bf">
+      <div class="flt-group-h"><span class="flt-group-dot"></span>Road Network<span class="flt-group-line"></span></div>
+
+    <details class="flt-sec" id="fsecSelRoad">
       <summary>Select by Road</summary>
       <div class="flt-lock">The <b>Road network</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showRoads"]'>Turn on layer</button></div>
       <div class="flt-body">
@@ -348,6 +366,10 @@
     <div class="statusline" id="netSavedInfo"></div>
       </div>
     </details>
+    </div>
+
+    <div class="flt-group" style="--group-dot:#f59e0b">
+      <div class="flt-group-h"><span class="flt-group-dot"></span>Condition &amp; Survey<span class="flt-group-line"></span></div>
 
     <details class="flt-sec" id="fsecCond">
       <summary>Road Condition</summary>
@@ -411,6 +433,10 @@
         <div class="note" style="margin:0">Filters both Composite and Worst-Lane PCI layers.</div>
       </div>
     </details>
+    </div>
+
+    <div class="flt-group" style="--group-dot:#a78bfa">
+      <div class="flt-group-h"><span class="flt-group-dot"></span>Structures &amp; Geotech<span class="flt-group-line"></span></div>
 
     <details class="flt-sec" id="fsecBridge">
       <summary>Bridge</summary>
@@ -434,36 +460,23 @@
       </div>
     </details>
 
-    <details class="flt-sec" id="fsecSoil">
-      <summary>Sub-Grade Soil</summary>
-      <div class="flt-lock">The <b>Sub-Grade Soil</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showSoil"]'>Turn on layer</button></div>
-      <div class="flt-body">
-        <div class="eyebrow">Soil type</div>
-        <select id="soilType" class="full"><option value="">Any type</option></select>
-        <div class="eyebrow" style="margin-top:11px">CBR range (%)</div>
-        <div class="row2"><input id="soilCbrMin" type="number" class="full" placeholder="min"><input id="soilCbrMax" type="number" class="full" placeholder="max"></div>
-        <div class="row2"><button class="btn ghost" data-act="applySoilFilter">Apply</button><button class="btn ghost" data-act="clearSoilFilter">Clear</button></div>
-        <div class="note" style="margin:0">Shows sub-grade soil points matching the selected type and/or soaked CBR range.</div>
-      </div>
-    </details>
+    <!-- Sub-Grade Soil, Bituminous Core. No fixed schema — CSV columns vary by
+         survey — so 37-layer-filters.js builds these sections from the data
+         itself, one row per attribute with every operator (numeric: >, >=, =,
+         <=, <; text: =, contains). -->
+    <div id="fsecAssets"></div>
+    </div>
 
-    <details class="flt-sec" id="fsecCore">
-      <summary>Bituminous Core</summary>
-      <div class="flt-lock">The <b>Bituminous Core</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showCore"]'>Turn on layer</button></div>
-      <div class="flt-body">
-        <div class="eyebrow">Total bituminous thickness (mm)</div>
-        <div class="row2"><input id="coreMin" type="number" class="full" placeholder="min"><input id="coreMax" type="number" class="full" placeholder="max"></div>
-        <div class="row2"><button class="btn ghost" data-act="applyCoreFilter">Apply</button><button class="btn ghost" data-act="clearCoreFilter">Clear</button></div>
-        <div class="note" style="margin:0">Shows bituminous core points whose total observed bituminous layer thickness falls in the range.</div>
-      </div>
-    </details>
+    <div class="flt-group" style="--group-dot:#60a5fa">
+      <div class="flt-group-h"><span class="flt-group-dot"></span>Boundaries &amp; Custom Layers<span class="flt-group-line"></span></div>
 
     <!-- Administrative boundary, user and temporary layers. Unlike every
-         section above, these have no fixed schema — a boundary's columns are
-         whatever shapefile was last uploaded and a user layer does not exist
-         until somebody creates it — so 37-layer-filters.js builds their
-         sections from the data itself. -->
+         section above, these have no fixed schema either — a boundary's
+         columns are whatever shapefile was last uploaded and a user layer
+         does not exist until somebody creates it — so 37-layer-filters.js
+         builds these sections from the data itself too. -->
     <div id="fsecExtra"></div>
+    </div>
   </section>
 </div>
 
@@ -694,6 +707,8 @@
     </div>
     <style id="alb-css">
       #activeLayerBox{position:absolute;top:14px;left:782px;z-index:7;font-family:Inter,system-ui,sans-serif}
+      #activeLayerBox #albBtn{touch-action:none;cursor:grab}
+      #activeLayerBox.kl-dragging #albBtn{cursor:grabbing}
       #albBtn{display:flex;align-items:center;gap:9px;padding:12px 14px;border-radius:16px;border:2px solid #00d4ff;background:#fff;color:#0f1b2e;font:600 13.5px Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 12px rgba(0,212,255,.2),0 16px 40px rgba(0,212,255,.15);transition:border-color .2s ease,box-shadow .2s ease}
       #albBtn:hover{border-color:#00ffff;box-shadow:0 0 0 4px rgba(0,212,255,.18),0 16px 40px rgba(0,212,255,.2)}
       #albBtn.is-picked{border-color:#19b277;box-shadow:0 0 0 4px rgba(25,178,119,.18),0 16px 40px rgba(25,178,119,.16)}
@@ -787,7 +802,8 @@
       #netScopeCard.min .nsc-head{border-bottom:0}
       @keyframes nscIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
       #netScopeCard::before{content:"";position:sticky;display:block;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#19b277,#3b86e6 55%,#8a68e6);z-index:2}
-      .nsc-head{display:flex;align-items:center;gap:9px;padding:11px 14px 10px;border-bottom:1px solid rgba(120,160,215,.16)}
+      .nsc-head{display:flex;align-items:center;gap:9px;padding:11px 14px 10px;border-bottom:1px solid rgba(120,160,215,.16);cursor:grab;touch-action:none;user-select:none}
+      #netScopeCard.kl-dragging .nsc-head{cursor:grabbing}
       .nsc-dot{width:8px;height:8px;border-radius:50%;background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.22);animation:nscPulse 1.9s infinite;flex:0 0 auto}
       @keyframes nscPulse{0%,100%{opacity:1}50%{opacity:.4}}
       .nsc-title{font:600 13px Inter,system-ui,sans-serif;color:#cfe0f5;letter-spacing:.3px;flex:1;min-width:0;white-space:nowrap}
@@ -1106,7 +1122,7 @@
   <script src="js/02d-road-index.js?v=5"></script>
   <script src="js/03-condition-style-filter.js?v=187"></script>
   <script src="js/04-geo-helpers-boundaries.js?v=139"></script>
-  <script src="js/05-road-network.js?v=195"></script>
+  <script src="js/05-road-network.js?v=196"></script>
   <script src="js/06-assets.js?v=189"></script>
   <script src="js/07-data-loaders.js?v=190"></script>
   <script src="js/08-condition-popup-nsv.js?v=175"></script>
@@ -1119,7 +1135,7 @@
   <script src="js/15-main.js?v=130"></script>
   <script src="js/16-traffic.js?v=177"></script>
   <script src="js/17-measure.js?v=121"></script>
-  <script src="js/18-filters.js?v=125"></script>
+  <script src="js/18-filters.js?v=126"></script>
   <script src="js/19-asset-register.js?v=123"></script>
   <script src="js/20-asset-dashboard.js?v=119"></script>
   <script src="js/21-report-hub.js?v=124"></script>
@@ -1135,10 +1151,10 @@
   <script src="js/32-iri-2km.js?v=9"></script>
   <script src="js/33-user-layers.js?v=16"></script>
   <script src="js/kl-symbols.js?v=3"></script>
-  <script src="js/34-layer-style.js?v=9"></script>
+  <script src="js/34-layer-style.js?v=10"></script>
   <script src="js/35-live-location.js?v=3"></script>
   <script src="js/36-chainage-locator.js?v=4"></script>
-  <script src="js/37-layer-filters.js?v=8"></script>
+  <script src="js/37-layer-filters.js?v=11"></script>
   <!-- Map Composer: the engine first, then the screen that drives it. -->
   <script src="js/38-map-composer.js?v=12"></script>
   <script src="js/39-heatmap.js?v=6"></script>
@@ -1147,8 +1163,11 @@
   <script src="js/40-module-menu.js?v=3"></script>
   <script src="js/41-section-editor.js?v=14"></script>
   <script src="js/42-select-by-road.js?v=2"></script>
+  <script src="js/43-filter-panel-ui.js?v=2"></script>
   <!-- SUPER_ADMIN-only: reports GIS layer load performance to /monitor.html. -->
   <script src="js/44-monitor-telemetry.js?v=1"></script>
+  <!-- Lets the Active Map Layers chip and the filter Summary card be dragged anywhere over the viewer. -->
+  <script src="js/46-drag-panels.js?v=1"></script>
   <script src="js/launcher.js?v=165"></script>
   <style id="dock-guard">
     /* Build 91 — the page must not scroll (full-viewport app); a stray page

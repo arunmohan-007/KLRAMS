@@ -36,15 +36,20 @@ public class FwdTileService {
     private final int buffer;
     private final int maxZoom;
 
+    /** Resolves the road network's columns by system attribute name. */
+    private final RoadColumns roadColumns;
+
     public FwdTileService(JdbcTemplate jdbc,
                           SurveyPeriodService periods,
                           LayerStyleService styles,
+                          RoadColumns roadColumns,
                           @Value("${app.tile.extent:4096}") int extent,
                           @Value("${app.tile.buffer:64}") int buffer,
                           @Value("${app.tile.max-zoom:20}") int maxZoom) {
         this.jdbc = jdbc;
         this.periods = periods;
         this.styles = styles;
+        this.roadColumns = roadColumns;
         this.extent = extent;
         this.buffer = buffer;
         this.maxZoom = maxZoom;
@@ -64,14 +69,17 @@ public class FwdTileService {
         // attrs so a paint expression can read it. Null unless someone has
         // styled the layer, and the D0 colouring above is untouched either way.
         String[] keys = styles.tileKeys("fwd");
-        byte[] tile = jdbc.queryForObject(TILE_SQL, byte[].class,
+        byte[] tile = jdbc.queryForObject(tileSql(), byte[].class,
                 t.z(), t.x(), t.y(), periodId, periodId, keys[0], keys[1], extent, buffer, extent);
 
         return (tile == null || tile.length == 0) ? null : tile;
     }
 
-    private static final String TILE_SQL =
-            """
+    /* Built per call rather than held as a constant: the road network's column names come
+       from the last shapefile import, so they are resolved by meaning at request time (and
+       RoadColumns caches the lookup, so this is not a per-tile query). */
+    private String tileSql() {
+        return """
             WITH bounds AS (
                 SELECT merc, ST_Transform(merc, 4326) AS wgs
                 FROM (SELECT ST_TileEnvelope(?, ?, ?) AS merc) e
@@ -93,12 +101,9 @@ public class FwdTileService {
                        d0.v AS d0,
                        LEAST(a.start_chainage, COALESCE(a.end_chainage, a.start_chainage)) AS lo,
                        GREATEST(a.start_chainage, COALESCE(a.end_chainage, a.start_chainage)) AS hi,
-                       COALESCE(
-                           NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
-                           NULLIF(r."Measrd_Len"::double precision, 0),
-                           ST_Length(r.geom::geography)) AS measured_len
+                       %1$s AS measured_len
                 FROM road_assets a
-                JOIN roads r ON r."Section_La" = a.section_label AND r.geom IS NOT NULL
+                JOIN roads r ON %2$s = a.section_label AND r.geom IS NOT NULL
                 LEFT JOIN d0 ON d0.id = a.id
                 CROSS JOIN bounds b
                 WHERE a.asset_type = 'fwd'
@@ -137,6 +142,8 @@ public class FwdTileService {
                         END, 3857), b.merc, ?, ?, true) AS geom
                 FROM cand c, bounds b
             )
-            """
+            """.formatted(roadColumns.lenExpr("r"),
+                          roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL))
             + "SELECT ST_AsMVT(src, '" + LAYER_NAME + "', ?, 'geom') FROM src WHERE geom IS NOT NULL";
+    }
 }

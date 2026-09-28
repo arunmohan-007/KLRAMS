@@ -72,7 +72,7 @@ function clearTrafficFilter(){
   if(map.getLayer('trafficstn-lyr')) map.setFilter('trafficstn-lyr', null);
 }
 
-/* ---------- Bridge / Culvert / Sub-Grade Soil / Bituminous Core: attribute filters ----------
+/* ---------- Bridge / Culvert: attribute filters ----------
    Unlike FWD/PCI, these asset types have no fixed schema — road_assets.attrs is a free-form
    jsonb bag of whatever the CSV upload's headers were (AssetTileService), so the map layer
    (tile OR geojson) has no single property name to filter on directly. Instead: pull the
@@ -80,13 +80,14 @@ function clearTrafficFilter(){
    client-side using the same fuzzy column matching pickProp()/ckey() use elsewhere, then filter
    the map layer by the ids of the matches. Every asset feature carries its road_assets.id as
    either `asset_id` (tile mode) or `__id` (geojson mode; AssetController.geojson()) — coalesce
-   picks whichever the current render mode used. */
+   picks whichever the current render mode used.
+   Sub-Grade Soil and Bituminous Core used to have their own narrow version of this (a type
+   dropdown, one or two numeric ranges) — replaced by the generic per-attribute, all-operator
+   section builder in 37-layer-filters.js (assetTarget()), which reaches every CSV column
+   instead of the two or three this file used to hard-code. */
 function assetByType(t){ return ASSETS.find(a=>a.type===t); }
 const BRIDGE_TYPE_KEYS=['bridgetype','structuretype'];
 const CULVERT_TYPE_KEYS=['culverttype','type'];
-const SOIL_TYPE_KEYS=['soiltype'];
-const SOIL_CBR_KEYS=['cbr','soakedcbr'];
-const CORE_THICK_KEYS=['totalobservedbituminouslayersthicknessmm','totalbituminousthickness'];
 
 function assetFilterOptions(type,keys){
   const gj=ASSET_DATA[type]; const seen=new Set();
@@ -141,53 +142,6 @@ function clearCulvertFilter(){
   const a=assetByType('culvert'); if(a)applyAssetIdFilter(a,null);
 }
 
-function applySoilFilter(){
-  const a=assetByType('subgrade'); if(!a||!map.getLayer(a.layer))return;
-  loadAssetData(a).then(()=>{
-    const type=document.getElementById('soilType').value;
-    const mn=parseFloat(document.getElementById('soilCbrMin').value);
-    const mx=parseFloat(document.getElementById('soilCbrMax').value);
-    if(!type&&isNaN(mn)&&isNaN(mx)){ applyAssetIdFilter(a,null); return; }
-    applyAssetIdFilter(a,assetMatchIds('subgrade',p=>{
-      if(type&&String(pickProp(p,SOIL_TYPE_KEYS)||'').trim()!==type)return false;
-      if(!isNaN(mn)||!isNaN(mx)){
-        const v=assetNum(pickProp(p,SOIL_CBR_KEYS));
-        if(isNaN(v))return false;
-        if(!isNaN(mn)&&v<mn)return false;
-        if(!isNaN(mx)&&v>mx)return false;
-      }
-      return true;
-    }));
-  });
-}
-function clearSoilFilter(){
-  const sel=document.getElementById('soilType'); if(sel)sel.value='';
-  document.getElementById('soilCbrMin').value='';
-  document.getElementById('soilCbrMax').value='';
-  const a=assetByType('subgrade'); if(a)applyAssetIdFilter(a,null);
-}
-
-function applyCoreFilter(){
-  const a=assetByType('bituminous_core'); if(!a||!map.getLayer(a.layer))return;
-  loadAssetData(a).then(()=>{
-    const mn=parseFloat(document.getElementById('coreMin').value);
-    const mx=parseFloat(document.getElementById('coreMax').value);
-    if(isNaN(mn)&&isNaN(mx)){ applyAssetIdFilter(a,null); return; }
-    applyAssetIdFilter(a,assetMatchIds('bituminous_core',p=>{
-      const v=assetNum(pickProp(p,CORE_THICK_KEYS));
-      if(isNaN(v))return false;
-      if(!isNaN(mn)&&v<mn)return false;
-      if(!isNaN(mx)&&v>mx)return false;
-      return true;
-    }));
-  });
-}
-function clearCoreFilter(){
-  document.getElementById('coreMin').value='';
-  document.getElementById('coreMax').value='';
-  const a=assetByType('bituminous_core'); if(a)applyAssetIdFilter(a,null);
-}
-
 /* ---------- layer-off locks ---------- */
 function fLayerOn(id){ const e=document.getElementById(id); return e?e.checked:false; }
 function enableLayer(id){
@@ -198,7 +152,7 @@ function enableLayer(id){
 function refreshFilterLocks(){
   [['fsecSelRoad','showRoads'],['fsecNet','showRoads'],['fsecCond','showCond'],['fsecTrf','showTraffic'],
    ['fsecFwd','showFwd'],['fsecIri','showIri2km'],['fsecPci',null],
-   ['fsecBridge','showBridge'],['fsecCulv','showCulvert'],['fsecSoil','showSoil'],['fsecCore','showCore']].forEach(([sec,layer])=>{
+   ['fsecBridge','showBridge'],['fsecCulv','showCulvert']].forEach(([sec,layer])=>{
     const s=document.getElementById(sec); if(!s) return;
     const on = (sec==='fsecPci') ? (fLayerOn('showPciAvg')||fLayerOn('showPciWorst')) : fLayerOn(layer);
     s.classList.toggle('locked', !on);
@@ -215,10 +169,9 @@ function refreshFilterLocks(){
      either the layer is switched on, or its Filter-folder section is opened
      while the layer is already on (loadAssetData() is cached, so this costs
      nothing on the second call either way). */
-  const brgOn=document.getElementById('showBridge'), culvOn=document.getElementById('showCulvert'), soilOn=document.getElementById('showSoil');
+  const brgOn=document.getElementById('showBridge'), culvOn=document.getElementById('showCulvert');
   if(brgOn) brgOn.addEventListener('change',()=>{ if(brgOn.checked) ensureAssetFilterUI('bridge','brgType',BRIDGE_TYPE_KEYS); });
   if(culvOn) culvOn.addEventListener('change',()=>{ if(culvOn.checked) ensureAssetFilterUI('culvert','culvType',CULVERT_TYPE_KEYS); });
-  if(soilOn) soilOn.addEventListener('change',()=>{ if(soilOn.checked) ensureAssetFilterUI('subgrade','soilType',SOIL_TYPE_KEYS); });
   /* Same idea for the Road Network section, whose column list can be missing
      for its own reasons (see ensureNetAttrs in 05-road-network.js): opening the
      section is the moment it is needed, so that is when it is fetched. */
@@ -227,8 +180,7 @@ function refreshFilterLocks(){
     if(secNet.open&&typeof ensureNetAttrs==='function'&&!netAttrsLoaded())
       ensureNetAttrs().then(()=>{if(typeof renderNetFilters==='function')renderNetFilters();});
   });
-  const secBrg=document.getElementById('fsecBridge'), secCulv=document.getElementById('fsecCulv'), secSoil=document.getElementById('fsecSoil');
+  const secBrg=document.getElementById('fsecBridge'), secCulv=document.getElementById('fsecCulv');
   if(secBrg) secBrg.addEventListener('toggle',()=>{ if(secBrg.open&&fLayerOn('showBridge')) ensureAssetFilterUI('bridge','brgType',BRIDGE_TYPE_KEYS); });
   if(secCulv) secCulv.addEventListener('toggle',()=>{ if(secCulv.open&&fLayerOn('showCulvert')) ensureAssetFilterUI('culvert','culvType',CULVERT_TYPE_KEYS); });
-  if(secSoil) secSoil.addEventListener('toggle',()=>{ if(secSoil.open&&fLayerOn('showSoil')) ensureAssetFilterUI('subgrade','soilType',SOIL_TYPE_KEYS); });
 })();

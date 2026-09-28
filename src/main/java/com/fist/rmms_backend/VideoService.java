@@ -43,13 +43,16 @@ public class VideoService {
     private static final Logger log = LoggerFactory.getLogger(VideoService.class);
 
     private final JdbcTemplate jdbc;
+    /** Resolves the road network's columns by system attribute name. */
+    private final RoadColumns roadColumns;
     private final SurveyPeriodService periods;
     private final Path videoDir;
     /** Incomplete uploads live here as "<name>.part" until the last chunk arrives. */
     private final Path partsDir;
 
-    public VideoService(JdbcTemplate jdbc, SurveyPeriodService periods,
+    public VideoService(JdbcTemplate jdbc, SurveyPeriodService periods, RoadColumns roadColumns,
                         @Value("${app.video-dir:video-store}") String dir) throws IOException {
+        this.roadColumns = roadColumns;
         this.jdbc = jdbc;
         this.periods = periods;
         this.videoDir = Paths.get(dir).toAbsolutePath();
@@ -80,9 +83,47 @@ public class VideoService {
         // "legacy" row that the frontend treats as spanning the whole road.
         jdbc.execute("ALTER TABLE road_video ADD COLUMN IF NOT EXISTS from_ch double precision");
         jdbc.execute("ALTER TABLE road_video ADD COLUMN IF NOT EXISTS to_ch double precision");
+        /* The chainage span the FILE itself covers, which is not always the span the CLIP
+           covers. NULL means they are the same — the file runs exactly from_ch..to_ch, which is
+           what every row imported from a catalogue CSV means and what the player assumed
+           universally until now.
+           They differ after a section split passes through a clip: one file then serves two
+           sections, each showing its own sub-range of the same footage. Without this the split
+           had to be refused, because a clip window narrower than the file would have played the
+           whole video across half the road.
+           file_from_ch may be NEGATIVE on the second half of such a split: the file starts
+           before that section's own chainage origin. That is meaningful, not a data error —
+           see buildTravelPlan() in js/12-nsv-video.js. */
+        jdbc.execute("ALTER TABLE road_video ADD COLUMN IF NOT EXISTS file_from_ch double precision");
+        jdbc.execute("ALTER TABLE road_video ADD COLUMN IF NOT EXISTS file_to_ch double precision");
+        // Raw file uploads are tagged with the period they were filmed in, so a later
+        // NSV cycle re-using a familiar file name (or an incrementing camera counter)
+        // can be caught and refused instead of silently overwriting an earlier period's
+        // footage on disk — see putChunk()'s conflict check.
+        jdbc.execute("""
+            CREATE TABLE IF NOT EXISTS video_uploads (
+                video_file  text PRIMARY KEY,
+                period_id   integer,
+                uploaded_at timestamptz NOT NULL DEFAULT now()
+            )
+            """);
         try {
             periods.ensureSurrogatePk("road_video", "section_label");
-            periods.dedupeKeepingLatest("road_video", "section_label", "period_id");
+            /* NO dedupe here, and it must never come back. There used to be a
+               dedupeKeepingLatest(section_label, period_id) call on this line, left over from
+               when the unique index below was being ADDED — it deleted every row but the
+               newest for each section so the index could be created.
+
+               Once a section could carry several clips, the index was dropped but the dedupe
+               was not, so it kept running on EVERY boot and silently deleted all but one clip
+               per section. Multi-clip sections therefore survived only until the next restart:
+               a merge would correctly leave the survivor with both sources' footage, the app
+               would be restarted, and one clip would simply be gone — which is exactly how
+               KPWD/SH/1/3 lost the first 7 860 m of its footage. Nothing reported it, because
+               deleting a duplicate was the old, correct behaviour.
+
+               The traffic tables still dedupe, and should: they go on to create the unique
+               index this one drops. */
             // Was a UNIQUE index on (section_label, period_id) — that enforced exactly
             // one video per section per period, which no longer holds once a section
             // can have multiple clips. Drop it and keep a plain lookup index instead.
@@ -110,14 +151,14 @@ public class VideoService {
      */
     private void backfillLegacyChainage() {
         try {
-            jdbc.update("""
+            jdbc.update(roadColumns.resolve("""
                 UPDATE road_video v
-                SET from_ch = 0, to_ch = r."Measrd_Len"
+                SET from_ch = 0, to_ch = @{r:Measured Length}
                 FROM roads r
-                WHERE v.section_label = r."Section_La"
+                WHERE v.section_label = @{r:Section Label}
                   AND v.from_ch IS NULL AND v.to_ch IS NULL
-                  AND r."Measrd_Len" IS NOT NULL AND r."Measrd_Len" > 0
-                """);
+                  AND @{r:Measured Length} IS NOT NULL AND @{r:Measured Length} > 0
+                """));
         } catch (Exception e) {
             // roads table may not exist yet on a brand-new database — harmless, nothing to backfill.
             log.debug("Video catalogue legacy-chainage backfill skipped", e);
@@ -177,8 +218,15 @@ public class VideoService {
      * the client is out of step we reply "resync" with the true offset instead
      * of corrupting the file. When the part reaches {@code total} it is moved
      * into place and we reply "complete"; otherwise "partial".
+     *
+     * {@code periodId} is the survey cycle these files were filmed in. Before the
+     * finished file is moved into the shared, flat video folder we check whether
+     * that file name is already tied to a *different* period — either an earlier
+     * raw upload or a catalogue entry — and refuse rather than silently overwrite
+     * that other period's footage. A later NSV cycle upload of the same camera's
+     * file-naming sequence is exactly the case this guards against.
      */
-    public Map<String, Object> putChunk(String name, long offset, long total, MultipartFile chunk)
+    public Map<String, Object> putChunk(String name, long offset, long total, MultipartFile chunk, Integer periodId)
             throws IOException {
         String base = safeName(name);
         Path part = partsDir.resolve(base + ".part");
@@ -202,7 +250,22 @@ public class VideoService {
 
         long newLen = current + written;
         if (total > 0 && newLen >= total) {
+            Integer conflict = conflictingPeriod(base, periodId);
+            if (conflict != null) {
+                Files.deleteIfExists(part);
+                r.put("status", "conflict");
+                r.put("message", "\"" + base + "\" was already uploaded under " + periods.nameOf(conflict)
+                        + " — uploading it again under a different survey period would overwrite that "
+                        + "period's footage. Rename the file (or the earlier one) and re-upload.");
+                return r;
+            }
             Files.move(part, videoDir.resolve(base), StandardCopyOption.REPLACE_EXISTING);
+            if (periodId != null) {
+                jdbc.update("""
+                    INSERT INTO video_uploads (video_file, period_id, uploaded_at) VALUES (?, ?, now())
+                    ON CONFLICT (video_file) DO UPDATE SET period_id = EXCLUDED.period_id, uploaded_at = now()
+                    """, base, periodId);
+            }
             r.put("status", "complete");
             r.put("uploaded", total);
         } else {
@@ -210,6 +273,22 @@ public class VideoService {
             r.put("uploaded", newLen);
         }
         return r;
+    }
+
+    /**
+     * Returns another period this file name is already tied to (via a prior raw
+     * upload or a catalogue row), or null if it is unused or already tied to the
+     * same {@code periodId} (a same-period retry/re-upload is fine).
+     */
+    private Integer conflictingPeriod(String videoFile, Integer periodId) {
+        List<Integer> found = jdbc.queryForList(
+                "SELECT DISTINCT period_id FROM video_uploads WHERE video_file = ? AND period_id IS NOT NULL " +
+                "UNION SELECT DISTINCT period_id FROM road_video WHERE video_file = ? AND period_id IS NOT NULL",
+                Integer.class, videoFile, videoFile);
+        for (Integer p : found) {
+            if (periodId == null || !p.equals(periodId)) return p;
+        }
+        return null;
     }
 
     /** Read the catalog CSV (section_label, video_file, direction) into one survey period. */
@@ -448,7 +527,8 @@ public class VideoService {
     public List<Map<String, Object>> catalog(Integer periodId) {
         try {
             return jdbc.queryForList(
-                "SELECT section_label AS road, video_file AS file, direction, from_ch, to_ch " +
+                "SELECT section_label AS road, video_file AS file, direction, from_ch, to_ch, " +
+                "       file_from_ch, file_to_ch " +
                 "FROM road_video WHERE period_id = ? ORDER BY section_label, from_ch",
                 periods.resolve(periodId));
         } catch (Exception e) {

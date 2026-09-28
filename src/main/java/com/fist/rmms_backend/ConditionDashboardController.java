@@ -63,7 +63,7 @@ public class ConditionDashboardController {
     }
 
     private static final String DIST =
-        "COALESCE(NULLIF(trim(r.\"District\"),''),'(unmapped)')";
+        "COALESCE(NULLIF(trim(@{r:District}),''),'(unmapped)')";
     /* Pavement surface and road class are ATTRIBUTES OF THE ROAD NETWORK, joined
        to a condition stretch through its Section_La. This groups on the value the
        road data actually holds — no CASE statement listing the codes it expects,
@@ -76,9 +76,9 @@ public class ConditionDashboardController {
        A code with no lookup entry is shown as itself — visible and countable,
        which is what makes a missing entry easy to spot. */
     private static final String SURFACE =
-        "COALESCE(NULLIF(trim(r.\"Cons_Type\"),''),'(unspecified)')";
+        "COALESCE(NULLIF(trim(@{r:Construction Type}),''),'(unspecified)')";
     private static final String ROAD_CLASS =
-        "COALESCE(NULLIF(trim(r.\"Road_Class\"),''),'(unspecified)')";
+        "COALESCE(NULLIF(trim(@{r:Road Class}),''),'(unspecified)')";
 
     /* Carriageway width for the area weighting IS a calculation rule — the metres
        behind a band code are a constant somebody has to choose, not something the
@@ -87,6 +87,17 @@ public class ConditionDashboardController {
        describes the whole road, so counting both halves at full width would count
        the road's area twice). */
     private String widthSql() { return rules.widthSql(); }
+
+    /* Every query in this class joins roads, so each goes through one of these: they resolve
+       the @{System Attribute} tokens in the assembled statement before it reaches the database.
+       Wrapping here rather than at each call site keeps the resolution impossible to forget. */
+    private List<Map<String, Object>> rows(String sql, Object... args) {
+        return jdbc.queryForList(rules.sql(sql), args);
+    }
+
+    private Long count(String sql, Object... args) {
+        return jdbc.queryForObject(rules.sql(sql), Long.class, args);
+    }
 
     /** Stored value -> the label to show for it, for one roads attribute. */
     private Map<String, String> labelsFor(String attribute) {
@@ -115,14 +126,14 @@ public class ConditionDashboardController {
 
         /* One grouped pass: (district, surface, class) -> low/high/Σvl/Σlen/Σlane_m/n.
            len = centreline metres of the stretch; lane_m = len × lane_count. */
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<Map<String, Object>> rows = rows(
             "SELECT " + DIST + " AS district, " + SURFACE + " AS surface, " + ROAD_CLASS + " AS road_class, " +
             "       MIN(cs." + vcol + ") AS low, MAX(cs." + vcol + ") AS high, " +
             "       SUM(cs." + vcol + " * (cs.end_chainage - cs.start_chainage)) AS sum_vl, " +
             "       SUM(cs.end_chainage - cs.start_chainage) AS sum_len, " +
             "       SUM((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) AS lane_m, " +
             "       COUNT(*) AS n " +
-            "FROM condition_segments cs JOIN roads r ON r.\"Section_La\" = cs.section_label " +
+            "FROM condition_segments cs JOIN roads r ON @{r:Section Label} = cs.section_label " +
             "WHERE cs.period_id = ? AND cs." + vcol + " IS NOT NULL AND cs.end_chainage > cs.start_chainage " +
             "GROUP BY 1,2,3", pid);
 
@@ -236,10 +247,10 @@ public class ConditionDashboardController {
         args.add(pid);
         args.add(value);
         if (district != null && !district.isBlank() && !"(unmapped)".equals(district)) {
-            where.append(" AND trim(r.\"District\") = ?");
+            where.append(" AND trim(@{r:District}) = ?");
             args.add(district.trim());
         } else if ("(unmapped)".equals(district)) {
-            where.append(" AND NULLIF(trim(r.\"District\"),'') IS NULL");
+            where.append(" AND NULLIF(trim(@{r:District}),'') IS NULL");
         }
         /* Both filters take the value as the road network stores it — the same
            value /summary handed out as the bucket key, so a dropdown built from
@@ -253,20 +264,20 @@ public class ConditionDashboardController {
             args.add(road_class.trim());
         }
 
-        Long total = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM condition_segments cs JOIN roads r ON r.\"Section_La\" = cs.section_label " +
-            "WHERE " + where, Long.class, args.toArray());
+        Long total = count(
+            "SELECT COUNT(*) FROM condition_segments cs JOIN roads r ON @{r:Section Label} = cs.section_label " +
+            "WHERE " + where, args.toArray());
 
         List<Object> rowArgs = new ArrayList<>(args);
         rowArgs.add(Math.max(1, Math.min(limit, 20000)));
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<Map<String, Object>> rows = rows(
             "SELECT cs.section_label AS section_label, " +
-            "       r.\"Road_Class\" AS road_class, r.\"Road_Name\" AS road_name, r.\"Road_Num\" AS road_num, " +
+            "       @{r:Road Class} AS road_class, @{r:Road Name} AS road_name, @{r:Road Number} AS road_num, " +
             "       cs.start_chainage AS from_ch, cs.end_chainage AS to_ch, " +
             "       ROUND((((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) / 1000.0)::numeric, 3) AS lane_km, " +
             "       cs.xsp_list AS xsp, " +
             "       ROUND(cs." + vcol + "::numeric, 2) AS value " +
-            "FROM condition_segments cs JOIN roads r ON r.\"Section_La\" = cs.section_label " +
+            "FROM condition_segments cs JOIN roads r ON @{r:Section Label} = cs.section_label " +
             "WHERE " + where + " ORDER BY value " + (asc ? "ASC" : "DESC") + ", section_label LIMIT ?",
             rowArgs.toArray());
 
@@ -326,34 +337,34 @@ public class ConditionDashboardController {
     private List<Map<String, Object>> topFor(String cls, String vcol, int pid, String district, int limit) {
         // Road_Num is a numeric column, so cast to text before trimming.
         String roadKey = "SH".equals(cls)
-            ? "COALESCE(NULLIF(trim(r.\"Road_Num\"::text),''), NULLIF(trim(r.\"Road_Name\"),''))"
-            : "NULLIF(trim(r.\"Road_Name\"),'')";
+            ? "COALESCE(NULLIF(trim(@{r:Road Number}::text),''), NULLIF(trim(@{r:Road Name}),''))"
+            : "NULLIF(trim(@{r:Road Name}),'')";
 
         List<Object> args = new ArrayList<>();
         StringBuilder where = new StringBuilder(
             "cs.period_id = ? AND cs." + vcol + " IS NOT NULL AND cs.end_chainage > cs.start_chainage " +
-            "AND upper(trim(r.\"Road_Class\")) = ? AND " + roadKey + " IS NOT NULL");
+            "AND upper(trim(@{r:Road Class})) = ? AND " + roadKey + " IS NOT NULL");
         args.add(pid);
         args.add(cls);
         if (district != null && !district.isBlank() && !"(unmapped)".equals(district)) {
-            where.append(" AND trim(r.\"District\") = ?");
+            where.append(" AND trim(@{r:District}) = ?");
             args.add(district.trim());
         } else if ("(unmapped)".equals(district)) {
-            where.append(" AND NULLIF(trim(r.\"District\"),'') IS NULL");
+            where.append(" AND NULLIF(trim(@{r:District}),'') IS NULL");
         }
         args.add(limit);
 
-        return jdbc.queryForList(
+        return rows(
             "SELECT " + roadKey + " AS road_key, " +
-            "       MAX(NULLIF(trim(r.\"Road_Num\"::text),'')) AS road_num, " +
-            "       string_agg(DISTINCT NULLIF(trim(r.\"Road_Name\"),''), ' · ') AS road_names, " +
-            "       string_agg(DISTINCT NULLIF(trim(r.\"District\"),''), ', ') AS districts, " +
+            "       MAX(NULLIF(trim(@{r:Road Number}::text),'')) AS road_num, " +
+            "       string_agg(DISTINCT NULLIF(trim(@{r:Road Name}),''), ' · ') AS road_names, " +
+            "       string_agg(DISTINCT NULLIF(trim(@{r:District}),''), ', ') AS districts, " +
             "       ROUND((SUM(cs." + vcol + " * (cs.end_chainage - cs.start_chainage) * (" + widthSql() + ")) / " +
             "              NULLIF(SUM((cs.end_chainage - cs.start_chainage) * (" + widthSql() + ")), 0))::numeric, 2) AS value, " +
             "       ROUND(MAX(cs." + vcol + ")::numeric, 2) AS peak, " +
             "       ROUND((SUM((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) / 1000.0)::numeric, 1) AS lane_km, " +
             "       COUNT(*) AS segments " +
-            "FROM condition_segments cs JOIN roads r ON r.\"Section_La\" = cs.section_label " +
+            "FROM condition_segments cs JOIN roads r ON @{r:Section Label} = cs.section_label " +
             CalcRuleService.RULE_JOINS +
             "WHERE " + where + " " +
             "GROUP BY " + roadKey + " " +
@@ -372,29 +383,29 @@ public class ConditionDashboardController {
         List<Object> args = new ArrayList<>();
         StringBuilder where = new StringBuilder(
             "cs.period_id = ? AND cs." + vcol + " IS NOT NULL AND cs.end_chainage > cs.start_chainage " +
-            "AND upper(trim(r.\"Road_Class\")) = ?");
+            "AND upper(trim(@{r:Road Class})) = ?");
         args.add(pid);
         args.add(cls);
         if (district != null && !district.isBlank() && !"(unmapped)".equals(district)) {
-            where.append(" AND trim(r.\"District\") = ?");
+            where.append(" AND trim(@{r:District}) = ?");
             args.add(district.trim());
         } else if ("(unmapped)".equals(district)) {
-            where.append(" AND NULLIF(trim(r.\"District\"),'') IS NULL");
+            where.append(" AND NULLIF(trim(@{r:District}),'') IS NULL");
         }
         args.add(limit);
 
-        return jdbc.queryForList(
+        return rows(
             "SELECT cs.section_label AS section_label, " +
-            "       MAX(NULLIF(trim(r.\"Road_Num\"::text),'')) AS road_num, " +
-            "       MAX(NULLIF(trim(r.\"Road_Name\"),'')) AS road_name, " +
-            "       MAX(NULLIF(trim(r.\"District\"),'')) AS district, " +
+            "       MAX(NULLIF(trim(@{r:Road Number}::text),'')) AS road_num, " +
+            "       MAX(NULLIF(trim(@{r:Road Name}),'')) AS road_name, " +
+            "       MAX(NULLIF(trim(@{r:District}),'')) AS district, " +
             "       ROUND((SUM(cs." + vcol + " * (cs.end_chainage - cs.start_chainage)) / " +
             "              NULLIF(SUM(cs.end_chainage - cs.start_chainage), 0))::numeric, 2) AS value, " +
             "       ROUND(MAX(cs." + vcol + ")::numeric, 2) AS peak, " +
             "       MIN(cs.start_chainage) AS from_ch, MAX(cs.end_chainage) AS to_ch, " +
             "       ROUND((SUM((cs.end_chainage - cs.start_chainage) * COALESCE(cs.lane_count,1)) / 1000.0)::numeric, 1) AS lane_km, " +
             "       COUNT(*) AS segments " +
-            "FROM condition_segments cs JOIN roads r ON r.\"Section_La\" = cs.section_label " +
+            "FROM condition_segments cs JOIN roads r ON @{r:Section Label} = cs.section_label " +
             "WHERE " + where + " " +
             "GROUP BY cs.section_label " +
             "ORDER BY value DESC NULLS LAST, lane_km DESC LIMIT ?",

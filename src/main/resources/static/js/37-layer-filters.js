@@ -1,9 +1,11 @@
 /* ============================================================
    KLRAMS viewer · 37-layer-filters.js
-   Attribute filters for the three layer families the Filter panel
-   never covered: the Administrative boundary folder (district and
-   constituency), the user layers created in Layer Management, and the
-   temporary layers someone drops in to look at once.
+   Attribute filters for the layer families the Filter panel's own
+   fixed forms never covered: the Administrative boundary folder
+   (district and constituency), the user layers created in Layer
+   Management, the temporary layers someone drops in to look at once,
+   and the free-form road_assets types (Sub-Grade Soil, Bituminous
+   Core) whose CSV columns vary by upload.
 
    Why they were missing
    ---------------------
@@ -77,6 +79,11 @@
     var out = {};
     bags.forEach(function (b) {
       Object.keys(b.p || {}).forEach(function (k) {
+        /* A "__"-prefixed key is bookkeeping this file (or loadAssetData) added
+           to the bag itself — __id/__sec on an asset feature — never a column
+           from the upload. Offering it as something to filter by would only
+           confuse whoever is looking for their own CSV headers in the list. */
+        if (k.indexOf('__') === 0) return;
         var v = b.p[k];
         if (v == null || String(v).trim() === '') return;
         var m = out[k] || (out[k] = { numeric: true, set: {} });
@@ -203,6 +210,49 @@
     };
   }
 
+  /**
+   * Sub-Grade Soil / Bituminous Core (and any other simple road_assets type,
+   * should one need it later) — same idea as userTarget, but the bags come
+   * from ASSET_DATA (06-assets.js's loadAssetData), which is the one place
+   * that already downloads these types' full attribute set regardless of
+   * TILES_ON. The tile only carries the whole attrs bag as a JSON STRING
+   * (attrs_json, AssetTileService), so matching by id against that
+   * separately-loaded GeoJSON — the same trick applyAssetIdFilter() in
+   * 18-filters.js used before this section existed — is used unconditionally,
+   * not just in tile mode.
+   */
+  function assetTarget(type) {
+    var a = (typeof ASSETS !== 'undefined' ? ASSETS : []).filter(function (x) { return x.type === type; })[0];
+    if (!a) return null;
+    return {
+      key: 'a_' + type,
+      name: a.label,
+      toggle: a.toggle,
+      lockName: a.label,
+      /* Mounts under "Structures & Geotech" in map.html, next to the fixed
+         Bridge/Culvert sections it's the same family as — not fsecExtra's
+         "Boundaries & Custom Layers" group, which is a different category. */
+      host: 'fsecAssets',
+      layers: [a.layer, a.layer + '-icon', a.layer + '-pt'],
+      byExpression: false,
+      /* asset_id is the tile's property name for road_assets.id; __id is what
+         the GeoJSON endpoint calls the same column (AssetController.geojson).
+         Coalescing both is what applyAssetIdFilter did, so a layer drawn from
+         either source is still matched correctly. */
+      idExpr: ['coalesce', ['get', 'asset_id'], ['get', '__id']],
+      bags: function () {
+        return (typeof loadAssetData === 'function' ? loadAssetData(a) : Promise.resolve(null))
+          .then(function (gj) {
+            return ((gj && gj.features) || []).map(function (f) {
+              var p = f.properties || {};
+              var id = (p.__id != null) ? p.__id : p.asset_id;
+              return { id: id, p: p };
+            }).filter(function (b) { return b.id != null; });
+          });
+      }
+    };
+  }
+
   function userTarget(l) {
     return {
       key: 'u_' + l.id,
@@ -303,7 +353,7 @@
       if (t.byExpression) {
         setFilterOn(t, filterExpr(rows, st.mode, t.meta));
       } else {
-        setFilterOn(t, ['in', ['get', 'id'],
+        setFilterOn(t, ['in', t.idExpr || ['get', 'id'],
           ['literal', hits.map(function (b) { return b.id; })]]);
       }
     });
@@ -549,28 +599,16 @@
       '</div></details>';
   }
 
-  function render() {
-    var host = document.getElementById('fsecExtra');
-    if (!host) return;
-    closePop();
-    host.innerHTML = TARGETS.map(sectionHtml).join('');
+  /* Sections mount into different Filter-panel groups by category (Soil/Core
+     under "Structures & Geotech", boundaries/user/temp layers under
+     "Boundaries & Custom Layers") — see map.html. Every target names its host
+     via t.host; anything that does not (there is currently only one family
+     that doesn't) falls back to fsecExtra, the original single mount point. */
+  var HOSTS = ['fsecAssets', 'fsecExtra'];
 
-    TARGETS.forEach(function (t) {
-      var st = state(t.key);
-      var sec = document.getElementById('lf-sec-' + t.key);
-      if (!sec) return;
-      sec.querySelectorAll('[data-lf-mode]').forEach(function (b) {
-        b.classList.toggle('on', b.getAttribute('data-lf-mode') === t.key + '|' + st.mode);
-      });
-      /* The rows are only built when the section is actually opened: each one
-         costs a fetch of that layer's attribute bags, and a viewer with a dozen
-         user layers should not pay for twelve of them to draw a closed
-         <details>. Already-filtered sections are drawn straight away, so a
-         re-render never blanks a filter that is on the map. */
-      if (liveRows(st).length) { sec.open = true; renderRows(t); apply(t); }
-      sec.addEventListener('toggle', function () { if (sec.open) renderRows(t); });
-    });
+  function hostOf(t) { return t.host || 'fsecExtra'; }
 
+  function wireHost(host) {
     host.querySelectorAll('[data-lf-add]').forEach(function (b) {
       b.onclick = function () {
         var t = byKey(b.getAttribute('data-lf-add'));
@@ -601,6 +639,37 @@
         if (typeof enableLayer === 'function') enableLayer(b.getAttribute('data-lf-on'));
       };
     });
+  }
+
+  function render() {
+    closePop();
+    var hosts = {};
+    HOSTS.forEach(function (id) {
+      var host = document.getElementById(id);
+      if (host) hosts[id] = host;
+    });
+    Object.keys(hosts).forEach(function (id) {
+      var list = TARGETS.filter(function (t) { return hostOf(t) === id; });
+      hosts[id].innerHTML = list.map(sectionHtml).join('');
+    });
+
+    TARGETS.forEach(function (t) {
+      var st = state(t.key);
+      var sec = document.getElementById('lf-sec-' + t.key);
+      if (!sec) return;
+      sec.querySelectorAll('[data-lf-mode]').forEach(function (b) {
+        b.classList.toggle('on', b.getAttribute('data-lf-mode') === t.key + '|' + st.mode);
+      });
+      /* The rows are only built when the section is actually opened: each one
+         costs a fetch of that layer's attribute bags, and a viewer with a dozen
+         user layers should not pay for twelve of them to draw a closed
+         <details>. Already-filtered sections are drawn straight away, so a
+         re-render never blanks a filter that is on the map. */
+      if (liveRows(st).length) { sec.open = true; renderRows(t); apply(t); }
+      sec.addEventListener('toggle', function () { if (sec.open) renderRows(t); });
+    });
+
+    Object.keys(hosts).forEach(function (id) { wireHost(hosts[id]); });
 
     wireToggles();
     refreshLocks();
@@ -667,6 +736,18 @@
 
   function build() {
     var list = [];
+    /* Sub-Grade Soil / Bituminous Core used to be fixed one-or-two-field forms
+       in 18-filters.js (a type dropdown, a CBR range, a thickness range) — the
+       only attributes those CSV uploads were assumed to need. Every other
+       column in the upload (LL, PL, PI, sieve %, wearing/binder thickness…)
+       was unreachable. Routed through the generic section builder instead, so
+       every attribute in the upload gets its own filterable row, with every
+       operator (numeric: >, >=, =, <=, <; text: =, contains). */
+    var soil = assetTarget('subgrade');
+    if (soil) list.push(soil);
+    var core = assetTarget('bituminous_core');
+    if (core) list.push(core);
+
     var d = boundaryTarget('district', 'District boundary',
       ['district-fill', 'district-casing', 'district-line', 'district-label'], 'showDist');
     d.layerKey = 'boundary_district';

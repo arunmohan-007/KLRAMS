@@ -29,7 +29,7 @@ Promise.all([
   fetch('/api/video/catalog').then(r=>r.json()).catch(()=>[]),
   new Promise(res=>{ if(map.loaded()) res(); else map.on('load',res); })
 ]).then(([gj, cat])=>{
-  (cat||[]).forEach(e=>{ if(!e.road) return; (CATALOG[e.road]=CATALOG[e.road]||[]).push({file:e.file, direction:e.direction, fromCh:(e.from_ch!=null?+e.from_ch:null), toCh:(e.to_ch!=null?+e.to_ch:null)}); });
+  (cat||[]).forEach(e=>{ if(!e.road) return; (CATALOG[e.road]=CATALOG[e.road]||[]).push({file:e.file, direction:e.direction, fromCh:(e.from_ch!=null?+e.from_ch:null), toCh:(e.to_ch!=null?+e.to_ch:null), fileFromCh:(e.file_from_ch!=null?+e.file_from_ch:null), fileToCh:(e.file_to_ch!=null?+e.file_to_ch:null)}); });
   Object.keys(CATALOG).forEach(r=>CATALOG[r].sort((a,b)=>(a.fromCh==null?0:a.fromCh)-(b.fromCh==null?0:b.fromCh)));
   if(!gj || !gj.features || !gj.features.length){ document.getElementById('roadId').textContent='No road geometry returned by the server.'; return; }
   addRoads(gj);

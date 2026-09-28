@@ -20,6 +20,10 @@ public class FwdSegmentService {
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
 
+    /** Resolves the road network's columns by system attribute name, and supplies the one
+     *  shared definition of the reference length this cut must agree with. */
+    private final RoadColumns roadColumns;
+
     /* Assemble the segment GeoJSON once and serve later requests from memory;
        only the active period is cached (Survey Archive requests for other
        periods are built per request); cleared on every build. */
@@ -27,7 +31,8 @@ public class FwdSegmentService {
     private volatile Integer cachedPeriodId;
     private volatile String cachedEtag;
 
-    public FwdSegmentService(JdbcTemplate jdbc, SurveyPeriodService periods) {
+    public FwdSegmentService(JdbcTemplate jdbc, SurveyPeriodService periods, RoadColumns roadColumns) {
+        this.roadColumns = roadColumns;
         this.jdbc = jdbc;
         this.periods = periods;
     }
@@ -53,12 +58,9 @@ public class FwdSegmentService {
             ),
             joined AS (
                 SELECT s.*, r.geom AS road_geom,
-                    COALESCE(
-                        NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
-                        NULLIF(r."Measrd_Len"::double precision, 0),
-                        ST_Length(r.geom::geography)) AS measured_len
+                    %1$s AS measured_len
                 FROM src s
-                JOIN roads r ON r."Section_La" = s.section_label
+                JOIN roads r ON %2$s = s.section_label
                 WHERE r.geom IS NOT NULL
             )
             SELECT
@@ -68,7 +70,8 @@ public class FwdSegmentService {
                     GREATEST(LEAST(end_chainage   / measured_len, 1.0), 0.0)) AS geom
             FROM joined
             WHERE measured_len IS NOT NULL AND measured_len > 0
-            """);
+            """.formatted(roadColumns.lenExpr("r"),
+                          roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL)));
 
         jdbc.execute("DELETE FROM fwd_segments WHERE geom IS NULL OR ST_IsEmpty(geom)");
         jdbc.execute("ALTER TABLE fwd_segments ADD COLUMN seg_id serial PRIMARY KEY");

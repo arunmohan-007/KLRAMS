@@ -162,15 +162,15 @@ public class RoadController {
             SELECT COALESCE(json_agg(
                 (to_jsonb(r) - 'geom')
                     || jsonb_build_object(
-                         'road', r."Section_La",
-                         'name', r."Road_Name",
-                         'len',  r."Measrd_Len"
+                         'road', @{r:Section Label},
+                         'name', @{r:Road Name},
+                         'len',  @{r:Measured Length}
                        )
             ), '[]'::json)::text
             FROM roads r
             WHERE r.geom IS NOT NULL
             """;
-        return jdbc.queryForObject(sql, String.class);
+        return jdbc.queryForObject(columns.resolve(sql), String.class);
     }
 
     /**
@@ -204,17 +204,17 @@ public class RoadController {
                         'geometry', ST_AsGeoJSON(r.geom, 6)::json,
                         'properties', (to_jsonb(r) - 'geom')
                             || jsonb_build_object(
-                                 'road', r."Section_La",
-                                 'name', r."Road_Name",
-                                 'len',  r."Measrd_Len"
+                                 'road', @{r:Section Label},
+                                 'name', @{r:Road Name},
+                                 'len',  @{r:Measured Length}
                                )
                     )
                 ), '[]'::json)
             )::text
             FROM roads r
-            WHERE r.geom IS NOT NULL AND r."Section_La" = ?
+            WHERE r.geom IS NOT NULL AND @{r:Section Label} = ?
             """;
-        String body = jdbc.queryForObject(sql, String.class, sectionLabel);
+        String body = jdbc.queryForObject(columns.resolve(sql), String.class, sectionLabel);
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body);
     }
 
@@ -288,12 +288,12 @@ public class RoadController {
         String sql = """
             WITH p AS (SELECT CAST(? AS double precision) AS ch),
             s AS (
-                SELECT r."Section_La"                  AS section,
-                       r."Rd_Str_cha"::double precision AS str_ch,
-                       r."Rd_End_cha"::double precision AS end_ch,
+                SELECT @{r:Section Label}                  AS section,
+                       @{r:Road Start Chainage}::double precision AS str_ch,
+                       @{r:Road End Chainage}::double precision AS end_ch,
                        ST_GeometryN(ST_LineMerge(r.geom), 1) AS line
                 FROM roads r
-                WHERE r.geom IS NOT NULL AND r."Road_Name" = ?%s
+                WHERE r.geom IS NOT NULL AND @{r:Road Name} = ?%s
             ),
             m AS (
                 SELECT s.section, s.str_ch, s.end_ch, s.line, p.ch,
@@ -311,7 +311,7 @@ public class RoadController {
             ORDER BY (ch >= hi), section
             """.formatted(scopeSql);
 
-        List<Map<String, Object>> rows = jdbc.queryForList(sql, args.toArray());
+        List<Map<String, Object>> rows = jdbc.queryForList(columns.resolve(sql), args.toArray());
         if (!rows.isEmpty()) {
             // Section-join artifact only: a section whose range ENDS exactly here is dropped when
             // another match STARTS exactly here — that is one point on the network, described
@@ -343,18 +343,18 @@ public class RoadController {
         // No section carries this chainage — say what the road actually covers rather than
         // just "not found", because the usual cause is a typo or km entered as metres.
         String rangeSql = """
-            SELECT MIN(LEAST(r."Rd_Str_cha"::double precision, r."Rd_End_cha"::double precision))    AS lo,
-                   MAX(GREATEST(r."Rd_Str_cha"::double precision, r."Rd_End_cha"::double precision)) AS hi,
+            SELECT MIN(LEAST(@{r:Road Start Chainage}::double precision, @{r:Road End Chainage}::double precision))    AS lo,
+                   MAX(GREATEST(@{r:Road Start Chainage}::double precision, @{r:Road End Chainage}::double precision)) AS hi,
                    COUNT(*) AS n
             FROM roads r
-            WHERE r.geom IS NOT NULL AND r."Road_Name" = ?%s
-              AND r."Rd_Str_cha" IS NOT NULL AND r."Rd_End_cha" IS NOT NULL
-              AND r."Rd_Str_cha"::double precision <> r."Rd_End_cha"::double precision
+            WHERE r.geom IS NOT NULL AND @{r:Road Name} = ?%s
+              AND @{r:Road Start Chainage} IS NOT NULL AND @{r:Road End Chainage} IS NOT NULL
+              AND @{r:Road Start Chainage}::double precision <> @{r:Road End Chainage}::double precision
             """.formatted(scopeSql);
         List<Object> rangeArgs = new ArrayList<>();
         rangeArgs.add(roadName);
         rangeArgs.addAll(scope);
-        Map<String, Object> range = jdbc.queryForMap(rangeSql, rangeArgs.toArray());
+        Map<String, Object> range = jdbc.queryForMap(columns.resolve(rangeSql), rangeArgs.toArray());
         long n = ((Number) range.get("n")).longValue();
 
         out.put("ok", false);
@@ -383,9 +383,9 @@ public class RoadController {
                         'geometry', ST_AsGeoJSON(r.geom, 6)::json,
                         'properties', (to_jsonb(r) - 'geom')
                             || jsonb_build_object(
-                                 'road', r."Section_La",
-                                 'name', r."Road_Name",
-                                 'len',  r."Measrd_Len"
+                                 'road', @{r:Section Label},
+                                 'name', @{r:Road Name},
+                                 'len',  @{r:Measured Length}
                                )
             """
             + lifted(k[0], "__style") + lifted(k.length > 1 ? k[1] : "", "__label")
@@ -396,7 +396,7 @@ public class RoadController {
             FROM roads r
             WHERE r.geom IS NOT NULL
             """;
-        return jdbc.queryForObject(sql, String.class);
+        return jdbc.queryForObject(columns.resolve(sql), String.class);
     }
 
     /**

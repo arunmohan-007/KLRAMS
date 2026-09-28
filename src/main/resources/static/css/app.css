@@ -714,19 +714,53 @@
   .chpop-r>span{flex:0 0 auto;color:#5c7290;font-weight:600;font-size:11px}
   .chpop-r b{text-align:right;font:600 11.5px var(--mono);color:#0e2038;word-break:break-all;min-width:0}
 
-/* ---- Filter folder (pane-filter) ---- */
-#pane-filter details.flt-sec{border:1px solid var(--line,#e3e8ef);border-radius:10px;margin-bottom:10px;background:#fff;overflow:hidden}
-#pane-filter details.flt-sec[open]{box-shadow:0 1px 3px rgba(14,32,56,.06)}
-#pane-filter summary{padding:11px 13px;font-weight:600;font-size:13px;color:#0e2038;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;user-select:none}
+/* ---- Filter folder (pane-filter) ----
+   Redesigned as: a sticky toolbar (search + collapse-all + clear-all), then
+   the sections grouped into labelled categories (Road Network / Condition &
+   Survey / Structures & Geotech / Boundaries & Custom Layers) instead of one
+   long undifferentiated list — the panel grew to 15+ sections as layers were
+   added over time and had become hard to scan. Each group carries a small
+   accent dot (--group-dot, set inline per group in map.html) that also tints
+   every section summary inside it, so a glance at the dot says which family
+   a section belongs to without reading its name. */
+.flt-toolbar{position:sticky;top:0;z-index:4;background:var(--k-panel,#fff);border:1px solid var(--k-line,var(--line,#e3e8ef));border-radius:12px;padding:10px;margin:0 0 16px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--k-shadow,0 1px 3px rgba(14,32,56,.06))}
+.flt-tb-row{display:flex;gap:8px;align-items:center}
+.flt-search{flex:1;min-width:0;display:flex;align-items:center;gap:7px;background:var(--k-elev,#f5f7fb);border:1px solid var(--k-line,var(--line,#e3e8ef));border-radius:9px;padding:0 6px 0 10px;transition:border-color .15s}
+.flt-search:focus-within{border-color:var(--k-accent,var(--accent))}
+.flt-search svg{flex:0 0 auto;opacity:.55;color:var(--k-muted,var(--muted))}
+.flt-search input{flex:1;min-width:0;border:0;background:transparent;font:500 12.5px var(--sans);color:var(--k-text,var(--text));outline:none;padding:8px 0}
+.flt-search input::placeholder{color:var(--k-faint,#9aa6b6)}
+.flt-search-x{flex:0 0 auto;border:0;background:transparent;color:var(--k-faint,#9aa6b6);font-size:17px;line-height:1;cursor:pointer;padding:4px 2px}
+.flt-search-x:hover{color:var(--k-text,var(--text))}
+.flt-tb-btn{flex:0 0 auto;border:1px solid var(--k-line,var(--line,#e3e8ef));background:var(--k-elev,#f5f7fb);color:var(--k-muted,var(--muted));font:700 10.5px var(--sans);letter-spacing:.4px;text-transform:uppercase;border-radius:8px;padding:8px 11px;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
+.flt-tb-btn:hover{background:var(--k-elev2,#e8ecf2);color:var(--k-text,var(--text));border-color:var(--k-accent,var(--accent))}
+.flt-tb-btn.danger:hover{color:var(--poor,#ff3366);border-color:var(--poor,#ff3366)}
+.flt-tb-hint{font-size:11px;color:var(--k-faint,#9aa6b6);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.flt-group{margin-bottom:18px}
+.flt-group:last-child{margin-bottom:0}
+.flt-group-h{display:flex;align-items:center;gap:9px;padding:0 2px 9px;font:800 10.5px var(--sans);letter-spacing:1.1px;text-transform:uppercase;color:var(--k-faint,#9aa6b6)}
+.flt-group-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--group-dot,var(--k-muted,#9aa6b6));box-shadow:0 0 0 3px color-mix(in srgb,var(--group-dot,#9aa6b6) 22%,transparent)}
+.flt-group-line{flex:1;height:1px;background:linear-gradient(90deg,var(--k-line,var(--line,#e3e8ef)),transparent)}
+.flt-group.hidden-by-search{display:none}
+
+#pane-filter details.flt-sec{border:1px solid var(--k-line,var(--line,#e3e8ef));border-radius:11px;margin-bottom:9px;background:var(--k-panel,#fff);overflow:hidden;transition:border-color .15s,box-shadow .15s}
+#pane-filter details.flt-sec:last-child{margin-bottom:0}
+#pane-filter details.flt-sec:hover{border-color:var(--group-dot,var(--k-line2,var(--line,#e3e8ef)))}
+#pane-filter details.flt-sec[open]{box-shadow:0 1px 3px rgba(14,32,56,.06);border-color:var(--group-dot,var(--k-accent,var(--accent)))}
+#pane-filter details.flt-sec.hidden-by-search{display:none}
+#pane-filter summary{padding:11px 13px;font-weight:600;font-size:13px;color:var(--k-text,#0e2038);cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:9px;align-items:center;user-select:none}
 #pane-filter summary::-webkit-details-marker{display:none}
-#pane-filter summary::after{content:"+";color:#16a06b;font-weight:700;font-size:17px;line-height:1}
+#pane-filter .flt-group summary::before{content:"";width:6px;height:6px;border-radius:50%;flex:0 0 auto;background:var(--group-dot,var(--k-muted,#9aa6b6));order:-1}
+#pane-filter summary::after{content:"+";color:var(--group-dot,#16a06b);font-weight:700;font-size:17px;line-height:1}
 #pane-filter details[open] summary::after{content:"\2013"}
 #pane-filter .flt-body,#pane-filter .flt-lock{padding:2px 13px 13px}
-#pane-filter .flt-lock{display:none;color:#64718a;font-size:12.5px;line-height:1.7}
+#pane-filter .flt-lock{display:none;color:var(--k-muted,#64718a);font-size:12.5px;line-height:1.7}
 #pane-filter .flt-lock .btn{margin-top:9px}
 #pane-filter .flt-sec.locked .flt-body{display:none}
 #pane-filter .flt-sec.locked .flt-lock{display:block}
-#pane-filter .flt-sec.locked summary{color:#9aa6b6}
+#pane-filter .flt-sec.locked summary{color:var(--k-faint,#9aa6b6)}
+#pane-filter .flt-sec.locked summary::before{background:var(--k-faint,#9aa6b6)}
 #pane-filter input.full{width:100%}
 
 /* ---- Road Asset Register (dashboard) ---- */
@@ -881,3 +915,121 @@ body:not(.vclick-on) #dock,#dock:not(.loaded){transform:translateY(100%)!importa
 .kexp-note{display:flex;align-items:flex-start;gap:7px;padding:10px 14px 12px;font-size:10.3px;line-height:1.45;color:#8b9db6;
   border-top:1px solid rgba(120,160,215,.1);background:rgba(0,0,0,.14)}
 .kexp-note svg{flex:0 0 auto;width:11px;height:11px;margin-top:1px;color:#00d4ff}
+
+/* ============================================================================
+   Section Editor (js/41-section-editor.js)
+
+   Reuses the full-screen module shell (.dash-inner / .dash-head / .dash-tabs)
+   that Dashboard, Map Composer and Report Hub already share, so only the parts
+   unique to this screen are here: the input rows, the resulting-section cards,
+   the impact table and the two-step action bar.
+   ========================================================================== */
+/* Matches the other full-screen modules exactly: inset past the icon rail, and
+   !important on .open because the element carries an inline display:none (so do
+   #reportHub and #dashboard) and an inline style outranks a plain rule. */
+#sectionEditor{position:absolute;inset:0 0 0 74px;z-index:7;overflow-y:auto;display:none;
+  background:radial-gradient(130% 90% at 100% 0%,#eef4fb 0%,#eaeff6 42%,#e8edf3 100%)}
+#sectionEditor.open{display:block!important}
+#sectionEditor::-webkit-scrollbar{width:11px}
+#sectionEditor::-webkit-scrollbar-thumb{background:#c7d2e0;border-radius:6px;border:3px solid #eaeff6}
+
+.se-form{background:#fff;border:1px solid #e2e7f0;border-radius:10px;padding:16px 18px;margin:0 0 16px}
+/* Top-aligned, not bottom-aligned: the availability hint under a field varies in height
+   (one line for "Available", three when it lists what holds the label), and bottom-alignment
+   made the neighbouring input jump up to match. Aligning the tops keeps every input on the
+   same line and lets the hints hang below. */
+.se-row{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}
+/* Buttons sitting in a field row line up with the inputs, not with the captions above them. */
+.se-row > .se-ghost{margin-top:21px}
+.se-row:last-child{margin-bottom:0}
+.se-f{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:#44506a;min-width:260px;flex:1}
+.se-f input{font:inherit;font-weight:400;font-size:13px;padding:8px 10px;border:1px solid #cdd6e4;border-radius:7px;color:#16203a}
+.se-f input:focus{outline:none;border-color:#3a6fd8;box-shadow:0 0 0 3px rgba(58,111,216,.14)}
+.se-cap{display:block}
+/* Live label availability, written next to the field as you type. */
+.se-hint{font-size:11.5px;font-weight:600;min-height:14px;line-height:1.35;margin-top:1px;color:#8593ab}
+.se-hint.se-ok{color:#1c7a52}
+.se-hint.se-bad{color:#b3341f}
+.se-u{color:#8593ab;font-weight:400}
+
+.se-actions,.se-apply{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.se-apply{margin-top:18px;padding-top:16px;border-top:1px solid #e8ecf4}
+.se-primary,.se-danger,.se-ghost{font:inherit;font-size:13px;font-weight:600;border-radius:7px;padding:9px 16px;cursor:pointer;border:1px solid transparent}
+.se-primary{background:#2f62c8;color:#fff}
+.se-primary:hover{background:#2a57b0}
+.se-primary:disabled{background:#9db3d8;cursor:default}
+/* The only control on this screen that writes. Deliberately not the same
+   colour as Check — the two are one click apart and do very different things. */
+.se-danger{background:#b3341f;color:#fff}
+.se-danger:hover{background:#982c1a}
+.se-ghost{background:#fff;border-color:#cdd6e4;color:#33405c}
+.se-ghost:hover{border-color:#9fb0c9}
+.se-note{font-size:12px;color:#6b7896;max-width:62ch}
+.se-sub{font-size:12px;color:#77849f;margin:6px 0 10px}
+
+.se-chips{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 12px;min-height:26px;align-items:center}
+.se-chip{display:inline-flex;align-items:center;gap:7px;background:#eef3fc;border:1px solid #d3e0f5;
+  color:#24365c;border-radius:20px;padding:4px 6px 4px 12px;font-size:12px;font-weight:600}
+.se-chip button{border:none;background:#d7e2f5;color:#3b4e77;border-radius:50%;width:18px;height:18px;
+  line-height:1;cursor:pointer;font-size:13px}
+.se-chip button:hover{background:#c2d2ee}
+
+.se-result{background:#fff;border:1px solid #e2e7f0;border-radius:10px;padding:16px 18px}
+.se-cards{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+.se-card{flex:1;min-width:280px;border:1px solid #e3e8f1;border-radius:9px;padding:12px 14px;background:#fbfcfe}
+.se-card-h{font-size:12px;font-weight:700;color:#2f3d5c;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px}
+.se-card label{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:600;color:#5a6782;margin-bottom:9px}
+.se-card input{font:inherit;font-size:13px;font-weight:400;padding:6px 9px;border:1px solid #d6dde9;border-radius:6px;color:#16203a}
+.se-card input[readonly]{background:#f1f4f9;color:#44506a}
+
+.se-table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0}
+.se-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7896;
+  border-bottom:2px solid #e6eaf2;padding:7px 10px}
+.se-table td{padding:7px 10px;border-bottom:1px solid #eef1f7;color:#26324d;vertical-align:top}
+
+.se-warns{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.se-warn{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;padding:10px 12px;border-radius:8px;
+  border:1px solid transparent;line-height:1.5}
+.se-warn-k{font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;
+  padding:2px 7px;border-radius:4px;white-space:nowrap;margin-top:1px}
+.se-warn.se-high{background:#fdf0ec;border-color:#f0c6ba;color:#7d2a17}
+.se-warn.se-high .se-warn-k{background:#e8bfb2;color:#6d2312}
+.se-warn.se-medium{background:#fdf7e8;border-color:#eddfb4;color:#6f5711}
+.se-warn.se-medium .se-warn-k{background:#ecdcae;color:#5f4a0d}
+.se-warn.se-info{background:#eef4fd;border-color:#ccdcf3;color:#27406c}
+.se-warn.se-info .se-warn-k{background:#cfdef5;color:#24395f}
+
+.se-refused{background:#fdf0ec;border:1px solid #f0c6ba;color:#7d2a17;border-radius:9px;
+  padding:13px 15px;font-size:13px;line-height:1.55}
+
+
+/* The banner shown while picking sections off the map. Sits above the map but clear of the
+   icon rail, and must not cover the road the operator is about to click — so it is anchored to
+   the top, not centred. */
+.se-pickbar{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:1400;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;max-width:min(92vw,860px);
+  background:#fff;border:1px solid #d7dfec;border-radius:11px;padding:11px 15px;
+  box-shadow:0 10px 28px rgba(14,32,56,.18)}
+.se-pick-t{font-size:13px;font-weight:700;color:#1b2740}
+.se-pick-s{font-size:12px;color:#66738f;max-width:46ch;overflow-wrap:anywhere}
+.se-pickbar .se-primary,.se-pickbar .se-ghost{padding:7px 13px}
+
+/* Section Editor: the editable attribute grid on a preview. */
+.se-attrs{margin-top:18px;padding-top:16px;border-top:1px solid #e8ecf4}
+.se-attr-table td{padding:5px 8px;vertical-align:middle}
+.se-attr-table .se-attr-n{font-weight:600;color:#33405c;white-space:nowrap}
+.se-attr-table .se-was{color:#77849f;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+input.se-attr{font:inherit;font-size:12.5px;padding:5px 8px;width:100%;min-width:130px;
+  border:1px solid #d6dde9;border-radius:6px;color:#16203a;background:#fff}
+input.se-attr:focus{outline:none;border-color:#3a6fd8;box-shadow:0 0 0 2px rgba(58,111,216,.14)}
+
+/* Section Editor: the in-page confirmation, and the outcome panel that replaces it.
+   Neither is a browser dialog, so neither can be suppressed — and the result stays on screen
+   instead of vanishing with an OK click. */
+.se-confirm{margin-top:18px;padding:16px 18px;border:1px solid #f0c6ba;border-radius:10px;background:#fdf6f3}
+.se-confirm .se-card-h{color:#7d2a17}
+
+.se-done{margin-top:16px;padding:18px 20px;border:1px solid #bfe0cd;border-radius:11px;background:#f3fbf6}
+.se-done-h{font-size:16px;font-weight:700;color:#166c46;margin-bottom:6px}
+.se-steps{margin:8px 0 4px;padding-left:20px;font-size:13px;line-height:1.7;color:#26324d}
+.se-steps code{background:#e8f2ec;padding:2px 6px;border-radius:4px;font-size:12px}

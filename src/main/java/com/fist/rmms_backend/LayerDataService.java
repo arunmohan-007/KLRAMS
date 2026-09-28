@@ -59,22 +59,32 @@ public class LayerDataService {
      * an afternoon, because a failed statement aborts the whole transaction in
      * PostgreSQL and the inserted rows silently vanished at commit.
      */
-    private static final String LEN_EXPR = """
-            COALESCE(
-                NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
-                NULLIF(r."Measrd_Len"::double precision, 0),
-                ST_Length(r.geom::geography))
-            """;
 
     private final JdbcTemplate jdbc;
     private final LayerAttributeService attributes;
     private final SurveyPeriodService periods;
 
+    /** Resolves the road network's columns by system attribute name. The reference length
+     *  above used to be a private copy of an expression that appears in eight places and
+     *  must stay identical in all of them; it now comes from the one shared definition. */
+    private final RoadColumns roadColumns;
+
     public LayerDataService(JdbcTemplate jdbc, LayerAttributeService attributes,
-                            SurveyPeriodService periods) {
+                            SurveyPeriodService periods, RoadColumns roadColumns) {
+        this.roadColumns = roadColumns;
         this.jdbc = jdbc;
         this.attributes = attributes;
         this.periods = periods;
+    }
+
+    /** The one shared reference length, aliased {@code r}. */
+    private String lenExpr() {
+        return roadColumns.lenExpr("r");
+    }
+
+    /** Whichever column currently carries the section label, as {@code r."..."}. */
+    private String sectionCol() {
+        return roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL);
     }
 
     /* ------------------------------------------------------------------
@@ -360,23 +370,23 @@ public class LayerDataService {
         boolean point = "POINT".equals(geometry);
         String sql = point
             ? """
-              UPDATE %s a SET geom = ST_LineInterpolatePoint(
+              UPDATE %1$s a SET geom = ST_LineInterpolatePoint(
                   ST_LineMerge(r.geom),
-                  GREATEST(LEAST(a.start_chainage / %s, 1.0), 0.0))
+                  GREATEST(LEAST(a.start_chainage / %2$s, 1.0), 0.0))
               FROM roads r
-              WHERE a.geom IS NULL AND a.section_label = r."Section_La"
+              WHERE a.geom IS NULL AND a.section_label = %3$s
                 AND a.start_chainage IS NOT NULL AND r.geom IS NOT NULL
-              """.formatted(table, LEN_EXPR)
+              """.formatted(table, lenExpr(), sectionCol())
             : """
-              UPDATE %s a SET geom = ST_Multi(ST_LineSubstring(
+              UPDATE %1$s a SET geom = ST_Multi(ST_LineSubstring(
                   ST_LineMerge(r.geom),
-                  GREATEST(LEAST(LEAST(a.start_chainage, a.end_chainage) / %s, 1.0), 0.0),
-                  GREATEST(LEAST(GREATEST(a.start_chainage, a.end_chainage) / %s, 1.0), 0.0)))
+                  GREATEST(LEAST(LEAST(a.start_chainage, a.end_chainage) / %2$s, 1.0), 0.0),
+                  GREATEST(LEAST(GREATEST(a.start_chainage, a.end_chainage) / %2$s, 1.0), 0.0)))
               FROM roads r
-              WHERE a.geom IS NULL AND a.section_label = r."Section_La"
+              WHERE a.geom IS NULL AND a.section_label = %3$s
                 AND a.start_chainage IS NOT NULL AND a.end_chainage IS NOT NULL
                 AND a.start_chainage <> a.end_chainage AND r.geom IS NOT NULL
-              """.formatted(table, LEN_EXPR, LEN_EXPR);
+              """.formatted(table, lenExpr(), sectionCol());
         /* Deliberately NOT caught.
            This runs inside the import transaction, and PostgreSQL aborts the
            whole transaction on any statement error — so swallowing the exception

@@ -106,8 +106,17 @@ public class SectionRenameService {
     /** The two tables that spell it otherwise: the road network itself (a shapefile
      *  column truncated to the 10-char DBF limit) and traffic stations. */
     private static final Map<String, String> EXCEPTIONS = Map.of(
-            "roads", "Section_La",
             "traffic_stations", "section");
+
+    /** The road network's own label column, resolved by system attribute name rather than
+     *  named directly — it is the one column here that a shapefile re-import can rename. */
+    private String roadsLabelColumn() {
+        String c = roadColumns.find(LayerAttributeCatalog.SECTION_LABEL);
+        if (c == null)
+            throw new IllegalStateException("The road network has no Section Label column; "
+                    + "the rename was not attempted.");
+        return c;
+    }
 
     /** Tables discovered by column name that are NOT section-label references and must
      *  never be rewritten. Empty today — it exists so that adding a table whose
@@ -141,10 +150,13 @@ public class SectionRenameService {
     private final FwdSegmentService fwdSegments;
     private final IriSegmentService iriSegments;
     private final RoadAttrService attrs;
+    /** Resolves the road network's columns by system attribute name. */
+    private final RoadColumns roadColumns;
 
     public SectionRenameService(JdbcTemplate jdbc, RoadController roads, SegmentService segments,
                                 FwdSegmentService fwdSegments, IriSegmentService iriSegments,
-                                RoadAttrService attrs) {
+                                RoadAttrService attrs, RoadColumns roadColumns) {
+        this.roadColumns = roadColumns;
         this.jdbc = jdbc;
         this.roads = roads;
         this.segments = segments;
@@ -190,8 +202,8 @@ public class SectionRenameService {
 
         /* --- preflight, all of it before anything is written --- */
 
-        boolean fromOnNetwork = count("roads", "Section_La", oldLabel) > 0;
-        boolean toOnNetwork   = count("roads", "Section_La", newLabel) > 0;
+        boolean fromOnNetwork = count("roads", roadsLabelColumn(), oldLabel) > 0;
+        boolean toOnNetwork   = count("roads", roadsLabelColumn(), newLabel) > 0;
 
         if (fromOnNetwork && toOnNetwork) {
             return status("exists", oldLabel, newLabel,
@@ -293,6 +305,7 @@ public class SectionRenameService {
      */
     private List<Target> targets() {
         List<Target> out = new ArrayList<>();
+        if (tableExists("roads")) out.add(new Target("roads", roadsLabelColumn()));
         for (Map.Entry<String, String> e : EXCEPTIONS.entrySet()) {
             if (tableExists(e.getKey())) out.add(new Target(e.getKey(), e.getValue()));
         }
@@ -352,8 +365,8 @@ public class SectionRenameService {
     private Integer roadsLabelMaxLength() {
         List<Integer> v = jdbc.queryForList(
                 "SELECT character_maximum_length FROM information_schema.columns " +
-                "WHERE table_schema = current_schema() AND table_name = 'roads' AND column_name = 'Section_La'",
-                Integer.class);
+                "WHERE table_schema = current_schema() AND table_name = 'roads' AND column_name = ?",
+                Integer.class, roadsLabelColumn());
         return v.isEmpty() ? null : v.get(0);
     }
 

@@ -49,20 +49,27 @@ public class PlacementService {
 
     private static final Logger log = LoggerFactory.getLogger(PlacementService.class);
 
-    /** Reference length for a section, in the order the whole codebase agrees on:
-     *  surveyed chainage span, then the measured length, then the geodesic length of
-     *  the drawn line. Must stay identical to the condition segmentation's — see CLAUDE.md. */
-    static final String LEN_EXPR = """
-        COALESCE(
-            NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
-            NULLIF(r."Measrd_Len"::double precision, 0),
-            ST_Length(r.geom::geography))
-        """;
-
     private final JdbcTemplate jdbc;
 
-    public PlacementService(JdbcTemplate jdbc) {
+    /** Resolves the road network's columns by system attribute name, and owns the one
+     *  definition of the reference length — see {@link RoadColumns#lenExpr}. */
+    private final RoadColumns roadColumns;
+
+    public PlacementService(JdbcTemplate jdbc, RoadColumns roadColumns) {
         this.jdbc = jdbc;
+        this.roadColumns = roadColumns;
+    }
+
+    /** Reference length for a section, aliased {@code r}. Was a constant naming the DBF
+     *  columns directly; now resolved by meaning, so a road import that spells a field
+     *  differently does not silently break every placement in the system. */
+    private String lenExpr() {
+        return roadColumns.lenExpr("r");
+    }
+
+    /** {@code r."Section_La"} — whichever column currently carries the section label. */
+    private String sectionCol() {
+        return roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL);
     }
 
     /* ================= placement (import path) ================= */
@@ -90,8 +97,8 @@ public class PlacementService {
             UPDATE road_assets a SET geom = NULL
             WHERE a.asset_type = ? AND a.geom IS NOT NULL
               AND NOT EXISTS (SELECT 1 FROM roads r
-                              WHERE r."Section_La" = a.section_label AND r.geom IS NOT NULL)
-            """, type);
+                              WHERE %s = a.section_label AND r.geom IS NOT NULL)
+            """.formatted(sectionCol()), type);
         List<Map<String, Object>> unplaced = jdbc.queryForList("""
             SELECT DISTINCT section_label FROM road_assets
             WHERE asset_type = ? AND geom IS NULL ORDER BY section_label LIMIT 50
@@ -110,13 +117,56 @@ public class PlacementService {
             UPDATE traffic_stations t SET geom = NULL
             WHERE t.geom IS NOT NULL
               AND NOT EXISTS (SELECT 1 FROM roads r
-                              WHERE r."Section_La" = t.section AND r.geom IS NOT NULL)
-            """);
+                              WHERE %s = t.section AND r.geom IS NOT NULL)
+            """.formatted(sectionCol()));
         List<Map<String, Object>> unplaced = jdbc.queryForList("""
             SELECT name, section FROM traffic_stations WHERE geom IS NULL ORDER BY name LIMIT 50
             """);
         return report("traffic_stations", placed, orphaned, unplaced, "name",
                 jdbc.queryForObject("SELECT count(*) FROM traffic_stations WHERE geom IS NULL", Integer.class));
+    }
+
+    /**
+     * Re-place every stored point and stretch on ONE section, against that section's current
+     * calibration. Returns the number of rows repositioned per layer.
+     *
+     * <p>Exists for {@code SectionLineageService}: correcting a single section's chainage
+     * changes the divisor for that section alone, so re-placing the whole network would be
+     * minutes of work to fix a handful of rows. The SQL is the same
+     * {@link #assetPlaceSql}/{@link #trafficPlaceSql} every other path uses, narrowed by one
+     * extra predicate — the two must never compute a position differently.
+     *
+     * <p>Like the network-wide re-place, this <b>never deletes</b>: a row it cannot place keeps
+     * its data and loses its geometry. Unlike it, this does not orphan rows either — the section
+     * is known to exist (the caller just wrote it), so a row that fails to place here has a
+     * chainage problem of its own, and blanking a geometry that is merely stale would remove it
+     * from the map for a reason the operator did not ask for.
+     */
+    @Transactional
+    public Map<String, Object> replaceForSection(String sectionLabel) {
+        Map<String, Object> byLayer = new LinkedHashMap<>();
+        int total = 0;
+
+        for (String type : AssetController.LINE_TYPES) {
+            int n = jdbc.update(assetPlaceSql(true) + " AND a.section_label = ?", type, sectionLabel);
+            if (n > 0) byLayer.put(type, n);
+            total += n;
+        }
+        for (String type : AssetController.POINT_TYPES) {
+            int n = jdbc.update(assetPlaceSql(false) + " AND a.section_label = ?", type, sectionLabel);
+            if (n > 0) byLayer.put(type, n);
+            total += n;
+        }
+        int traffic = jdbc.update(trafficPlaceSql() + " AND t.section = ?", sectionLabel);
+        if (traffic > 0) byLayer.put("traffic_stations", traffic);
+        total += traffic;
+
+        log.info("re-placed {} row(s) on section \"{}\" after a chainage correction", total, sectionLabel);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("section", sectionLabel);
+        out.put("replaced", total);
+        out.put("by_layer", byLayer);
+        return out;
     }
 
     /** Per-layer stored/unplaced counts — the before-and-after view for the re-place. */
@@ -141,32 +191,48 @@ public class PlacementService {
        path appends it, the re-place path does not. That one clause is the ONLY difference
        between placing and re-placing, which is exactly why they share this SQL: the two
        must never drift into computing a position differently. */
-    private static String assetPlaceSql(boolean isLine) {
+    private String assetPlaceSql(boolean isLine) {
+        /* The two fractions are ordered with LEAST/GREATEST, not passed straight through.
+           ST_LineSubstring raises "2nd arg must be smaller then 3rd arg" when the start
+           fraction exceeds the end one, and 182 rows of the current road_assets table have
+           start_chainage > end_chainage — a From/To recorded the wrong way round. Because
+           placement is ONE statement per asset type, a single such row aborts the update for
+           every asset of that type, so /api/placement/replace fails wholesale rather than
+           skipping the row.
+
+           Ordering them places a reversed row as the stretch between its two chainages, which
+           is what the row means whichever end was written first. It changes nothing for a
+           correctly-ordered row: LEAST is then the start and GREATEST the end. Equal chainages
+           need no guard — PostGIS returns a POINT for them rather than raising. */
         String target = isLine
                 ? """
                   ST_LineSubstring(ST_LineMerge(r.geom),
-                      GREATEST(LEAST(a.start_chainage / %1$s, 1.0), 0.0),
-                      GREATEST(LEAST(a.end_chainage   / %1$s, 1.0), 0.0))
-                  """.formatted(LEN_EXPR)
+                      LEAST(
+                          GREATEST(LEAST(a.start_chainage / %1$s, 1.0), 0.0),
+                          GREATEST(LEAST(a.end_chainage   / %1$s, 1.0), 0.0)),
+                      GREATEST(
+                          GREATEST(LEAST(a.start_chainage / %1$s, 1.0), 0.0),
+                          GREATEST(LEAST(a.end_chainage   / %1$s, 1.0), 0.0)))
+                  """.formatted(lenExpr())
                 : """
                   ST_LineInterpolatePoint(ST_LineMerge(r.geom),
                       GREATEST(LEAST(a.start_chainage / %1$s, 1.0), 0.0))
-                  """.formatted(LEN_EXPR);
+                  """.formatted(lenExpr());
         return """
                UPDATE road_assets a SET geom = %s
                FROM roads r
-               WHERE a.asset_type = ? AND r."Section_La" = a.section_label AND r.geom IS NOT NULL
-               """.formatted(target);
+               WHERE a.asset_type = ? AND %s = a.section_label AND r.geom IS NOT NULL
+               """.formatted(target, sectionCol());
     }
 
-    private static String trafficPlaceSql() {
+    private String trafficPlaceSql() {
         return """
                UPDATE traffic_stations t SET geom = ST_LineInterpolatePoint(
                    ST_LineMerge(r.geom),
                    GREATEST(LEAST(t.chainage / %s, 1.0), 0.0))
                FROM roads r
-               WHERE t.chainage IS NOT NULL AND r."Section_La" = t.section AND r.geom IS NOT NULL
-               """.formatted(LEN_EXPR);
+               WHERE t.chainage IS NOT NULL AND %s = t.section AND r.geom IS NOT NULL
+               """.formatted(lenExpr(), sectionCol());
     }
 
     private Map<String, Object> report(String layer, int placed, int orphaned,

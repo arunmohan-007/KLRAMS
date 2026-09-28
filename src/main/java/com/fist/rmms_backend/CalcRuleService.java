@@ -82,8 +82,11 @@ public class CalcRuleService {
     }
 
     private final JdbcTemplate jdbc;
+    /** Resolves the road network's columns by system attribute name. */
+    private final RoadColumns roadColumns;
 
-    public CalcRuleService(JdbcTemplate jdbc) {
+    public CalcRuleService(JdbcTemplate jdbc, RoadColumns roadColumns) {
+        this.roadColumns = roadColumns;
         this.jdbc = jdbc;
     }
 
@@ -203,14 +206,14 @@ public class CalcRuleService {
      */
     private void seedCarriagewayGroups() {
         if (seeded("cw_groups")) return;
-        List<Map<String, Object>> pairs = jdbc.queryForList("""
-            SELECT left("Section_La", length("Section_La")-1) AS base_label,
-                   MAX(NULLIF(trim("Road_Name"),'')) AS road_name,
+        List<Map<String, Object>> pairs = jdbc.queryForList(sql("""
+            SELECT left(@{Section Label}, length(@{Section Label})-1) AS base_label,
+                   MAX(NULLIF(trim(@{Road Name}),'')) AS road_name,
                    count(*) AS n
             FROM roads
-            WHERE lower(trim("Single_Du")) = 'dual' AND "Section_La" ~ '[AB]$'
+            WHERE lower(trim(@{Carriageway})) = 'dual' AND @{Section Label} ~ '[AB]$'
             GROUP BY 1 HAVING count(*) > 1
-            ORDER BY 1""");
+            ORDER BY 1"""));
 
         int made = 0;
         for (Map<String, Object> p : pairs) {
@@ -220,14 +223,14 @@ public class CalcRuleService {
             Integer gid = jdbc.queryForObject(
                 "INSERT INTO calc_cw_group(name, note, created_by) VALUES (?,?,?) RETURNING id",
                 Integer.class, trunc(name, 200), "Seeded from the A/B section labels", "system");
-            int added = jdbc.update("""
+            int added = jdbc.update(sql("""
                 INSERT INTO calc_cw_member(section_label, group_id)
-                SELECT "Section_La", ?
+                SELECT @{Section Label}, ?
                 FROM roads
-                WHERE lower(trim("Single_Du")) = 'dual'
-                  AND left("Section_La", length("Section_La")-1) = ?
-                  AND "Section_La" ~ '[AB]$'
-                ON CONFLICT (section_label) DO NOTHING""", gid, base);
+                WHERE lower(trim(@{Carriageway})) = 'dual'
+                  AND left(@{Section Label}, length(@{Section Label})-1) = ?
+                  AND @{Section Label} ~ '[AB]$'
+                ON CONFLICT (section_label) DO NOTHING"""), gid, base);
             if (added < 2) {
                 // Nothing to correct — drop the group again rather than leave a stub.
                 jdbc.update("DELETE FROM calc_cw_group WHERE id = ?", gid);
@@ -263,26 +266,26 @@ public class CalcRuleService {
     static final String CORR = """
         WITH base AS (
           SELECT r.*,
-                 COALESCE('g' || m.group_id::text, r."Section_La") AS base_label,
+                 COALESCE('g' || m.group_id::text, @{r:Section Label}) AS base_label,
                  (m.group_id IS NOT NULL) AS is_grouped
           FROM roads r
-          LEFT JOIN calc_cw_member m ON m.section_label = r."Section_La"),
+          LEFT JOIN calc_cw_member m ON m.section_label = @{r:Section Label}),
         corr AS (
           SELECT base_label,
             bool_or(is_grouped) AS is_dual,
-            CASE WHEN bool_or(is_grouped) THEN AVG("Measrd_Len"::double precision)
-                 ELSE MAX("Measrd_Len"::double precision) END AS corr_len,
-            MAX("District")   AS district,
-            MAX("Road_Class") AS road_class,
-            MAX("Cons_Type")  AS cons_type,
-            MAX("PWD_Sec")    AS pwd_sec,
+            CASE WHEN bool_or(is_grouped) THEN AVG(@{Measured Length}::double precision)
+                 ELSE MAX(@{Measured Length}::double precision) END AS corr_len,
+            MAX(@{District})   AS district,
+            MAX(@{Road Class}) AS road_class,
+            MAX(@{Construction Type})  AS cons_type,
+            MAX(@{PWD Section})    AS pwd_sec,
             /* Taken EXACTLY as stored — not trimmed, not normalised, not aliased.
                Two rows reading "PWD Maintenanace" that differ only by a trailing
                newline is not a display fault to smooth over: it is the road data
                saying something is wrong with it, and the breakdown is where that
                gets noticed. Once the value is corrected at source the duplicate
                row disappears for good, which a rule here could never achieve. */
-            MAX("Current_Ow")  AS current_ow
+            MAX(@{Current Owner})  AS current_ow
           FROM base GROUP BY base_label)
         """;
 
@@ -293,13 +296,13 @@ public class CalcRuleService {
      */
     static final String LONG_CORR = """
         WITH base AS (
-          SELECT r."District" AS district, r."Road_Class" AS road_class,
-                 r."Road_Num" AS road_num, r."Road_Name" AS road_name,
-                 r."Measrd_Len"::double precision AS len,
+          SELECT @{r:District} AS district, @{r:Road Class} AS road_class,
+                 @{r:Road Number} AS road_num, @{r:Road Name} AS road_name,
+                 @{r:Measured Length}::double precision AS len,
                  (m.group_id IS NOT NULL) AS is_grouped,
-                 COALESCE('g' || m.group_id::text, r."Section_La") AS base_label
+                 COALESCE('g' || m.group_id::text, @{r:Section Label}) AS base_label
           FROM roads r
-          LEFT JOIN calc_cw_member m ON m.section_label = r."Section_La"),
+          LEFT JOIN calc_cw_member m ON m.section_label = @{r:Section Label}),
         corr AS (
           SELECT district, road_class, road_num, road_name,
             CASE WHEN bool_or(is_grouped) THEN AVG(len) ELSE MAX(len) END AS corr_len
@@ -308,7 +311,7 @@ public class CalcRuleService {
 
     /** The JOIN {@link #widthSql} needs on {@code roads r}. */
     static final String RULE_JOINS =
-        " LEFT JOIN calc_width_band wb ON wb.code = trim(r.\"Pavement_W\"::text) ";
+        " LEFT JOIN calc_width_band wb ON wb.code = trim(@{r:Pavement Width}::text) ";
 
     /**
      * Carriageway width in metres for area weighting: the band's metres, the
@@ -320,7 +323,7 @@ public class CalcRuleService {
         double def = settingDouble(S_WIDTH_DEFAULT, DEF_WIDTH_DEFAULT);
         double dual = settingDouble(S_WIDTH_DUAL, DEF_WIDTH_DUAL);
         return "(COALESCE(wb.width_m, " + num(def) + ")"
-             + " * CASE WHEN lower(trim(r.\"Single_Du\")) = 'dual' THEN " + num(dual) + " ELSE 1 END)";
+             + " * CASE WHEN lower(trim(@{r:Carriageway})) = 'dual' THEN " + num(dual) + " ELSE 1 END)";
     }
 
     /* ==================================================================
@@ -408,26 +411,26 @@ public class CalcRuleService {
 
     /** Every group with its members and the length the correction produces. */
     public List<Map<String, Object>> carriagewayGroups() {
-        List<Map<String, Object>> groups = jdbc.queryForList("""
+        List<Map<String, Object>> groups = jdbc.queryForList(sql("""
             SELECT g.id, g.name, g.note, g.created_by, g.updated_at,
                    count(m.section_label) AS members,
-                   ROUND(AVG(r."Measrd_Len"::double precision)::numeric, 1) AS corrected_m,
-                   ROUND(SUM(r."Measrd_Len"::double precision)::numeric, 1) AS raw_m
+                   ROUND(AVG(@{r:Measured Length}::double precision)::numeric, 1) AS corrected_m,
+                   ROUND(SUM(@{r:Measured Length}::double precision)::numeric, 1) AS raw_m
             FROM calc_cw_group g
             LEFT JOIN calc_cw_member m ON m.group_id = g.id
-            LEFT JOIN roads r ON r."Section_La" = m.section_label
-            GROUP BY g.id ORDER BY g.name""");
+            LEFT JOIN roads r ON @{r:Section Label} = m.section_label
+            GROUP BY g.id ORDER BY g.name"""));
 
         Map<Integer, List<Map<String, Object>>> byGroup = new LinkedHashMap<>();
-        for (Map<String, Object> m : jdbc.queryForList("""
+        for (Map<String, Object> m : jdbc.queryForList(sql("""
                 SELECT m.group_id, m.section_label,
-                       r."Road_Name" AS road_name, r."Road_Class" AS road_class,
-                       r."District" AS district, r."Single_Du" AS single_du,
-                       r."Measrd_Len"::double precision AS length_m,
-                       (r."Section_La" IS NULL) AS missing
+                       @{r:Road Name} AS road_name, @{r:Road Class} AS road_class,
+                       @{r:District} AS district, @{r:Carriageway} AS single_du,
+                       @{r:Measured Length}::double precision AS length_m,
+                       (@{r:Section Label} IS NULL) AS missing
                 FROM calc_cw_member m
-                LEFT JOIN roads r ON r."Section_La" = m.section_label
-                ORDER BY m.section_label""")) {
+                LEFT JOIN roads r ON @{r:Section Label} = m.section_label
+                ORDER BY m.section_label"""))) {
             byGroup.computeIfAbsent(((Number) m.get("group_id")).intValue(), k -> new ArrayList<>()).add(m);
         }
         for (Map<String, Object> g : groups) {
@@ -443,18 +446,18 @@ public class CalcRuleService {
      * already spoken for, and by which group.
      */
     public List<Map<String, Object>> carriagewayCandidates() {
-        return jdbc.queryForList("""
-            SELECT r."Section_La" AS section_label, r."Road_Name" AS road_name,
-                   NULLIF(trim(r."Road_Num"::text),'') AS road_num,
-                   r."Road_Class" AS road_class, r."District" AS district,
-                   r."PWD_Sec" AS pwd_sec,
-                   r."Measrd_Len"::double precision AS length_m,
+        return jdbc.queryForList(sql("""
+            SELECT @{r:Section Label} AS section_label, @{r:Road Name} AS road_name,
+                   NULLIF(trim(@{r:Road Number}::text),'') AS road_num,
+                   @{r:Road Class} AS road_class, @{r:District} AS district,
+                   @{r:PWD Section} AS pwd_sec,
+                   @{r:Measured Length}::double precision AS length_m,
                    m.group_id AS group_id, g.name AS group_name
             FROM roads r
-            LEFT JOIN calc_cw_member m ON m.section_label = r."Section_La"
+            LEFT JOIN calc_cw_member m ON m.section_label = @{r:Section Label}
             LEFT JOIN calc_cw_group g ON g.id = m.group_id
-            WHERE lower(trim(r."Single_Du")) = 'dual'
-            ORDER BY r."District", r."Road_Name", r."Section_La\"""");
+            WHERE lower(trim(@{r:Carriageway})) = 'dual'
+            ORDER BY @{r:District}, @{r:Road Name}, @{r:Section Label}"""));
     }
 
     @Transactional
@@ -490,9 +493,16 @@ public class CalcRuleService {
         touch("calc_cw_group", groupId);
     }
 
+    /** Resolves the @{System Attribute} tokens in a SQL fragment — see RoadColumns.resolve.
+     *  Public so the dashboards, which build queries out of CORR / LONG_CORR / RULE_JOINS,
+     *  can resolve the finished statement at the point they run it. */
+    public String sql(String fragment) {
+        return roadColumns.resolve(fragment);
+    }
+
     private void requireDualSection(String section) {
         Integer n = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM roads WHERE \"Section_La\" = ? AND lower(trim(\"Single_Du\")) = 'dual'",
+            sql("SELECT COUNT(*) FROM roads WHERE @{Section Label} = ? AND lower(trim(@{Carriageway})) = 'dual'"),
             Integer.class, section);
         if (n == null || n == 0) {
             throw new IllegalArgumentException(
@@ -781,14 +791,14 @@ public class CalcRuleService {
 
     /** Network length with every section counted, versus each group counted once. */
     public Map<String, Object> carriagewayEffect() {
-        Map<String, Object> r = jdbc.queryForMap(CORR + """
+        Map<String, Object> r = jdbc.queryForMap(sql(CORR + """
             SELECT
-              (SELECT ROUND(SUM("Measrd_Len"::double precision)::numeric/1000, 2) FROM roads) AS before_km,
+              (SELECT ROUND(SUM(@{Measured Length}::double precision)::numeric/1000, 2) FROM roads) AS before_km,
               (SELECT count(*) FROM roads) AS before_count,
               ROUND(SUM(corr_len)::numeric/1000, 2) AS after_km,
               count(*) AS after_count,
               SUM(CASE WHEN is_dual THEN 1 ELSE 0 END) AS grouped_corridors
-            FROM corr""");
+            FROM corr"""));
         Integer groups = jdbc.queryForObject("SELECT count(*) FROM calc_cw_group", Integer.class);
         Integer members = jdbc.queryForObject("SELECT count(*) FROM calc_cw_member", Integer.class);
         return effect("carriageway", "Carriageway correction",
@@ -826,12 +836,12 @@ public class CalcRuleService {
     public Map<String, Object> widthEffect() {
         double def = settingDouble(S_WIDTH_DEFAULT, DEF_WIDTH_DEFAULT);
         double dual = settingDouble(S_WIDTH_DUAL, DEF_WIDTH_DUAL);
-        Map<String, Object> r = jdbc.queryForMap(
-            "SELECT ROUND(SUM(r.\"Measrd_Len\"::double precision "
+        Map<String, Object> r = jdbc.queryForMap(sql(
+            "SELECT ROUND(SUM(@{r:Measured Length}::double precision "
           + "  * COALESCE(wb.width_m, " + num(def) + "))::numeric/1000000, 3) AS before_km2, "
-          + "       ROUND(SUM(r.\"Measrd_Len\"::double precision * " + widthSql()
+          + "       ROUND(SUM(@{r:Measured Length}::double precision * " + widthSql()
           + "  )::numeric/1000000, 3) AS after_km2 "
-          + "FROM roads r" + RULE_JOINS);
+          + "FROM roads r" + RULE_JOINS));
         Integer bands = jdbc.queryForObject("SELECT count(*) FROM calc_width_band", Integer.class);
         return effect("pavement_width", "Pavement width bands",
                 "Pavement area used for weighting (km²)",

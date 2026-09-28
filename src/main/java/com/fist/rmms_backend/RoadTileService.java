@@ -53,7 +53,15 @@ public class RoadTileService {
 
     /** The column every road layer paints by default: {@code roadClassKey()} in
      *  {@code 04-geo-helpers-boundaries.js} drives colour, width, casing and sort order from it. */
-    private static final String CLASS_COLUMN = "Road_Class";
+    /* The road-class column, resolved by system attribute name rather than named directly:
+       the tile always carries it (the client colours by class), and pinning it to one import's
+       spelling would silently drop the property the whole legend keys off. Falls back to the
+       declared spelling when the network does not carry the attribute at all, so isValid()
+       below still answers the question rather than throwing. */
+    private String classColumn() {
+        String c = columns.find(LayerAttributeCatalog.ROAD_CLASS);
+        return c == null ? "Road_Class" : c;
+    }
 
     /**
      * One tile's worth of road centrelines, or {@code null} when there is nothing to draw.
@@ -119,8 +127,9 @@ public class RoadTileService {
             StringBuilder extra = new StringBuilder();
             // Road_Class only if the schema still has it — a re-imported shapefile could drop or
             // rename it, and the paint already falls back to its own default for a missing key.
-            if (columns.isValid(CLASS_COLUMN)) extra.append(columns.selectOne("r", CLASS_COLUMN));
-            if (!a.isEmpty() && !a.equals(CLASS_COLUMN)) extra.append(columns.selectOne("r", a));
+            String classColumn = classColumn();
+            if (columns.isValid(classColumn)) extra.append(columns.selectOne("r", classColumn));
+            if (!a.isEmpty() && !a.equals(classColumn)) extra.append(columns.selectOne("r", a));
             /* Silently skipped when the style names a column this schema no longer has — a style
                outliving the shapefile that justified it is a stale style, not a bad request, and
                the client already draws its fallback for an attribute it cannot read. */
@@ -138,8 +147,10 @@ public class RoadTileService {
                        reads props.name and props.len directly, onPick keys the whole app off
                        properties.road, and this tile has to answer to the same property names or
                        every one of those call sites needs a second code path just for tile mode. */
-                    SELECT r."Section_La" AS road, r."Road_Name" AS name, r."Measrd_Len" AS len
-                """
+                    SELECT %1$s AS road, %2$s AS name, %3$s AS len
+                """.formatted(columns.col("r", LayerAttributeCatalog.SECTION_LABEL),
+                              columns.col("r", LayerAttributeCatalog.ROAD_NAME),
+                              columns.col("r", LayerAttributeCatalog.MEASURED_LENGTH))
                 + extra
                 + """
                         , ST_AsMVTGeom(ST_Transform(r.geom, 3857), b.merc, ?, ?, true) AS geom

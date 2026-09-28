@@ -46,6 +46,10 @@ public class IriSegmentService {
     private final JdbcTemplate jdbc;
     private final SurveyPeriodService periods;
 
+    /** Resolves the road network's columns by system attribute name, and supplies the one
+     *  shared definition of the reference length these 2 km bins must agree with. */
+    private final RoadColumns roadColumns;
+
     /* Assemble the GeoJSON once and serve later requests from memory; only the
        active period is cached (other periods are Survey Archive requests, built
        per request); cleared on every build. */
@@ -53,7 +57,8 @@ public class IriSegmentService {
     private volatile Integer cachedPeriodId;
     private volatile String cachedEtag;
 
-    public IriSegmentService(JdbcTemplate jdbc, SurveyPeriodService periods) {
+    public IriSegmentService(JdbcTemplate jdbc, SurveyPeriodService periods, RoadColumns roadColumns) {
+        this.roadColumns = roadColumns;
         this.jdbc = jdbc;
         this.periods = periods;
     }
@@ -68,7 +73,7 @@ public class IriSegmentService {
                 SELECT section_label, period_id,
                     COALESCE(NULLIF(upper(btrim(xsp)), ''), 'CC') AS lane,
                     start_chainage, end_chainage, iri,
-                    floor(start_chainage / %d.0)::int AS bin
+                    floor(start_chainage / %1$d.0)::int AS bin
                 FROM condition
                 WHERE iri IS NOT NULL
                   AND start_chainage IS NOT NULL
@@ -105,12 +110,9 @@ public class IriSegmentService {
             ),
             joined AS (
                 SELECT b.*, ST_LineMerge(r.geom) AS road_geom,
-                    COALESCE(
-                        NULLIF(r."Rd_End_cha"::double precision - r."Rd_Str_cha"::double precision, 0),
-                        NULLIF(r."Measrd_Len"::double precision, 0),
-                        ST_Length(r.geom::geography)) AS measured_len
+                    %2$s AS measured_len
                 FROM binned b
-                JOIN roads r ON r."Section_La" = b.section_label
+                JOIN roads r ON %3$s = b.section_label
                 WHERE r.geom IS NOT NULL
                   AND ST_GeometryType(ST_LineMerge(r.geom)) = 'ST_LineString'
             )
@@ -124,7 +126,8 @@ public class IriSegmentService {
             FROM joined
             WHERE measured_len IS NOT NULL AND measured_len > 0
               AND worst_iri IS NOT NULL
-            """.formatted(BIN_METRES));
+            """.formatted(BIN_METRES, roadColumns.lenExpr("r"),
+                          roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL)));
 
         jdbc.execute("DELETE FROM iri_2km_segments WHERE geom IS NULL OR ST_IsEmpty(geom)");
         jdbc.execute("ALTER TABLE iri_2km_segments ADD COLUMN seg_id serial PRIMARY KEY");

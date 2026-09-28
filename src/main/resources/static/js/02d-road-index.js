@@ -47,6 +47,15 @@ var RoadsIndex = (function () {
   /** Load the index if it is not already here. */
   function ensure() { return index(); }
 
+  /**
+   * Forget the cached index so the next ensure() re-fetches it.
+   *
+   * There was no way to do this, which meant a page that had loaded the index once kept the
+   * old section list for its whole life. That is invisible until something CHANGES the network
+   * — splitting a section leaves the viewer insisting the original is still there.
+   */
+  function invalidate() { rows = null; byRoad = null; }
+
   /** Every road's metadata (no geometry). Empty until ensure()/all() has
    *  actually resolved once — callers that need it synchronously should
    *  await ensure() first, the same contract Segs.all() has. */
@@ -76,5 +85,6 @@ var RoadsIndex = (function () {
       .catch(function () { return null; });
   }
 
-  return { ensure: ensure, all: all, byRoad: byRoadId, hydrateFeature: hydrateFeature };
+  return { ensure: ensure, invalidate: invalidate, all: all, byRoad: byRoadId,
+           hydrateFeature: hydrateFeature };
 })();

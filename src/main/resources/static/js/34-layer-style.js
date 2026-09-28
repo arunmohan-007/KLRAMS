@@ -1032,12 +1032,22 @@ var KLStyle = (function () {
         STYLES = (d && d.styles) || {};
         LOADED = true;
         applyAll();
+        notifyApplied();
       })
       .catch(function () {
         // The viewer is entirely usable on built-in paint, so a failure
         // here is not worth telling anyone about.
         LOADED = true;
       });
+  }
+
+  /* Fires once the fetched styles are actually painted, so anything that
+     mirrors a saved style outside this module — the road network legend's
+     default "Road class" rows, for one — can re-derive itself instead of
+     racing this fetch and showing the built-in colours it already
+     replaced. */
+  function notifyApplied() {
+    try { document.dispatchEvent(new CustomEvent('klstyle:applied')); } catch (e) { }
   }
 
   /**

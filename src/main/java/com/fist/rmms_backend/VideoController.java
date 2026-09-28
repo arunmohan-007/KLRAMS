@@ -52,17 +52,25 @@ public class VideoController {
     /**
      * Append one chunk of a single video. The client sends files one at a time
      * in small chunks; a failure only affects the current chunk, never the
-     * whole batch. Returns {status: complete|partial|resync, uploaded: bytes}.
+     * whole batch. Returns {status: complete|partial|resync|conflict, uploaded: bytes}.
+     * periodId is the survey cycle this footage was filmed in — required so a
+     * later NSV cycle's uploads are never mistaken for the period they replace.
      */
     @PostMapping("/upload-chunk")
     public Map<String, Object> uploadChunk(@RequestParam("name") String name,
                                            @RequestParam("offset") long offset,
                                            @RequestParam("total") long total,
-                                           @RequestParam("chunk") MultipartFile chunk) {
+                                           @RequestParam("chunk") MultipartFile chunk,
+                                           @RequestParam(value = "periodId", required = false) Integer periodId) {
+        Map<String, Object> r = new HashMap<>();
+        if (periodId == null || !periods.exists(periodId)) {
+            r.put("status", "error");
+            r.put("message", "Select the survey period this video was filmed in before uploading.");
+            return r;
+        }
         try {
-            return service.putChunk(name, offset, total, chunk);
+            return service.putChunk(name, offset, total, chunk, periodId);
         } catch (Exception e) {
-            Map<String, Object> r = new HashMap<>();
             r.put("status", "error");
             r.put("message", ApiErrors.safe("video chunk upload", e));
             return r;

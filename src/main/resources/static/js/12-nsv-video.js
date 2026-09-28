@@ -98,6 +98,9 @@ function onPick(roadId,lngLat,lane,scope){
     const idx=pickClipIndex(cur.clips,chainage);
     if(idx!==cur.clipIdx){playClip(idx,chainage);}
   }
+  /* A click on the road is the viewer steering: whatever hand-over was counting
+     down is no longer what they asked for. */
+  cancelAutoNext();hideClipEndPrompt();
   setChainage(frac);placeCar(frac);seek(chainage);if(typeof buildVidTrack==='function'){buildVidTrack();updateVidHud();}
 }
 /* A road can now carry several video clips, each covering its own chainage
@@ -105,7 +108,16 @@ function onPick(roadId,lngLat,lane,scope){
    null — normalize those to span the whole road, exactly like the old
    single-video behaviour. */
 function normalizeClips(raw,len){
-  return raw.map(c=>({file:c.file,direction:c.direction,fromCh:(c.fromCh==null?0:c.fromCh),toCh:(c.toCh==null?len:c.toCh)}));
+  /* fileFromCh/fileToCh: the chainage span the FILE covers, which defaults to the clip's own
+     span — that is what every clip meant before a file could serve two sections. They differ
+     only after a section split passed through a clip, and fileFromCh is then NEGATIVE on the
+     second half (the footage starts before that section's chainage origin). */
+  return raw.map(c=>{
+    const fromCh=(c.fromCh==null?0:c.fromCh), toCh=(c.toCh==null?len:c.toCh);
+    return {file:c.file,direction:c.direction,fromCh:fromCh,toCh:toCh,
+            fileFromCh:(c.fileFromCh==null?fromCh:c.fileFromCh),
+            fileToCh:(c.fileToCh==null?toCh:c.fileToCh)};
+  });
 }
 /** Merged chainage stretches actually covered by some clip (a road's video
    footage is rarely one contiguous file, so this can have several pieces). */
@@ -168,6 +180,19 @@ function buildTravelPlan(){
   const D=video.duration;
   const a0=_ch2local(clip.fromCh),b0=_ch2local(clip.toCh);
   const lo=Math.min(a0,b0),hi=Math.max(a0,b0),span=hi-lo;
+  /* Where this clip's window sits inside its FILE, as a time range.
+
+     A clip used to BE its whole file, so the window mapped onto 0..D. Once a section split can
+     pass through a clip, one file serves two sections and each shows only its own part of it —
+     so the window maps onto the matching slice of the footage instead. When the file window and
+     the clip window are the same (every clip that predates the split, and every clip a split
+     never touched) fLo/fHi equal lo/hi and this resolves to exactly 0..D as before. */
+  const f0=_ch2local(clip.fileFromCh==null?clip.fromCh:clip.fileFromCh);
+  const f1=_ch2local(clip.fileToCh==null?clip.toCh:clip.fileToCh);
+  const fLo=Math.min(f0,f1),fHi=Math.max(f0,f1),fSpan=fHi-fLo;
+  const t0=(fSpan>1e-6)?Math.max(0,Math.min(D,(lo-fLo)/fSpan*D)):0;
+  const t1=(fSpan>1e-6)?Math.max(t0,Math.min(D,(hi-fLo)/fSpan*D)):D;
+  const T=t1-t0;                                    /* seconds of footage this clip may use */
   cur._planDir=dir;
   let rs=(typeof roadCoverageRanges==='function'?roadCoverageRanges(cur.road):[]);
   if(dir==='rev')rs=rs.map(r=>[cur.len-r[1],cur.len-r[0]]);
@@ -175,69 +200,161 @@ function buildTravelPlan(){
   rs.sort((a,b)=>a[0]-b[0]);
   if(!rs.length){                             /* no condition data in this clip's window -> assume it's all real footage */
     clip.hasGaps=false;cur.hasGaps=false;
-    cur._m=span/D;
-    cur._plan=[{type:'video',clStart:lo,clEnd:hi,tStart:0,tEnd:D}];
+    cur._m=(T>1e-6)?span/T:0;
+    cur._plan=[{type:'video',clStart:lo,clEnd:hi,tStart:t0,tEnd:t1}];
     return;
   }
   let S=0;rs.forEach(r=>S+=r[1]-r[0]);
-  cur._m=S/D;                                                                     /* surveyed metres per second of footage */
+  cur._m=(T>1e-6)?S/T:0;                                                          /* surveyed metres per second of footage */
   clip.hasGaps=(span-S)>Math.max(1,span*0.005);cur.hasGaps=clip.hasGaps;
   const segs=[];let acc=0,cursor=lo;
   for(let i=0;i<rs.length;i++){
     const a=rs[i][0],b=rs[i][1];
-    if(a>cursor+1e-6)segs.push({type:'gap',clStart:cursor,clEnd:a,tFreeze:acc/S*D});
-    segs.push({type:'video',clStart:a,clEnd:b,tStart:acc/S*D,tEnd:(acc+(b-a))/S*D});
+    if(a>cursor+1e-6)segs.push({type:'gap',clStart:cursor,clEnd:a,tFreeze:t0+acc/S*T});
+    segs.push({type:'video',clStart:a,clEnd:b,tStart:t0+acc/S*T,tEnd:t0+(acc+(b-a))/S*T});
     acc+=(b-a);cursor=b;
   }
-  if(cursor<hi-1e-6)segs.push({type:'gap',clStart:cursor,clEnd:hi,tFreeze:D});
+  if(cursor<hi-1e-6)segs.push({type:'gap',clStart:cursor,clEnd:hi,tFreeze:t1});
   cur._plan=segs;
 }
 /* ------------------------------------------------------------------
-   Clip switching. A clip boundary is NOT a data gap (the camera simply
-   wasn't rolling for a different reason — a separate file) so, unlike an
-   internal gap, it is never crossed automatically: playback stops and
-   waits for the viewer to click Next. */
-function playClip(idx,seekToCh){
+   Clip switching. A road's footage usually arrives as several files, one per
+   stretch of chainage, and a viewer watching a road wants to watch the ROAD —
+   so when a clip's footage runs out during playback the dock rolls straight on
+   into the next one. The hand-over is announced rather than silent: the card
+   names the stretch that is coming, counts into it, and can be stopped, because
+   a clip boundary is a real discontinuity (a separate recording, sometimes with
+   unfilmed road between the two) and an unannounced jump reads as a glitch.
+
+   Auto-advance only follows PLAYBACK. Reaching the end of a clip while paused —
+   by scrubbing, or by clicking the map at the very end of a stretch — leaves the
+   manual Next button and nothing else, so stepping through clip by clip still
+   works exactly as before. */
+const CLIP_HANDOVER_MS=4000;
+/* The hand-over is driven by ONE timeout against the wall clock, with the
+   interval doing nothing but repaint the number. Counting the delay down by
+   subtracting the interval period each tick looks equivalent and is not:
+   browsers throttle timers to about once a second whenever the page is not the
+   foreground tab, so a 4-second hand-over made of 250 ms decrements takes
+   sixteen seconds there — the card sits on screen, apparently stuck, and then
+   moves on long after the viewer stopped expecting it to. */
+let _autoNextT=null,_autoNextTimer=null,_autoNextUntil=0;
+function playClip(idx,seekToCh,autoplay){
   if(!cur||!cur.clips||!cur.clips[idx])return;
+  cancelAutoNext();
   cur.clipIdx=idx;const clip=cur.clips[idx];
-  _stopGapAnim();_segIdx=0;cur._plan=null;
+  _stopGapAnim();_segIdx=0;cur._plan=null;cur._ended=false;
   hideClipEndPrompt();
   const src=/^https?:\/\//i.test(clip.file)?clip.file:('/videos/'+encodeURIComponent(clip.file));
   applyDirAvailability(clip.direction);video.style.display='';vidempty.style.display='none';
   cur._pendingSeek=(seekToCh!=null?seekToCh:Math.min(clip.fromCh,clip.toCh));
+  cur._autoplay=!!autoplay;
   video.src=src;video.load();
   renderClipSwitcher();
 }
-function nextClip(){if(cur&&cur.clipIdx+1<cur.clips.length)playClip(cur.clipIdx+1);}
+function nextClip(autoplay){if(cur&&cur.clipIdx+1<cur.clips.length)playClip(cur.clipIdx+1,null,autoplay);}
 function prevClip(){if(cur&&cur.clipIdx>0)playClip(cur.clipIdx-1);}
+/** The clip after the active one, or null at the end of the road's footage. */
+function upcomingClip(){return (cur&&cur.clips&&cur.clipIdx+1<cur.clips.length)?cur.clips[cur.clipIdx+1]:null;}
+function clipSpanText(c){return Math.round(Math.min(c.fromCh,c.toCh)).toLocaleString()+'–'+Math.round(Math.max(c.fromCh,c.toCh)).toLocaleString()+' m';}
+/** Unfilmed metres between the end of one clip and the start of the next, or 0. */
+function clipJump(a,b){const gap=Math.min(b.fromCh,b.toCh)-Math.max(a.fromCh,a.toCh);return gap>2?gap:0;}
 function renderClipSwitcher(){
   const row=document.getElementById('dClipSwitch');if(!row||!cur)return;
   const n=cur.clips.length;
   row.style.display=n>1?'':'none';
   if(n<=1)return;
   const lbl=document.getElementById('dClipLabel');
-  if(lbl){const c=cur.clips[cur.clipIdx];lbl.textContent='Clip '+(cur.clipIdx+1)+' of '+n+' · '+Math.round(Math.min(c.fromCh,c.toCh)).toLocaleString()+'–'+Math.round(Math.max(c.fromCh,c.toCh)).toLocaleString()+' m';}
+  if(lbl){
+    const c=cur.clips[cur.clipIdx],nx=upcomingClip();
+    /* The next stretch is named here, not only when the current one ends: it is
+       what tells the viewer the road continues past this file, and how far. */
+    lbl.innerHTML=escH('Clip '+(cur.clipIdx+1)+' of '+n+' · '+clipSpanText(c))
+      +(nx?('<span class="clip-next">then '+escH(clipSpanText(nx))+'</span>'):'<span class="clip-next last">last stretch</span>');
+  }
   row.querySelectorAll('button').forEach(function(b){
     if(b.getAttribute('data-act')==='prevClip')b.disabled=(cur.clipIdx<=0);
     if(b.getAttribute('data-act')==='nextClip')b.disabled=(cur.clipIdx>=n-1);
   });
+  syncClipChip();
+}
+/* The clip row above lives in the dock's side panel, which fullscreen hides, so
+   the same two facts are mirrored onto a chip inside the video frame. */
+function syncClipChip(){
+  const chip=document.getElementById('hudClip');if(!chip)return;
+  const n=(cur&&cur.clips)?cur.clips.length:0;
+  if(n<=1){chip.style.display='none';chip.textContent='';return;}
+  const nx=upcomingClip();
+  chip.style.display='';
+  chip.textContent='CLIP '+(cur.clipIdx+1)+'/'+n+(nx?(' · then '+clipSpanText(nx)):' · last');
 }
 function hideClipEndPrompt(){const el=document.getElementById('hudClipEnd');if(el){el.classList.remove('show');el.innerHTML='';}}
-/** Reached the physical end of the active clip's footage. */
-function onClipEnd(){
-  try{video.pause();}catch(e){}
-  _stopGapAnim();
+/** Stop a hand-over in progress. Safe to call when none is running. */
+function cancelAutoNext(){
+  if(_autoNextT){clearInterval(_autoNextT);_autoNextT=null;}
+  if(_autoNextTimer){clearTimeout(_autoNextTimer);_autoNextTimer=null;}
+  _autoNextUntil=0;
+}
+/** "Play now" — skip the rest of the countdown. */
+function nextClipNow(){cancelAutoNext();nextClip(true);}
+/** "Stay here" — drop the countdown but leave the manual Next button up. */
+function holdClipEnd(){cancelAutoNext();if(cur)renderClipEnd(false);}
+/**
+ * The card shown when the active clip's footage runs out.
+ *
+ * @param handOver true to roll into the next clip on a countdown, false to wait
+ *                 for the viewer. Ignored when there is no next clip.
+ */
+function renderClipEnd(handOver){
   const el=document.getElementById('hudClipEnd');if(!el||!cur)return;
   const clip=activeClip();if(!clip)return;
-  const from=Math.round(Math.min(clip.fromCh,clip.toCh)).toLocaleString(),to=Math.round(Math.max(clip.fromCh,clip.toCh)).toLocaleString();
-  if(cur.clipIdx+1<cur.clips.length){
-    const nc=cur.clips[cur.clipIdx+1];
-    const nfrom=Math.round(Math.min(nc.fromCh,nc.toCh)).toLocaleString(),nto=Math.round(Math.max(nc.fromCh,nc.toCh)).toLocaleString();
-    el.innerHTML='<div>This stretch ('+from+'–'+to+' m) is over.</div><button data-act="nextClip">Next: '+nfrom+'–'+nto+' m &rarr;</button>';
-  }else{
-    el.innerHTML='<div>End of surveyed footage for this road ('+from+'–'+to+' m).</div>';
+  const nx=upcomingClip();
+  let H='<div class="ce-done">End of this stretch · '+escH(clipSpanText(clip))+'</div>';
+  if(!nx){
+    H+='<div class="ce-next">That is all the surveyed footage for this road.</div>';
+    el.innerHTML=H;el.classList.add('show');return;
   }
-  el.classList.add('show');
+  const jump=clipJump(clip,nx);
+  H+='<div class="ce-next">Next up <b>'+escH(clipSpanText(nx))+'</b></div>';
+  if(jump)H+='<div class="ce-skip">skips '+Math.round(jump).toLocaleString()+' m with no footage</div>';
+  if(handOver){
+    H+='<div class="ce-next ce-in">starting in <span class="ce-count" id="ceCount">'+Math.ceil(CLIP_HANDOVER_MS/1000)+'</span>s</div>'
+      +'<div class="ce-btns"><button data-act="nextClipNow">Play now</button>'
+      +'<button class="ghost" data-act="holdClipEnd">Stay here</button></div>';
+  }else{
+    H+='<div class="ce-btns"><button data-act="nextClipNow">Play next &rarr;</button></div>';
+  }
+  el.innerHTML=H;el.classList.add('show');
+}
+/**
+ * Reached the physical end of the active clip's footage.
+ *
+ * @param wasPlaying whether the viewer was watching when it ran out. Passed in
+ *                   rather than read off the element because a gap animation
+ *                   pauses the footage while it runs, so `video.paused` says
+ *                   "stopped" for a viewer who never stopped anything.
+ */
+function onClipEnd(wasPlaying){
+  /* Fires once per clip. The first call pauses the footage, and the pause
+     itself delivers another 'timeupdate' still sitting past the end of the last
+     segment — a second call that now reads a PAUSED element, decides the viewer
+     was not watching, and replaces the hand-over with the manual card, killing
+     the countdown a few hundred milliseconds after it started. */
+  if(!cur||cur._ended)return;
+  cur._ended=true;
+  const playing=(wasPlaying===undefined)?!video.paused:!!wasPlaying;
+  try{video.pause();}catch(e){}
+  _stopGapAnim();cancelAutoNext();
+  if(!activeClip())return;
+  const handOver=playing&&!!upcomingClip();
+  renderClipEnd(handOver);
+  if(!handOver)return;
+  _autoNextUntil=Date.now()+CLIP_HANDOVER_MS;
+  _autoNextTimer=setTimeout(nextClipNow,CLIP_HANDOVER_MS);
+  _autoNextT=setInterval(function(){
+    const c=document.getElementById('ceCount');
+    if(c)c.textContent=String(Math.max(1,Math.ceil((_autoNextUntil-Date.now())/1000)));
+  },250);
 }
 function _applyLocal(cl){
   const frac=cur.len>0?(_local2ch(cl)/cur.len):0;
@@ -260,12 +377,16 @@ function _startGapAnim(gapSeg,resumeAfter){
       _segIdx+=1;const ns=cur._plan[_segIdx];
       if(ns&&ns.type==='video'){seeking=true;try{video.currentTime=ns.tStart;}catch(e){}setTimeout(()=>seeking=false,60);if(resumeAfter){try{video.play();}catch(e){}}}
     }else{
-      onClipEnd();                                                                /* that gap was the last segment in this clip's plan */
+      /* That gap was the last segment in this clip's plan. resumeAfter carries
+         whether the viewer was watching when the gap began — the footage has
+         been paused throughout it, so nothing else still knows. */
+      onClipEnd(resumeAfter);
     }
   })(performance.now());
 }
 function seekPlan(ch){
   const segs=cur._plan;if(!segs)return;
+  cur._ended=false;                    /* moved somewhere: the clip can end again */
   const cl=_ch2local(ch);let idx=segs.length-1;
   for(let i=0;i<segs.length;i++){if(cl>=segs[i].clStart-1e-6&&cl<=segs[i].clEnd+1e-6){idx=i;break;}}
   _stopGapAnim();_segIdx=idx;const s=segs[idx];
@@ -299,8 +420,8 @@ function planTick(){
       const wasPlaying=!video.paused;seeking=true;try{video.currentTime=s.tEnd;}catch(e){}setTimeout(()=>seeking=false,50);try{video.pause();}catch(e){}
       _segIdx+=1;_startGapAnim(next,wasPlaying);return;
     }
+    if(!next){const wp=!video.paused;_applyLocal(s.clEnd);onClipEnd(wp);return;}  /* no gap AND no more segments -> the clip's footage just ended */
     _applyLocal(s.clEnd);
-    if(!next)onClipEnd();                                                        /* no gap AND no more segments -> the clip's footage just ended */
     return;
   }
   const fr=(s.tEnd>s.tStart)?(t-s.tStart)/(s.tEnd-s.tStart):0;
@@ -316,17 +437,22 @@ video.addEventListener('loadedmetadata',()=>{
   const sk=(cur&&cur._pendingSeek!=null)?cur._pendingSeek:lastChainage;
   if(cur)cur._pendingSeek=null;
   seek(sk);
+  /* Handed over from the previous clip: carry on playing. After seek(), so the
+     footage starts at this clip's own beginning rather than wherever the
+     element happened to load. */
+  if(cur&&cur._autoplay){cur._autoplay=false;try{video.play();}catch(e){}}
 });
 video.addEventListener('play',()=>{follow=true;if(curCarLL)followTo(curCarLL,700);
+  cancelAutoNext();if(cur)cur._ended=false;
   if(cur&&cur.hasGaps&&!_gapRAF){const s=cur._plan&&cur._plan[_segIdx];if(s&&s.type==='gap')_startGapAnim(s,true);}});
 video.addEventListener('pause',()=>{follow=false;});
-video.addEventListener('ended',()=>{if(cur&&cur._plan)onClipEnd();});
+video.addEventListener('ended',()=>{if(cur&&cur._plan)onClipEnd(true);});   /* the file ran out, so it was playing */
 video.addEventListener('timeupdate',()=>{
   if(!cur||!video.duration||seeking)return;
   if(cur._planDir!==dir)buildTravelPlan();
   planTick();
 });
-function closeDock(){document.getElementById('dock').classList.remove('open','loaded');if(marker)marker.remove();if(typeof _stopGapAnim==='function')_stopGapAnim();_segIdx=0;cur=null;if(video){try{video.pause();}catch(e){}}if(typeof hideClipEndPrompt==='function')hideClipEndPrompt();var _cs=document.getElementById('dClipSwitch');if(_cs)_cs.style.display='none';/* Build 87 — closing the dock also switches "Video on click" OFF, so it won't pop back up on the next map click. Setting .checked here does not fire 'change', so no recursion. */['videoMode','videoMode2'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});syncVClick();}
+function closeDock(){document.getElementById('dock').classList.remove('open','loaded');if(marker)marker.remove();if(typeof _stopGapAnim==='function')_stopGapAnim();if(typeof cancelAutoNext==='function')cancelAutoNext();_segIdx=0;cur=null;if(video){try{video.pause();}catch(e){}}if(typeof hideClipEndPrompt==='function')hideClipEndPrompt();var _cs=document.getElementById('dClipSwitch');if(_cs)_cs.style.display='none';/* Build 87 — closing the dock also switches "Video on click" OFF, so it won't pop back up on the next map click. Setting .checked here does not fire 'change', so no recursion. */['videoMode','videoMode2'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});syncVClick();}
 /* Build 88 — reflect "Video on click" state on <body class="vclick-on">.
    CSS force-hides #dock whenever this class is absent, so the dock can NEVER
    stay visible while Video-on-click is off, regardless of how it was opened. */
@@ -547,6 +673,7 @@ function condMatrixHTML(c,ch){
   H+='</table>';return H;}
 function updateVidHud(){
   if(!cur)return;
+  if(typeof syncClipChip==='function')syncClipChip();
   if(typeof syncHudInfo==='function')syncHudInfo();
   if(typeof updateRouteLabel==='function')updateRouteLabel();
   var rn=document.getElementById('hudRoad');if(rn)rn.textContent=cur.name||'\u2014';
