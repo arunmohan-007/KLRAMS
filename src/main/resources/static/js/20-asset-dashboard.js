@@ -61,9 +61,11 @@ function adGroup(rows,keyFn){
 function assetDashEnsure(){
   return Promise.resolve()
     .then(()=>(!ROADS||!Object.keys(ROADS).length)?loadRoads():null)
-    .then(()=>REG_CULV_GJ?null:fetch('/api/assets/culvert/geojson').then(r=>r.json()).then(gj=>{REG_CULV_GJ=gj||{features:[]};}).catch(()=>{REG_CULV_GJ={features:[]};}))
-    .then(()=>REG_BRID_GJ?null:fetch('/api/assets/bridge/geojson').then(r=>r.json()).then(gj=>{REG_BRID_GJ=gj||{features:[]};}).catch(()=>{REG_BRID_GJ={features:[]};}))
-    .then(()=>{ if(!REG_CULV)REG_CULV=buildCulvRows(); if(!REG_BRID)REG_BRID=buildBridRows(); });
+    /* always re-fetch (the endpoint revalidates by ETag, so an unchanged set costs a 304) —
+       a copy cached for the session never showed a later import */
+    .then(()=>fetch('/api/assets/culvert/geojson').then(r=>r.json()).then(gj=>{REG_CULV_GJ=gj||{features:[]};}).catch(()=>{REG_CULV_GJ=REG_CULV_GJ||{features:[]};}))
+    .then(()=>fetch('/api/assets/bridge/geojson').then(r=>r.json()).then(gj=>{REG_BRID_GJ=gj||{features:[]};}).catch(()=>{REG_BRID_GJ=REG_BRID_GJ||{features:[]};}))
+    .then(()=>{ REG_CULV=buildCulvRows(); REG_BRID=buildBridRows(); });
 }
 
 /* ---- district × class matrix ---- */

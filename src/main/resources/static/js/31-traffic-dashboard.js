@@ -22,8 +22,10 @@ function tdbClsCol(label,i){return (typeof CLASS_COL!=='undefined'&&CLASS_COL[la
 let tdbLoading=false;
 function renderTrafficDash(){
   const body=document.getElementById('dashBody');
-  if(tdbData){tdbPaint();return;}
-  body.innerHTML='<div class="dash-loading">Loading traffic figures…</div>';
+  /* Paint what we have straight away, but always re-fetch: the figures change on every
+     data import, and a payload cached for the page's lifetime never showed the new ones. */
+  if(tdbData)tdbPaint();
+  else body.innerHTML='<div class="dash-loading">Loading traffic figures…</div>';
   if(tdbLoading)return;
   tdbLoading=true;
   fetch('/api/traffic-dashboard/summary').then(r=>{
@@ -37,7 +39,8 @@ function renderTrafficDash(){
     if(!tdbPeriodId)tdbPeriodId=(d.default_period&&d.default_period.id)||(d.periods[0]&&d.periods[0].id);
     if(dashTabCur==='traffic')tdbPaint();
   }).catch(e=>{
-    tdbLoading=false;tdbData=null;
+    tdbLoading=false;
+    if(tdbData)return;               // keep the last good figures on a refresh failure
     if(dashTabCur!=='traffic')return;
     body.innerHTML=e.message==='SESSION'
       ?'<div class="dash-loading">Your session has expired (the server was restarted). '+

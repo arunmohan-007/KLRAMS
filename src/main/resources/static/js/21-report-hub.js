@@ -212,7 +212,7 @@ function rhEnsure(set){
   return Promise.resolve()
     .then(()=>(!ROADS||!Object.keys(ROADS).length)?loadRoads():null)
     .then(()=>{
-      if(rhCache[set.key])return rhCache[set.key];
+      /* no early return on rhCache: every open re-reads, so a later import shows up */
       if(set.kind==='traffic'){
         return fetch('/api/traffic/store').then(r=>r.json())
           .then(st=>{const rows=rhTrafficRows(st);rhCache[set.key]=rows;return rows;})
@@ -223,14 +223,8 @@ function rhEnsure(set){
           .then(list=>{const rows=rhGapRows(list);rhCache[set.key]=rows;return rows;})
           .catch(()=>{rhCache[set.key]=[];return [];});
       }
-      /* Reuse GeoJSON the map viewer already downloaded (condition segments are
-         a multi-MB payload) instead of fetching the same thing a second time. */
-      if(set.kind==='segments'&&Segs.loaded()){
-        const rows=rhBuildRows(Segs.collection());rhCache[set.key]=rows;return rows;
-      }
-      if(set.kind==='asset'&&typeof ASSET_DATA!=='undefined'&&ASSET_DATA[set.type]&&ASSET_DATA[set.type].features&&ASSET_DATA[set.type].features.length){
-        const rows=rhBuildRows(ASSET_DATA[set.type]);rhCache[set.key]=rows;return rows;
-      }
+      /* Not the map's already-loaded copy: that is a snapshot from when the map opened.
+         These endpoints answer 304 by ETag when nothing changed. */
       const url=set.kind==='segments'?'/api/segments/geojson':'/api/assets/'+set.type+'/geojson';
       return fetch(url).then(r=>r.json()).then(gj=>{const rows=rhBuildRows(gj);rhCache[set.key]=rows;return rows;}).catch(()=>{rhCache[set.key]=[];return [];});
     });
@@ -315,7 +309,7 @@ function rhRenderTab(k){
   const set=rhSet(k);
   const body=document.getElementById('rhBody'); if(!body)return;
   body.innerHTML='<div class="dash-loading">Loading '+escH(set.label)+'&hellip;</div>';
-  rhEnsure(set).then(()=>{ if(rhTab!==k)return; rhRender(); }).catch(()=>{ if(rhTab===k)body.innerHTML='<div class="dash-loading">Could not load '+escH(set.label)+'.</div>'; });
+  rhEnsure(set).then(()=>{ if(rhTab!==k)return; delete rhColsCache[set.key]; rhOptsCache={}; rhRender(); }).catch(()=>{ if(rhTab===k)body.innerHTML='<div class="dash-loading">Could not load '+escH(set.label)+'.</div>'; });
 }
 function rhColumnsFor(set){
   if(!rhColsCache[set.key])rhColsCache[set.key]=rhColumns(rhCache[set.key]||[],set);

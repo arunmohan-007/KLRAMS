@@ -50,9 +50,10 @@ function dashTab(which){
   else if(which==='fwd'){renderFwdDash();}
   else if(which==='cond'){renderCondDash();}
   else{
-    if(dashData){renderDashboard();return;}
-    document.getElementById('dashBody').innerHTML='<div class="dash-loading">Loading network figures…</div>';
-    fetch('/api/dashboard/summary').then(r=>r.json()).then(d=>{dashData=d;if(dashTabCur==='overview')renderDashboard();})
-      .catch(e=>{document.getElementById('dashBody').innerHTML='<div class="dash-loading">Could not load dashboard: '+e.message+'</div>';});
+    /* paint the cached figures at once, but always re-fetch — an import changes them */
+    if(dashData)renderDashboard();
+    else document.getElementById('dashBody').innerHTML='<div class="dash-loading">Loading network figures…</div>';
+    fetch('/api/dashboard/summary').then(r=>r.json()).then(d=>{dashData=d;distCache={};ovScope='state';if(dashTabCur==='overview')renderDashboard();})
+      .catch(e=>{if(dashData)return;document.getElementById('dashBody').innerHTML='<div class="dash-loading">Could not load dashboard: '+e.message+'</div>';});
   }
 }

@@ -38,8 +38,10 @@ function fdbClsFull(l){return (typeof CLASS_SHORT!=='undefined'&&CLASS_SHORT[l])
 
 function renderFwdDash(){
   const body=document.getElementById('dashBody');
-  if(fdbData){fdbPaint();return;}
-  body.innerHTML='<div class="dash-loading">Loading FWD figures…</div>';
+  /* Paint what we have straight away, but always re-fetch: the figures change on every
+     data import, and a payload cached for the page's lifetime never showed the new ones. */
+  if(fdbData)fdbPaint();
+  else body.innerHTML='<div class="dash-loading">Loading FWD figures…</div>';
   if(fdbLoading)return;
   fdbLoading=true;
   fetch('/api/fwd-dashboard/summary').then(r=>{
@@ -53,7 +55,8 @@ function renderFwdDash(){
     if(!fdbPeriodId)fdbPeriodId=(d.default_period&&d.default_period.id)||(d.periods[0]&&d.periods[0].id);
     if(dashTabCur==='fwd')fdbPaint();
   }).catch(e=>{
-    fdbLoading=false;fdbData=null;
+    fdbLoading=false;
+    if(fdbData)return;               // keep the last good figures on a refresh failure
     if(dashTabCur!=='fwd')return;
     body.innerHTML=e.message==='SESSION'
       ?'<div class="dash-loading">Your session has expired (the server was restarted). '+

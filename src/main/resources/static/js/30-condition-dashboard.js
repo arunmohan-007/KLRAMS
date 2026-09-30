@@ -34,8 +34,10 @@ function cdBasisLabel(){return cdBasis==='worst'?'Worst lane':'Lane average';}
 function renderCondDash(){
   const body=document.getElementById('dashBody');
   cdView='summary';
-  if(cdData){cdPaint();return;}
-  body.innerHTML='<div class="dash-loading">Loading condition figures…</div>';
+  /* Paint what we have straight away, but always re-fetch: the figures change on every
+     data import, and a payload cached for the page's lifetime never showed the new ones. */
+  if(cdData)cdPaint();
+  else body.innerHTML='<div class="dash-loading">Loading condition figures…</div>';
   cdFetchSummary();
 }
 
@@ -54,7 +56,8 @@ function cdFetchSummary(){
     if(!cdPeriodId)cdPeriodId=(d.default_period&&d.default_period.id)||(d.periods[0]&&d.periods[0].id);
     if(dashTabCur==='cond'&&cdView==='summary')cdPaint();
   }).catch(e=>{
-    cdLoading=false;cdData=null;
+    cdLoading=false;
+    if(cdData)return;                // keep the last good figures on a refresh failure
     if(dashTabCur!=='cond')return;
     const body=document.getElementById('dashBody');
     body.innerHTML=e.message==='SESSION'
