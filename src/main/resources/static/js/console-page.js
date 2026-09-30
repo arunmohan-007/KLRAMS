@@ -47,14 +47,14 @@ async function up(kind,force,replace){
   const fd=new FormData();fd.append('file',f);
   const ds=(UP_LABEL[kind]||kind)+pTag;
   try{const r=await fetch(url,{method:'POST',body:fd});const j=await r.json();
-    if(j.status==='ok'){const msg=c.ok(j);show(el,true,msg);logUpload(ds,f.name,true,msg);refresh();}
-    else if(j.status==='duplicates'){showDupPrompt(el,j,kind);logUpload(ds,f.name,false,'Paused: '+j.duplicates+' duplicate row(s) found — awaiting confirmation');}
+    if(j.status==='ok'){const msg=c.ok(j);show(el,true,msg);logUpload(ds,f,true,msg);refresh();}
+    else if(j.status==='duplicates'){showDupPrompt(el,j,kind);logUpload(ds,f,false,'Paused: '+j.duplicates+' duplicate row(s) found — awaiting confirmation');}
     else if(j.status==='exists'){
       if(confirm(existsMsg(j,pid?spName(pid):null)))up(kind,force,true);
       else existsCancel(el,ds,f.name,j);
     }
-    else{show(el,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
-  }catch(e){show(el,false,'Request failed: '+e.message);logUpload(ds,f.name,false,e.message);}
+    else{show(el,false,'Error: '+j.message);logUpload(ds,f,false,j.message);}
+  }catch(e){show(el,false,'Request failed: '+e.message);logUpload(ds,f,false,e.message);}
 }
 /* Duplicate pre-check: the same section + lane (XSP) + chainage appearing on more
    than one row double-counts that stretch in every lane-km total. Nothing has been
@@ -232,7 +232,7 @@ async function loadLog(){
     const body=rows.map(function(r){
       const st=String(r.status||'').toLowerCase();
       const ok=(st==='ok'||st==='success');
-      return '<tr><td>'+escLog(r.ts)+'</td><td>'+escLog(r.dataset)+'</td><td>'+escLog(r.filename)+'</td>'
+      return '<tr><td>'+escLog(r.ts)+'</td><td>'+escLog(r.dataset)+'</td><td>'+escLog(r.filename)+(r.has_file?' <a href="/api/upload-log/'+encodeURIComponent(r.id)+'/file" download title="Kept until '+escLog(r.expires)+'" style="font-size:12px;white-space:nowrap">⬇ Download</a>':'')+'</td>'
         +'<td><span class="badge '+(ok?'ok':'err')+'">'+escLog(r.status||'—')+'</span></td>'
         +'<td class="dt">'+escLog(r.detail)+(r.username?' <span style="color:#9aa7b8">· '+escLog(r.username)+'</span>':'')+'</td></tr>';
     }).join('');
@@ -242,16 +242,31 @@ async function loadLog(){
   }
 }
 /* record one import in the server-side upload log, then refresh the log view */
-function logUpload(dataset,filename,ok,detail){
+function logUpload(dataset,fileOrName,ok,detail){
+  /* A File is kept on the server for 30 days so it can be downloaded from the log;
+     a plain name (or a file over the cap) is logged without a copy. */
+  const isFile=(typeof File!=='undefined')&&fileOrName instanceof File;
+  const name=isFile?fileOrName.name:(fileOrName||'—');
   try{
     fetch('/api/upload-log',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({dataset:dataset,filename:filename||'—',status:ok?'ok':'error',detail:detail||''})})
-      .then(function(){loadLog();}).catch(function(){});
+      body:JSON.stringify({dataset:dataset,filename:name,status:ok?'ok':'error',detail:detail||''})})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(ok&&isFile&&j&&j.id&&fileOrName.size<=100*1024*1024){
+          const fd=new FormData();fd.append('file',fileOrName,name);
+          return fetch('/api/upload-log/'+j.id+'/file',{method:'POST',body:fd});
+        }
+      })
+      .then(function(){loadLog();}).catch(function(){loadLog();});
   }catch(e){}
 }
 /* refresh() is called from the UI + after each import; keep the name, refresh everything */
 async function refresh(){ loadSummary(); loadLog(); }
 refresh();
+function upSplit(j){
+  if(j.added==null&&j.replaced==null) return '';
+  return ' '+(j.added||0)+' added ('+(j.added_sections||0)+' new section(s)), '+(j.replaced||0)+' replaced ('+(j.replaced_sections||0)+' existing section(s)'+(j.old_rows_removed?', '+j.old_rows_removed+' old row(s) removed':'')+').';
+}
 async function upGeo(force){
   const out=document.getElementById('oGeo');
   const f=document.getElementById('geofile').files[0];
@@ -266,13 +281,13 @@ async function upGeo(force){
   try{
     const r=await fetch('/api/assets/'+type+'/upload?periodId='+pid+(force?'&force=true':''),{method:'POST',body:fd});
     const j=await r.json();
-    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' record(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' record(s).'+upSplit(j)+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f,true,msg);refresh();}
     else if(j.status==='exists'){
       if(confirm(existsMsg(j,spName(pid))))upGeo(true);
       else existsCancel(out,ds,f.name,j);
     }
-    else{show(out,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
-  }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,f.name,false,e.message);}
+    else{show(out,false,'Error: '+j.message);logUpload(ds,f,false,j.message);}
+  }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,f,false,e.message);}
 }
 async function upAsset(force){
   const out=document.getElementById('oAsset');
@@ -285,13 +300,13 @@ async function upAsset(force){
   try{
     const r=await fetch('/api/assets/'+type+'/upload'+(force?'?force=true':''),{method:'POST',body:fd});
     const j=await r.json();
-    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' '+type.replace('_',' ')+'(s).'+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f.name,true,msg);refresh();}
+    if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' '+type.replace('_',' ')+'(s).'+upSplit(j)+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f,true,msg);refresh();}
     else if(j.status==='exists'){
       if(confirm(existsMsg(j,null)))upAsset(true);
       else existsCancel(out,ds,f.name,j);
     }
-    else{show(out,false,'Error: '+j.message);logUpload(ds,f.name,false,j.message);}
-  }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,f.name,false,e.message);}
+    else{show(out,false,'Error: '+j.message);logUpload(ds,f,false,j.message);}
+  }catch(e){show(out,false,'Failed: '+e.message);logUpload(ds,f,false,e.message);}
 }
 /* Coarse WGS84 sanity check for uploaded geometry — catches the classic
    wrong-CRS mistake: a shapefile with no .prj (shpjs then just assumes the
@@ -348,9 +363,9 @@ async function upRoads(force){
       else existsCancel(out,'Road network',f.name,j);
       return;
     }
-    if(r.ok && j.status==='ok'){const msg='✓ '+(mode==='replace'?('Replaced network: '+j.inserted+' roads loaded.'):('Updated '+j.updated+', added '+j.inserted+' roads.'))+' Total now '+j.total_roads+'. Now click Build segments.';show(out,true,msg);logUpload('Road network',f.name,true,msg);refresh();}
-    else{const em='HTTP '+r.status+': '+(j.message||j.error||'upload failed');show(out,false,'Error ('+em+')');logUpload('Road network',f.name,false,em);}
-  }catch(e){ show(out,false,'Failed: '+(e&&e.message?e.message:String(e)));logUpload('Road network',f.name,false,(e&&e.message?e.message:String(e))); }
+    if(r.ok && j.status==='ok'){const msg='✓ '+(mode==='replace'?('Replaced network: '+j.inserted+' roads loaded.'):('Updated '+j.updated+', added '+j.inserted+' roads.'))+' Total now '+j.total_roads+'. Now click Build segments.';show(out,true,msg);logUpload('Road network',f,true,msg);refresh();}
+    else{const em='HTTP '+r.status+': '+(j.message||j.error||'upload failed');show(out,false,'Error ('+em+')');logUpload('Road network',f,false,em);}
+  }catch(e){ show(out,false,'Failed: '+(e&&e.message?e.message:String(e)));logUpload('Road network',f,false,(e&&e.message?e.message:String(e))); }
 }
 async function upFullNetwork(){
   const out=document.getElementById('oFN');
@@ -366,9 +381,9 @@ async function upFullNetwork(){
     if(wgs84Bad(gj)){ show(out,false,WGS84_HINT); return; }
     const r=await fetch('/api/full-network/upload?mode='+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(gj)});
     const j=await r.json();
-    if(j.status==='ok'){const msg='✓ '+(mode==='replace'?('Replaced network: '+j.inserted+' roads loaded.'):('Updated '+j.updated+', added '+j.inserted+' roads.'))+' Total now '+j.total+'.';show(out,true,msg);logUpload('Full road network',f.name,true,msg);refresh();}
-    else{show(out,false,'Error: '+(j.message||'upload failed'));logUpload('Full road network',f.name,false,j.message||'upload failed');}
-  }catch(e){ show(out,false,'Failed: '+e.message);logUpload('Full road network',f.name,false,e.message); }
+    if(j.status==='ok'){const msg='✓ '+(mode==='replace'?('Replaced network: '+j.inserted+' roads loaded.'):('Updated '+j.updated+', added '+j.inserted+' roads.'))+' Total now '+j.total+'.';show(out,true,msg);logUpload('Full road network',f,true,msg);refresh();}
+    else{show(out,false,'Error: '+(j.message||'upload failed'));logUpload('Full road network',f,false,j.message||'upload failed');}
+  }catch(e){ show(out,false,'Failed: '+e.message);logUpload('Full road network',f,false,e.message); }
 }
 /* ============ Administrative boundary — field mapping ============
    A boundary arrives as a shapefile or GeoJSON, so its "columns" are the
@@ -637,9 +652,9 @@ async function upBoundary(type){
       } else { show(out,false,'Import cancelled — existing data kept.'); return; }
     }
     const ds=type+' boundary';
-    if(j.status==='ok'){const msg='✓ Saved '+cnt+' feature(s) ('+(j.mode||mode)+').';show(out,true,msg);logUpload(ds,f.name,true,msg);bndLearn(type);refresh();loadBndStatus(type);}
-    else{show(out,false,'Error: '+(j.message||'upload failed'));logUpload(ds,f.name,false,j.message||'failed');}
-  }catch(e){ show(out,false,'Failed: '+e.message);logUpload(type+' boundary',f.name,false,e.message); }
+    if(j.status==='ok'){const msg='✓ Saved '+cnt+' feature(s) ('+(j.mode||mode)+').';show(out,true,msg);logUpload(ds,f,true,msg);bndLearn(type);refresh();loadBndStatus(type);}
+    else{show(out,false,'Error: '+(j.message||'upload failed'));logUpload(ds,f,false,j.message||'failed');}
+  }catch(e){ show(out,false,'Failed: '+e.message);logUpload(type+' boundary',f,false,e.message); }
 }
 async function loadBndStatus(type){
   var idSafe=String(type).replace(/[^a-z0-9_]/gi,'_');
@@ -799,7 +814,7 @@ async function upTraffic(kind){
      falls back to raw headers without it, so racing the fetch would make an
      import succeed or fail depending on network timing. */
   if(window.AttrCatalog){try{await AttrCatalog.ready();}catch(e){}}
-  const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');const _tf=((document.getElementById(kind==='stations'?'trfStn':'trfCnt').files[0])||{}).name||'—';const _pid=spSelVal();if(!_pid){show(out,false,'Select the survey period this data belongs to first (create one under Survey Periods).');return;}const _tds=(kind==='stations'?'Traffic stations':'Traffic counts')+' ['+spName(_pid)+']';try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx=trfIndex(pr.header,kind==='stations'?'default':'counts');const store=trfGetStore();if(kind==='stations'){const cName=trfCol(idx,'name','Station Name','STATION_NAME'),cRoad=trfCol(idx,'road','Description','Road Name'),cSec=trfCol(idx,'section','Section Label','Section_Label'),cCh=trfCol(idx,'chainage','Chainage'),cLat=trfCol(idx,'lat','Latitude'),cLng=trfCol(idx,'lng','Longitude'),cXsp=trfCol(idx,'xsp','Xsp Code','XSP');if(cName===undefined){show(out,false,'CSV needs a Station Name column. Accepted spellings are listed against the Station Name attribute in Layer Management → Traffic Stations → Attributes.');return;}const _num=(r,i)=>{if(i===undefined)return null;const v=String(trfCell(r,i)).trim();return (v===''||isNaN(+v))?null:+v;};const _inc=pr.rows.map(r=>({name:trfCell(r,cName)||'',road:trfCell(r,cRoad)||'',section:String(trfCell(r,cSec)).trim(),ch:_num(r,cCh),lat:_num(r,cLat),lng:_num(r,cLng),xsp:trfCell(r,cXsp)||''})).filter(r=>r.name);const _by={};(store.stations||[]).forEach(x=>_by[x.name]=x);_inc.forEach(x=>_by[x.name]=x);store.stations=Object.values(_by);const srv=await trfPost('stations',store.stations,_pid);trfPutStore(store);const _skip=(srv&&srv.skipped_stations)||[];const _skipMsg=_skip.length?(' <b style="color:#e8590c">'+_skip.length+' skipped</b> \u2014 section label not found on any road: '+_skip.map(x=>x.name+' (\u201c'+(x.section||'blank')+'\u201d)').join(', ')+'.'):'';show(out,true,'\u2713 '+(srv?srv.saved:store.stations.length)+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.')+_skipMsg);}else{if(trfCol(idx,'name','STATION_NAME','Station Name')===undefined){show(out,false,'CSV needs a STATION_NAME column. Accepted spellings are listed against the Station Name attribute in Layer Management → Traffic Stations → Traffic Counts.');return;}if(trfCol(idx,'date','DATE','Survey Date')===undefined){show(out,false,'CSV needs a DATE column, formatted '+TRF_DATE_HINT+'.');return;}const _agg=trfAggregate(pr.rows,pr.header);const _bd=window.__trfBadDates||{rows:0,samples:[],blank:0};
+  const out=document.getElementById(kind==='stations'?'oTrfStn':'oTrfCnt');const _tf=(document.getElementById(kind==='stations'?'trfStn':'trfCnt').files[0])||'—';const _pid=spSelVal();if(!_pid){show(out,false,'Select the survey period this data belongs to first (create one under Survey Periods).');return;}const _tds=(kind==='stations'?'Traffic stations':'Traffic counts')+' ['+spName(_pid)+']';try{show(out,true,'Reading \u0026 summarising\u2026');const txt=await trfReadFile(kind==='stations'?'trfStn':'trfCnt');const pr=trfParseCSV(txt);const idx=trfIndex(pr.header,kind==='stations'?'default':'counts');const store=trfGetStore();if(kind==='stations'){const cName=trfCol(idx,'name','Station Name','STATION_NAME'),cRoad=trfCol(idx,'road','Description','Road Name'),cSec=trfCol(idx,'section','Section Label','Section_Label'),cCh=trfCol(idx,'chainage','Chainage'),cLat=trfCol(idx,'lat','Latitude'),cLng=trfCol(idx,'lng','Longitude'),cXsp=trfCol(idx,'xsp','Xsp Code','XSP');if(cName===undefined){show(out,false,'CSV needs a Station Name column. Accepted spellings are listed against the Station Name attribute in Layer Management → Traffic Stations → Attributes.');return;}const _num=(r,i)=>{if(i===undefined)return null;const v=String(trfCell(r,i)).trim();return (v===''||isNaN(+v))?null:+v;};const _inc=pr.rows.map(r=>({name:trfCell(r,cName)||'',road:trfCell(r,cRoad)||'',section:String(trfCell(r,cSec)).trim(),ch:_num(r,cCh),lat:_num(r,cLat),lng:_num(r,cLng),xsp:trfCell(r,cXsp)||''})).filter(r=>r.name);const _by={};(store.stations||[]).forEach(x=>_by[x.name]=x);_inc.forEach(x=>_by[x.name]=x);store.stations=Object.values(_by);const srv=await trfPost('stations',store.stations,_pid);trfPutStore(store);const _skip=(srv&&srv.skipped_stations)||[];const _skipMsg=_skip.length?(' <b style="color:#e8590c">'+_skip.length+' skipped</b> \u2014 section label not found on any road: '+_skip.map(x=>x.name+' (\u201c'+(x.section||'blank')+'\u201d)').join(', ')+'.'):'';show(out,true,'\u2713 '+(srv?srv.saved:store.stations.length)+' stations '+(srv?'saved to the database.':'saved in this browser only \u2014 database not reachable.')+_skipMsg);}else{if(trfCol(idx,'name','STATION_NAME','Station Name')===undefined){show(out,false,'CSV needs a STATION_NAME column. Accepted spellings are listed against the Station Name attribute in Layer Management → Traffic Stations → Traffic Counts.');return;}if(trfCol(idx,'date','DATE','Survey Date')===undefined){show(out,false,'CSV needs a DATE column, formatted '+TRF_DATE_HINT+'.');return;}const _agg=trfAggregate(pr.rows,pr.header);const _bd=window.__trfBadDates||{rows:0,samples:[],blank:0};
   /* Reject rather than import: a date this file cannot read becomes days=1 for the
      station, which silently multiplies its ADT by the number of survey days. */
   if(_bd.rows){show(out,false,'Not imported — <b>'+_bd.rows+'</b> row(s) have a DATE that is not in the required format '+TRF_DATE_HINT+'. Found: '+_bd.samples.map(s=>'“'+String(s).replace(/</g,'&lt;')+'”').join(', ')+'. Re-export the DATE column in that format and upload again.');return;}

@@ -256,6 +256,11 @@ public class AssetController {
             // data instead of wiping the whole type. Re-uploading a section refreshes
             // just that section. Cleared once per (type, section) as we stream.
             Set<String> replacedSections = new HashSet<>();
+            /* Per-section tally so the console can say how many records REPLACED
+               existing data and how many were ADDED as new. */
+            Set<String> sectionsHadData = new HashSet<>();
+            Map<String,Integer> rowsPerSection = new HashMap<>();
+            int oldRowsRemoved = 0;
 
             int loaded=0, skipped=0;
             String line;
@@ -272,13 +277,16 @@ public class AssetController {
                 // this type, only within the chosen survey period (older periods keep
                 // their data; inventory types have no period)
                 if (replacedSections.add(sec)) {
+                    int removed;
                     if (periodId != null) {
-                        jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ? AND period_id = ?",
+                        removed = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ? AND period_id = ?",
                                 type, sec, periodId);
                     } else {
-                        jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ?", type, sec);
+                        removed = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ?", type, sec);
                     }
+                    if (removed > 0) { sectionsHadData.add(sec); oldRowsRemoved += removed; }
                 }
+                rowsPerSection.merge(sec, 1, Integer::sum);
                 /* Keep every column as attrs, under the storage key the layer
                    declares for it rather than under whatever this file's header
                    happened to say. That is what makes "Section_Label" from
@@ -317,8 +325,18 @@ public class AssetController {
             placement.placeAssets(type, isLine);
             int unmatched = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND geom IS NULL", type);
 
+            int replacingRecords = 0, addedRecords = 0;
+            for (Map.Entry<String,Integer> e2 : rowsPerSection.entrySet()) {
+                if (sectionsHadData.contains(e2.getKey())) replacingRecords += e2.getValue();
+                else addedRecords += e2.getValue();
+            }
             r.put("status","ok");
             r.put("loaded", loaded - unmatched);
+            r.put("added", addedRecords);
+            r.put("replaced", replacingRecords);
+            r.put("replaced_sections", sectionsHadData.size());
+            r.put("added_sections", rowsPerSection.size() - sectionsHadData.size());
+            r.put("old_rows_removed", oldRowsRemoved);
             r.put("skipped_rows", skipped);
             r.put("unmatched_section_label", unmatched);
             return r;
