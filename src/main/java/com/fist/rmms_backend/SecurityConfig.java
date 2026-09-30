@@ -190,6 +190,9 @@ public class SecurityConfig {
                 // rewrites the join key every linear-referenced layer hangs off, in every
                 // table at once — stricter than the general ADMIN write rule below
                 .requestMatchers(HttpMethod.POST, "/api/roads/section/rename").hasRole("SUPER_ADMIN")
+                // permanently deletes every survey/asset row for a section across every
+                // linear-referenced table — same class of irreversible bulk write as the rename
+                .requestMatchers(HttpMethod.POST, "/api/roads/section/remove-data").hasRole("SUPER_ADMIN")
 
                 // --- self-service: change own password ---
                 .requestMatchers("/api/account/**").authenticated()

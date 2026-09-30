@@ -942,11 +942,18 @@ const PANELS={
     +'<div style="display:flex;gap:8px"><input type="date" id="spNewStart" style="flex:1"><input type="date" id="spNewEnd" style="flex:1"></div></div>'
     +'<button class="btn" data-act="spCreate">Create period</button>'
     +'<div class="out" id="oSp"></div>',
-  'cleanup-orphans':'<div class="ip-title">Remove unmatched rows</div>'
-    +'<p class="ip-sub">Every road asset — bridges, culverts, furniture, FWD, Sub-Grade Soil, Bituminous Core, Pavement Crust — is placed strictly by <b>Section_Label</b> (+ chainage) — a row whose section doesn’t match any road is dropped at import. '
-    +'The rows below are leftovers from before that rule was enforced, or genuine data-entry errors (a mistyped or renamed Section_Label). '
-    +'Correcting the label in the source file and re-importing is always the better fix; deleting here is for rows you’ve confirmed are stale.</p>'
-    +'<div id="cleanupAdmin" class="hint">Loading…</div>',
+  'remove-data':'<div class="ip-title">Remove Data</div>'
+    +'<p class="ip-sub">Search for one or more road sections below, then permanently delete every survey/asset row recorded against them — Road Condition Data, NSV Video, FWD, Sub-Grade Soil, Bituminous Core, Pavement Crust, Bridges, Culverts, Road Furniture, Traffic Stations &amp; Counts and the derived segment layers (Condition Segments, FWD Segments, Avg IRI 2&nbsp;km), plus any User Layer linked by Section_Label. '
+    +'<b>The road network itself is not touched</b> — the section stays on the map with no survey history, exactly like a section that has never been surveyed.</p>'
+    +'<div class="ip-field"><label class="ip-label">Search road sections</label>'
+    +'<input type="text" id="rdRemoveSearch" placeholder="Type a road name or Section Label…" autocomplete="off" data-input="removeDataOnInput">'
+    +'<div id="rdRemoveSuggest" class="wiz-box" style="display:none;max-height:260px;overflow:auto"></div></div>'
+    +'<div id="rdRemoveChips" style="margin:8px 0 14px"></div>'
+    +'<div id="rdRemoveGate" class="hint" style="display:none;color:#a3302a">Sign in as a Super Admin to remove section data.</div>'
+    +'<button class="btn" id="rdRemoveBtn" style="background:#da4b43;border-color:#da4b43" data-act="removeDataGo">Remove Data</button>'
+    +'<div class="out" id="oRemoveData"></div>'
+    +'<div id="rdRemoveResult" style="margin-top:12px"></div>'
+    +'<p class="hint">This cannot be undone. Use it for a section surveyed under the wrong label, imported twice, or being retired from the programme — not as a substitute for correcting a Section_Label and re-importing.</p>',
   'cond-survey':'<div class="ip-title">Condition survey</div>'
     +'<p class="ip-sub">Import the raw condition survey CSV (IRI, cracking, potholes…). After it loads, switch to <b>Build segments</b> to cut it against the road network.</p>'
     +spSelField()
@@ -1069,7 +1076,7 @@ const HUB=[
     {id:'svy-periods',label:'Manage survey periods',fmt:'Action — no file'}
   ]},
   {id:'cleanup',cat:'Data Cleanup',icon:'trash',types:[
-    {id:'cleanup-orphans',label:'Remove unmatched rows',fmt:'Action — no file'}
+    {id:'remove-data',label:'Remove Data',fmt:'Action — no file'}
   ]},
   {id:'condition',cat:'Condition Data',icon:'pulse',types:[
     {id:'cond-survey',label:'Condition survey',fmt:'CSV file'},
@@ -1285,7 +1292,7 @@ function selectType(id){
   if(id==='traffic')trfState();
   if(document.getElementById('spSel'))spFillSel();
   if(id==='svy-periods')spRenderAdmin();
-  if(id==='cleanup-orphans')cleanupRenderAdmin();
+  if(id==='remove-data')removeDataInit();
   if(id==='net-replace')placeRenderAdmin();
   if(id && id.indexOf('bnd-')===0){
     var bkey=(t&&t.boundaryKey)||id.slice(4);
@@ -1690,7 +1697,7 @@ function isSuperAdmin(){return !!(window.RoleGate&&RoleGate.me&&RoleGate.me.role
 document.addEventListener('DOMContentLoaded',function(){
   if(!window.RoleGate)return;
   const prev=RoleGate.onReady;
-  RoleGate.onReady=function(me){if(prev)prev(me);if(curType==='cleanup-orphans')cleanupRenderAdmin();};
+  RoleGate.onReady=function(me){if(prev)prev(me);if(curType==='remove-data')rdGate();};
 });
 
 /* ===================== Survey periods ===================== */
@@ -1793,6 +1800,104 @@ async function spDelete(id){
 /* ===================== Data Cleanup (orphaned survey points) ===================== */
 const CLEANUP_LABEL={fwd:'FWD (deflection)',subgrade:'Sub-grade soil',bituminous_core:'Bituminous core',pavement_crust:'Pavement crust',
   bridge:'Bridges',culvert:'Culverts',furniture_line:'Road furniture — line',furniture_point:'Road furniture — point'};
+/* ===================== Remove Data (permanent, by section label) =====================
+   Deletes every survey/asset row for the chosen sections via SectionDataRemovalService —
+   never the road network itself. See /api/roads/section/remove-data (SUPER_ADMIN only). */
+let RD_INDEX=null;
+let RD_SELECTED=[];
+async function rdLoadIndex(){
+  if(RD_INDEX)return RD_INDEX;
+  try{RD_INDEX=await (await fetch('/api/roads/index',{cache:'no-store'})).json();}catch(e){RD_INDEX=[];}
+  if(!Array.isArray(RD_INDEX))RD_INDEX=[];
+  return RD_INDEX;
+}
+function removeDataInit(){
+  RD_SELECTED=[];
+  rdRenderChips();
+  const box=document.getElementById('rdRemoveSuggest');if(box){box.style.display='none';box.innerHTML='';}
+  const res=document.getElementById('rdRemoveResult');if(res)res.innerHTML='';
+  const out=document.getElementById('oRemoveData');if(out){out.className='out';out.textContent='';}
+  rdLoadIndex();
+  rdGate();
+}
+function rdGate(){
+  const btn=document.getElementById('rdRemoveBtn');if(!btn)return;
+  const can=isSuperAdmin();
+  btn.disabled=!can;
+  const note=document.getElementById('rdRemoveGate');
+  if(note)note.style.display=can?'none':'block';
+}
+async function removeDataOnInput(){
+  const q=(this.value||'').trim().toLowerCase();
+  const box=document.getElementById('rdRemoveSuggest');if(!box)return;
+  if(!q){box.style.display='none';box.innerHTML='';return;}
+  const rows=await rdLoadIndex();
+  const matches=rows.filter(function(r){
+    return String(r.road||'').toLowerCase().includes(q)||String(r.name||'').toLowerCase().includes(q);
+  }).slice(0,25);
+  box.style.display='block';
+  box.innerHTML=!matches.length?'<div class="hint" style="padding:8px">No matching road sections.</div>'
+    :matches.map(function(r){
+      const already=RD_SELECTED.indexOf(r.road)>=0;
+      return '<div class="hub-row'+(already?' active':'')+'" style="cursor:pointer" data-act="removeDataPick" data-args="'+escAttr(JSON.stringify([r.road]))+'">'
+        +'<span class="hub-label">'+escLog(r.road)+'<span style="color:#64718a"> — '+escLog(r.name||'')+'</span></span>'
+        +(already?'<span class="hub-chev">✓</span>':'')+'</div>';
+    }).join('');
+}
+function removeDataPick(label){
+  if(!label||RD_SELECTED.indexOf(label)>=0)return;
+  RD_SELECTED.push(label);
+  rdRenderChips();
+  const input=document.getElementById('rdRemoveSearch');
+  if(input){input.value='';input.focus();}
+  const box=document.getElementById('rdRemoveSuggest');if(box){box.style.display='none';box.innerHTML='';}
+}
+function removeDataUnpick(label){
+  RD_SELECTED=RD_SELECTED.filter(function(l){return l!==label;});
+  rdRenderChips();
+}
+function rdRenderChips(){
+  const box=document.getElementById('rdRemoveChips');if(!box)return;
+  box.innerHTML=!RD_SELECTED.length?'<span class="hint">No sections selected yet.</span>'
+    :RD_SELECTED.map(function(l){
+      return '<span style="display:inline-flex;align-items:center;gap:6px;background:#fdeceb;color:#a3302a;border:1px solid #f3c9c6;border-radius:999px;padding:3px 6px 3px 12px;margin:3px 6px 3px 0;font-size:13px">'
+        +escLog(l)
+        +'<button data-act="removeDataUnpick" data-args="'+escAttr(JSON.stringify([l]))+'" style="border:none;background:none;color:#a3302a;font-weight:700;cursor:pointer;padding:0 4px;line-height:1" title="Remove from selection">×</button></span>';
+    }).join('');
+}
+async function removeDataGo(){
+  if(!isSuperAdmin()){alert('Sign in as a Super Admin to remove section data.');return;}
+  if(!RD_SELECTED.length){alert('Pick at least one road section first.');return;}
+  const list=RD_SELECTED.slice();
+  if(!confirm('Permanently delete every survey/asset row for '+list.length+' section(s)?\n\n'+list.join('\n')+'\n\n'
+    +'This removes Road Condition Data, NSV Video, FWD, Sub-Grade Soil, Bituminous Core, Pavement Crust, Bridges, Culverts, Road Furniture, Traffic Stations/Counts and the derived segment layers for these sections. '
+    +'The road network itself is kept. This cannot be undone.'))return;
+  const out=document.getElementById('oRemoveData');
+  const btn=document.getElementById('rdRemoveBtn');
+  if(btn){btn.disabled=true;btn.textContent='Removing…';}
+  show(out,true,'Removing…');
+  try{
+    const r=await fetch('/api/roads/section/remove-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({labels:list})});
+    const j=await r.json();
+    if(j.status!=='ok'){show(out,false,'Error: '+(j.message||'failed'));return;}
+    show(out,true,'✓ Removed '+Number(j.total||0).toLocaleString()+' row(s) across '+list.length+' section(s).');
+    const res=document.getElementById('rdRemoveResult');
+    if(res){
+      const rows=(j.tables||[]).filter(function(t){return Number(t.deleted)>0;});
+      res.innerHTML=!rows.length?'<p class="hint">No survey data was recorded against these sections.</p>'
+        :'<table class="wiz-table"><thead><tr><th>Layer</th><th style="text-align:right">Rows removed</th></tr></thead><tbody>'
+        +rows.map(function(t){return '<tr><td>'+escLog(t.layer||t.table)+'</td><td style="text-align:right">'+Number(t.deleted).toLocaleString()+'</td></tr>';}).join('')
+        +'</tbody></table>';
+    }
+    RD_SELECTED=[];rdRenderChips();
+    refresh();
+  }catch(e){
+    show(out,false,'Failed: '+e.message);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='Remove Data';}
+    rdGate();
+  }
+}
 /* ============ Re-place stored linear-referenced geometry (PlacementController) ============
    The counterpart to Build segments: those layers are RE-CUT from the roads table on
    every build, so they follow a redrawn centreline on their own. Road assets and traffic
@@ -1874,39 +1979,6 @@ function placeUnplacedDetail(layers){
   +'Correct the label in the source file and re-import, or check the section still exists in the road network.</p>';
 }
 
-async function cleanupRenderAdmin(){
-  const el=document.getElementById('cleanupAdmin');if(!el)return;
-  el.innerHTML='Loading…';
-  let rows=[];
-  try{rows=await (await fetch('/api/assets/orphans/summary',{cache:'no-store'})).json();}catch(e){}
-  if(!Array.isArray(rows)||!rows.length){el.innerHTML='No unmatched rows — every asset resolves to a road section.';return;}
-  const canDelete=isSuperAdmin();
-  el.innerHTML=rows.map(r=>{
-    return '<div style="border:1px solid #e2e7ee;border-radius:10px;padding:10px 12px;margin:6px 0;color:#1f2a3d">'
-      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
-      +'<b>'+escLog(CLEANUP_LABEL[r.type]||r.type)+'</b>'
-      +'<span style="color:#64718a">— '+escLog(r.period_name||'—')+'</span>'
-      +'<span class="spacer"></span>'
-      +'<span style="font-weight:600">'+Number(r.n).toLocaleString()+' unmatched</span>'
-      +(canDelete
-        ?'<button class="btn ghost" style="padding:2px 10px;font-size:12px;color:#da4b43;border-color:#f3c9c6" data-act="cleanupDeleteEl" data-args="'+escAttr(JSON.stringify([r.type,(r.period_id!=null?+r.period_id:null)]))+'">Delete</button>'
-        :'<span class="hint" style="margin:0">Super Admin only</span>')
-      +'</div></div>';
-  }).join('')
-  +(canDelete?'':'<p class="hint" style="margin-top:10px">Sign in as a Super Admin to permanently delete these rows — or correct the Section_Label in the source file and re-import instead.</p>');
-}
-async function cleanupDelete(type,periodId,btn){
-  if(!confirm('Permanently delete every unmatched '+(CLEANUP_LABEL[type]||type)+' row'+(periodId!=null?' in this survey period':'')+'?\n\n'+
-    'This cannot be undone. Only proceed once you\'ve confirmed the Section_Label is genuinely wrong (not just a road missing from the network) — otherwise correct it in the source file and re-import instead.'))return;
-  if(btn){btn.disabled=true;btn.textContent='Deleting…';}
-  try{
-    const url='/api/assets/'+type+'/orphans'+(periodId!=null?('?periodId='+periodId):'');
-    const r=await fetch(url,{method:'DELETE'});
-    const j=await r.json();
-    if(j.status==='ok'){logUpload(CLEANUP_LABEL[type]||type,'—',true,'Deleted '+j.deleted+' unmatched row(s)');cleanupRenderAdmin();refresh();}
-    else alert('Error: '+(j.message||'failed'));
-  }catch(e){alert('Request failed: '+e.message);}
-}
 /* build the hub and land on the Count tab */
 PANELS['bnd-district']=boundaryPanel('district','District boundary');
 PANELS['bnd-constituency']=boundaryPanel('constituency','Constituency boundary');
@@ -1922,6 +1994,5 @@ switchTab('count');
    data-args carries only plain values, so the element that fired is fetched
    from KLAct rather than being smuggled through the attribute as `this`. */
 function vidQueueAddEl(){ vidQueueAdd(KLAct.el().files); }
-function cleanupDeleteEl(type,periodId){ cleanupDelete(type,periodId,KLAct.el()); }
 /* layer is undefined for the "all layers" button, which carries no data-args. */
 function placeReplaceEl(layer){ placeReplace(layer,KLAct.el()); }
