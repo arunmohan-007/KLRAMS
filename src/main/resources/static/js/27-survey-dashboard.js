@@ -32,8 +32,10 @@ function svyFmt(k,v){return k==='nsv_lane_km'?fmtKm(v):fmtN(v);}
 let svyLoading=false;
 function renderSurveyDash(){
   const body=document.getElementById('dashBody');
-  if(svyData){svyPaint();return;}
-  body.innerHTML='<div class="dash-loading">Loading survey figures…</div>';
+  /* Paint what we have straight away, but always re-fetch: the figures change on every
+     data import, and a payload cached for the page's lifetime never showed the new ones. */
+  if(svyData)svyPaint();
+  else body.innerHTML='<div class="dash-loading">Loading survey figures…</div>';
   if(svyLoading)return;
   svyLoading=true;
   fetch('/api/survey-dashboard/summary').then(r=>{
@@ -48,7 +50,8 @@ function renderSurveyDash(){
     if(!svyPeriodId)svyPeriodId=(d.default_period&&d.default_period.id)||(d.periods[0]&&d.periods[0].id);
     if(dashTabCur==='survey')svyPaint();
   }).catch(e=>{
-    svyLoading=false;svyData=null;   // never poison the cache with an error body
+    svyLoading=false;
+    if(svyData)return;               // keep showing the last good figures on a refresh failure
     if(dashTabCur!=='survey')return;
     body.innerHTML=e.message==='SESSION'
       ?'<div class="dash-loading">Your session has expired (the server was restarted). '+
