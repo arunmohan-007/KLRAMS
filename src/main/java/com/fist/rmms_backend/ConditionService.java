@@ -38,6 +38,12 @@ public class ConditionService {
         this.roadColumns = roadColumns;
     }
 
+    /** Create/extend the table at boot, so a new column is there before the first upload or read. */
+    @jakarta.annotation.PostConstruct
+    void init() {
+        try { ensureSchema(); } catch (Exception e) { /* the first upload retries */ }
+    }
+
     @Transactional
     public void ensureSchema() {
         jdbc.execute("CREATE EXTENSION IF NOT EXISTS postgis");
@@ -66,13 +72,47 @@ public class ConditionService {
             """);
         // Older databases predate the period_id column (see SurveyPeriodService).
         jdbc.execute("ALTER TABLE condition ADD COLUMN IF NOT EXISTS period_id integer");
+        // Part of a condition row's identity (with section, lane and chainage range).
+        jdbc.execute("ALTER TABLE condition ADD COLUMN IF NOT EXISTS section_start_date text");
         jdbc.execute("CREATE INDEX IF NOT EXISTS condition_geom_idx ON condition USING GIST (geom)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS condition_section_idx ON condition (section_label)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS condition_period_idx ON condition (period_id)");
     }
 
+    /** Why this file cannot be imported (a mandatory key column is absent), or null. */
+    public String missingKeyColumn(InputStream in) throws Exception {
+        BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        String headerLine = br.readLine();
+        if (headerLine == null) return null;
+        Map<String, Integer> idx = indexHeaders(parseCsvLine(headerLine));
+        if (!idx.containsKey(LayerAttributeService.norm("Section_Start_Date"))) {
+            return "Section_Start_Date is a mandatory column for condition data (Layer Management). "
+                 + "A condition row is identified by Section Label + XSP + From/To chainage + Section Start Date. "
+                 + "Add the column and upload again.";
+        }
+        return null;
+    }
+
+    /** Section Label -> the distinct Section_Start_Date values in the file. */
+    public Map<String, Set<String>> startDatesBySection(InputStream in) throws Exception {
+        BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        Map<String, Set<String>> out = new LinkedHashMap<>();
+        String headerLine = br.readLine();
+        if (headerLine == null) return out;
+        Map<String, Integer> idx = indexHeaders(parseCsvLine(headerLine));
+        String line;
+        while ((line = br.readLine()) != null) {
+            if (line.trim().isEmpty()) continue;
+            String[] c = parseCsvLine(line);
+            String sec = get(c, idx, "Section_Label"), d = get(c, idx, "Section_Start_Date");
+            if (sec != null && d != null) out.computeIfAbsent(sec, k -> new LinkedHashSet<>()).add(d);
+        }
+        return out;
+    }
+
+    /** @return {rows loaded, rows that replaced an existing row, rows skipped for a blank Section_Start_Date} */
     @Transactional
-    public int loadCsv(InputStream in, int periodId) throws Exception {
+    public int[] loadCsv(InputStream in, int periodId) throws Exception {
         ensureSchema();
         // Additive by section WITHIN the chosen survey period: replace only the
         // section labels present in THIS file for THIS period, so uploading a new
@@ -81,7 +121,7 @@ public class ConditionService {
 
         BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
         String headerLine = br.readLine();
-        if (headerLine == null) return 0;
+        if (headerLine == null) return new int[]{0, 0, 0};
 
         String[] headers = parseCsvLine(headerLine);
         Map<String, Integer> idx = indexHeaders(headers);
@@ -89,23 +129,28 @@ public class ConditionService {
         final String sql =
             "INSERT INTO condition (survey_type, section_label, xsp, iri, crack, pothole, rutting, " +
             "texture, patch_work, ravelling, start_chainage, end_chainage, start_lat, start_lng, " +
-            "end_lat, end_lng, period_id, geom) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, " +
+            "end_lat, end_lng, period_id, section_start_date, geom) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, " +
             "ST_SetSRID(ST_MakeLine(ST_MakePoint(?,?), ST_MakePoint(?,?)), 4326))";
 
-        // Track which section labels we've already cleared during this upload so each
-        // incoming section is wiped once (removing its prior rows) before we append.
-        Set<String> replaced = new HashSet<>();
+        // A row is identified by Section_Label + XSP + From/To chainage + Section Start Date
+        // (within the survey period): a row with the same identity replaces that one row,
+        // any other is added, and nothing else in the section is touched.
         List<Object[]> batch = new ArrayList<>();
         String line;
-        int count = 0;
+        int count = 0, replacedRows = 0, skippedRows = 0;
         while ((line = br.readLine()) != null) {
             if (line.trim().isEmpty()) continue;
             String[] c = parseCsvLine(line);
 
             String section = get(c, idx, "Section_Label");
-            if (section != null && replaced.add(section)) {
-                jdbc.update("DELETE FROM condition WHERE section_label = ? AND period_id = ?", section, periodId);
-            }
+            String startDate = get(c, idx, "Section_Start_Date");
+            if (section == null || startDate == null) { skippedRows++; continue; }
+            replacedRows += jdbc.update(
+                "DELETE FROM condition WHERE section_label = ? AND period_id = ? "
+                + "AND xsp IS NOT DISTINCT FROM ? AND start_chainage IS NOT DISTINCT FROM ? "
+                + "AND end_chainage IS NOT DISTINCT FROM ? AND (section_start_date = ? OR section_start_date IS NULL)",
+                section, periodId, get(c, idx, "XSP"),
+                num(get(c, idx, "Start_Chainage")), num(get(c, idx, "End_Chainage")), startDate);
 
             Double slng = num(get(c, idx, "Start_Longitude"));
             Double slat = num(get(c, idx, "Start_Latitude"));
@@ -126,7 +171,7 @@ public class ConditionService {
                 num(get(c, idx, "Start_Chainage")),
                 num(get(c, idx, "End_Chainage")),
                 slat, slng, elat, elng,
-                periodId,
+                periodId, startDate,
                 slng, slat, elng, elat
             });
             count++;
@@ -136,7 +181,7 @@ public class ConditionService {
             }
         }
         if (!batch.isEmpty()) jdbc.batchUpdate(sql, batch);
-        return count;
+        return new int[]{count, replacedRows, skippedRows};
     }
 
     /**

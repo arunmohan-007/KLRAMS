@@ -72,6 +72,21 @@ public class RoadUploadController {
                 JsonNode g = f.get("geometry");
                 String sec = p != null && p.hasNonNull("Section_La") ? p.get("Section_La").asText().trim() : "";
                 if (sec.isEmpty()) problems.add("feature " + (i + 1) + ": missing Section_La");
+                /* Start Date is mandatory: every other layer's Section Start Date must match it. */
+                String startDate = null;
+                if (p != null) {
+                    Iterator<String> pn = p.fieldNames();
+                    while (pn.hasNext() && startDate == null) {
+                        String k = pn.next();
+                        String nk = k.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+                        if ((nk.equals("startdate") || nk.equals("sectionstartdate")) && p.hasNonNull(k)
+                                && !p.get(k).asText().trim().isEmpty()) startDate = p.get(k).asText().trim();
+                    }
+                }
+                String who = sec.isEmpty() ? "" : " (" + sec + ")";
+                if (startDate == null) problems.add("feature " + (i + 1) + who + ": missing Start Date");
+                else if (SectionDateCheck.parse(startDate) == null)
+                    problems.add("feature " + (i + 1) + who + ": Start Date \u201c" + startDate + "\u201d is not a valid date");
                 String gt = g != null && g.hasNonNull("type") ? g.get("type").asText() : "";
                 if (!gt.equals("LineString") && !gt.equals("MultiLineString"))
                     problems.add("feature " + (i + 1) + ": geometry is " + (gt.isEmpty() ? "missing" : gt) + ", expected LineString");

@@ -266,6 +266,13 @@ public class LayerAttributeService {
             insert(layerId, dataset, a.name(), a.storageKey(), a.dataType(), null,
                     a.unit(), a.role(), a.mandatory(), "STANDARD", sort,
                     aliasCsv(a));
+            /* insert() never touches an existing row, so a layer seeded before an attribute
+               became mandatory (Asset ID) needs the flag raised here. */
+            if (a.mandatory() && "NONE".equals(a.role())) {
+                jdbc.update("UPDATE layer_attribute SET mandatory = true WHERE layer_id = ? "
+                        + "AND dataset_key = ? AND storage_key = ? AND mandatory = false",
+                        layerId, dataset, a.storageKey());
+            }
             sort += 10;
         }
         mergeDuplicates(layerId, dataset, layerKey);
@@ -1188,9 +1195,10 @@ public class LayerAttributeService {
         Map<String, String> byHeader = new LinkedHashMap<>();
         Map<String, String> labelByKey = new LinkedHashMap<>();
         Map<String, String> byRole = new LinkedHashMap<>();
+        Set<String> mandatory = new HashSet<>();
         try {
             jdbc.query("""
-                SELECT a.name, a.storage_key, a.role, a.aliases
+                SELECT a.name, a.storage_key, a.role, a.aliases, a.mandatory
                   FROM layer_attribute a
                   JOIN layer_definition d ON d.id = a.layer_id
                  WHERE d.layer_key = ? AND a.dataset_key = ? AND a.status = 'ACTIVE'
@@ -1200,6 +1208,7 @@ public class LayerAttributeService {
                 String role = rs.getString("role");
                 if (role != null && !"NONE".equals(role)) byRole.putIfAbsent(role, storage);
                 labelByKey.putIfAbsent(storage, rs.getString("name"));
+                if (rs.getBoolean("mandatory")) mandatory.add(storage);
                 // Storage key and label first, then the aliases. putIfAbsent, so
                 // the attribute that owns a spelling keeps it when a later one
                 // lists the same string as an alias.
@@ -1216,7 +1225,7 @@ public class LayerAttributeService {
             log.warn("Could not build the header resolver for layer {} — the importer will "
                     + "fall back to its built-in aliases: {}", layerKey, e.toString());
         }
-        return new HeaderResolver(byHeader, labelByKey, byRole);
+        return new HeaderResolver(byHeader, labelByKey, byRole, mandatory);
     }
 
     /**
@@ -1231,9 +1240,11 @@ public class LayerAttributeService {
         private final Map<String, String> byHeader;
         private final Map<String, String> labelByKey;
         private final Map<String, String> byRole;
+        private final Set<String> mandatory;
 
         HeaderResolver(Map<String, String> byHeader, Map<String, String> labelByKey,
-                       Map<String, String> byRole) {
+                       Map<String, String> byRole, Set<String> mandatory) {
+            this.mandatory = mandatory;
             this.byHeader = byHeader;
             this.labelByKey = labelByKey;
             this.byRole = byRole;
@@ -1267,6 +1278,11 @@ public class LayerAttributeService {
          */
         public String keyFor(String header) {
             return byHeader.get(norm(header));
+        }
+
+        /** Whether Layer Management marks the attribute stored under {@code key} mandatory. */
+        public boolean isMandatory(String key) {
+            return key != null && mandatory.contains(key);
         }
 
         /** The storage key of the attribute holding a placement role, or null. */

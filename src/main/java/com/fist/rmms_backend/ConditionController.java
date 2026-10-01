@@ -14,7 +14,10 @@ public class ConditionController {
     private final ConditionService service;
     private final SurveyPeriodService periods;
 
-    public ConditionController(ConditionService service, SurveyPeriodService periods) {
+    private final SectionDateCheck dateCheck;
+
+    public ConditionController(ConditionService service, SurveyPeriodService periods, SectionDateCheck dateCheck) {
+        this.dateCheck = dateCheck;
         this.service = service;
         this.periods = periods;
     }
@@ -25,9 +28,9 @@ public class ConditionController {
      *  - force=false: duplicate rows (same Section_Label + XSP + chainage) inflate
      *    every lane-km total — the response carries the duplicate report; re-posting
      *    with force=true imports the file as-is.
-     *  - replace=false: sections in the file that already carry data in this survey
-     *    period would be silently replaced — the response lists them
-     *    (status="exists"); re-posting with replace=true confirms the replace.
+     *  - Rows are upserted on Section_Label + XSP + From/To chainage + Section_Start_Date
+     *    within the survey period: a matching row is replaced, any other is added, and
+     *    the rest of the section is left alone — so there is no "exists" confirmation.
      */
     @PostMapping("/upload")
     public Map<String, Object> upload(@RequestParam("file") MultipartFile file,
@@ -42,6 +45,19 @@ public class ConditionController {
                 return result;
             }
             byte[] data = file.getBytes();
+            String missing = service.missingKeyColumn(new ByteArrayInputStream(data));
+            if (missing != null) {
+                result.put("status", "error");
+                result.put("message", missing);
+                return result;
+            }
+            String mismatch = dateCheck.check(
+                    service.startDatesBySection(new ByteArrayInputStream(data)), "condition");
+            if (mismatch != null) {
+                result.put("status", "error");
+                result.put("message", mismatch);
+                return result;
+            }
             if (!force) {
                 Map<String, Object> rep = service.analyzeDuplicates(new ByteArrayInputStream(data));
                 if (((Number) rep.get("duplicates")).intValue() > 0) {
@@ -49,17 +65,12 @@ public class ConditionController {
                     return rep;
                 }
             }
-            if (!replace) {
-                var existing = service.analyzeExisting(new ByteArrayInputStream(data), periodId);
-                if (!existing.isEmpty()) {
-                    result.put("status", "exists");
-                    result.put("existing", existing);
-                    return result;
-                }
-            }
-            int n = service.loadCsv(new ByteArrayInputStream(data), periodId);
+            int[] n = service.loadCsv(new ByteArrayInputStream(data), periodId);
             result.put("status", "ok");
-            result.put("inserted", n);
+            result.put("inserted", n[0]);
+            result.put("replaced", n[1]);
+            result.put("added", n[0] - n[1]);
+            result.put("skipped_no_key", n[2]);
         } catch (Exception e) {
             result.put("status", "error");
             result.put("message", ApiErrors.safe("condition import", e));

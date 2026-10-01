@@ -383,11 +383,13 @@ public class VideoService {
         }
         Set<String> sections = new java.util.LinkedHashSet<>();
         for (Object[] r : rows) sections.add((String) r[0]);
-        for (String road : sections) {
-            jdbc.update("DELETE FROM road_video WHERE section_label = ? AND period_id = ?", road, periodId);
-        }
+        /* A clip is identified by Section Label + From/To chainage within the survey
+           period: the same stretch is replaced, a different stretch is added, and the
+           section's other clips are kept. */
         int count = 0;
         for (Object[] r : rows) {
+            jdbc.update("DELETE FROM road_video WHERE section_label = ? AND period_id = ? AND from_ch = ? AND to_ch = ?",
+                    r[0], periodId, r[3], r[4]);
             jdbc.update("""
                 INSERT INTO road_video (section_label, video_file, direction, period_id, from_ch, to_ch)
                 VALUES (?,?,?,?,?,?)

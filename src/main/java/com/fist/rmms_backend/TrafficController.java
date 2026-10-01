@@ -34,7 +34,11 @@ public class TrafficController {
     private final PlacementService placement;
     private final ObjectMapper om = new ObjectMapper();
 
-    public TrafficController(JdbcTemplate jdbc, SurveyPeriodService periods, PlacementService placement) {
+    private final RoadColumns roadColumns;
+
+    public TrafficController(JdbcTemplate jdbc, SurveyPeriodService periods, PlacementService placement,
+                             RoadColumns roadColumns) {
+        this.roadColumns = roadColumns;
         this.jdbc = jdbc;
         this.periods = periods;   // also orders startup: survey_periods migration runs first
         this.placement = placement;
@@ -48,6 +52,21 @@ public class TrafficController {
                 "period_id INTEGER)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS traffic_counts (" +
                 "name TEXT, data JSONB, updated_at TIMESTAMP DEFAULT now(), period_id INTEGER)");
+        /* Every count row of an upload, kept so a re-upload can REPLACE the rows with the same
+           Station Name + Section Label + Date + Time (+ Direction, + lane) and ADD the rest; the
+           per-station summary in traffic_counts is rebuilt from these rows. */
+        try {
+            jdbc.execute("CREATE TABLE IF NOT EXISTS traffic_count_rows (" +
+                    "id SERIAL PRIMARY KEY, period_id INTEGER NOT NULL, station_name TEXT NOT NULL, " +
+                    "section_label TEXT NOT NULL DEFAULT '', count_date TEXT NOT NULL, count_time TEXT NOT NULL DEFAULT '', " +
+                    "direction TEXT NOT NULL DEFAULT '', xsp TEXT NOT NULL DEFAULT '', cells JSONB NOT NULL, " +
+                    "updated_at TIMESTAMP DEFAULT now())");
+            jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS traffic_count_rows_key_ux ON traffic_count_rows " +
+                    "(period_id, station_name, section_label, count_date, count_time, direction, xsp)");
+            jdbc.execute("CREATE INDEX IF NOT EXISTS traffic_count_rows_station_idx ON traffic_count_rows (period_id, station_name)");
+        } catch (Exception e) {
+            log.error("traffic_count_rows setup failed — count uploads will not be able to merge", e);
+        }
         // A station name repeats across survey periods, so identity is
         // (name, period_id). Older databases had name as the primary key —
         // swap it for a surrogate id + a composite unique index (idempotent).
@@ -104,14 +123,63 @@ public class TrafficController {
         if (periodId == null || !periods.exists(periodId))
             return Map.of("saved", 0, "error", "Select the survey period this data belongs to before importing.");
         JsonNode arr = om.readTree(body);
-        int n = 0;
+        int n = 0, addedStations = 0, replacedStations = 0;
+        /* Stations are placed by linear reference, so Section Label must name a road. Check it
+           BEFORE writing: the upsert below overwrites an existing station's section, and a
+           mistyped label would otherwise replace a good station and then be deleted as
+           unplaceable. A row that fails is skipped untouched and named back to the caller. */
+        List<Map<String, Object>> rejected = new ArrayList<>();
+        Set<String> knownSections = new HashSet<>();
+        if (arr != null && arr.isArray()) {
+            Set<String> wanted = new LinkedHashSet<>();
+            for (JsonNode s : arr) { String sec = txt(s, "section"); if (sec != null && !sec.isEmpty()) wanted.add(sec); }
+            if (!wanted.isEmpty()) {
+                String secCol = roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL);
+                List<String> list = new ArrayList<>(wanted);
+                for (int i = 0; i < list.size(); i += 500) {
+                    List<String> chunk = list.subList(i, Math.min(i + 500, list.size()));
+                    knownSections.addAll(jdbc.queryForList("SELECT DISTINCT " + secCol + " FROM roads r WHERE " + secCol
+                            + " IN (" + String.join(",", Collections.nCopies(chunk.size(), "?")) + ")",
+                            String.class, chunk.toArray()));
+                }
+            }
+        }
+        Map<String, String> sectionInFile = new HashMap<>();
         if (arr != null && arr.isArray()) {
             for (JsonNode s : arr) {
                 String name = txt(s, "name");
                 if (name == null || name.isEmpty()) continue;
+                String secLabel = txt(s, "section");
+                String why = (secLabel == null || secLabel.isEmpty()) ? "no Section Label"
+                        : !knownSections.contains(secLabel) ? "Section Label not found in the Road Network"
+                        : dbl(s, "ch") == null ? "no chainage" : null;
+                /* A station is Section Label + Station Name, and counts/map join on the name, so one
+                   name cannot sit on two sections in a period. Same name + same section replaces the
+                   station; same name + a different section is a conflict and changes nothing. */
+                if (why == null) {
+                    String prev = sectionInFile.putIfAbsent(name, secLabel);
+                    if (prev != null && !prev.equals(secLabel)) {
+                        why = "station name is used for two sections in this file (" + prev + " and " + secLabel + ")";
+                    } else {
+                        List<String> have = jdbc.queryForList(
+                                "SELECT section FROM traffic_stations WHERE name = ? AND period_id = ?",
+                                String.class, name, periodId);
+                        if (!have.isEmpty() && have.get(0) != null && !have.get(0).equals(secLabel))
+                            why = "station name already exists in this survey period under Section Label " + have.get(0);
+                    }
+                }
+                if (why != null) {
+                    Map<String, Object> bad = new LinkedHashMap<>();
+                    bad.put("name", name); bad.put("section", secLabel); bad.put("reason", why);
+                    rejected.add(bad);
+                    continue;
+                }
                 // geom is cleared on update, not carried over: this row's section or chainage
                 // may have just changed, and a stored point from the previous import would
                 // then be a stale position that the placement pass below would skip.
+                Integer had = jdbc.queryForObject(
+                        "SELECT count(*) FROM traffic_stations WHERE name = ? AND period_id = ?", Integer.class, name, periodId);
+                if (had != null && had > 0) replacedStations++; else addedStations++;
                 jdbc.update("INSERT INTO traffic_stations(name,road,section,chainage,lat,lng,xsp,period_id,updated_at) " +
                                 "VALUES(?,?,?,?,?,?,?,?,now()) ON CONFLICT(name,period_id) DO UPDATE SET " +
                                 "road=EXCLUDED.road,section=EXCLUDED.section,chainage=EXCLUDED.chainage," +
@@ -135,9 +203,17 @@ public class TrafficController {
         }
 
         Map<String, Object> res = new LinkedHashMap<>();
+        List<Map<String, Object>> allSkipped = new ArrayList<>(rejected);
+        for (Map<String, Object> sk : skipped) {
+            Map<String, Object> bad = new LinkedHashMap<>(sk);
+            bad.put("reason", "could not be placed on the road");
+            allSkipped.add(bad);
+        }
+        res.put("added", addedStations);
+        res.put("replaced", replacedStations);
         res.put("saved", n - skipped.size());
-        res.put("skipped", skipped.size());
-        res.put("skipped_stations", skipped);
+        res.put("skipped", allSkipped.size());
+        res.put("skipped_stations", allSkipped);
         return res;
     }
 
@@ -160,7 +236,108 @@ public class TrafficController {
                 n++;
             }
         }
-        return Map.of("saved", n);
+        /* Counts are matched on station name. A name with no station in this period has no
+           section and no position, so it is saved but reported. */
+        List<String> noStation = new ArrayList<>();
+        if (obj != null && obj.isObject()) {
+            Iterator<String> it2 = obj.fieldNames();
+            while (it2.hasNext()) {
+                String nm = it2.next();
+                Integer have = jdbc.queryForObject(
+                        "SELECT count(*) FROM traffic_stations WHERE name = ? AND period_id = ?", Integer.class, nm, periodId);
+                if (have == null || have == 0) noStation.add(nm);
+            }
+        }
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("saved", n);
+        res.put("unknown_stations", noStation);
+        return res;
+    }
+
+    /**
+     * Upsert raw count rows. A row is identified by Station Name + Section Label + Date + Time
+     * (+ Direction, + lane where the file has them) within the survey period: the same identity
+     * replaces that row, anything else is added, and rows not in the file are left alone.
+     * Body: {rows:[{station, section, date, time, direction, xsp, cells:{header:value,...}}]}.
+     * Returns added/replaced counts, rows rejected, and stations whose earlier data existed only
+     * as a summary (no raw rows to merge with).
+     */
+    @PostMapping("/count-rows")
+    public Map<String, Object> saveCountRows(@RequestBody String body,
+                                             @RequestParam(value = "periodId", required = false) Integer periodId) throws Exception {
+        if (periodId == null || !periods.exists(periodId))
+            return Map.of("error", "Select the survey period this data belongs to before importing.");
+        JsonNode rows = om.readTree(body).get("rows");
+        int added = 0, replaced = 0;
+        List<Map<String, Object>> rejected = new ArrayList<>();
+        Set<String> summaryOnly = new LinkedHashSet<>();
+        Map<String, String> stationSection = new HashMap<>();
+        Set<String> checked = new HashSet<>();
+        if (rows != null && rows.isArray()) {
+            for (JsonNode r : rows) {
+                String st = txt(r, "station"), date = txt(r, "date");
+                if (st == null || st.isEmpty() || date == null || date.isEmpty()) continue;
+                String sec = txt(r, "section") == null ? "" : txt(r, "section");
+                if (checked.add(st)) {
+                    List<String> have = jdbc.queryForList(
+                            "SELECT section FROM traffic_stations WHERE name = ? AND period_id = ?", String.class, st, periodId);
+                    stationSection.put(st, have.isEmpty() || have.get(0) == null ? "" : have.get(0));
+                    Integer rowsHave = jdbc.queryForObject(
+                            "SELECT count(*) FROM traffic_count_rows WHERE station_name = ? AND period_id = ?", Integer.class, st, periodId);
+                    Integer sumHave = jdbc.queryForObject(
+                            "SELECT count(*) FROM traffic_counts WHERE name = ? AND period_id = ?", Integer.class, st, periodId);
+                    if (rowsHave != null && rowsHave == 0 && sumHave != null && sumHave > 0) summaryOnly.add(st);
+                }
+                String stationSec = stationSection.get(st);
+                if (sec.isEmpty()) sec = stationSec;      // the station's own section is the default
+                if (!stationSec.isEmpty() && !sec.equals(stationSec)) {
+                    Map<String, Object> bad = new LinkedHashMap<>();
+                    bad.put("station", st); bad.put("section", sec);
+                    bad.put("reason", "this station is on Section Label " + stationSec);
+                    if (rejected.size() < 50) rejected.add(bad);
+                    continue;
+                }
+                Boolean inserted = jdbc.queryForObject(
+                        "INSERT INTO traffic_count_rows(period_id, station_name, section_label, count_date, count_time, direction, xsp, cells, updated_at) " +
+                        "VALUES(?,?,?,?,?,?,?,?::jsonb, now()) " +
+                        "ON CONFLICT (period_id, station_name, section_label, count_date, count_time, direction, xsp) " +
+                        "DO UPDATE SET cells = EXCLUDED.cells, updated_at = now() RETURNING (xmax = 0)",
+                        Boolean.class, periodId, st, sec, date,
+                        txt(r, "time") == null ? "" : txt(r, "time"),
+                        txt(r, "direction") == null ? "" : txt(r, "direction"),
+                        txt(r, "xsp") == null ? "" : txt(r, "xsp"),
+                        om.writeValueAsString(r.get("cells")));
+                if (Boolean.TRUE.equals(inserted)) added++; else replaced++;
+            }
+        }
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("added", added);
+        res.put("replaced", replaced);
+        res.put("rejected", rejected);
+        res.put("summary_only", new ArrayList<>(summaryOnly));
+        return res;
+    }
+
+    /** Every stored raw count row of the named stations, for rebuilding their summaries.
+     *  Body: {stations:["TVM_STN_001", ...]} -> {station: [cells, ...]}. */
+    @PostMapping("/count-rows/fetch")
+    public Map<String, Object> fetchCountRows(@RequestBody String body,
+                                              @RequestParam(value = "periodId", required = false) Integer periodId) throws Exception {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (periodId == null) return out;
+        JsonNode names = om.readTree(body).get("stations");
+        if (names == null || !names.isArray()) return out;
+        for (JsonNode n : names) {
+            String st = n.asText();
+            List<Object> cells = new ArrayList<>();
+            for (String c : jdbc.queryForList(
+                    "SELECT cells::text FROM traffic_count_rows WHERE period_id = ? AND station_name = ? ORDER BY id",
+                    String.class, periodId, st)) {
+                cells.add(om.readValue(c, Object.class));
+            }
+            out.put(st, cells);
+        }
+        return out;
     }
 
     /** Full store, in the same shape the viewer/Data Console use.
@@ -244,6 +421,7 @@ public class TrafficController {
             return Map.of("cleared", false, "error", "Select the survey period to clear.");
         int a = jdbc.update("DELETE FROM traffic_stations WHERE period_id = ?", periodId);
         int b = jdbc.update("DELETE FROM traffic_counts WHERE period_id = ?", periodId);
+        jdbc.update("DELETE FROM traffic_count_rows WHERE period_id = ?", periodId);
         return Map.of("cleared", true, "stations", a, "counts", b);
     }
 

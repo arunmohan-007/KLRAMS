@@ -76,9 +76,12 @@ public class AssetController {
     private final RoadColumns roadColumns;
     private final ObjectMapper om = new ObjectMapper();
 
+    private final SectionDateCheck dateCheck;
+
     public AssetController(JdbcTemplate jdbc, SurveyPeriodService periods,
                            LayerAttributeService attributes, PlacementService placement,
-                           RoadColumns roadColumns) {
+                           RoadColumns roadColumns, SectionDateCheck dateCheck) {
+        this.dateCheck = dateCheck;
         this.roadColumns = roadColumns;
         this.jdbc = jdbc;
         this.periods = periods;
@@ -179,6 +182,9 @@ public class AssetController {
         }
     }
 
+    /** Asset types re-uploaded by upsert on Section_Label + Asset ID instead of replacing a whole section. */
+    private static final Set<String> UPSERT_TYPES = Set.of("bridge", "culvert", "furniture_point", "furniture_line");
+
     @PostMapping("/{type}/upload")
     @Transactional
     public Map<String, Object> upload(@PathVariable String type,
@@ -210,15 +216,6 @@ public class AssetController {
             // dd-mmm-yyyy (also never bypassed by force).
             Map<String, Object> badDates = validateDates(data);
             if (badDates != null) return badDates;
-            // Re-upload guard: a section in this file may already have rows of this
-            // type (same period for survey streams). Importing would silently replace
-            // them, so when force=false nothing is written — the response lists the
-            // affected sections and the console asks the user to confirm. Re-posting
-            // with force=true performs the replace.
-            if (!force) {
-                Map<String, Object> exists = analyzeExisting(type, isSurvey ? periodId : null, data);
-                if (exists != null) return exists;
-            }
             BufferedReader br = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(data), StandardCharsets.UTF_8));
             String header = br.readLine();
             if (header == null) { r.put("status","error"); r.put("message","Empty CSV"); return r; }
@@ -251,6 +248,89 @@ public class AssetController {
             if (isLine && iEnd == null)
                 { r.put("status","error"); r.put("message","Line assets (including FWD) need End_Chainage / To as well as Start / From"); return r; }
 
+            /* Inventory assets (bridge, culvert, furniture) are matched row by row on Section_Label + Asset ID, so nothing is
+               swept away wholesale and there is nothing to confirm. Every other type
+               (and a culvert file with no Asset ID column) keeps the section-replace
+               behaviour and its confirmation prompt. */
+            Integer iAsset = null;
+            boolean assetIdRequired = false;
+            if (UPSERT_TYPES.contains(type)) {
+                for (int i = 0; i < cols.length && iAsset == null; i++) {
+                    String k = headers.keyFor(cols[i].trim());
+                    String probe = (k != null ? k : cols[i]).toLowerCase().replace("﻿", "").replaceAll("[^a-z0-9]", "");
+                    if (probe.equals("assetid") || probe.equals("assetno")) iAsset = i;
+                }
+                /* Mandatory in Layer Management (Asset ID). If the registry never came up, or
+                   an admin has deliberately un-ticked it, the old section-replace applies. */
+                assetIdRequired = headers.isEmpty()
+                        || headers.isMandatory("Asset_ID") || headers.isMandatory("Asset ID");
+                if (iAsset == null && assetIdRequired) {
+                    r.put("status", "error");
+                    r.put("message", "Asset_ID is a mandatory column for " + type.replace('_', ' ')
+                            + " data (Layer Management). Add an Asset_ID column — one unique ID per record — and upload again.");
+                    return r;
+                }
+            }
+            /* FWD is identified by Section Label + From/To range + Section Start Date, inside
+               the chosen survey period. Section Start Date is mandatory (Layer Management). */
+            Integer iDate = null;
+            if ("fwd".equals(type)) {
+                for (int i = 0; i < cols.length && iDate == null; i++) {
+                    String k = headers.keyFor(cols[i].trim());
+                    String probe = (k != null ? k : cols[i]).toLowerCase().replace("﻿", "").replaceAll("[^a-z0-9]", "");
+                    if (probe.equals("sectionstartdate")) iDate = i;
+                }
+                if (iDate == null) {
+                    r.put("status", "error");
+                    r.put("message", "Section_Start_Date is a mandatory column for FWD data (Layer Management). "
+                            + "A FWD record is identified by Section Label + From/To chainage + Section Start Date. "
+                            + "Add the column and upload again.");
+                    return r;
+                }
+            }
+            /* Any Section Start Date in the file must agree with the Road Network's. */
+            Integer iSD = iDate;
+            for (int i = 0; i < cols.length && iSD == null; i++) {
+                String k = headers.keyFor(cols[i].trim());
+                String probe = (k != null ? k : cols[i]).toLowerCase().replace("\uFEFF", "").replaceAll("[^a-z0-9]", "");
+                if (probe.equals("sectionstartdate")) iSD = i;
+            }
+            if (iSD != null) {
+                Map<String, Set<String>> byDate = new LinkedHashMap<>();
+                BufferedReader pre = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(data), StandardCharsets.UTF_8));
+                pre.readLine();
+                String pl;
+                while ((pl = pre.readLine()) != null) {
+                    if (pl.trim().isEmpty()) continue;
+                    String[] pc = parse(pl);
+                    String psec = val(pc, iSec), pd = val(pc, iSD);
+                    if (psec != null && pd != null) byDate.computeIfAbsent(psec, k -> new LinkedHashSet<>()).add(pd);
+                }
+                String mismatch = dateCheck.check(byDate, type.replace('_', ' '));
+                if (mismatch != null) { r.put("status", "error"); r.put("message", mismatch); return r; }
+            }
+            boolean upsert = iAsset != null || iDate != null;
+            String assetKey = null;
+            String matchOn = "Section Label + Asset ID";
+            if (iAsset != null) {
+                String k = headers.keyFor(cols[iAsset].trim());
+                assetKey = k != null ? k : cols[iAsset].trim();
+            } else if (iDate != null) {
+                String k = headers.keyFor(cols[iDate].trim());
+                assetKey = k != null ? k : cols[iDate].trim();
+                matchOn = "Section Label + From/To chainage + Section Start Date";
+            }
+
+            // Re-upload guard: a section in this file may already have rows of this
+            // type (same period for survey streams). Importing would silently replace
+            // them, so when force=false nothing is written — the response lists the
+            // affected sections and the console asks the user to confirm. Re-posting
+            // with force=true performs the replace.
+            if (!force && !upsert) {
+                Map<String, Object> exists = analyzeExisting(type, isSurvey ? periodId : null, data);
+                if (exists != null) return exists;
+            }
+
             // Additive by section: replace only the section labels present in THIS
             // file (of this asset type), so uploading another section adds to the
             // data instead of wiping the whole type. Re-uploading a section refreshes
@@ -261,6 +341,10 @@ public class AssetController {
             Set<String> sectionsHadData = new HashSet<>();
             Map<String,Integer> rowsPerSection = new HashMap<>();
             int oldRowsRemoved = 0;
+            /* upsert tallies */
+            Set<String> seenIds = new HashSet<>();
+            Set<String> secAdded = new LinkedHashSet<>(), secUpdated = new LinkedHashSet<>();
+            int addedRows = 0, updatedRows = 0, noIdRows = 0, dupIdRows = 0;
 
             int loaded=0, skipped=0;
             String line;
@@ -276,17 +360,38 @@ public class AssetController {
                 // first row for this section in this upload -> clear its old rows of
                 // this type, only within the chosen survey period (older periods keep
                 // their data; inventory types have no period)
-                if (replacedSections.add(sec)) {
-                    int removed;
-                    if (periodId != null) {
-                        removed = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ? AND period_id = ?",
-                                type, sec, periodId);
+                boolean existed = false;
+                if (upsert) {
+                    if (iAsset != null) {
+                        String aid = val(c, iAsset);
+                        if (aid == null) { noIdRows++; skipped++; continue; }
+                        if (!seenIds.add(sec + "|" + aid)) { dupIdRows++; skipped++; continue; }
+                        existed = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ? AND attrs->>(?::text) = ?",
+                                type, sec, assetKey, aid) > 0;
                     } else {
-                        removed = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ?", type, sec);
+                        String sd = val(c, iDate);
+                        if (sd == null) { noIdRows++; skipped++; continue; }
+                        if (!seenIds.add(sec + "|" + s + "|" + e + "|" + sd)) { dupIdRows++; skipped++; continue; }
+                        /* A row stored before Section Start Date was required has none; it is
+                           treated as the same record rather than left beside its replacement. */
+                        existed = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ? AND period_id = ? "
+                                + "AND start_chainage = ? AND end_chainage = ? AND (attrs->>(?::text) = ? OR attrs->>(?::text) IS NULL)",
+                                type, sec, periodId, s, e, assetKey, sd, assetKey) > 0;
                     }
-                    if (removed > 0) { sectionsHadData.add(sec); oldRowsRemoved += removed; }
+                    if (existed) { updatedRows++; secUpdated.add(sec); } else { addedRows++; secAdded.add(sec); }
+                } else {
+                    if (replacedSections.add(sec)) {
+                        int removed;
+                        if (periodId != null) {
+                            removed = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ? AND period_id = ?",
+                                    type, sec, periodId);
+                        } else {
+                            removed = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ?", type, sec);
+                        }
+                        if (removed > 0) { sectionsHadData.add(sec); oldRowsRemoved += removed; }
+                    }
+                    rowsPerSection.merge(sec, 1, Integer::sum);
                 }
-                rowsPerSection.merge(sec, 1, Integer::sum);
                 /* Keep every column as attrs, under the storage key the layer
                    declares for it rather than under whatever this file's header
                    happened to say. That is what makes "Section_Label" from
@@ -329,6 +434,18 @@ public class AssetController {
             for (Map.Entry<String,Integer> e2 : rowsPerSection.entrySet()) {
                 if (sectionsHadData.contains(e2.getKey())) replacingRecords += e2.getValue();
                 else addedRecords += e2.getValue();
+            }
+            if (upsert) {
+                addedRecords = addedRows; replacingRecords = updatedRows;
+                r.put("mode", "upsert");
+                r.put("match_on", matchOn);
+                r.put("skipped_no_asset_id", noIdRows);
+                r.put("skipped_duplicate_asset_id", dupIdRows);
+                oldRowsRemoved = updatedRows;
+                sectionsHadData.clear(); sectionsHadData.addAll(secUpdated);
+                rowsPerSection.clear();
+                for (String x : secUpdated) rowsPerSection.put(x, 1);
+                for (String x : secAdded) rowsPerSection.putIfAbsent(x, 1);
             }
             r.put("status","ok");
             r.put("loaded", loaded - unmatched);

@@ -82,6 +82,16 @@ final class LayerAttributeCatalog {
         return new Attr(name, key, "DATE", null, false, "NONE", List.of(aliases));
     }
 
+    /** A text attribute every record must carry — e.g. the Asset ID that identifies a culvert. */
+    private static Attr sm(String name, String key, String... aliases) {
+        return new Attr(name, key, "STRING", null, true, "NONE", List.of(aliases));
+    }
+
+    /** A date attribute every record must carry — part of a record's identity. */
+    private static Attr dtm(String name, String key, String... aliases) {
+        return new Attr(name, key, "DATE", null, true, "NONE", List.of(aliases));
+    }
+
     /** The section label that places the feature. Always STRING, always mandatory. */
     private static Attr sec(String name, String key, String... aliases) {
         return new Attr(name, key, "STRING", null, true, "SECTION_LABEL", List.of(aliases));
@@ -168,10 +178,11 @@ final class LayerAttributeCatalog {
            keys are those columns and the aliases are the CSV headers.
 
            The return also carries Survey_Start_Date, Survey_End_Date,
-           Surveying_Company_Name, Survey_Version and Section_Start_Date. They are
-           NOT listed: ConditionService.loadCsv reads none of them and the table
-           has nowhere to put them, so declaring them would promise a field the
-           system silently drops. */
+           Surveying_Company_Name and Survey_Version. They are NOT listed:
+           ConditionService.loadCsv reads none of them and the table has nowhere
+           to put them, so declaring them would promise a field the system
+           silently drops. Section_Start_Date IS listed — with Section_Label, XSP
+           and the chainage range it identifies a condition row. */
         put("condition", "default", List.of(
             sec("Section_Label", "section_label", SECTION_ALIASES),
             ch("Start_Chainage", "start_chainage", "START_CHAINAGE", START_CH_ALIASES),
@@ -194,7 +205,8 @@ final class LayerAttributeCatalog {
             d("Start_Latitude", "start_lat", "deg", "Start Latitude", "Start_Lat"),
             d("Start_Longitude", "start_lng", "deg", "Start Longitude", "Start_Long"),
             d("End_Latitude", "end_lat", "deg", "End Latitude", "End_Lat", "End Lat"),
-            d("End_Longitude", "end_lng", "deg", "End Longitude", "End_Long", "End Long")));
+            d("End_Longitude", "end_lng", "deg", "End Longitude", "End_Long", "End Long"),
+            dtm("Section_Start_Date", "section_start_date", "Section Start Date")));
 
         /* ---- R5 · FWD Deflection ----
            jsonb-backed on road_assets. The return names the section column
@@ -212,7 +224,7 @@ final class LayerAttributeCatalog {
             dt("Survey End Date", "Survey End Date", "Survey_End_Date"),
             s("Surveying Company Name", "Surveying Company Name",
               "Surveying_Company_Name", "Survey Company Name"),
-            dt("Section Start Date", "Section Start Date", "Section_Start_Date"),
+            dtm("Section Start Date", "Section Start Date", "Section_Start_Date"),
             s("Survey Version", "Survey Version", "Survey_Version")));
         for (int n = 0; n <= 9; n++) {
             fwd.add(d("D" + n, "D" + n, "mm", "D" + n + " ", "d" + n));
@@ -229,7 +241,7 @@ final class LayerAttributeCatalog {
             sec("Section Label", "section_label", SECTION_ALIASES),
             ch("Start Chainage", "start_chainage", "START_CHAINAGE", START_CH_ALIASES),
             ch("End Chainage", "end_chainage", "END_CHAINAGE", END_CH_ALIASES),
-            s("Asset ID", "Asset ID", "Asset_ID", "AssetID"),
+            sm("Asset ID", "Asset ID", "Asset_ID", "AssetID"),
             s("Bridge Name", "Bridge Name", "Bridge_Name", "Name"),
             s("Bridge Type", "Bridge Type", "Bridge_Type", "Structure_Type", "Structure Type"),
             s("Road Name", "Road_Name", "Road Name"),
@@ -248,7 +260,7 @@ final class LayerAttributeCatalog {
         put("culvert", "default", List.of(
             sec("Section_Label", "section_label", SECTION_ALIASES),
             ch("Start_Chainage", "start_chainage", "CHAINAGE", POINT_CH_ALIASES),
-            s("Asset_ID", "Asset_ID", "Asset ID", "AssetID"),
+            sm("Asset_ID", "Asset_ID", "Asset ID", "AssetID"),
             s("Name", "Name", "Culvert Name", "Culvert_Name"),
             s("Culvert Type", "Culvert_Type", "Culvert Type", "Type"),
             s("Road_Name", "Road_Name", "Road Name"),
@@ -265,7 +277,7 @@ final class LayerAttributeCatalog {
         put("furniture_point", "default", List.of(
             sec("Section_Label", "section_label", SECTION_ALIASES),
             ch("Chainage", "start_chainage", "CHAINAGE", POINT_CH_ALIASES),
-            s("Asset_ID", "Asset_ID", "Asset ID", "AssetID"),
+            sm("Asset_ID", "Asset_ID", "Asset ID", "AssetID"),
             s("Name", "Name", "Asset Name", "Asset_Name"),
             s("Road_Furniture_Type", "Road_Furniture_Type",
               "Road Furniture Type", "Furniture_Type", "Furniture Type"),
@@ -287,7 +299,7 @@ final class LayerAttributeCatalog {
             sec("Section Label", "section_label", SECTION_ALIASES),
             ch("Start Chainage", "start_chainage", "START_CHAINAGE", START_CH_ALIASES),
             ch("End Chainage", "end_chainage", "END_CHAINAGE", END_CH_ALIASES),
-            s("Asset ID", "Asset ID", "Asset_ID", "AssetID"),
+            sm("Asset ID", "Asset ID", "Asset_ID", "AssetID"),
             s("Asset Name", "Asset Name", "Asset_Name", "Name"),
             s("Furniture Type", "Furniture_Type", "Furniture Type",
               "Road_Furniture_Type", "Road Furniture Type"),
