@@ -50,22 +50,59 @@ function clearPciFilter(){
   ['pci-avg','pci-worst'].forEach(id=>{ if(map.getLayer(id)) map.setFilter(id, null); });
 }
 
-/* ---------- Traffic: filter by minimum ADT ---------- */
+/* ---------- Traffic: filter by minimum ADT ----------
+   An ungrouped station is scored on its own ADT (survey total ÷ survey days).
+   A station that belongs to a Calculation Rules traffic-station group is scored
+   on the group's combined ADT — the same merge the popup and the dashboard use
+   (totals add, days take the longer survey) — and every placed member of that
+   group receives that one number, so the filter keeps or hides the whole group
+   together. A member that was never placed still contributes its counts. */
+function trafficCountFor(name){
+  const raw=(typeof TRAFFIC_COUNTS!=='undefined')?TRAFFIC_COUNTS[name]:null;
+  return (typeof trfCountObj==='function')?trfCountObj(raw):raw;
+}
+function trafficAdtOf(c){
+  if(!c || c.total==null) return -1;
+  return Math.round((+c.total||0)/Math.max(1, +c.days||1));
+}
 function trafficComputeAdt(){
   if(typeof TRAFFIC_STN==='undefined' || !TRAFFIC_STN.features) return;
-  const counts=(typeof TRAFFIC_COUNTS!=='undefined')?TRAFFIC_COUNTS:{};
+  const byName=new Map();
   TRAFFIC_STN.features.forEach(f=>{
-    const c=counts[f.properties.name];
-    f.properties.__adt = c ? Math.round((c.total||0)/(c.days||1)) : -1;
+    const p=f.properties||(f.properties={});
+    const name=String(p.name==null?'':p.name).trim();
+    p.__adt=trafficAdtOf(trafficCountFor(name));
+    if(!name) return;
+    const list=byName.get(name);
+    if(list) list.push(f); else byName.set(name,[f]);
   });
+  const groups=(typeof CalcRules!=='undefined')?CalcRules.stationGroups:null;
+  if(groups && typeof CalcRules.stationGroupMembers==='function' && typeof trfMergeCounts==='function'){
+    const done=new Set();
+    Object.keys(groups).forEach(function(name){
+      if(done.has(name)) return;
+      const members=CalcRules.stationGroupMembers(name);
+      if(!members || members.length<2) return;
+      members.forEach(m=>done.add(m));
+      const merged=trfMergeCounts(members.map(trafficCountFor));
+      const adt=merged ? Math.round((merged.total||0)/Math.max(1, merged.days||1)) : -1;
+      members.forEach(m=>{(byName.get(m)||[]).forEach(f=>{ f.properties.__adt=adt; });});
+    });
+  }
   if(map.getSource('trafficstn')) map.getSource('trafficstn').setData(TRAFFIC_STN);
 }
 function applyTrafficFilter(){
   if(!map.getLayer('trafficstn-lyr')) return;
-  trafficComputeAdt();
-  const mn=parseFloat(document.getElementById('trfMin').value);
-  if(isNaN(mn)) map.setFilter('trafficstn-lyr', null);
-  else map.setFilter('trafficstn-lyr', ['all',['!=',['get','__adt'],-1],['>=',['get','__adt'],mn]]);
+  const run=function(){
+    trafficComputeAdt();
+    const mn=parseFloat(document.getElementById('trfMin').value);
+    if(isNaN(mn)) map.setFilter('trafficstn-lyr', null);
+    else map.setFilter('trafficstn-lyr', ['all',['!=',['get','__adt'],-1],['>=',['get','__adt'],mn]]);
+  };
+  /* Groups arrive a moment after the page. Filtering before they land would
+     score each carriageway on its own ADT and split a dual station. */
+  if(typeof CalcRules!=='undefined' && CalcRules.ready && !CalcRules.stationGroups) CalcRules.ready().then(run, run);
+  else run();
 }
 function clearTrafficFilter(){
   document.getElementById('trfMin').value='';

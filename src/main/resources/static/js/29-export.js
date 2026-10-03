@@ -795,9 +795,13 @@ var EXP={
   traffic:{label:'Traffic stations',color:'#1565c0',toggle:'showTraffic',
     ensure:function(){
       return new Promise(function(res){
-        if(typeof TRAFFIC_LOADED!=='undefined'&&TRAFFIC_LOADED)return res();
-        if(typeof loadTraffic==='function')loadTraffic(res);else res();
-        setTimeout(res,10000); /* fallback: loadTraffic doesn't call back when the store is empty */
+        function go(){
+          if(typeof TRAFFIC_LOADED!=='undefined'&&TRAFFIC_LOADED)return res();
+          if(typeof loadTraffic==='function')loadTraffic(res);else res();
+          setTimeout(res,10000); /* fallback: loadTraffic doesn't call back when the store is empty */
+        }
+        if(typeof CalcRules!=='undefined'&&CalcRules.ready&&!CalcRules.stationGroups) CalcRules.ready().then(go,go);
+        else go();
       });
     },
     collect:function(){
