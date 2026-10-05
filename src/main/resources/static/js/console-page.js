@@ -263,6 +263,19 @@ function logUpload(dataset,fileOrName,ok,detail){
 /* refresh() is called from the UI + after each import; keep the name, refresh everything */
 async function refresh(){ loadSummary(); loadLog(); }
 refresh();
+/* An upload that dies in the proxy comes back as an HTML page. r.json() then
+   reports "Unexpected token '<'" and hides the real status. */
+async function readUploadJson(r){
+  const raw=await r.text();
+  const ct=r.headers.get('content-type')||'';
+  if(r.redirected || /text\/html/i.test(ct) || /^\s*</.test(raw)){
+    if(r.status===413) throw new Error('The file was rejected as too large by the proxy in front of KLRAMS (HTTP 413).');
+    if(r.status===502||r.status===504) throw new Error('The server did not finish the upload (HTTP '+r.status+'). Nothing was confirmed. Try again.');
+    throw new Error('The server returned a web page instead of a result (HTTP '+r.status+'). Sign in again, then retry.');
+  }
+  try{ return JSON.parse(raw); }
+  catch(e){ throw new Error('Server returned non-JSON (HTTP '+r.status+').'); }
+}
 function upSplit(j){
   if(j.added==null&&j.replaced==null) return '';
   if(j.mode==='upsert') return ' '+(j.added||0)+' added, '+(j.replaced||0)+' updated (matched on '+(j.match_on||'Section Label + Asset ID')+'); other records in those sections were kept.'
@@ -283,7 +296,7 @@ async function upGeo(force){
   const fd=new FormData();fd.append('file',f);
   try{
     const r=await fetch('/api/assets/'+type+'/upload?periodId='+pid+(force?'&force=true':''),{method:'POST',body:fd});
-    const j=await r.json();
+    const j=await readUploadJson(r);
     if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' record(s).'+upSplit(j)+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f,true,msg);refresh();}
     else if(j.status==='exists'){
       if(confirm(existsMsg(j,spName(pid))))upGeo(true);
@@ -302,7 +315,7 @@ async function upAsset(force){
   const fd=new FormData();fd.append('file',f);
   try{
     const r=await fetch('/api/assets/'+type+'/upload'+(force?'?force=true':''),{method:'POST',body:fd});
-    const j=await r.json();
+    const j=await readUploadJson(r);
     if(j.status==='ok'){const msg='✓ Placed '+j.loaded+' '+type.replace('_',' ')+'(s).'+upSplit(j)+(j.skipped_rows?' Skipped '+j.skipped_rows+' bad rows.':'')+(j.unmatched_section_label?' '+j.unmatched_section_label+' had unknown Section_Label.':'');show(out,true,msg);logUpload(ds,f,true,msg);refresh();}
     else if(j.status==='exists'){
       if(confirm(existsMsg(j,null)))upAsset(true);

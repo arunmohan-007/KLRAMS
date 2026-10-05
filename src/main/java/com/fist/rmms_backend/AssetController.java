@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +15,9 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Types;
 import java.util.*;
 
 /**
@@ -103,6 +107,7 @@ public class AssetController {
             )""");
         jdbc.execute("ALTER TABLE road_assets ADD COLUMN IF NOT EXISTS period_id integer");
         jdbc.execute("CREATE INDEX IF NOT EXISTS road_assets_type_idx ON road_assets(asset_type)");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS road_assets_type_section_idx ON road_assets(asset_type, section_label)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS road_assets_period_idx ON road_assets(period_id)");
         /* Older FWD uploads stored a start-chainage POINT while From..To lived only in
            attrs. Promote those rows to LINE stretches so the map/tiles paint the same
@@ -347,6 +352,12 @@ public class AssetController {
             int addedRows = 0, updatedRows = 0, noIdRows = 0, dupIdRows = 0;
 
             int loaded=0, skipped=0;
+            /* Asset-ID upserts used to DELETE and INSERT once per row. A furniture-point
+               file is thousands of rows, so that is thousands of round trips and the proxy
+               in front of the app gives up and answers with an HTML error page. Rows are
+               collected and written in two statements instead: one delete of the keys in
+               this file, then one batched insert. */
+            List<StagedAsset> staged = new ArrayList<>();
             String line;
             while ((line = br.readLine()) != null) {
                 if (line.trim().isEmpty()) continue;
@@ -361,13 +372,13 @@ public class AssetController {
                 // this type, only within the chosen survey period (older periods keep
                 // their data; inventory types have no period)
                 boolean existed = false;
+                boolean stageAsset = false;
                 if (upsert) {
                     if (iAsset != null) {
                         String aid = val(c, iAsset);
                         if (aid == null) { noIdRows++; skipped++; continue; }
                         if (!seenIds.add(sec + "|" + aid)) { dupIdRows++; skipped++; continue; }
-                        existed = jdbc.update("DELETE FROM road_assets WHERE asset_type = ? AND section_label = ? AND attrs->>(?::text) = ?",
-                                type, sec, assetKey, aid) > 0;
+                        stageAsset = true;
                     } else {
                         String sd = val(c, iDate);
                         if (sd == null) { noIdRows++; skipped++; continue; }
@@ -378,7 +389,9 @@ public class AssetController {
                                 + "AND start_chainage = ? AND end_chainage = ? AND (attrs->>(?::text) = ? OR attrs->>(?::text) IS NULL)",
                                 type, sec, periodId, s, e, assetKey, sd, assetKey) > 0;
                     }
-                    if (existed) { updatedRows++; secUpdated.add(sec); } else { addedRows++; secAdded.add(sec); }
+                    if (!stageAsset) {
+                        if (existed) { updatedRows++; secUpdated.add(sec); } else { addedRows++; secAdded.add(sec); }
+                    }
                 } else {
                     if (replacedSections.add(sec)) {
                         int removed;
@@ -419,11 +432,33 @@ public class AssetController {
                 // past the unmatched-row cleanup below by getting a geom from GPS
                 // instead (it used to; that's how points with a typo'd section still
                 // showed up on the map but as "(unmapped)" / OTHER in the dashboards).
-                jdbc.update("INSERT INTO road_assets (asset_type, section_label, start_chainage, end_chainage, attrs, period_id) VALUES (?,?,?,?,?::jsonb,?)",
-                        type, sec, s, e, om.writeValueAsString(attrs), periodId);
+                String attrsJson = om.writeValueAsString(attrs);
+                if (stageAsset) {
+                    staged.add(new StagedAsset(sec, s, e, attrsJson, val(c, iAsset)));
+                } else {
+                    jdbc.update("INSERT INTO road_assets (asset_type, section_label, start_chainage, end_chainage, attrs, period_id) VALUES (?,?,?,?,?::jsonb,?)",
+                            type, sec, s, e, attrsJson, periodId);
+                }
                 loaded++;
             }
+            if (!staged.isEmpty()) {
+                Set<String> existing = deleteMatchingAssets(type, assetKey, staged);
+                for (StagedAsset row : staged) {
+                    if (existing.contains(row.sec + "|" + row.assetId)) {
+                        updatedRows++;
+                        secUpdated.add(row.sec);
+                    } else {
+                        addedRows++;
+                        secAdded.add(row.sec);
+                    }
+                }
+                insertAssets(type, periodId, staged);
+            }
 
+            // Placement joins each new row to its road by section label. Without an
+            // index that join walks the whole network once per row and a few thousand
+            // furniture points outlast the proxy timeout.
+            ensureRoadSectionIndex();
             // linear-reference geometry in one pass. The SQL lives in PlacementService so
             // that re-placing an existing dataset against a re-imported road network
             // (POST /api/placement/replace) computes positions the same way this does.
@@ -460,6 +495,79 @@ public class AssetController {
         } catch (Exception ex) {
             // Keep the cause for the server log; don't echo the raw driver message to the client.
             throw new RuntimeException("Asset upload failed", ex);
+        }
+    }
+
+    /** One furniture/bridge/culvert row waiting for the batched write. */
+    private record StagedAsset(String sec, double start, Double end, String attrsJson, String assetId) {}
+
+    /**
+     * Removes stored rows whose Section Label + Asset ID appear in this file, and returns
+     * the keys that actually matched. One statement for the whole file, same match the
+     * per-row delete used ({@code attrs ->> assetKey}).
+     */
+    private Set<String> deleteMatchingAssets(String type, String assetKey, List<StagedAsset> rows) {
+        jdbc.execute("CREATE TEMP TABLE IF NOT EXISTS upload_asset_keys ("
+                + "section_label text, asset_id text) ON COMMIT DROP");
+        jdbc.execute("TRUNCATE upload_asset_keys");
+        jdbc.batchUpdate("INSERT INTO upload_asset_keys (section_label, asset_id) VALUES (?,?)",
+                new BatchPreparedStatementSetter() {
+                    @Override public void setValues(PreparedStatement ps, int i) throws SQLException {
+                        ps.setString(1, rows.get(i).sec);
+                        ps.setString(2, rows.get(i).assetId);
+                    }
+                    @Override public int getBatchSize() { return rows.size(); }
+                });
+        List<Map<String, Object>> hit = jdbc.queryForList("""
+                SELECT DISTINCT k.section_label AS section_label, k.asset_id AS asset_id
+                FROM upload_asset_keys k
+                WHERE EXISTS (
+                    SELECT 1 FROM road_assets a
+                    WHERE a.asset_type = ?
+                      AND a.section_label = k.section_label
+                      AND a.attrs ->> ? = k.asset_id)
+                """, type, assetKey);
+        jdbc.update("""
+                DELETE FROM road_assets a
+                USING upload_asset_keys k
+                WHERE a.asset_type = ?
+                  AND a.section_label = k.section_label
+                  AND a.attrs ->> ? = k.asset_id
+                """, type, assetKey);
+        Set<String> keys = new HashSet<>();
+        for (Map<String, Object> row : hit)
+            keys.add(row.get("section_label") + "|" + row.get("asset_id"));
+        return keys;
+    }
+
+    private void insertAssets(String type, Integer periodId, List<StagedAsset> rows) {
+        jdbc.batchUpdate(
+                "INSERT INTO road_assets (asset_type, section_label, start_chainage, end_chainage, attrs, period_id) "
+                        + "VALUES (?,?,?,?,CAST(? AS jsonb),?)",
+                new BatchPreparedStatementSetter() {
+                    @Override public void setValues(PreparedStatement ps, int i) throws SQLException {
+                        StagedAsset row = rows.get(i);
+                        ps.setString(1, type);
+                        ps.setString(2, row.sec);
+                        ps.setDouble(3, row.start);
+                        if (row.end == null) ps.setNull(4, Types.DOUBLE);
+                        else ps.setDouble(4, row.end);
+                        ps.setString(5, row.attrsJson);
+                        if (periodId == null) ps.setNull(6, Types.INTEGER);
+                        else ps.setInt(6, periodId);
+                    }
+                    @Override public int getBatchSize() { return rows.size(); }
+                });
+    }
+
+    /** Index the road network's section-label column so placement can find each road directly. */
+    private void ensureRoadSectionIndex() {
+        try {
+            String quoted = roadColumns.col((String) null, LayerAttributeCatalog.SECTION_LABEL);
+            jdbc.execute("CREATE INDEX IF NOT EXISTS roads_section_label_idx ON roads (" + quoted + ")");
+        } catch (Exception e) {
+            log.warn("Could not ensure the road section-label index; placement will still run. Cause: {}",
+                    e.toString());
         }
     }
 
