@@ -1462,7 +1462,11 @@ public class LayerAttributeService {
             jdbc.update("""
                 UPDATE layer_attribute
                    SET aliases = ?,
-                       unit        = CASE WHEN %1$s THEN COALESCE(?, unit) ELSE unit END,
+                       -- Assigned, not COALESCE'd. A null from the catalogue means
+                       -- the field is unitless, and that correction has to be able
+                       -- to clear a unit seeded earlier (pavement and shoulder
+                       -- width are band codes, not metres).
+                       unit        = CASE WHEN %1$s THEN ? ELSE unit END,
                        sort_order  = CASE WHEN %1$s THEN ? ELSE sort_order END,
                        name        = CASE WHEN %1$s THEN ? ELSE name        END,
                        -- NEVER downgrades a LOOKUP. The catalogue declares these

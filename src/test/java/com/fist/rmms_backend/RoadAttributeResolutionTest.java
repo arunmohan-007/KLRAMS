@@ -104,6 +104,22 @@ class RoadAttributeResolutionTest {
     }
 
     @Test
+    void truncatedConstituencyIsNotLabelledConsistency() {
+        // DBF keeps 10 characters, so Constituency is stored as Consistenc.
+        // The values are assembly names; "Consistency" is the wrong completion.
+        assertEquals("Constituency", LayerAttributeCatalog.roadLabel("Consistenc"));
+        assertEquals("Constituency", LayerAttributeCatalog.roadLabel("consistenc"));
+    }
+
+    @Test
+    void widthBandCodesAreNotMetres() {
+        // Pavement_W / Shoulder_W hold the lookup-sheet band (1…5), not a length.
+        assertNull(LayerAttributeCatalog.roadUnit("Pavement_W"));
+        assertNull(LayerAttributeCatalog.roadUnit("Shoulder_W"));
+        assertEquals("m", LayerAttributeCatalog.roadUnit("Measrd_Len"));
+    }
+
+    @Test
     void nullsAndEmptyColumnListsAreAnswerNotACrash() {
         assertNull(resolve(LayerAttributeCatalog.ROAD_START_CHAINAGE, List.of()));
         assertNull(resolve(null, CURRENT));

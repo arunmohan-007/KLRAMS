@@ -454,13 +454,21 @@ function kmlBuild(title,hex,feats,rowFor,nameFor,bandFor,bandOrder){
 }
 function csvBuild(feats,rowFor){
   var cols=[],seen={},rows=[];
+  /* Geometry stays after every attribute. A column that is blank on the first
+     rows (Road Number is empty on many MDRs) used to be discovered only after
+     WKT had already been appended, so it landed past a linestring that is
+     often longer than Excel's cell limit and the value was read as coordinates. */
+  var geo={Latitude:1,Longitude:1,WKT_geometry:1};
   feats.forEach(function(f){
     var g=f&&f.geometry,r=Object.assign({},rowFor(f));
     var pl=g?pointList(g):null;
     if(pl&&pl.length===1){r.Latitude=pl[0][1];r.Longitude=pl[0][0];}
     r.WKT_geometry=g?wktOf(g):'';
-    Object.keys(r).forEach(function(k){if(!seen[k]){seen[k]=1;cols.push(k);}});
+    Object.keys(r).forEach(function(k){if(!geo[k]&&!seen[k]){seen[k]=1;cols.push(k);}});
     rows.push(r);
+  });
+  ['Latitude','Longitude','WKT_geometry'].forEach(function(k){
+    for(var i=0;i<rows.length;i++){if(Object.prototype.hasOwnProperty.call(rows[i],k)){cols.push(k);break;}}
   });
   var esc=function(v){var s=String(v==null?'':v);return /[",\n\r]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s;};
   return '﻿'+cols.map(esc).join(',')+'\r\n'+rows.map(function(r){return cols.map(function(c){return esc(r[c]);}).join(',');}).join('\r\n');

@@ -519,17 +519,27 @@ final class LayerAttributeCatalog {
         ROAD_LABELS.put("pavement_w", "Pavement Width");
         ROAD_LABELS.put("shoulder_w", "Shoulder Width");
         ROAD_LABELS.put("cons_type", "Construction Type");
-        ROAD_LABELS.put("consistenc", "Consistency");
+        /* DBF keeps 10 characters, so Constituency arrives as "Consistenc".
+           Completing that truncation as "Consistency" puts assembly names
+           (Thodupuzha, Devikulam, Vaikom…) under the wrong attribute. */
+        ROAD_LABELS.put("consistenc", "Constituency");
         ROAD_LABELS.put("surface_ty", "Surface Type");
         ROAD_LABELS.put("district", "District");
         ROAD_LABELS.put("terrain", "Terrain");
         ROAD_LABELS.put("region", "Region");
     }
 
-    /** Units for the road fields that have one; everything else is unitless text. */
+    /**
+     * Units for the road fields that are real measurements.
+     *
+     * Pavement width and shoulder width are deliberately absent: the shapefile
+     * stores the lookup-sheet band code (1…5, 1…4), not a length in metres.
+     * Calling that code "m" makes a "3" read as 3 m when it means the
+     * ≥7 m and &lt;10.5 m band.
+     */
     private static final Map<String, String> ROAD_UNITS = Map.of(
         "dig_l", "m", "measrd_len", "m", "start_chai", "m", "end_chaina", "m",
-        "rd_str_cha", "m", "rd_end_cha", "m", "pavement_w", "m", "shoulder_w", "m");
+        "rd_str_cha", "m", "rd_end_cha", "m");
 
     /** The declared label for a road column, or null to keep the discovered one. */
     static String roadLabel(String column) {
