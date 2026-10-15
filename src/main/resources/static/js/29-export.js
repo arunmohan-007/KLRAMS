@@ -1,5 +1,5 @@
 /* ============================================================
-   KLRAMS viewer · 29-export.js   (build 176)
+   KLRAMS viewer · 29-export.js   (build 177)
    Per-layer data export — Shapefile (zip), GeoJSON, KML, KMZ, CSV.
 
    Every layer row in the Layers panel gets an export button that
@@ -452,23 +452,50 @@ function kmlBuild(title,hex,feats,rowFor,nameFor,bandFor,bandOrder){
   out.push('</Document></kml>');
   return out.join('\n');
 }
+/* Excel drops the rest of a cell after 32,767 characters and reads the leftover
+   commas as new rows, so a long linestring appears as coordinate rows between
+   the roads. Stay under that, splitting on a comma so the pieces concatenate
+   back to the original WKT. */
+var CSV_CELL_MAX=30000;
+function csvWktChunks(s){
+  var out=[],i=0;
+  s=s==null?'':String(s);
+  if(s.length<=CSV_CELL_MAX)return [s];
+  while(i<s.length){
+    if(s.length-i<=CSV_CELL_MAX){out.push(s.substring(i));break;}
+    var cut=s.lastIndexOf(',',i+CSV_CELL_MAX);
+    if(cut<=i)cut=i+CSV_CELL_MAX-1;
+    out.push(s.substring(i,cut+1));
+    i=cut+1;
+  }
+  return out;
+}
+function csvWktName(n){return n===0?'WKT_geometry':'WKT_geometry_'+(n+1);}
 function csvBuild(feats,rowFor){
-  var cols=[],seen={},rows=[];
-  /* Geometry stays after every attribute. A column that is blank on the first
-     rows (Road Number is empty on many MDRs) used to be discovered only after
-     WKT had already been appended, so it landed past a linestring that is
-     often longer than Excel's cell limit and the value was read as coordinates. */
-  var geo={Latitude:1,Longitude:1,WKT_geometry:1};
+  var cols=[],seen={},rows=[],maxChunks=1;
   feats.forEach(function(f){
     var g=f&&f.geometry,r=Object.assign({},rowFor(f));
     var pl=g?pointList(g):null;
     if(pl&&pl.length===1){r.Latitude=pl[0][1];r.Longitude=pl[0][0];}
-    r.WKT_geometry=g?wktOf(g):'';
-    Object.keys(r).forEach(function(k){if(!geo[k]&&!seen[k]){seen[k]=1;cols.push(k);}});
+    var chunks=csvWktChunks(g?wktOf(g):'');
+    r._wkt=chunks;
+    if(chunks.length>maxChunks)maxChunks=chunks.length;
+    Object.keys(r).forEach(function(k){
+      if(k==='_wkt'||k==='Latitude'||k==='Longitude')return;
+      if(!seen[k]){seen[k]=1;cols.push(k);}
+    });
     rows.push(r);
   });
-  ['Latitude','Longitude','WKT_geometry'].forEach(function(k){
-    for(var i=0;i<rows.length;i++){if(Object.prototype.hasOwnProperty.call(rows[i],k)){cols.push(k);break;}}
+  /* Point coordinates, then the linestring — always after the attributes, and
+     one column per chunk so a long road stays on a single spreadsheet row. */
+  var anyPt=false;
+  rows.forEach(function(r){if(r.Latitude!=null||r.Longitude!=null)anyPt=true;});
+  if(anyPt)cols.push('Latitude','Longitude');
+  for(var c=0;c<maxChunks;c++)cols.push(csvWktName(c));
+  rows.forEach(function(r){
+    var chunks=r._wkt||[];
+    for(var i=0;i<maxChunks;i++)r[csvWktName(i)]=chunks[i]||'';
+    delete r._wkt;
   });
   var esc=function(v){var s=String(v==null?'':v);return /[",\n\r]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s;};
   return '﻿'+cols.map(esc).join(',')+'\r\n'+rows.map(function(r){return cols.map(function(c){return esc(r[c]);}).join(',');}).join('\r\n');
