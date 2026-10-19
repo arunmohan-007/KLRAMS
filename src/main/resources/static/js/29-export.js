@@ -94,6 +94,7 @@ function zipStore(entries){
    _field_names.csv lookup written next to the .shp.                */
 var DBF_ALIAS={           /* names this app builds — hand-picked shortenings */
   'PCI_composite':'PCI_COMP','PCI_worst_lane':'PCI_WORST','ADT_veh_per_day':'ADT_PER_DY',
+  'Commercial_veh_per_day':'CV_PER_DAY',
   'Total_vehicles':'TOT_VEH','Survey_days':'SRVY_DAYS','Chainage_m':'CHAINAGE_M',
   'From_ch_m':'FROM_CH_M','WKT_geometry':'WKT_GEOM','D0_mm':'D0_MM',
   'Road_Name':'ROAD_NAME','Section_La':'SECTION_LA','Measrd_Len':'MEASRD_LEN',
@@ -597,10 +598,18 @@ function trafficRow(p){
     var days=c.days||1;
     o.Survey_days=days;
     if(c.total!=null){o.Total_vehicles=c.total;o.ADT_veh_per_day=Math.round((c.total||0)/days);}
+    /* Same commercial-class set and rounding the station popup shows. */
+    o.Commercial_veh_per_day=(typeof trfCommercialPerDay==='function')?trfCommercialPerDay(c):0;
     if(c.dateMin)o.Date_from=c.dateMin;
     if(c.dateMax)o.Date_to=c.dateMax;
     if(c.byDir)Object.keys(c.byDir).sort().forEach(function(d){o['Dir_'+d]=c.byDir[d];});
-    if(c.byClass)Object.keys(c.byClass).sort().forEach(function(k){o['Cls_'+k]=c.byClass[k];});
+    /* Cls_* is the survey-period total. AvgDaily_* is the same figure the
+       station popup shows under "vehicle classes · avg count per day":
+       class total ÷ survey days, rounded. */
+    if(c.byClass)Object.keys(c.byClass).sort().forEach(function(k){
+      o['Cls_'+k]=c.byClass[k];
+      o['AvgDaily_'+k]=Math.round((+c.byClass[k]||0)/days);
+    });
   }
   return o;
 }
