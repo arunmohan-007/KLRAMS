@@ -10,6 +10,19 @@ let trfPopSeq=0; /* unique id per grouped-station popup, so its Combined/This-ca
 const TRF_KEY='klrams_traffic_v1';
 function trfGetStore(){try{return JSON.parse(localStorage.getItem(TRF_KEY))||{};}catch(e){return {};}}
 function trfN(n){const x=Number(n);if(isNaN(x))return '–';try{return x.toLocaleString('en-IN');}catch(e){return String(x);}}
+/* Commercial vehicles — the classes the RMMS cell counts as commercial.
+   Matching ignores case and punctuation so "LCV ACE", "LCV_ACE" and a
+   renamed header that still reads the same all fold onto one total. */
+const TRF_COMMERCIAL=['LCV ACE','LCV 6 TYRES','MINI BUS','PRIVATE BUS','AUTO RICKSHAW','TRUCK 2 AXLE','KERALA STATE BUS','TRUCK 3 AXLE','MULTI AXLE TANDEM TRUCK','LCV 4 TYRES','LCV 3 TYRES'];
+function trfClassKey(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();}
+const TRF_COMMERCIAL_SET=new Set(TRF_COMMERCIAL.map(trfClassKey));
+function trfCommercialPerDay(c){
+  if(!c||!c.byClass)return 0;
+  const days=Math.max(1,+c.days||1);
+  let n=0;
+  Object.keys(c.byClass).forEach(k=>{if(TRF_COMMERCIAL_SET.has(trfClassKey(k)))n+=(+c.byClass[k]||0);});
+  return Math.round(n/days);
+}
 /* build 161 — stored counts can arrive malformed from older imports:
    a JSON string (double-encoded) or a bare number. Normalise to the
    {total,byDir,byClass,byHour,days,...} object the popup expects. */
@@ -151,6 +164,7 @@ function trfCountBlockHTML(c){
   h+='<div class="kp-block"><div class="kp-eyebrow">Survey summary</div><div class="kp-attrs">';
   if(range)h+='<div class="kp-attr"><span class="kp-k">Dates</span><span class="kp-v">'+escH(range)+'</span></div>';
   h+='<div class="kp-attr"><span class="kp-k">'+days+'-day total</span><span class="kp-v">'+trfN(c.total)+' <span class="kp-u">veh</span></span></div>';
+  h+='<div class="kp-attr"><span class="kp-k">Commercial vehicles</span><span class="kp-v">'+trfN(trfCommercialPerDay(c))+' <span class="kp-u">/day</span></span></div>';
   h+='<div class="kp-attr"><span class="kp-k">Peak hour (both)</span><span class="kp-v">'+trfN(peakBoth.v)+' <span class="kp-u">'+escH(peakBoth.t)+(peakBoth.d&&peakBoth.d!=='-'?(' · '+escH(peakBoth.d)):'')+'</span></span></div>';
   if(c.peak&&c.peak.dir)Object.keys(c.peak.dir).sort().forEach(dn=>{const pp=c.peak.dir[dn];h+='<div class="kp-attr"><span class="kp-k">Peak · '+escH(dn)+'</span><span class="kp-v">'+trfN(pp.v)+' <span class="kp-u">'+escH(pp.t)+'</span></span></div>';});
   h+='</div></div>';
