@@ -1,8 +1,8 @@
 /* ============================================================
    KLRAMS viewer · 39-heatmap.js
-   Heat Map Analysis — a kernel-density surface over the two POINT datasets
+   Heat Map Analysis — a kernel-density surface over the POINT datasets
    that actually have something worth interpolating: Sub-Grade Soil test
-   points and Traffic Stations.
+   points, Bituminous Core samples (layer thickness) and Traffic Stations.
 
    Why this is an ANALYSIS, not a layer
    ------------------------------------
@@ -19,9 +19,11 @@
    PUT ITS COUNTERS, not where the traffic is — 33 stations spread over Kerala
    cluster wherever the survey clustered. Weighting by ADT turns the same 33
    points into a picture of demand. Same for soil: density shows where the
-   boreholes are, weighting by CBR shows where the subgrade is weak. Both
-   modes are offered because the unweighted one is the honest answer to
-   "where do we have data?", which is a real question during survey planning.
+   boreholes are, weighting by CBR shows where the subgrade is weak. Same for
+   cores: density shows the survey locations, weighting by total bituminous
+   thickness shows where the bound layers are thick. Both modes are offered
+   because the unweighted one is the honest answer to "where do we have
+   data?", which is a real question during survey planning.
 
    Robust normalisation
    --------------------
@@ -58,14 +60,14 @@ const HM_BND   = ['hm-bnd-casing','hm-bnd-line','hm-bnd-label'];
 const HM_DENSITY = '__density__';
 
 const HM = {
-  dataset : 'soil',      // 'soil' | 'traffic'
+  dataset : 'soil',      // 'soil' | 'traffic' | 'core'
   attr    : HM_DENSITY,
   radius  : 26,          // kernel radius in px at z11
   intensity: 1,
   boundary: 'district',  // 'none' | 'district'
   ran     : false,
   last    : null,        // descriptor of the surface now on the map (see KLHeatmap)
-  attrs   : {soil:null, traffic:null}   // discovered attribute lists, cached per dataset
+  attrs   : {soil:null, traffic:null, core:null}   // discovered attribute lists, cached per dataset
 };
 
 const HM_RAMP = [
@@ -79,8 +81,12 @@ const HM_RAMP = [
 ];
 
 const HM_DATASETS = {
-  soil   : {label:'Sub-Grade Soil',   assetType:'subgrade', scopeProp:'__sec',  dot:'#8a4d1f', unit:'test point'},
-  traffic: {label:'Traffic Stations', assetType:null,       scopeProp:'section', dot:'#1565c0', unit:'station'}
+  soil   : {label:'Sub-Grade Soil',   assetType:'subgrade',         scopeProp:'__sec',  dot:'#8a4d1f', unit:'test point',
+            empty:'No sub-grade soil points are loaded. Import the sub-grade soil survey in the Data Console, then run again.'},
+  traffic: {label:'Traffic Stations', assetType:null,               scopeProp:'section', dot:'#1565c0', unit:'station',
+            empty:'No traffic stations are loaded. Import traffic data in the Data Console, then run again.'},
+  core   : {label:'Bituminous Core',  assetType:'bituminous_core',  scopeProp:'__sec',  dot:'#2b2b2b', unit:'core',
+            empty:'No bituminous core points are loaded. Import the bituminous core survey in the Data Console, then run again.'}
 };
 
 /* Count-derived traffic measures. These are not CSV columns — they are computed
@@ -105,7 +111,7 @@ const HM_TRAFFIC_MEASURES = [
    sits. Offering them would make the dropdown look thorough and the map wrong. */
 const HM_SKIP_KEYS = new Set([
   'lat','latitude','lng','lon','long','longitude','x','y','id','fid','objectid',
-  'slno','sino','srno','sno','serialno','no','chainage','ch','chainagem',
+  'slno','sino','srno','sno','serialno','no','coreno','chainage','ch','chainagem',
   'fromch','toch','fromchainage','tochainage','startch','endch','year'
 ]);
 
@@ -198,10 +204,23 @@ function hmDiscoverAttrs(features){
 
 /* ---------- data ---------- */
 
-/* Both datasets are already cached by their own module once the user has
-   touched them; neither is fetched twice. Soil goes through loadAssetData()
-   (the same call the Report Hub and the scope card use), traffic through
-   loadTraffic(). */
+/* Soil and core are already cached by loadAssetData() (the same call the
+   Report Hub and the scope card use); traffic through loadTraffic(). Neither
+   is fetched twice.
+
+   Prefer total bituminous thickness when the core dataset is selected, then
+   any other thickness column, then leave density as the fallback. Column
+   names drift between imports, so this matches the normalised header. */
+function hmPreferredAttr(list){
+  if(!list || !list.length) return HM_DENSITY;
+  if(HM.dataset !== 'core') return HM_DENSITY;
+  const keys = list.map(a => ({a, n:hmKey(a.key)}));
+  const total = keys.find(x => x.n.indexOf('thickness')>=0 && x.n.indexOf('total')>=0);
+  if(total) return total.a.key;
+  const any = keys.find(x => x.n.indexOf('thickness')>=0);
+  return any ? any.a.key : HM_DENSITY;
+}
+
 function hmEnsureData(){
   if(HM.dataset === 'traffic'){
     /* Wait for the saved station groups before reading the stations. Without
@@ -218,7 +237,8 @@ function hmEnsureData(){
           : new Promise(res => loadTraffic(() => res((typeof TRAFFIC_STN!=='undefined' && TRAFFIC_STN.features) || []))));
     return rules.then(() => stations);
   }
-  const spec = (typeof ASSETS !== 'undefined') && ASSETS.find(a => a.type === 'subgrade');
+  const type = HM_DATASETS[HM.dataset] && HM_DATASETS[HM.dataset].assetType;
+  const spec = type && (typeof ASSETS !== 'undefined') && ASSETS.find(a => a.type === type);
   if(!spec || typeof loadAssetData !== 'function') return Promise.resolve([]);
   return loadAssetData(spec).then(gj => (gj && gj.features) || [], () => []);
 }
@@ -454,9 +474,7 @@ function hmRun(){
   hmEnsureData().then(feats => {
     if(!feats.length){
       hmClear();
-      hmSetStatus(HM.dataset==='traffic'
-        ? 'No traffic stations are loaded. Import traffic data in the Data Console, then run again.'
-        : 'No sub-grade soil points are loaded. Import the sub-grade soil survey in the Data Console, then run again.', 'bad');
+      hmSetStatus(HM_DATASETS[HM.dataset].empty, 'bad');
       return;
     }
 
@@ -647,11 +665,18 @@ function hmBuildAttrs(){
       opts.push('</optgroup>');
     }
     if(list && list.length){
-      opts.push('<optgroup label="'+(HM.dataset==='traffic'?'Station attributes':'Test result')+'">');
+      const group = HM.dataset==='traffic' ? 'Station attributes'
+                  : HM.dataset==='core'    ? 'Core attributes'
+                  : 'Test result';
+      opts.push('<optgroup label="'+group+'">');
       list.forEach(a => opts.push('<option value="'+hmEsc(a.key)+'">'+hmEsc(a.label)+(a.unit?(' · '+hmEsc(a.unit)):'')+'</option>'));
       opts.push('</optgroup>');
     }
     sel.innerHTML = opts.join('');
+    if(HM.attr === HM_DENSITY){
+      const pref = hmPreferredAttr(list);
+      if(pref !== HM_DENSITY) HM.attr = pref;
+    }
     sel.value = HM.attr;
     if(sel.value !== HM.attr){ HM.attr = HM_DENSITY; sel.value = HM_DENSITY; }
     hmRenderAttrHint();
@@ -677,6 +702,8 @@ function hmRenderAttrHint(){
   if(HM.attr === HM_DENSITY){
     hint.innerHTML = HM.dataset === 'traffic'
       ? 'Density alone maps where the <b>counters were placed</b>, not where the traffic is. Weight by ADT for demand. Grouped carriageways count as <b>one</b> station.'
+      : HM.dataset === 'core'
+      ? 'Density alone maps where the <b>cores were taken</b>. Weight by total bituminous thickness to map how thick the bound layers are.'
       : 'Density alone maps where the <b>boreholes were taken</b>. Weight by CBR or PI to map subgrade quality.';
   }else{
     const m = hmAttrMeta();

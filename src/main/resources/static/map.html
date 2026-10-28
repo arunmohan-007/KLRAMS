@@ -20,7 +20,7 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
-  <link rel="stylesheet" href="css/app.css?v=153">
+  <link rel="stylesheet" href="css/app.css?v=154">
   <link rel="stylesheet" href="css/klrams-dark.css?v=38">
   <style>
     /* Road Condition Data metric picker on the Layers panel */
@@ -76,7 +76,7 @@
     <button class="railbtn" data-pane="basemap" data-act="openPane" data-args='["basemap"]' title="Base Map"><span class="ri"><svg viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span><span class="rl">Base map</span></button>
     <button class="railbtn" data-pane="measure" data-act="openPane" data-args='["measure"]' title="Measure & Route"><span class="ri"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></svg></span><span class="rl">Measure</span></button>
     <button class="railbtn" data-pane="chainage" data-act="openChainagePane" title="Chainage Locator"><span class="ri"><svg viewBox="0 0 24 24"><path d="M4 18h16"/><path d="M7 18v-4M12 18V6M17 18v-7"/><circle cx="12" cy="4" r="1.6"/></svg></span><span class="rl">Chainage</span></button>
-    <button class="railbtn" data-pane="heatmap" data-act="openHeatmapPane" title="Heat Map Analysis — density surface over soil test points or traffic stations"><span class="ri"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg></span><span class="rl">Heat map</span></button>
+    <button class="railbtn" data-pane="heatmap" data-act="openHeatmapPane" title="Heat Map Analysis — density surface over soil test points, bituminous cores or traffic stations"><span class="ri"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg></span><span class="rl">Heat map</span></button>
     <a class="railbtn" href="/drone-viewer.html" title="Drone Viewer — drone orthomosaic and DEM imagery drawn over the road network"><span class="ri"><svg viewBox="0 0 24 24"><circle cx="5" cy="5" r="2.2"/><circle cx="19" cy="5" r="2.2"/><circle cx="5" cy="19" r="2.2"/><circle cx="19" cy="19" r="2.2"/><path d="M6.6 6.6L10.5 10.5M17.4 6.6L13.5 10.5M6.6 17.4L10.5 13.5M17.4 17.4L13.5 13.5"/><rect x="10.2" y="10.2" width="3.6" height="3.6" rx="0.8"/></svg></span><span class="rl">Drone</span></a>
     <!-- Full-screen modules, captioned and plated so the rail reads as two
          groups: tools that act on the map beside them, and modules that take
@@ -154,6 +154,7 @@
       <div class="switch"><span class="lname"><span class="ldot" style="background:#2b2b2b"></span>Bituminous Core</span><input type="checkbox" id="showCore"></div>
       <div class="switch"><span class="lname"><span class="ldot" style="background:#b8860b"></span>Pavement Crust</span><input type="checkbox" id="showCrust"></div>
       <button class="hm-launch" data-act="openHeatmapPane" data-args='["soil"]' title="Build a CBR / plasticity heat map from the sub-grade soil test points"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg>Heat Map Analysis <span class="hm-launch-s">Sub-grade soil</span></button>
+      <button class="hm-launch" data-act="openHeatmapPane" data-args='["core"]' title="Build a thickness heat map from the bituminous core samples"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="5.6" ry="4.2"/><circle cx="12" cy="12" r="2"/></svg>Heat Map Analysis <span class="hm-launch-s">Bituminous core</span></button>
     </div>
     <!-- Interaction group hidden: survey video now launches from the Road Inspection popup's "Play footage" button. The #videoMode checkbox is retained (hidden) so playSurveyFromPopup() can still drive the video dock. -->
     <div class="grp-title" style="display:none">Interaction</div>
@@ -251,6 +252,7 @@
     <div class="eyebrow" style="margin-top:16px">1 &middot; Dataset</div>
     <div class="hm-seg" id="hmSeg">
       <button class="hm-segbtn on" data-ds="soil"><span class="hm-sdot" style="background:#8a4d1f"></span>Sub-Grade Soil</button>
+      <button class="hm-segbtn" data-ds="core"><span class="hm-sdot" style="background:#2b2b2b"></span>Bituminous Core</button>
       <button class="hm-segbtn" data-ds="traffic"><span class="hm-sdot" style="background:#1565c0"></span>Traffic Stations</button>
     </div>
 
@@ -1166,7 +1168,7 @@
   <script src="js/37-layer-filters.js?v=11"></script>
   <!-- Map Composer: the engine first, then the screen that drives it. -->
   <script src="js/38-map-composer.js?v=12"></script>
-  <script src="js/39-heatmap.js?v=6"></script>
+  <script src="js/39-heatmap.js?v=7"></script>
   <script src="js/38b-composer-ui.js?v=11"></script>
   <!-- Groups Dashboard / Composer / Reports into one rail button + flyout. -->
   <script src="js/40-module-menu.js?v=3"></script>
@@ -1341,7 +1343,7 @@
     </div>
   </div>
 
-  <script src="/js/map-ui.js?v=4"></script>
+  <script src="/js/map-ui.js?v=5"></script>
 <style id="mobile-css">
 #fpaneBackdrop{position:fixed;inset:0;background:rgba(8,14,24,.5);z-index:7;opacity:0;visibility:hidden;transition:opacity .22s;display:none}
 /* panel collapsed by default everywhere; shown only when body.panel-open (set by my toggle) */
