@@ -199,7 +199,7 @@ function trfCountBlockHTML(c){
   /* vehicle classes — top 5, with the full list on demand (avg count per day, not the raw survey-period total) */
   const allCls=Object.keys(c.byClass||{}).map(k=>[k,c.byClass[k]]).sort((a,b)=>b[1]-a[1]);
   if(allCls.length){
-    const clsRow=(nm,val)=>'<div class="kp-attr"><span class="kp-k">'+escH(nm)+'</span><span class="kp-v">'+trfN(Math.round((val||0)/days))+'</span></div>';
+    const clsRow=(nm,val)=>'<div class="kp-attr"><span class="kp-k">'+escH(nm)+' <span class="kp-sub">('+(TRF_COMMERCIAL_SET.has(trfClassKey(nm))?'C':'NC')+')</span></span><span class="kp-v">'+trfN(Math.round((val||0)/days))+'</span></div>';
     h+='<div class="kp-block"><div class="kp-eyebrow">Top vehicle classes · avg count per day</div><div class="kp-attrs">';
     allCls.slice(0,5).forEach(e=>{h+=clsRow(e[0],e[1]);});
     h+='</div>';
