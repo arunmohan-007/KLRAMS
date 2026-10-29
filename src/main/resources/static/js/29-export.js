@@ -857,9 +857,17 @@ var EXP={
           var q=Object.assign({},p,{_exportLane:l.name,_exportValue:l.colorValue}),row={
             Road:p.road,From_ch_m:p.from_ch,To_ch_m:p.to_ch,Lane:l.name,Lanes:p.lane_count,Lane_list:p.xsp_list
           };
-          if(suffix)row[condParamName(suffix)]=p[l.name+'_'+suffix];
-          else if(typeof PARAMS!=='undefined')PARAMS.forEach(function(pp){var v=p[l.name+'_'+pp.key];if(v!=null&&v!=='')row[condParamName(pp.key)]=v;});
-          row.Rating=(condBandFor(colorParam,l.colorValue)||{}).label||'';
+          if(suffix){
+            row[condParamName(suffix)]=p[l.name+'_'+suffix];
+            var selectedBand=condBandFor(suffix,l.colorValue);
+            row.Rating=selectedBand?selectedBand.label:'';row.Color=selectedBand?selectedBand.color:'';
+          }else if(typeof PARAMS!=='undefined')PARAMS.forEach(function(pp){
+            var v=p[l.name+'_'+pp.key],nm=condParamName(pp.key);
+            if(v!=null&&v!=='')row[nm]=v;
+            var band=condBandFor(pp.key,v);row[nm+'_Rating']=band?band.label:'';row[nm+'_Color']=band?band.color:'';
+          });
+          var mapBand=condBandFor(colorParam,l.colorValue);
+          if(!suffix){row.Rating=mapBand?mapBand.label:'';row.Color=mapBand?mapBand.color:'';}
           expanded.push({type:'Feature',geometry:offsetLaneGeometry(f.geometry,l.name),properties:q,_exportRow:row});
         });
       });
