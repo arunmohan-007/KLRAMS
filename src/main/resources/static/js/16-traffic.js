@@ -24,11 +24,10 @@ function trfCommercialPerDay(c){
   return Math.round(n/days);
 }
 function trfNonCommercialPerDay(c){
-  if(!c||!c.byClass)return 0;
+  if(!c)return 0;
   const days=Math.max(1,+c.days||1);
-  let n=0;
-  Object.keys(c.byClass).forEach(k=>{if(!TRF_COMMERCIAL_SET.has(trfClassKey(k)))n+=(+c.byClass[k]||0);});
-  return Math.round(n/days);
+  const adt=Math.round((+c.total||0)/days);
+  return Math.max(0,adt-trfCommercialPerDay(c));
 }
 function trfDirectionPerDay(c,needle){
   if(!c||!c.byDir)return 0;
