@@ -13,7 +13,7 @@ function trfN(n){const x=Number(n);if(isNaN(x))return '–';try{return x.toLocal
 /* Commercial vehicles — the classes the RMMS cell counts as commercial.
    Matching ignores case and punctuation so "LCV ACE", "LCV_ACE" and a
    renamed header that still reads the same all fold onto one total. */
-const TRF_COMMERCIAL=['LCV ACE','LCV 6 TYRES','MINI BUS','PRIVATE BUS','AUTO RICKSHAW','TRUCK 2 AXLE','KERALA STATE BUS','TRUCK 3 AXLE','MULTI AXLE TANDEM TRUCK','LCV 4 TYRES','LCV 3 TYRES'];
+const TRF_COMMERCIAL=['LCV ACE','LCV 6 TYRES','MINI BUS','PRIVATE BUS','TRUCK 2 AXLE','KERALA STATE BUS','TRUCK 3 AXLE','MULTI AXLE TANDEM TRUCK','LCV 4 TYRES','LCV 3 TYRES'];
 function trfClassKey(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();}
 const TRF_COMMERCIAL_SET=new Set(TRF_COMMERCIAL.map(trfClassKey));
 function trfCommercialPerDay(c){
