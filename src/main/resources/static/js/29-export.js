@@ -1006,9 +1006,10 @@ function openExpMenu(key,anchor){
   m.id='klExpMenu';m.className='kexp';
   var paramRow='';
   if(E.hasParam&&typeof PARAMS!=='undefined'){
+    var selectedParam=(typeof cb!=='undefined'&&cb&&cb.value)?cb.value:'all';
     paramRow+='<div class="kexp-param"><span class="kexp-pl">Item</span><select id="kexpParam">'
-      +'<option value="all">All parameters</option>'
-      +PARAMS.map(function(p){return '<option value="'+p.key+'">'+p.label+'</option>';}).join('')
+      +'<option value="all"'+(selectedParam==='all'?' selected':'')+'>All parameters</option>'
+      +PARAMS.map(function(p){return '<option value="'+p.key+'"'+(selectedParam===p.key?' selected':'')+'>'+p.label+'</option>';}).join('')
       +'</select></div>';
   }
   m.innerHTML=
