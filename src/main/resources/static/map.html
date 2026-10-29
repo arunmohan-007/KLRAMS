@@ -845,6 +845,8 @@
       .maplibregl-popup:has(.klpop) .maplibregl-popup-tip{border-top-color:rgba(9,20,16,.97);border-bottom-color:rgba(9,20,16,.97)}
       .maplibregl-popup-content:has(.klpop) .maplibregl-popup-close-button{color:#7fb9a6;font-size:18px;padding:2px 7px}
       .klpop{width:272px;font-family:Inter,system-ui,sans-serif;background:rgba(9,20,16,.97);border:1px solid rgba(123,225,180,.22);border-radius:13px;overflow:hidden;color:#fff;box-shadow:0 18px 50px rgba(0,0,0,.5)}
+      /* Geotech / traffic cards: a little wider so label | value+unit stay aligned. */
+      .klpop.asset-klpop,.klpop.trf-klpop{width:310px}
       /* Cap every map popup card to the viewport and scroll inside, so tall
          cards (traffic counts, geotech assets) near the map edge are never
          clipped and maplibre can flip them above/below the point. Scoped to
@@ -875,17 +877,22 @@
       .klpop .kp-arr2{color:#5e7d72;margin:0 1px}
       .klpop .kp-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
       .klpop .kp-dot.s{background:#7ee6b0}.klpop .kp-dot.e{background:#ffd27a}
-      .klpop .kp-attrs{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;gap:6px}
-      .klpop .kp-attr{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-      .klpop .kp-k{font-size:11px;color:#8fb3a8;flex:0 0 auto}
-      .klpop .kp-v{font-size:11.5px;color:#eaf6ef;font-weight:600;text-align:right}
+      .klpop .kp-attrs{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;gap:7px}
+      /* Nested attrs inside a section block already have the block's padding —
+         strip the second pad/border so rows sit flush under the eyebrow. */
+      .klpop .kp-block>.kp-attrs{padding:0;border-bottom:0}
+      /* Label left, value+unit right — grid keeps a stable value column so
+         numbers and units line up down the card instead of wrapping under. */
+      .klpop .kp-attr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:baseline}
+      .klpop .kp-k{font-size:11px;color:#8fb3a8;min-width:0;line-height:1.35}
+      .klpop .kp-v{font-size:11.5px;color:#eaf6ef;font-weight:600;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
       /* An attribute the layer describes but this feature leaves empty. Shown
          as a dash rather than dropped, so the popup lists the same fields as
          Layer Management — dimmed so it reads as "nothing recorded" at a
          glance and never competes with a real value. */
       .klpop .kp-v.kp-empty{color:#5d7d72;font-weight:500}
       /* The unit that follows a value, when the attribute has one. */
-      .klpop .kp-u{font-size:9.5px;color:#8fb3a8;font-weight:600;margin-left:1px}
+      .klpop .kp-u{font-size:9.5px;color:#8fb3a8;font-weight:600;margin-left:3px;white-space:nowrap}
       /* "N more attributes" disclosure on a user-layer popup — the tail of a
          wide file's columns, folded rather than dropped. Declared here beside
          the rest of the .klpop card so it is styled whichever theme is on;

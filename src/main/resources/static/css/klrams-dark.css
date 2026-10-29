@@ -783,7 +783,7 @@ html body .alb-empty{color:var(--k-muted)!important}
 /* ---- pro popups (geotechnical assets + traffic) built on .klpop ---- */
 /* cap tall popups to the viewport and scroll inside, so the whole card stays
    on-screen and maplibre can anchor it without clipping the header/top rows */
-.klpop.asset-klpop,.klpop.trf-klpop{max-height:min(66vh,380px);overflow-y:auto;overflow-x:hidden}
+.klpop.asset-klpop,.klpop.trf-klpop{width:310px;max-height:min(66vh,380px);overflow-y:auto;overflow-x:hidden}
 .klpop.asset-klpop::-webkit-scrollbar,.klpop.trf-klpop::-webkit-scrollbar{width:9px}
 .klpop.asset-klpop::-webkit-scrollbar-thumb,.klpop.trf-klpop::-webkit-scrollbar-thumb{background:#2a3645;border-radius:6px;border:2px solid transparent;background-clip:padding-box}
 .klpop .kp-block:last-child{border-bottom:0!important}
@@ -796,9 +796,9 @@ html body .alb-empty{color:var(--k-muted)!important}
   letter-spacing:.03em;vertical-align:1px}
 .klpop .kp-sub{font-size:10px;color:#8fb3a8;font-weight:600;margin-left:6px}
 .klpop .kp-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
-.klpop .kp-gcell{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-.klpop .kp-gk{font-size:10.5px;color:#8fb3a8}
-.klpop .kp-gv{font-size:11px;color:#eaf6ef;font-weight:600;font-variant-numeric:tabular-nums}
+.klpop .kp-gcell{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:baseline}
+.klpop .kp-gk{font-size:10.5px;color:#8fb3a8;min-width:0}
+.klpop .kp-gv{font-size:11px;color:#eaf6ef;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
 .klpop .kp-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .klpop .kp-stat{background:rgba(45,212,191,.06);border:1px solid rgba(45,212,191,.18);border-radius:10px;padding:9px 5px;text-align:center}
 .klpop .kp-sv{font-size:15px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;line-height:1.05}

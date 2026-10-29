@@ -12,7 +12,8 @@ const ASSET_DATA={}; /* Build 163 — loaded geojson per asset type, for the fil
    After the popup renders, pan the map just enough that the whole card
    (plus tip) is inside the container. */
 function klPopup(lngLat,html){
-  const p=new maplibregl.Popup({maxWidth:'290px'}).setLngLat(lngLat).setHTML(html).addTo(map);
+  /* 340px gives geotech rows room for label + value + unit on one line. */
+  const p=new maplibregl.Popup({maxWidth:'340px'}).setLngLat(lngLat).setHTML(html).addTo(map);
   setTimeout(function(){
     try{
       const el=p.getElement(); if(!el)return;
@@ -85,7 +86,7 @@ function _assetUVal(raw,unit,type,key){
     if(full!=null&&!same)return escH(full)+' <span class="kp-code">'+escH(s)+'</span>';
     if(full!=null&&String(full)!==s)return escH(full);
   }
-  if(unit){const num=Number(s.replace(/,/g,''));if(!isNaN(num))return escH(s)+' <span class="kp-u">'+escH(unit)+'</span>';}
+  if(unit){const num=Number(s.replace(/,/g,''));if(!isNaN(num))return escH(s)+'\u00a0<span class="kp-u">'+escH(unit)+'</span>';}
   return escH(s);
 }
 function _assetPrettyKey(k,type){const m=_assetCat(type,k);return m?m.label:String(k).replace(/_/g,' ').replace(/\s+/g,' ').trim();}
@@ -166,11 +167,12 @@ function assetProPopup(lngLat,p,type,label){
   }
   if(p.Date)locAttrs+='<div class="kp-attr"><span class="kp-k">Test date</span><span class="kp-v">'+escH(p.Date)+'</span></div>';
   if(locRow||locAttrs)h+='<div class="kp-block"><div class="kp-eyebrow">Location</div>'+locRow+(locAttrs?'<div class="kp-attrs">'+locAttrs+'</div>':'')+'</div>';
-  /* The schema's own label and unit are the fallback, not the answer: a field
-     the RMMS cell has renamed in Attribute Data shows under their name here.
-     The schema still decides the grouping and the order, which is the part it
-     knows and the catalogue does not. */
-  const rowMeta=r=>{const c=_assetCat(type,r[0]);return c&&c.label?{l:c.label,u:c.unit||r[2]}:{l:r[1],u:r[2]};};
+  /* Schema short labels (r[1]) are written for this narrow card — e.g.
+     "Wearing course" instead of the catalogue's full
+     "Observed Thickness of Wearing Course", so value + unit stay on one line.
+     Catalogue still supplies the unit (and Attribute Data renames for fields
+     that are not in the schema). Grouping/order stay schema-owned. */
+  const rowMeta=r=>{const c=_assetCat(type,r[0]);return{l:r[1]||(c&&c.label)||r[0],u:(c&&c.unit)||r[2]||''};};
   sch.groups.forEach(g=>{
     g.rows.forEach(r=>{handled[r[0]]=1;});
     if(g.grid){
