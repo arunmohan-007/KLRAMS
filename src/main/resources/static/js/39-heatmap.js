@@ -95,6 +95,8 @@ const HM_DATASETS = {
 const HM_TRAFFIC_MEASURES = [
   {key:'__adt',   label:'ADT — average daily traffic', unit:'veh/day',
    pick:c => (c && c.total != null) ? (+c.total)/Math.max(1, +c.days||1) : null},
+  {key:'__commercial', label:'Commercial vehicles — average daily', unit:'veh/day',
+   pick:c => (c && typeof trfCommercialPerDay === 'function') ? trfCommercialPerDay(c) : null},
   {key:'__total', label:'Survey total volume',         unit:'veh',
    pick:c => (c && c.total != null) ? +c.total : null},
   {key:'__peak',  label:'Peak-hour volume',            unit:'veh/h',
@@ -701,7 +703,7 @@ function hmRenderAttrHint(){
   const hint = hmEl('hmAttrHint'); if(!hint) return;
   if(HM.attr === HM_DENSITY){
     hint.innerHTML = HM.dataset === 'traffic'
-      ? 'Density alone maps where the <b>counters were placed</b>, not where the traffic is. Weight by ADT for demand. Grouped carriageways count as <b>one</b> station.'
+      ? 'Density alone maps where the <b>counters were placed</b>, not where the traffic is. Weight by ADT or commercial vehicles for demand. Grouped carriageways count as <b>one</b> station.'
       : HM.dataset === 'core'
       ? 'Density alone maps where the <b>cores were taken</b>. Weight by total bituminous thickness to map how thick the bound layers are.'
       : 'Density alone maps where the <b>boreholes were taken</b>. Weight by CBR or PI to map subgrade quality.';
