@@ -346,7 +346,7 @@ function wktOf(g){
 }
 
 /* ================= format builders ================= */
-function shapefileZip(base,feats,rowFor){
+function shapefileZip(base,feats,rowFor,styleFor){
   var pts=[],ptRows=[],lns=[],lnRows=[];
   feats.forEach(function(f){
     var g=f&&f.geometry;if(!g)return;
@@ -364,9 +364,10 @@ function shapefileZip(base,feats,rowFor){
       {name:nm+'.cpg',data:ENC.encode('UTF-8')});
     /* Only worth shipping the name sidecars when something actually got shortened. */
     if(flds.some(function(f){return f.name.toLowerCase()!==String(f.key).toLowerCase();})){
-      entries.push({name:nm+'.qml',data:ENC.encode(qmlAliases(flds))},
-        {name:nm+'_field_names.csv',data:ENC.encode(fieldMapCsv(flds))});
+      if(!styleFor)entries.push({name:nm+'.qml',data:ENC.encode(qmlAliases(flds))});
+      entries.push({name:nm+'_field_names.csv',data:ENC.encode(fieldMapCsv(flds))});
     }
+    if(styleFor)entries.push({name:nm+'.qml',data:ENC.encode(styleFor(flds))});
   }
   if(pts.length&&lns.length){addSet(base+'_points',shpPointsBuild(pts),ptRows);addSet(base+'_lines',shpLinesBuild(lns),lnRows);}
   else if(pts.length)addSet(base,shpPointsBuild(pts),ptRows);
@@ -388,6 +389,42 @@ function condBandFor(param,v){
   if(n>=t.poor)return{label:'Poor',color:pC};
   if(n>=t.fair)return{label:'Fair',color:fC};
   return{label:'Good',color:gC};
+}
+function offsetLaneGeometry(g,index,count){
+  var parts=lineParts(g);if(!parts)return g;
+  var shift=(index-(count-1)/2)*0.000008;
+  var shifted=parts.map(function(part){return part.map(function(c,i){
+    var a=part[Math.max(0,i-1)],b=part[Math.min(part.length-1,i+1)];
+    var dx=(b[0]-a[0])*Math.cos(c[1]*Math.PI/180),dy=b[1]-a[1],len=Math.sqrt(dx*dx+dy*dy)||1;
+    return [c[0]-(dy/len)*shift/Math.cos(c[1]*Math.PI/180),c[1]+(dx/len)*shift];
+  });});
+  return shifted.length===1?{type:'LineString',coordinates:shifted[0]}:{type:'MultiLineString',coordinates:shifted};
+}
+function condShapeQml(fields){
+  var idx=-1;fields.forEach(function(f,i){if(f.key==='Rating')idx=i;});
+  if(idx<0)return qmlAliases(fields);
+  var colors={Poor:'#da4b43',Fair:'#FFC400',Good:'#2ba66a'};
+  var out=['<!DOCTYPE qgis PUBLIC \'http://mrcc.com/qgis.dtd\' \'SYSTEM\'>','<qgis version="3.28.0"><renderer-v2 type="categorizedSymbol" attr="Rating" symbollevels="0" enableorderby="0" forceraster="0" referencescale="-1"><categories>'];
+  ['Poor','Fair','Good'].forEach(function(k,i){out.push('<category value="'+k+'" label="'+k+'" symbol="'+i+'" render="true"/>');});
+  out.push('</categories><symbols>');
+  ['Poor','Fair','Good'].forEach(function(k,i){
+    var hex=colors[k].slice(1),rgba=parseInt(hex.slice(0,2),16)+','+parseInt(hex.slice(2,4),16)+','+parseInt(hex.slice(4,6),16)+',255';
+    out.push('<symbol name="'+i+'" type="line" alpha="1" clip_to_extent="1" force_rhr="0"><layer class="SimpleLine" enabled="1" locked="0" pass="0"><Option type="Map"><Option name="line_color" value="'+rgba+'" type="QString"/><Option name="line_style" value="solid" type="QString"/><Option name="line_width" value="0.7" type="QString"/><Option name="line_width_unit" value="MM" type="QString"/></Option></layer></symbol>');
+  });
+  out.push('</symbols></renderer-v2><aliases>');
+  fields.forEach(function(f,i){out.push('<alias index="'+i+'" field="'+xmlEsc(f.name)+'" name="'+xmlEsc(f.key)+'"/>');});
+  out.push('</aliases></qgis>');return out.join('');
+}
+function condLaneFeatureCount(features,param){
+  var count=0;
+  (features||[]).forEach(function(f){var p=f.properties||{};
+    EXP_LANES.forEach(function(L){
+      if(param&&param!=='all'){
+        var v=p[L+'_'+param];if(v!=null&&v!=='')count++;
+      }else if(typeof PARAMS!=='undefined'&&PARAMS.some(function(pp){var v=p[L+'_'+pp.key];return v!=null&&v!=='';}))count++;
+    });
+  });
+  return count;
 }
 /* D0 deflection band — mirrors fwdD0ColorExpr() / FWD_D0_STOPS (06-assets.js):
    same step thresholds, same colours and labels as the map's own legend (mm). */
@@ -803,18 +840,29 @@ var EXP={
       var m=(typeof matchingFeatures==='function')?matchingFeatures():null;
       var fs=m||all,condF=!!m;
       if(window.NET_SCOPE)fs=fs.filter(function(f){return inScope((f.properties||{}).road);});
-      var rowFor=null,suffix='';
-      if(param&&param!=='all'){
-        suffix=param;
-        fs=fs.filter(function(f){
-          var p=f.properties||{};
-          if(p[param]!=null&&p[param]!=='')return true;
-          for(var i=0;i<EXP_LANES.length;i++){var v=p[EXP_LANES[i]+'_'+param];if(v!=null&&v!=='')return true;}
-          return false;
+      var suffix=param&&param!=='all'?param:'',colorParam=suffix||((typeof cb!=='undefined'&&cb)?cb.value:null),expanded=[];
+      fs.forEach(function(f){
+        var p=f.properties||{},lanes=[];
+        EXP_LANES.forEach(function(L){
+          var v=suffix?p[L+'_'+suffix]:null,hasAny=false;
+          if(suffix){if(v!=null&&v!=='')lanes.push({name:L,colorValue:v});}
+          else if(typeof PARAMS!=='undefined'){
+            PARAMS.forEach(function(pp){var x=p[L+'_'+pp.key];if(x!=null&&x!=='')hasAny=true;});
+            if(hasAny)lanes.push({name:L,colorValue:p[L+'_'+colorParam]});
+          }
         });
-        rowFor=function(f){return condParamRow(f.properties||{},param);};
-      }
-      return {feats:fs,total:all.length,filtered:condF||!!window.NET_SCOPE,rowFor:rowFor,suffix:suffix};
+        lanes.forEach(function(l,i){
+          var q=Object.assign({},p,{_exportLane:l.name,_exportValue:l.colorValue}),row={
+            Road:p.road,From_ch_m:p.from_ch,To_ch_m:p.to_ch,Lane:l.name,Lanes:p.lane_count,Lane_list:p.xsp_list
+          };
+          if(suffix)row[condParamName(suffix)]=p[l.name+'_'+suffix];
+          else if(typeof PARAMS!=='undefined')PARAMS.forEach(function(pp){var v=p[l.name+'_'+pp.key];if(v!=null&&v!=='')row[condParamName(pp.key)]=v;});
+          row.Rating=(condBandFor(colorParam,l.colorValue)||{}).label||'';
+          expanded.push({type:'Feature',geometry:offsetLaneGeometry(f.geometry,i,lanes.length),properties:q,_exportRow:row});
+        });
+      });
+      return {feats:expanded,total:condLaneFeatureCount(all,suffix),filtered:condF||!!window.NET_SCOPE,
+        rowFor:function(f){return f._exportRow;},suffix:suffix};
     }},
   fwd:{label:'FWD deflection',color:'#7b1fa2',toggle:'showFwd',layerKey:'fwd',
     bandOrder:['< 0.10','0.10 – 0.20','0.20 – 0.35','0.35 – 0.50','0.50 – 0.70','> 0.70','No data'],
@@ -885,12 +933,14 @@ function doExport(key,fmt,param){
   /* Resolved before collect() so the chosen parameter drives the rows AND the
      colours — a KML that is coloured by Crack must carry the Crack columns. */
   if(E.paramFor)param=E.paramFor(param,fmt);
-  var res=E.collect(param);
+  var basis='lane';
+  var res=E.collect(param,basis);
   var feats=res.feats;
   if(!feats.length)return 0;
   var rowFor=res.rowFor||function(f){return cleanProps(f.properties,E.layerKey);};
   var nameFor=res.nameFor||function(f){return featName(f,E.label);};
   var bandFor=E.bandFor?E.bandFor(param):null;
+  if(key==='cond')bandFor=function(f){var p=f.properties||{};return condBandFor(param&&param!=='all'?param:((typeof cb!=='undefined'&&cb)?cb.value:null),p._exportValue);};
   var base='KLRAMS_'+slug(E.label)+(res.suffix?('_'+slug(res.suffix)):'')+(res.filtered?'_filtered':'')+'_'+dateTag();
   if(fmt==='geojson'){
     var gj={type:'FeatureCollection',name:E.label,features:feats.map(function(f){return {type:'Feature',geometry:f.geometry||null,properties:rowFor(f)};})};
@@ -903,7 +953,7 @@ function doExport(key,fmt,param){
   }else if(fmt==='csv'){
     saveBlob(base+'.csv',new Blob([csvBuild(feats,rowFor)],{type:'text/csv;charset=utf-8'}));
   }else if(fmt==='shp'){
-    var z=shapefileZip(slug(E.label)+(res.suffix?('_'+slug(res.suffix)):''),feats,rowFor);
+    var z=shapefileZip(slug(E.label)+(res.suffix?('_'+slug(res.suffix)):''),feats,rowFor,key==='cond'?condShapeQml:null);
     if(!z)return 0;
     saveBlob(base+'_SHP.zip',new Blob([z],{type:'application/zip'}));
   }
@@ -930,7 +980,7 @@ function fmtCount(n){try{return n.toLocaleString('en-IN');}catch(e){return Strin
 function menuCollect(){
   var E=EXP[_menuKey];if(!E)return null;
   var sel=_menu?_menu.querySelector('#kexpParam'):null;
-  return E.collect(sel?sel.value:undefined);
+  return E.collect(sel?sel.value:undefined,'lane');
 }
 function refreshExpMenu(){
   if(!_menu)return;
@@ -954,7 +1004,7 @@ function openExpMenu(key,anchor){
   m.id='klExpMenu';m.className='kexp';
   var paramRow='';
   if(E.hasParam&&typeof PARAMS!=='undefined'){
-    paramRow='<div class="kexp-param"><span class="kexp-pl">Item</span><select id="kexpParam">'
+    paramRow+='<div class="kexp-param"><span class="kexp-pl">Item</span><select id="kexpParam">'
       +'<option value="all">All parameters</option>'
       +PARAMS.map(function(p){return '<option value="'+p.key+'">'+p.label+'</option>';}).join('')
       +'</select></div>';

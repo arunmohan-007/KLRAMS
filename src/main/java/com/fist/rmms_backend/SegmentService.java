@@ -53,7 +53,18 @@ public class SegmentService {
 
         jdbc.execute("""
             CREATE TABLE condition_segments AS
-            WITH agg AS (
+            WITH lane_agg AS (
+                SELECT
+                    section_label, start_chainage, end_chainage, period_id, xsp,
+                    AVG(iri) AS iri, AVG(crack) AS crack, AVG(pothole) AS pothole,
+                    AVG(rutting) AS rutting, AVG(texture) AS texture,
+                    AVG(patch_work) AS patch_work, AVG(ravelling) AS ravelling
+                FROM condition
+                WHERE start_chainage IS NOT NULL
+                  AND end_chainage   IS NOT NULL
+                  AND end_chainage > start_chainage
+                GROUP BY section_label, start_chainage, end_chainage, period_id, xsp
+            ), agg AS (
                 SELECT
                     section_label, start_chainage, end_chainage, period_id,
                     MAX(iri) AS iri, MAX(crack) AS crack, MAX(pothole) AS pothole,
@@ -74,10 +85,7 @@ public class SegmentService {
                         'texture', ROUND(texture::numeric,2),
                         'patch_work', ROUND(patch_work::numeric,2),
                         'ravelling', ROUND(ravelling::numeric,2))) AS lane_vals
-                FROM condition
-                WHERE start_chainage IS NOT NULL
-                  AND end_chainage   IS NOT NULL
-                  AND end_chainage > start_chainage
+                FROM lane_agg
                 GROUP BY section_label, start_chainage, end_chainage, period_id
             ),
             joined AS (
