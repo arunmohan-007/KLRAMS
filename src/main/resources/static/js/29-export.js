@@ -600,9 +600,15 @@ function trafficRow(p){
     if(c.total!=null){o.Total_vehicles=c.total;o.ADT_veh_per_day=Math.round((c.total||0)/days);}
     /* Same commercial-class set and rounding the station popup shows. */
     o.Commercial_veh_per_day=(typeof trfCommercialPerDay==='function')?trfCommercialPerDay(c):0;
+    o.Non_commercial_veh_per_day=(typeof trfNonCommercialPerDay==='function')?trfNonCommercialPerDay(c):0;
+    o.Northbound_veh_per_day=(typeof trfDirectionPerDay==='function')?trfDirectionPerDay(c,'NORTH'):0;
+    o.Southbound_veh_per_day=(typeof trfDirectionPerDay==='function')?trfDirectionPerDay(c,'SOUTH'):0;
     if(c.dateMin)o.Date_from=c.dateMin;
     if(c.dateMax)o.Date_to=c.dateMax;
-    if(c.byDir)Object.keys(c.byDir).sort().forEach(function(d){o['Dir_'+d]=c.byDir[d];});
+    if(c.byDir)Object.keys(c.byDir).sort().forEach(function(d){
+      o['Dir_'+d]=c.byDir[d];
+      o['AvgDaily_Dir_'+d]=Math.round((+c.byDir[d]||0)/days);
+    });
     /* Cls_* is the survey-period total. AvgDaily_* is the same figure the
        station popup shows under "vehicle classes · avg count per day":
        class total ÷ survey days, rounded. */

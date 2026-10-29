@@ -23,6 +23,24 @@ function trfCommercialPerDay(c){
   Object.keys(c.byClass).forEach(k=>{if(TRF_COMMERCIAL_SET.has(trfClassKey(k)))n+=(+c.byClass[k]||0);});
   return Math.round(n/days);
 }
+function trfNonCommercialPerDay(c){
+  if(!c||!c.byClass)return 0;
+  const days=Math.max(1,+c.days||1);
+  let n=0;
+  Object.keys(c.byClass).forEach(k=>{if(!TRF_COMMERCIAL_SET.has(trfClassKey(k)))n+=(+c.byClass[k]||0);});
+  return Math.round(n/days);
+}
+function trfDirectionPerDay(c,needle){
+  if(!c||!c.byDir)return 0;
+  const days=Math.max(1,+c.days||1), want=String(needle).toUpperCase();
+  let n=0;
+  Object.keys(c.byDir).forEach(k=>{
+    const d=String(k).toUpperCase().replace(/[^A-Z]/g,'');
+    const matches=want==='NORTH'?(/NORTH/.test(d)||/^NB?$/.test(d)):(/SOUTH/.test(d)||/^SB?$/.test(d));
+    if(matches)n+=(+c.byDir[k]||0);
+  });
+  return Math.round(n/days);
+}
 /* build 161 — stored counts can arrive malformed from older imports:
    a JSON string (double-encoded) or a bare number. Normalise to the
    {total,byDir,byClass,byHour,days,...} object the popup expects. */
@@ -165,6 +183,7 @@ function trfCountBlockHTML(c){
   if(range)h+='<div class="kp-attr"><span class="kp-k">Dates</span><span class="kp-v">'+escH(range)+'</span></div>';
   h+='<div class="kp-attr"><span class="kp-k">'+days+'-day total</span><span class="kp-v">'+trfN(c.total)+' <span class="kp-u">veh</span></span></div>';
   h+='<div class="kp-attr"><span class="kp-k">Commercial vehicles</span><span class="kp-v">'+trfN(trfCommercialPerDay(c))+' <span class="kp-u">/day</span></span></div>';
+  h+='<div class="kp-attr"><span class="kp-k">Non-commercial vehicles</span><span class="kp-v">'+trfN(trfNonCommercialPerDay(c))+' <span class="kp-u">/day</span></span></div>';
   h+='<div class="kp-attr"><span class="kp-k">Peak hour (both)</span><span class="kp-v">'+trfN(peakBoth.v)+' <span class="kp-u">'+escH(peakBoth.t)+(peakBoth.d&&peakBoth.d!=='-'?(' · '+escH(peakBoth.d)):'')+'</span></span></div>';
   if(c.peak&&c.peak.dir)Object.keys(c.peak.dir).sort().forEach(dn=>{const pp=c.peak.dir[dn];h+='<div class="kp-attr"><span class="kp-k">Peak · '+escH(dn)+'</span><span class="kp-v">'+trfN(pp.v)+' <span class="kp-u">'+escH(pp.t)+'</span></span></div>';});
   h+='</div></div>';
@@ -172,6 +191,8 @@ function trfCountBlockHTML(c){
   const dirs=Object.keys(c.byDir||{});
   if(dirs.length){
     h+='<div class="kp-block"><div class="kp-eyebrow">Direction-wise · '+dayNote+'</div><div class="kp-attrs">';
+    h+='<div class="kp-attr"><span class="kp-k">Northbound average</span><span class="kp-v">'+trfN(trfDirectionPerDay(c,'NORTH'))+' <span class="kp-u">/day</span></span></div>';
+    h+='<div class="kp-attr"><span class="kp-k">Southbound average</span><span class="kp-v">'+trfN(trfDirectionPerDay(c,'SOUTH'))+' <span class="kp-u">/day</span></span></div>';
     dirs.sort().forEach(dir=>{h+='<div class="kp-attr"><span class="kp-k">'+escH(dir)+'</span><span class="kp-v">'+trfN(c.byDir[dir])+' <span class="kp-sub">'+trfN(Math.round((c.byDir[dir]||0)/days))+'/day</span></span></div>';});
     h+='</div></div>';
   }
