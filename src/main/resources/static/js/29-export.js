@@ -390,13 +390,15 @@ function condBandFor(param,v){
   if(n>=t.fair)return{label:'Fair',color:fC};
   return{label:'Good',color:gC};
 }
-function offsetLaneGeometry(g,index,count){
+function offsetLaneGeometry(g,lane){
   var parts=lineParts(g);if(!parts)return g;
-  var shift=(index-(count-1)/2)*0.000008;
+  /* Match the map's laneOffset slots (CC 0, CL1 -1, CL2 -2, CR1 +1,
+     CR2 +2) using a physical 3.5 m lane spacing in exported coordinates. */
+  var slot={CC:0,CL1:-1,CL2:-2,CR1:1,CR2:2},shiftMeters=-(slot[lane]||0)*3.5;
   var shifted=parts.map(function(part){return part.map(function(c,i){
     var a=part[Math.max(0,i-1)],b=part[Math.min(part.length-1,i+1)];
     var dx=(b[0]-a[0])*Math.cos(c[1]*Math.PI/180),dy=b[1]-a[1],len=Math.sqrt(dx*dx+dy*dy)||1;
-    return [c[0]-(dy/len)*shift/Math.cos(c[1]*Math.PI/180),c[1]+(dx/len)*shift];
+    return [c[0]-(dy/len)*shiftMeters/(111320*Math.cos(c[1]*Math.PI/180)),c[1]+(dx/len)*shiftMeters/111320];
   });});
   return shifted.length===1?{type:'LineString',coordinates:shifted[0]}:{type:'MultiLineString',coordinates:shifted};
 }
@@ -858,7 +860,7 @@ var EXP={
           if(suffix)row[condParamName(suffix)]=p[l.name+'_'+suffix];
           else if(typeof PARAMS!=='undefined')PARAMS.forEach(function(pp){var v=p[l.name+'_'+pp.key];if(v!=null&&v!=='')row[condParamName(pp.key)]=v;});
           row.Rating=(condBandFor(colorParam,l.colorValue)||{}).label||'';
-          expanded.push({type:'Feature',geometry:offsetLaneGeometry(f.geometry,i,lanes.length),properties:q,_exportRow:row});
+          expanded.push({type:'Feature',geometry:offsetLaneGeometry(f.geometry,l.name),properties:q,_exportRow:row});
         });
       });
       return {feats:expanded,total:condLaneFeatureCount(all,suffix),filtered:condF||!!window.NET_SCOPE,
