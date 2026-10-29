@@ -605,10 +605,7 @@ function trafficRow(p){
     o.Southbound_veh_per_day=(typeof trfDirectionPerDay==='function')?trfDirectionPerDay(c,'SOUTH'):0;
     if(c.dateMin)o.Date_from=c.dateMin;
     if(c.dateMax)o.Date_to=c.dateMax;
-    if(c.byDir)Object.keys(c.byDir).sort().forEach(function(d){
-      o['Dir_'+d]=c.byDir[d];
-      o['AvgDaily_Dir_'+d]=Math.round((+c.byDir[d]||0)/days);
-    });
+    if(c.byDir)Object.keys(c.byDir).sort().forEach(function(d){o['Dir_'+d]=c.byDir[d];});
     /* Cls_* is the survey-period total. AvgDaily_* is the same figure the
        station popup shows under "vehicle classes · avg count per day":
        class total ÷ survey days, rounded. */

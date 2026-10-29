@@ -191,8 +191,6 @@ function trfCountBlockHTML(c){
   const dirs=Object.keys(c.byDir||{});
   if(dirs.length){
     h+='<div class="kp-block"><div class="kp-eyebrow">Direction-wise · '+dayNote+'</div><div class="kp-attrs">';
-    h+='<div class="kp-attr"><span class="kp-k">Northbound average</span><span class="kp-v">'+trfN(trfDirectionPerDay(c,'NORTH'))+' <span class="kp-u">/day</span></span></div>';
-    h+='<div class="kp-attr"><span class="kp-k">Southbound average</span><span class="kp-v">'+trfN(trfDirectionPerDay(c,'SOUTH'))+' <span class="kp-u">/day</span></span></div>';
     dirs.sort().forEach(dir=>{h+='<div class="kp-attr"><span class="kp-k">'+escH(dir)+'</span><span class="kp-v">'+trfN(c.byDir[dir])+' <span class="kp-sub">'+trfN(Math.round((c.byDir[dir]||0)/days))+'/day</span></span></div>';});
     h+='</div></div>';
   }
