@@ -932,6 +932,7 @@ function slug(s){return String(s).replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$
 function dateTag(){var d=new Date();var p=function(n){return (n<10?'0':'')+n;};return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate());}
 function doExport(key,fmt,param){
   var E=EXP[key];
+  if(key==='cond'&&(!param||param==='all')&&fmt!=='csv')return 0;
   /* Resolved before collect() so the chosen parameter drives the rows AND the
      colours — a KML that is coloured by Crack must carry the Crack columns. */
   if(E.paramFor)param=E.paramFor(param,fmt);
@@ -996,7 +997,12 @@ function refreshExpMenu(){
   }else{
     sub.textContent=fmtCount(n)+' feature'+(n===1?'':'s')+(res.filtered?(' · filtered view of '+fmtCount(res.total)):' · full dataset');
   }
-  _menu.querySelectorAll('.kexp-f').forEach(function(t){t.classList.toggle('off',!n);});
+  var selNow=_menu.querySelector('#kexpParam'),allParamsNow=_menuKey==='cond'&&selNow&&selNow.value==='all';
+  if(n&&allParamsNow)sub.textContent+=' · all parameters: CSV only';
+  _menu.querySelectorAll('.kexp-f').forEach(function(t){
+    var fmt=t.getAttribute('data-fmt');
+    t.classList.toggle('off',!n||(allParamsNow&&fmt!=='csv'));
+  });
 }
 function openExpMenu(key,anchor){
   closeExpMenu();
@@ -1024,7 +1030,7 @@ function openExpMenu(key,anchor){
         var hint=f.hint;
         if((f.id==='kml'||f.id==='kmz')&&E.bandFor){
           hint=E.hasParam
-            ?'One parameter per file: exports just the parameter picked above (or the map\'s current colour-by metric if left on "All parameters") and colour-codes it Good/Fair/Poor in folders, matching the map. Export each parameter you need separately — use CSV for all of them at once.'
+            ?'Single-parameter only: choose a metric to export it lane-wise with Good/Fair/Poor colors. Choose All parameters to download a CSV.'
             :'Colour-codes each segment by its '+(E.bandLabel||'classification')+', grouped into folders.';
         }
         return '<button type="button" class="kexp-f off f-'+f.id+'" data-fmt="'+f.id+'"'+(hint?(' title="'+xmlEsc(hint)+'"'):'')+'><span class="kexp-fi">'+f.icon+'</span><span class="kexp-fn">'+f.name+'</span><span class="kexp-fd">'+f.desc+'</span></button>';
