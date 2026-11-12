@@ -562,41 +562,43 @@
           </div>
           <div class="statusline" id="pciStatus"></div>
           <div id="pciSummary"></div>
+          <section aria-labelledby="pciIndexEquations" style="margin-top:20px">
+            <h2 id="pciIndexEquations" class="eyebrow">Individual condition score equations (I<sub>i</sub>)</h2>
+            <p class="note">Use the SH column for highways (Table A2.1) and the MDR column for major district roads (Table A2.2 Part A). Use percentage points for distress extent, such as 10 for 10%.</p>
+            <div style="overflow-x:auto">
+              <table style="width:100%;text-align:left;border-spacing:8px">
+                <thead><tr><th scope="col">Input x</th><th scope="col">SH / Highway</th><th scope="col">MDR</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row">Cracking (%)</th><td>7231 / (x² − 0.737x + 73.09)</td><td>(−0.5662x³ + 85.14x² − 3377x + 51820) / (x² − 29.31x + 523.4)</td></tr>
+                  <tr><th scope="row">Ravelling (%)</th><td>52.92e<sup>−0.02525x</sup> + 44.1e<sup>−0.2899x</sup></td><td>(−0.5662x³ + 85.14x² − 3377x + 51820) / (x² − 29.31x + 523.4)</td></tr>
+                  <tr><th scope="row">Potholes (equivalent count)</th><td>(−80.32x³ + 1129x² − 3524x + 3566) / (x³ + 5.791x² − 28.67x + 35.72)</td><td>0.0113x<sup>4</sup> − 0.2825x³ + 2.6246x² − 19.18x + 99.529</td></tr>
+                  <tr><th scope="row">Patch work (%)</th><td>52.92e<sup>−0.02525x</sup> + 44.1e<sup>−0.2899x</sup></td><td>(−0.001723x³ − 0.08273x² + 21.39x + 419.1) / (x + 4.267)</td></tr>
+                  <tr><th scope="row">Rut depth (mm)</th><td>7231 / (x² − 0.737x + 73.09)</td><td>(−0.5662x³ + 85.14x² − 3377x + 51820) / (x² − 29.31x + 523.4)</td></tr>
+                  <tr><th scope="row">IRI (m/km)</th><td>100 / (x<sup>1.91</sup> − 3.542x + 4.315)</td><td>Use the pavement surface equation below.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 class="eyebrow">MDR IRI equations by surface</h3>
+            <div style="overflow-x:auto">
+              <table style="width:100%;text-align:left;border-spacing:8px">
+                <thead><tr><th scope="col">Surface</th><th scope="col">IRI score (x in m/km)</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row">BC · Bituminous Concrete (includes BT)</th><td>(−2.52x<sup>4</sup> + 55.18x³ − 292.4x² + 476.4x − 5.565) / (x³ − 7.458x² + 17.77x − 12.09)</td></tr>
+                  <tr><th scope="row">SDBC · Semi-Dense Bituminous Concrete</th><td>(−4.468x³ + 106.2x² − 694.7x + 1507) / (x² − 6.778x + 14.51)</td></tr>
+                  <tr><th scope="row">MSS · Mix Seal Surfacing</th><td>(−2.686x<sup>4</sup> + 64.96x³ − 437.2x² + 1046x − 596.2) / (x³ − 9.766x² + 31.09x − 30.94)</td></tr>
+                  <tr><th scope="row">OGPC · Open-Graded Premix Carpet</th><td>(−4.842x³ + 121.5x² − 875.9x + 2029) / (x² − 8.389x + 19.85)</td></tr>
+                  <tr><th scope="row">SD · Surface Dressing</th><td>(−0.09535x<sup>5</sup> + 4.235x<sup>4</sup> − 74.43x³ + 642.4x² − 2625x + 4034) / (x² − 9.065x + 20.71)</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">Equivalent pothole count is affected area divided by 0.1 m². RMMS assigns a pothole score of 0 at counts of 10 or more and limits MDR IRI inputs to 2–20 m/km. Each score is limited to 0–100. If an input is unavailable, divide the weighted total by the sum of the weights used.</p>
+            <p class="note"><b>SH cracking example.</b> Two equal-area lanes with 0% and 20% cracking give x = 10. The score is 7231 / (10² − 0.737 × 10 + 73.09) = 43.63. At the default weight of 0.12, cracking contributes 5.24 points to Composite PCI.</p>
+          </section>
         </div>
         <div class="pci-card">
           <div class="eyebrow" style="margin-top:0">PCI rating scale (Table 5.5)</div>
           <div class="legend pcileg" id="pciLegend"></div>
           <div class="note" style="margin-top:12px"><b>Generate PCI</b> produces two layers &mdash; <b>Composite PCI</b> (area-weighted distress) and <b>Worst-Lane PCI</b> (lowest individual lane PCI). Expressways, national highways and state highways use the IRC:82-2023 Appendix&nbsp;2 highway equations and sum equivalent pothole counts across lanes for Composite PCI. MDR uses Appendix 2, Table A2.2 Part A, with the pothole equation from draft Amendment No. 1. MDR IRI uses the recorded surface type. RMMS treats BT (Bituminous) as BC. Other road classes use the editable threshold curves. Default weights come from IRC:82-2023 Table&nbsp;5.4.</div>
-          <details class="note" style="margin-top:12px">
-            <summary>MDR PCI equations</summary>
-            <p>Composite PCI pools the lane readings and sums equivalent pothole counts. Worst-Lane PCI uses the lowest score calculated for an individual lane.</p>
-            <dl>
-              <dt><b>Cracking, ravelling and rut depth</b></dt>
-              <dd>I = (&minus;0.5662x<sup>3</sup> + 85.14x<sup>2</sup> &minus; 3377x + 51820) / (x<sup>2</sup> &minus; 29.31x + 523.4).</dd>
-              <dt><b>Patch work</b></dt>
-              <dd>I = (&minus;0.001723x<sup>3</sup> &minus; 0.08273x<sup>2</sup> + 21.39x + 419.1) / (x + 4.267).</dd>
-              <dt><b>Equivalent pothole count</b></dt>
-              <dd>I = 0.0113x<sup>4</sup> &minus; 0.2825x<sup>3</sup> + 2.6246x<sup>2</sup> &minus; 19.18x + 99.529. RMMS assigns 0 for counts of 10 or more.</dd>
-              <dt><b>IRI</b></dt>
-              <dd>Uses the Table A2.2 Part A equation for the recorded surface (BC, SDBC, MSS, OGPC or SD). If the surface is unknown, RMMS excludes IRI and divides by the sum of the remaining weights used.</dd>
-            </dl>
-          </details>
-          <details class="note" style="margin-top:12px">
-            <summary>Highway PCI equations and worked example</summary>
-            <p>For Composite PCI, RMMS treats the surveyed lanes as equal area. It averages cracking, ravelling, patch work, rut depth and IRI, and sums equivalent pothole counts. It then calculates the individual scores using IRC:82-2023 Appendix 2, Table A2.1.</p>
-            <dl>
-              <dt><b>Cracking (12%) and rut depth (14%)</b></dt>
-              <dd>I = 7231 / (x<sup>2</sup> &minus; 0.737x + 73.09), where x is cracking extent (%) or rut depth (mm), respectively.</dd>
-              <dt><b>Ravelling (10%) and patch work (8%)</b></dt>
-              <dd>I = 52.92e<sup>&minus;0.02525x</sup> + 44.1e<sup>&minus;0.2899x</sup>, where x is the affected area as a percentage of surveyed pavement area.</dd>
-              <dt><b>Potholes (16%)</b></dt>
-              <dd>I = (&minus;80.32x<sup>3</sup> + 1129x<sup>2</sup> &minus; 3524x + 3566) / (x<sup>3</sup> + 5.791x<sup>2</sup> &minus; 28.67x + 35.72), where x is the equivalent pothole count (affected area in m&sup2; divided by 0.1 m&sup2;). RMMS assigns a score of 0 for counts of 10 or more.</dd>
-              <dt><b>IRI (40%)</b></dt>
-              <dd>I = 100 / (x<sup>1.91</sup> &minus; 3.542x + 4.315), where x is IRI (m/km).</dd>
-            </dl>
-            <p>RMMS limits each score to 0&ndash;100, multiplies it by its weight, adds the contributions and divides by the sum of the weights used. With all six default weights, that sum is 1.00.</p>
-            <p><b>Example:</b> Two equal-area lanes with 0% and 20% cracking give x = 10. The cracking score is 7231 / (10<sup>2</sup> &minus; 0.737 &times; 10 + 73.09) = 43.63. At a weight of 0.12, cracking contributes <b>5.24 points</b> to Composite PCI.</p>
-          </details>
         </div>
       </div>
     </div>
