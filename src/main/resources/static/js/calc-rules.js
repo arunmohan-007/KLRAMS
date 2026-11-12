@@ -118,7 +118,7 @@
     { key: 'carriageway', label: 'Carriageway correction', count: function () { return (D.carriageway.groups || []).length; } },
     { key: 'stations',    label: 'Traffic station groups', count: function () { return (D.stations.groups || []).length; } },
     { key: 'width',       label: 'Pavement width bands',   count: function () { return (D.width.bands || []).length; } },
-    { key: 'pci',         label: 'PCI weights',            count: function () { return null; } }
+    { key: 'pci',         label: 'Map & PCI',            count: function () { return null; } }
   ];
 
   function renderTabs() {
@@ -506,55 +506,67 @@
   }
 
   /* ==================================================================
-     4. PCI weights and thresholds
+     4. Map and PCI rules
      ================================================================== */
 
   function renderPci() {
     var p = D.pci;
     var params = p.params || [];
-    var sumOff = Math.abs((p.weight_sum || 0) - 1) > 0.005;
+    var thresholdsAtDefault = params.every(function (r) {
+      return Math.abs(r.fair - r.default_fair) <= 1e-9
+          && Math.abs(r.poor - r.default_poor) <= 1e-9;
+    });
 
     el('pane-pci').innerHTML =
       usePanel(p.used_by) +
-      '<div class="sec-d">The IRC:82&#8209;2023 numbers behind every PCI value: each distress’s <b>weight</b> in '
-      + 'the index, and the <b>Good</b> and <b>Poor</b> thresholds that turn a raw measurement into a 0–100 '
-      + 'score (100 down to 80 up to Good, 80 down to 40 up to Poor, 40 down to 0 up to twice Poor, then 0).</div>' +
+      '<h2 class="sec-h">Surface Type mapping for MDR IRI</h2>' +
+      '<div class="sec-d">These mappings apply to Composite PCI, Worst-Lane PCI and automatic IRI colouring. '
+      + 'BT uses the BC equation. Paver block is outside the bituminous PCI calculation.</div>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Road network code</th><th>Surface Type</th>'
+      + '<th>IRC MDR IRI category</th></tr></thead><tbody>' +
+      '<tr><th scope="row">BT</th><td>Bituminous</td><td>BC · Bituminous Concrete</td></tr>' +
+      '<tr><th scope="row">CC</th><td>Cement Concrete</td><td>Outside IRC:82 scope</td></tr>' +
+      '<tr><th scope="row">PVB</th><td>Paver Block</td><td>PCI not applicable</td></tr>' +
+      '<tr><th scope="row">WBM</th><td>Water Bound Macadam</td><td>Outside IRC:82 scope</td></tr>' +
+      '<tr><th scope="row">GRV</th><td>Gravel</td><td>Outside IRC:82 scope</td></tr>' +
+      '<tr><th scope="row">ERT</th><td>Earthen</td><td>Outside IRC:82 scope</td></tr>' +
+      '</tbody></table></div>' +
+      '<h3 class="sec-h">IRC:82-2023 MDR surface categories (Table A2.2, Part A)</h3>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>IRC code</th><th>Surface Type</th>'
+      + '<th>Road network values accepted</th></tr></thead><tbody>' +
+      '<tr><th scope="row">BC</th><td>Bituminous Concrete</td><td>BC, BT, Bituminous Concrete, Bituminous</td></tr>' +
+      '<tr><th scope="row">SDBC</th><td>Semi-Dense Bituminous Concrete</td><td>SDBC, Semi-Dense Bituminous Concrete or Course</td></tr>' +
+      '<tr><th scope="row">MSS</th><td>Mix Seal Surfacing</td><td>MSS, Mix Seal Surfacing</td></tr>' +
+      '<tr><th scope="row">OGPC</th><td>Open-Graded Premix Carpet</td><td>OGPC, Open-Graded Premix Carpet</td></tr>' +
+      '<tr><th scope="row">SD</th><td>Surface Dressing</td><td>SD, Surface Dressing</td></tr>' +
+      '</tbody></table></div>' +
+      '<div class="sec-d">Adjust the Good and Poor thresholds used by the fallback PCI scoring curves. '
+      + 'SH and MDR use their road-class equations. Weightage controls are in the PCI module.</div>' +
       '<div class="warnbox"><b>Changing these makes the stored PCI stale.</b> The PCI held on every condition '
       + 'segment was computed with the previous numbers; the map and the report will not agree with it until the '
       + 'condition segments are rebuilt. Tick <i>rebuild now</i> below and the save does it for you.</div>' +
       '<div class="tbl-wrap"><table><thead><tr>' +
-        '<th>Distress</th><th class="num">Weight</th><th class="num">Good below</th><th class="num">Poor above</th>'
-        + '<th class="num">IRC default</th>' +
+        '<th>Distress</th><th class="num">Good below</th><th class="num">Poor above</th>'
+        + '<th class="num">Default thresholds</th>' +
       '</tr></thead><tbody>' +
         params.map(function (r) {
-          var chg = Math.abs(r.weight - r.default_weight) > 1e-9
-                 || Math.abs(r.fair - r.default_fair) > 1e-9
+          var chg = Math.abs(r.fair - r.default_fair) > 1e-9
                  || Math.abs(r.poor - r.default_poor) > 1e-9;
           return '<tr><td><b>' + esc(r.label) + '</b></td>' +
-            '<td class="num"><input class="cell" type="number" step="0.01" min="0" max="1" value="' + esc(r.weight) +
-              '" data-pci="' + esc(r.key) + '" data-f="weight" data-requires="admin"></td>' +
             '<td class="num"><input class="cell" type="number" step="0.05" min="0" value="' + esc(r.fair) +
               '" data-pci="' + esc(r.key) + '" data-f="fair" data-requires="admin"></td>' +
             '<td class="num"><input class="cell" type="number" step="0.05" min="0" value="' + esc(r.poor) +
               '" data-pci="' + esc(r.key) + '" data-f="poor" data-requires="admin"></td>' +
-            '<td class="num ' + (chg ? 'edited' : 'dflt') + '">' + num(r.default_weight, 2) + ' · '
-              + num(r.default_fair, 2) + ' · ' + num(r.default_poor, 2) + '</td></tr>';
+            '<td class="num ' + (chg ? 'edited' : 'dflt') + '">' + num(r.default_fair, 2) + ' · ' + num(r.default_poor, 2) + '</td></tr>';
         }).join('') +
       '</tbody></table></div>' +
-      '<div class="bar">' +
-        '<span class="' + (sumOff ? 'edited' : 'dflt') + '" id="pciSumTxt">Σ weights = <b>'
-          + num(p.weight_sum, 2) + '</b>' + (sumOff ? ' — the weights do not add to 1' : '') + '</span>' +
-      '</div>' +
       '<div class="bar" data-requires="admin">' +
         '<label class="dflt" style="display:flex;align-items:center;gap:7px;cursor:pointer">'
           + '<input type="checkbox" id="pciRebuild" checked style="accent-color:var(--teal)"> '
           + 'rebuild the condition segments after saving</label>' +
-        '<button class="btn" id="pciSave">Save PCI numbers</button>' +
-        '<button class="btn ghost sm" id="pciReset"' + (p.at_default ? ' disabled' : '') + '>Reset to IRC defaults</button>' +
-      '</div>' +
-      '<div class="note">The weights need not add to exactly 1 — PCI divides by the weights it actually used, '
-      + 'so a distress missing from a survey does not drag the score down. A sum well away from 1 is usually a '
-      + 'typing slip, which is why it is flagged.</div>';
+        '<button class="btn" id="pciSave">Save thresholds</button>' +
+        '<button class="btn ghost sm" id="pciReset"' + (thresholdsAtDefault ? ' disabled' : '') + '>Reset thresholds</button>' +
+      '</div>';
 
     function collect() {
       var by = {};
@@ -565,25 +577,17 @@
       return Object.keys(by).map(function (k) { return by[k]; });
     }
 
-    document.querySelectorAll('[data-pci][data-f="weight"]').forEach(function (i) {
-      i.addEventListener('input', function () {
-        var s = 0;
-        document.querySelectorAll('[data-pci][data-f="weight"]').forEach(function (x) { s += +x.value || 0; });
-        var off = Math.abs(s - 1) > 0.005;
-        var t = el('pciSumTxt');
-        t.className = off ? 'edited' : 'dflt';
-        t.innerHTML = 'Σ weights = <b>' + num(s, 2) + '</b>' + (off ? ' — the weights do not add to 1' : '');
-      });
-    });
-
     el('pciSave').addEventListener('click', function () {
       api('POST', '/pci', { params: collect(), rebuild: el('pciRebuild').checked })
         .then(function (r) { msg(esc(r.message), r.rebuild_required ? 'warn' : 'ok'); return reload(); })
         .catch(fail);
     });
     el('pciReset').addEventListener('click', function () {
-      if (!confirm('Put every weight and threshold back to the IRC:82-2023 defaults?')) return;
-      api('POST', '/pci/reset', { rebuild: el('pciRebuild').checked })
+      if (!confirm('Restore the default PCI thresholds?')) return;
+      var defaults = params.map(function (r) {
+        return { key: r.key, fair: r.default_fair, poor: r.default_poor };
+      });
+      api('POST', '/pci', { params: defaults, rebuild: el('pciRebuild').checked })
         .then(function (r) { msg(esc(r.message), r.rebuild_required ? 'warn' : 'ok'); return reload(); })
         .catch(fail);
     });

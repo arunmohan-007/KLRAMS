@@ -32,7 +32,7 @@ const distressHighwayClasses=['sh','nh','state highway','state highways','nation
 const distressMdrClasses=['mdr','major district road','major district roads'];
 const distressMdrSurfaces=[
   ['mdr-bc','Bituminous concrete',['bc','bt','bituminous','bitumious','bituminous concrete']],
-  ['mdr-sdbc','Semi-dense bituminous concrete',['sdbc','semi-dense bituminous concrete','semi dense bituminous concrete']],
+  ['mdr-sdbc','Semi-dense bituminous concrete',['sdbc','semi-dense bituminous concrete','semi dense bituminous concrete','semi-dense bituminous course','semi dense bituminous course']],
   ['mdr-mss','Mix seal surfacing',['mss','mix seal surfacing']],
   ['mdr-ogpc','Open-graded premix carpet',['ogpc','open-graded premix carpet','open graded premix carpet']],
   ['mdr-sd','Surface dressing',['sd','surface dressing']]
