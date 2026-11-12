@@ -4,7 +4,17 @@
    Loaded as an ordered classic script from map.html; all modules
    share one global scope, so load order is preserved exactly.
    ============================================================ */
-function rating(p,v){const t=PMAP[p];if(v>=t.poor)return POOR;if(v>=t.fair)return FAIR;return GOOD;}
+function rating(p,v,props){
+  const t=PMAP[p];
+  const automatic=distressProfile.value==='auto'&&p!=='texture';
+  const limits=automatic?distressAutoLimits(p,props):p===cb.value
+    ? [+document.getElementById('fair').value,+document.getElementById('poor').value]
+    : distressProfileLimits(p)||[t.fair,t.poor];
+  if(!limits)return NONE;
+  const [fair,poor]=limits;
+  if(distressGoodOperator(p)==='<='?v<=fair:v<fair)return GOOD;
+  return v<=poor?FAIR:POOR;
+}
 function condAt(roadId,ch){const arr=segsByRoad[roadId]||[];for(const f of arr){const p=f.properties;if(ch>=p.from_ch&&ch<=p.to_ch)return p;}return null;}
 
 function fmt(v,unit){const n=+v;return (isNaN(n)?v:(Number.isInteger(n)?n:n.toFixed(2)))+(unit||'');}
@@ -185,7 +195,7 @@ function condPaneInner(props,roadId,ch){
     var lanes=lv?Object.keys(lv).sort():[];
     var metrics=[['iri','IRI','m/km'],['crack','Cracking','%'],['pothole','Pothole','nos/km'],['rutting','Rut Depth','mm'],['ravelling','Ravelling','%'],['texture','Texture Depth','mm'],['patch_work','Patch Work','sqm']]
       .filter(function(m){return c['avg_'+m[0]]!=null||c[m[0]]!=null;});
-    var cellCol=function(mk,x){return (x!=null&&typeof PMAP!=='undefined'&&PMAP[mk])?rating(mk,x):'';};
+    var cellCol=function(mk,x){return (x!=null&&typeof PMAP!=='undefined'&&PMAP[mk])?rating(mk,x,c):'';};
     H+='<table class="kc-ctbl"><tr><th class="mh">Metric</th>';
     if(lanes.length)lanes.forEach(function(L){H+='<th>'+esc(L)+'</th>';});
     H+='<th class="avg">Avg</th></tr>';
@@ -211,9 +221,15 @@ function condPaneInner(props,roadId,ch){
     if(pciC==null)pciC=pciOf(props,c);
     if(pciW==null){var _wks=['pci_def_worst','pci_worst','worst_pci','worst_lane_pci'];for(var _wi=0;_wi<_wks.length;_wi++){if(c[_wks[_wi]]!=null&&c[_wks[_wi]]!==''){var _wn=+c[_wks[_wi]];if(!isNaN(_wn)&&_wn>=0){pciW=_wn;break;}}}}
     H+='<div class="kc-pcirow">';
+    var paverBlock=typeof pciPaverBlock==='function'&&pciPaverBlock(c);
+    if(paverBlock){
+      H+='<div class="kc-pci"><span class="pl">PCI not applicable &mdash; paver block</span></div>';
+      pciC=null;
+      pciW=null;
+    }
     if(pciC!=null){var b=pciBand(pciC);H+='<div class="kc-pci"><span class="pl">Composite PCI</span><span class="pv" style="color:'+b.c+'">'+Math.round(pciC)+'</span></div>';}
     if(pciW!=null){var b2=pciBand(pciW);H+='<div class="kc-pci"><span class="pl">Worst-lane PCI</span><span class="pv" style="color:'+b2.c+'">'+Math.round(pciW)+'</span></div>';}
-    if(pciC==null&&pciW==null)H+='<div class="kc-pend" style="margin:0">PCI not linked at this chainage</div>';
+    if(!paverBlock&&pciC==null&&pciW==null)H+='<div class="kc-pend" style="margin:0">PCI not linked at this chainage</div>';
     H+='</div>';
   }else if(_inspCtx&&_inspCtx.loadingSegs){
     H+='<div class="kc-pend" style="margin:0">Loading condition &amp; PCI…</div>';
@@ -549,7 +565,7 @@ function setChainage(frac){
     return;
   }
   const t=avg.toFixed(2);
-  if(carIri){carIri.textContent='Avg IRI '+t;carIri.style.background=(typeof rating==='function')?rating('iri',avg):'#64718a';}
+  if(carIri){carIri.textContent='Avg IRI '+t;carIri.style.background=(typeof rating==='function')?rating('iri',avg,c):'#64718a';}
   if(carLabel)carLabel.textContent='CH '+ch+' m';
   if(di)di.textContent=t;
 }

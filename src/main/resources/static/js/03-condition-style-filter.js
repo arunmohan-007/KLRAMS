@@ -14,9 +14,99 @@ if(cbHome){PARAMS.forEach(p=>{const o=document.createElement('option');o.value=p
 function syncCondMetricUI(){if(cbHome&&cbHome.value!==cb.value)cbHome.value=cb.value;}
 function setCondMetric(key){if(!key||key===cb.value){syncCondMetricUI();return;}cb.value=key;if(typeof refreshSegTileParam==='function')refreshSegTileParam();loadThreshDefaults();applyColors();syncCondMetricUI();}
 if(cbHome)cbHome.addEventListener('change',e=>setCondMetric(e.target.value));
-function loadThreshDefaults(){let p=PMAP[cb.value];if(!p){p=PARAMS[0];cb.value=p.key;}document.getElementById('cbLabel').textContent=p.label;document.getElementById('fair').value=p.fair;document.getElementById('poor').value=p.poor;updateBandKey();}
+// IRC:82-2023 Tables 5.1–5.3. IRI thresholds depend on pavement surface.
+const distressProfile=document.getElementById('distressRatingProfile');
+const distressLimits={
+  highway:{crack:[5,10],ravelling:[1,10],pothole:[0,2],patch_work:[1,10],rutting:[5,10]},
+  mdr:{crack:[10,20],ravelling:[10,20],pothole:[1,5],patch_work:[5,20],rutting:[10,20]},
+  urban:{crack:[5,15],ravelling:[5,10],pothole:[0,3],patch_work:[5,10],rutting:[5,10]}
+};
+const distressIriLimits={
+  highway:[2.55,3.30], urban:[2.55,3.30],
+  'mdr-bc':[2.81,3.55], 'mdr-sdbc':[3.05,4.03], 'mdr-mss':[3.55,4.27],
+  'mdr-ogpc':[3.79,4.62], 'mdr-sd':[4.03,4.98],
+  'rural-sdbc':[3.33,4.03], 'rural-mss':[3.79,4.27],
+  'rural-ogpc':[4.03,4.62], 'rural-sd':[4.27,4.98]
+};
+const distressHighwayClasses=['sh','nh','state highway','state highways','national highway','national highways','expressway','expressways'];
+const distressMdrClasses=['mdr','major district road','major district roads'];
+const distressMdrSurfaces=[
+  ['mdr-bc','Bituminous concrete',['bc','bt','bituminous','bitumious','bituminous concrete']],
+  ['mdr-sdbc','Semi-dense bituminous concrete',['sdbc','semi-dense bituminous concrete','semi dense bituminous concrete']],
+  ['mdr-mss','Mix seal surfacing',['mss','mix seal surfacing']],
+  ['mdr-ogpc','Open-graded premix carpet',['ogpc','open-graded premix carpet','open graded premix carpet']],
+  ['mdr-sd','Surface dressing',['sd','surface dressing']]
+];
+function distressAutoRules(key){
+  if(key==='iri')return [
+    ['Highway · BC / SMA / SDBC',distressHighwayClasses,
+      [...distressMdrSurfaces[0][2],...distressMdrSurfaces[1][2],'sma','stone mastic asphalt'],distressIriLimits.highway],
+    ...distressMdrSurfaces.map(([id,label,surfaces])=>['MDR · '+label,distressMdrClasses,surfaces,distressIriLimits[id]])
+  ];
+  if(!distressLimits.highway[key])return [];
+  return [
+    ['Highway (including SH)',distressHighwayClasses,null,distressLimits.highway[key]],
+    ['MDR',distressMdrClasses,null,distressLimits.mdr[key]]
+  ];
+}
+function distressAutoLimits(key,props){
+  const roadClass=String(props?.pci_road_class??'').trim().toLowerCase();
+  const surface=String(props?.distress_surface??'').trim().toLowerCase();
+  return distressAutoRules(key).find(([,classes,surfaces])=>
+    classes.includes(roadClass)&&(!surfaces||surfaces.includes(surface)))?.[3];
+}
+function distressColorForValue(value){
+  const key=cb.value;
+  const op=distressGoodOperator();
+  const colors=([fair,poor])=>['case',[op,value,fair],GOOD,['<=',value,poor],FAIR,POOR];
+  if(distressProfile.value!=='auto'||key==='texture'){
+    return colors([+document.getElementById('fair').value,+document.getElementById('poor').value]);
+  }
+  const matches=(property,choices)=>['in',['downcase',['to-string',['coalesce',['get',property],'']]],['literal',choices]];
+  return ['case',...distressAutoRules(key).flatMap(([,classes,surfaces,limits])=>{
+    const roadClass=matches('pci_road_class',classes);
+    const filter=surfaces?['all',roadClass,matches('distress_surface',surfaces)]:roadClass;
+    return [filter,colors(limits)];
+  }),NONE];
+}
+function renderDistressAutoLegend(key){
+  const automatic=distressProfile.value==='auto'&&key!=='texture';
+  const table=document.getElementById('distressAutoLegend');
+  table.hidden=!automatic;
+  document.getElementById('distressManualLegend').hidden=automatic;
+  for(const id of ['fair','poor'])document.getElementById(id).disabled=automatic;
+  table.tBodies[0].replaceChildren();
+  if(!automatic)return;
+  const inclusive=key==='pothole';
+  for(const [label,,, [fair,poor]] of distressAutoRules(key)){
+    const row=table.tBodies[0].insertRow();
+    for(const value of [label,(inclusive?'≤ ':'< ')+fair,(inclusive?'> ':'')+fair+' to '+poor,'> '+poor]){
+      row.insertCell().textContent=value;
+    }
+  }
+}
+function distressGoodOperator(key=cb.value){
+  return key==='pothole'&&distressProfile.value!=='custom'?'<=':'<';
+}
+function distressProfileLimits(key){
+  const profile=distressProfile.value;
+  const roadClass=profile.startsWith('rural-')?'mdr':profile.split('-')[0];
+  return key==='iri'?distressIriLimits[profile]:distressLimits[roadClass]?.[key];
+}
+function loadThreshDefaults(){
+  let p=PMAP[cb.value];
+  if(!p){p=PARAMS[0];cb.value=p.key;}
+  const limits=distressProfileLimits(p.key);
+  const [fair,poor]=limits||[p.fair,p.poor];
+  document.getElementById('cbLabel').textContent=p.key==='pothole'&&limits?'Potholes (equivalent count)':p.label;
+  document.getElementById('fair').value=fair;
+  document.getElementById('poor').value=poor;
+  updateBandKey();
+  renderDistressAutoLegend(p.key);
+}
+distressProfile.addEventListener('change',()=>resetThresholds());
 function resetThresholds(){loadThreshDefaults();applyColors();}
-function updateBandKey(){const f=document.getElementById('fair').value,po=document.getElementById('poor').value;const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};set('kGood',f);set('kFairLo',f);set('kFairHi',po);set('kPoor',po);}
+function updateBandKey(){const f=document.getElementById('fair').value,po=document.getElementById('poor').value;const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};const inclusive=distressGoodOperator()==='<=';set('distressGoodHeading',inclusive?'good ≤':'good <');set('distressGoodOperator',inclusive?'≤':'<');set('distressFairOperator',inclusive?'> ':'');set('kGood',f);set('kFairLo',f);set('kFairHi',po);set('kPoor',po);}
 loadThreshDefaults();syncCondMetricUI();
 /* The two selectors above are filled from PARAMS at load, but the labels in
    PARAMS only become the RMMS cell's own once the attribute catalogue arrives
@@ -34,11 +124,11 @@ if(window.AttrCatalog)AttrCatalog.ready().then(function(){
     });
   });
   const lbl=document.getElementById('cbLabel'),p=PMAP[cb.value];
-  if(lbl&&p)lbl.textContent=p.label;
+  if(lbl&&p&&(p.key!=='pothole'||distressProfile.value==='custom'))lbl.textContent=p.label;
   // Filter rows carry their own copy of the parameter list.
   if(filters.length)renderFilters();
 });
-function colorExpr(){const p=cb.value,fair=+document.getElementById('fair').value,poor=+document.getElementById('poor').value;return ['case',['==',['coalesce',['get',p],-1],-1],NONE,['step',['get',p],GOOD,fair,FAIR,poor,POOR]];}
+function colorExpr(){const p=cb.value,fair=+document.getElementById('fair').value,poor=+document.getElementById('poor').value,v=['get',p];return ['case',['==',['coalesce',v,-1],-1],NONE,distressColorForValue(v)];}
 function applyColors(){LANE_SLOTS.forEach(s=>{const id='seg-'+s.x;if(map.getLayer(id))map.setPaintProperty(id,'line-color',laneColorExpr(s.x));});}
 const OPS={'>':'>','>=':'>=','=':'==','<=':'<=','<':'<'};
 function addFilter(p){filters.push({param:p||'iri',op:'>',val:''});renderFilters();applyFilter();}

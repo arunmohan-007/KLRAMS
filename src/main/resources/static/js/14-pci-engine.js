@@ -26,11 +26,61 @@
    ============================================================ */
 /* ===== IRC:82-2023 Pavement Condition Index (PCI) module ===== */
 const PCI_PARAMS=[{key:'crack',label:'Cracking'},{key:'ravelling',label:'Ravelling'},{key:'pothole',label:'Pothole'},{key:'patch_work',label:'Patch work'},{key:'rutting',label:'Rut depth'},{key:'iri',label:'IRI (roughness)'}];
-const PCI_W_DEFAULT={crack:0.16,ravelling:0.12,pothole:0.08,patch_work:0.10,rutting:0.14,iri:0.40};
+const PCI_W_DEFAULT={crack:0.12,ravelling:0.10,pothole:0.16,patch_work:0.08,rutting:0.14,iri:0.40};
 const PCI_W=Object.assign({},PCI_W_DEFAULT);
 const PCI_BANDS=[{min:90,hi:100,label:'Excellent',color:'#157f3c',rec:'Routine maintenance'},{min:80,hi:90,label:'Good',color:'#7cb518',rec:'Preventive maintenance'},{min:60,hi:80,label:'Satisfactory',color:'#f2c200',rec:'Resurfacing (structural check)'},{min:40,hi:60,label:'Fair',color:'#f08c00',rec:'Minor rehabilitation'},{min:20,hi:40,label:'Poor',color:'#e8590c',rec:'Major rehab / overlay'},{min:0,hi:20,label:'Fail',color:'#c92a2a',rec:'Reconstruction'}];
 function pciBand(v){for(const b of PCI_BANDS){if(v>=b.min)return b;}return PCI_BANDS[PCI_BANDS.length-1];}
-function indIndex(key,v){const t=PMAP[key];if(!t||v==null||isNaN(v))return null;v=Math.max(0,+v);const f=+t.fair,po=+t.poor;if(!(po>f&&f>0))return null;if(v<=f)return 100-(v/f)*20;if(v<=po)return 80-((v-f)/(po-f))*40;const cap=2*po;if(v<=cap)return 40-((v-po)/po)*40;return 0;}
+function pciHighway(props){
+  return /^(?:SH|NH|State Highways?|National Highways?|Expressways?)$/i.test(String(props?.pci_road_class||'').trim());
+}
+function highwayIndex(key,x){
+  if(x==null||!Number.isFinite(x)||x<0)return null;
+  let score;
+  switch(key){
+    case 'crack': case 'rutting': score=7231/(x*x-0.737*x+73.09);break;
+    case 'ravelling': case 'patch_work': score=52.92*Math.exp(-0.02525*x)+44.1*Math.exp(-0.2899*x);break;
+    case 'pothole': score=x>=10?0:(((-80.32*x+1129)*x-3524)*x+3566)/(((x+5.791)*x-28.67)*x+35.72);break;
+    case 'iri': score=100/(Math.pow(x,1.91)-3.542*x+4.315);break;
+    default:return null;
+  }
+  return Math.max(0,Math.min(100,score));
+}
+function pciMdr(props){
+  return /^(?:MDR|Major District Roads?)$/i.test(String(props?.pci_road_class||'').trim());
+}
+function mdrIndex(key,x,surface){
+  if(x==null||!Number.isFinite(x)||x<0)return null;
+  let score;
+  switch(key){
+    case 'crack': case 'ravelling': case 'rutting':
+      score=(((-0.5662*x+85.14)*x-3377)*x+51820)/((x-29.31)*x+523.4);break;
+    case 'patch_work':
+      score=(((-0.001723*x-0.08273)*x+21.39)*x+419.1)/(x+4.267);break;
+    case 'pothole':
+      score=x>=10?0:((((0.0113*x-0.2825)*x+2.6246)*x-19.18)*x+99.529);break;
+    case 'iri': score=mdrIri(x,surface);break;
+    default:return null;
+  }
+  return Number.isFinite(score)?Math.max(0,Math.min(100,score)):null;
+}
+function mdrIri(iri,surface){
+  const x=Math.max(2,Math.min(20,iri));
+  switch(String(surface||'').trim().toLowerCase()){
+    case 'sd': case 'surface dressing':
+      return (((((-0.09535*x+4.235)*x-74.43)*x+642.4)*x-2625)*x+4034)/((x-9.065)*x+20.71);
+    case 'ogpc': case 'open graded premix carpet': case 'open-graded premix carpet':
+      return (((-4.842*x+121.5)*x-875.9)*x+2029)/((x-8.389)*x+19.85);
+    case 'mss': case 'mix seal surfacing':
+      return ((((-2.686*x+64.96)*x-437.2)*x+1046)*x-596.2)/(((x-9.766)*x+31.09)*x-30.94);
+    case 'sdbc': case 'semi dense bituminous concrete': case 'semi-dense bituminous concrete':
+    case 'semi dense bituminous course': case 'semi-dense bituminous course':
+      return (((-4.468*x+106.2)*x-694.7)*x+1507)/((x-6.778)*x+14.51);
+    case 'bc': case 'bt': case 'bituminous': case 'bitumious': case 'bituminous concrete':
+      return ((((-2.52*x+55.18)*x-292.4)*x+476.4)*x-5.565)/(((x-7.458)*x+17.77)*x-12.09);
+    default:return NaN;
+  }
+}
+function indIndex(key,v,props){if(pciHighway(props))return highwayIndex(key,v);if(pciMdr(props))return mdrIndex(key,v,props.distress_surface);const t=PMAP[key];if(!t||v==null||isNaN(v))return null;v=Math.max(0,+v);const f=+t.fair,po=+t.poor;if(!(po>f&&f>0))return null;if(v<=f)return 100-(v/f)*20;if(v<=po)return 80-((v-f)/(po-f))*40;const cap=2*po;if(v<=cap)return 40-((v-po)/po)*40;return 0;}
 
 /* ---- per-lane helpers (build 75) ---- */
 const PCI_LANE_KEYS=['CC','CL1','CL2','CR1','CR2'];
@@ -50,18 +100,18 @@ function pciLaneDists(props){
   return out;
 }
 /* Weighted IRC:82-2023 PCI from one raw distress object. */
-function pciFromDist(dist){let sw=0,acc=0;PCI_PARAMS.forEach(pp=>{const w=+PCI_W[pp.key]||0;if(w<=0)return;const raw=dist?dist[pp.key]:null;if(raw==null||raw==='')return;const I=indIndex(pp.key,+raw);if(I==null)return;acc+=w*I;sw+=w;});return sw>0?acc/sw:null;}
+function pciFromDist(dist,props){let sw=0,acc=0;PCI_PARAMS.forEach(pp=>{const w=+PCI_W[pp.key]||0;if(w<=0)return;const raw=dist?dist[pp.key]:null;if(raw==null||raw==='')return;const I=indIndex(pp.key,+raw,props);if(I==null)return;acc+=w*I;sw+=w;});return sw>0?acc/sw:null;}
 /* Segment-level fallback distress object when there is no lane breakdown:
    worst -> the segment MAX columns (iri, crack, ...); avg -> the avg_* columns. */
 function pciAggDist(props,basis){const d={};PCI_PARAMS.forEach(pp=>{const k=pp.key;let v=(basis==='worst')?props[k]:((props['avg_'+k]!=null&&props['avg_'+k]!=='')?props['avg_'+k]:props[k]);if(v!=null&&v!=='')d[k]=+v;});return d;}
 /* List of {lane, pci} for every lane that yields a PCI. */
-function pciLanePcis(props){const L=pciLaneDists(props);const r=[];Object.keys(L).forEach(k=>{const v=pciFromDist(L[k]);if(v!=null)r.push({lane:k,pci:v});});return r;}
+function pciLanePcis(props){const L=pciLaneDists(props);const r=[];Object.keys(L).forEach(k=>{const v=pciFromDist(L[k],props);if(v!=null)r.push({lane:k,pci:v});});return r;}
 /* Representative distress profile actually shown in the popup for a basis. */
 function pciRepr(props,basis){
   const L=pciLaneDists(props);const keys=Object.keys(L);
   if(keys.length){
     if(basis==='worst'){const lp=pciLanePcis(props);if(lp.length){let w=lp[0];lp.forEach(x=>{if(x.pci<w.pci)w=x;});return {dist:L[w.lane]||{},lane:w.lane};}}
-    const d={};PCI_PARAMS.forEach(pp=>{let s=0,n=0;keys.forEach(k=>{const v=L[k][pp.key];if(v!=null){s+=+v;n++;}});if(n)d[pp.key]=s/n;});
+    const d={};PCI_PARAMS.forEach(pp=>{let s=0,n=0;keys.forEach(k=>{const v=L[k][pp.key];if(v!=null){s+=+v;n++;}});if(n)d[pp.key]=(pciHighway(props)||pciMdr(props))&&pp.key==='pothole'?s:s/n;});
     return {dist:d,lane:keys.join(', ')};
   }
   return {dist:pciAggDist(props,basis),lane:(props.xsp_list||'')};
@@ -82,7 +132,10 @@ function pciWeightsAtDefault(){return PCI_PARAMS.every(pp=>Math.abs((+PCI_W[pp.k
    computation for as long as the weights are off their defaults. Segments from a
    database built before this feature carry no stored value and also fall through,
    so nothing depends on the columns being populated. */
-function segPCI(props,basis){
+function pciPaverBlock(props){
+  return /^(?:pvb|paver blocks?|interlocking concrete block pavement)$/i.test(String(props?.distress_surface||'').trim());
+}
+function segPCI(props,basis){if(pciPaverBlock(props))return null;
   if(pciWeightsAtDefault()){
     const s=props[(basis==='worst')?'pci_def_worst':'pci_def_avg'];
     if(s!=null&&s!=='')return +s;
@@ -93,11 +146,11 @@ function segPCI(props,basis){
     /* Composite PCI — area-weighted distress average: pool the lane distresses across
        the carriageway (equal-area lanes -> mean per parameter), then compute ONE PCI. */
     const Ld=pciLaneDists(props);const keys=Object.keys(Ld);const d={};
-    PCI_PARAMS.forEach(pp=>{let s=0,n=0;keys.forEach(k=>{const v=Ld[k][pp.key];if(v!=null&&v!==''){s+=+v;n++;}});if(n)d[pp.key]=s/n;});
-    const v=pciFromDist(d);
+    PCI_PARAMS.forEach(pp=>{let s=0,n=0;keys.forEach(k=>{const v=Ld[k][pp.key];if(v!=null&&v!==''){s+=+v;n++;}});if(n)d[pp.key]=(pciHighway(props)||pciMdr(props))&&pp.key==='pothole'?s:s/n;});
+    const v=pciFromDist(d,props);
     return (v!=null)?v:(lanes.reduce((s,x)=>s+x.pci,0)/lanes.length);
   }
-  return pciFromDist(pciAggDist(props,basis));
+  return pciFromDist(pciAggDist(props,basis),props);
 }
 
 const PCI_LAYERS=[{id:'pci-avg',prop:'pci_avg',basis:'avg',off:-1,tg:'showPciAvg'},{id:'pci-worst',prop:'pci_worst',basis:'worst',off:1,tg:'showPciWorst'}];
@@ -170,9 +223,9 @@ function pciPopup(lngLat,props,basis){
   const vRaw=segPCI(props,basis);const v=(vRaw!=null&&!isNaN(vRaw))?vRaw:-1;
   const b=(v>=0)?pciBand(v):null;
   const rep=pciRepr(props,basis);
-  let rows='';PCI_PARAMS.forEach(pp=>{const raw=rep.dist[pp.key];const has=!(raw==null||raw==='');const I=has?indIndex(pp.key,+raw):null;rows+='<tr><td class="k">'+pp.label+'</td><td class="v">'+(has?(+(+raw).toFixed(2)):'\u2013')+(I==null?'':' \u2192 '+I.toFixed(0))+'</td></tr>';});
+  let rows='';PCI_PARAMS.forEach(pp=>{const raw=rep.dist[pp.key];const has=!(raw==null||raw==='');const I=has?indIndex(pp.key,+raw,props):null;rows+='<tr><td class="k">'+pp.label+'</td><td class="v">'+(has?(+(+raw).toFixed(2)):'\u2013')+(I==null?'':' \u2192 '+I.toFixed(0))+'</td></tr>';});
   const laneNote=(basis==='worst'&&rep.lane)?(' &middot; worst lane '+rep.lane):((basis!=='worst'&&rep.lane&&rep.lane.indexOf(',')>=0)?(' &middot; avg of '+rep.lane):'');
-  const head=b?('<div style="font-size:22px;font-weight:700;color:#0e2038">'+v.toFixed(1)+'<span style="font-size:12px;color:#64718a;font-weight:500"> /100</span> <span style="background:'+b.color+';color:#fff;font-size:11px;font-weight:700;border-radius:20px;padding:2px 9px;margin-left:4px">'+b.label+'</span></div><div style="font-size:11.5px;color:#64718a;margin:3px 0 8px">'+b.rec+'</div>'):'<div style="color:#64718a">No PCI at this segment</div>';
+  const head=pciPaverBlock(props)?'<div>PCI not applicable &mdash; paver block</div>':b?('<div style="font-size:22px;font-weight:700;color:#0e2038">'+v.toFixed(1)+'<span style="font-size:12px;color:#64718a;font-weight:500"> /100</span> <span style="background:'+b.color+';color:#fff;font-size:11px;font-weight:700;border-radius:20px;padding:2px 9px;margin-left:4px">'+b.label+'</span></div><div style="font-size:11.5px;color:#64718a;margin:3px 0 8px">'+b.rec+'</div>'):'<div style="color:#64718a">No PCI at this segment</div>';
   const avRaw=segPCI(props,'avg'),wvRaw=segPCI(props,'worst');
   const av=(avRaw!=null&&!isNaN(avRaw))?avRaw:-1,wv=(wvRaw!=null&&!isNaN(wvRaw))?wvRaw:-1;
   const cmp='<div style="font-size:10.5px;color:#64718a;margin-top:6px;border-top:1px solid #eef1f5;padding-top:5px">Composite <b>'+((av>=0)?av.toFixed(1):'\u2013')+'</b> &middot; Worst-Lane <b>'+((wv>=0)?wv.toFixed(1):'\u2013')+'</b></div>';

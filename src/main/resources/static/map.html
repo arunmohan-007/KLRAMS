@@ -566,7 +566,37 @@
         <div class="pci-card">
           <div class="eyebrow" style="margin-top:0">PCI rating scale (Table 5.5)</div>
           <div class="legend pcileg" id="pciLegend"></div>
-          <div class="note" style="margin-top:12px"><b>Generate PCI</b> produces two layers &mdash; <b>Composite PCI</b> (area-weighted distress) and <b>Worst-Lane PCI</b> (maximum distress per parameter). Each parameter&rsquo;s distress is converted to a 0&ndash;100 index; thresholds follow IRC:82-2023 Table&nbsp;5.3 (editable under Road Condition). Default weightages are IRC:82-2023 Table&nbsp;5.4 (&Sigma;&nbsp;=&nbsp;1.00).</div>
+          <div class="note" style="margin-top:12px"><b>Generate PCI</b> produces two layers &mdash; <b>Composite PCI</b> (area-weighted distress) and <b>Worst-Lane PCI</b> (lowest individual lane PCI). Expressways, national highways and state highways use the IRC:82-2023 Appendix&nbsp;2 highway equations and sum equivalent pothole counts across lanes for Composite PCI. MDR uses Appendix 2, Table A2.2 Part A, with the pothole equation from draft Amendment No. 1. MDR IRI uses the recorded surface type. RMMS treats BT (Bituminous) as BC. Other road classes use the editable threshold curves. Default weights come from IRC:82-2023 Table&nbsp;5.4.</div>
+          <details class="note" style="margin-top:12px">
+            <summary>MDR PCI equations</summary>
+            <p>Composite PCI pools the lane readings and sums equivalent pothole counts. Worst-Lane PCI uses the lowest score calculated for an individual lane.</p>
+            <dl>
+              <dt><b>Cracking, ravelling and rut depth</b></dt>
+              <dd>I = (&minus;0.5662x<sup>3</sup> + 85.14x<sup>2</sup> &minus; 3377x + 51820) / (x<sup>2</sup> &minus; 29.31x + 523.4).</dd>
+              <dt><b>Patch work</b></dt>
+              <dd>I = (&minus;0.001723x<sup>3</sup> &minus; 0.08273x<sup>2</sup> + 21.39x + 419.1) / (x + 4.267).</dd>
+              <dt><b>Equivalent pothole count</b></dt>
+              <dd>I = 0.0113x<sup>4</sup> &minus; 0.2825x<sup>3</sup> + 2.6246x<sup>2</sup> &minus; 19.18x + 99.529. RMMS assigns 0 for counts of 10 or more.</dd>
+              <dt><b>IRI</b></dt>
+              <dd>Uses the Table A2.2 Part A equation for the recorded surface (BC, SDBC, MSS, OGPC or SD). If the surface is unknown, RMMS excludes IRI and divides by the sum of the remaining weights used.</dd>
+            </dl>
+          </details>
+          <details class="note" style="margin-top:12px">
+            <summary>Highway PCI equations and worked example</summary>
+            <p>For Composite PCI, RMMS treats the surveyed lanes as equal area. It averages cracking, ravelling, patch work, rut depth and IRI, and sums equivalent pothole counts. It then calculates the individual scores using IRC:82-2023 Appendix 2, Table A2.1.</p>
+            <dl>
+              <dt><b>Cracking (12%) and rut depth (14%)</b></dt>
+              <dd>I = 7231 / (x<sup>2</sup> &minus; 0.737x + 73.09), where x is cracking extent (%) or rut depth (mm), respectively.</dd>
+              <dt><b>Ravelling (10%) and patch work (8%)</b></dt>
+              <dd>I = 52.92e<sup>&minus;0.02525x</sup> + 44.1e<sup>&minus;0.2899x</sup>, where x is the affected area as a percentage of surveyed pavement area.</dd>
+              <dt><b>Potholes (16%)</b></dt>
+              <dd>I = (&minus;80.32x<sup>3</sup> + 1129x<sup>2</sup> &minus; 3524x + 3566) / (x<sup>3</sup> + 5.791x<sup>2</sup> &minus; 28.67x + 35.72), where x is the equivalent pothole count (affected area in m&sup2; divided by 0.1 m&sup2;). RMMS assigns a score of 0 for counts of 10 or more.</dd>
+              <dt><b>IRI (40%)</b></dt>
+              <dd>I = 100 / (x<sup>1.91</sup> &minus; 3.542x + 4.315), where x is IRI (m/km).</dd>
+            </dl>
+            <p>RMMS limits each score to 0&ndash;100, multiplies it by its weight, adds the contributions and divides by the sum of the weights used. With all six default weights, that sum is 1.00.</p>
+            <p><b>Example:</b> Two equal-area lanes with 0% and 20% cracking give x = 10. The cracking score is 7231 / (10<sup>2</sup> &minus; 0.737 &times; 10 + 73.09) = 43.63. At a weight of 0.12, cracking contributes <b>5.24 points</b> to Composite PCI.</p>
+          </details>
         </div>
       </div>
     </div>
@@ -588,14 +618,39 @@
       <div class="pci-card">
         <div class="eyebrow" style="margin-top:0">Colour condition by</div>
         <select id="colorBy" class="full"></select>
-        <div class="thresh" style="margin-top:12px"><span class="nm" id="cbLabel">Value</span><span class="hd">good&lt;</span><span class="hd">poor&gt;</span><span></span><input id="fair" type="number" step="0.1"><input id="poor" type="number" step="0.1"></div>
-        <div class="bandkey">
-          <span class="bk"><span class="bksw" style="background:var(--good)"></span>Good &lt; <i id="kGood">2.55</i></span>
-          <span class="bk"><span class="bksw" style="background:var(--fair)"></span>Fair <i id="kFairLo">2.55</i>&ndash;<i id="kFairHi">3.3</i></span>
+        <label for="distressRatingProfile" class="eyebrow">Distress rating profile</label>
+        <select id="distressRatingProfile" class="full">
+          <option value="auto">Automatic by road class</option>
+          <option value="highway">Highway (BC / SMA / SDBC)</option>
+          <optgroup label="MDR">
+            <option value="mdr-bc">MDR &middot; Bituminous concrete</option>
+            <option value="mdr-sdbc">MDR &middot; Semi-dense bituminous concrete</option>
+            <option value="mdr-mss">MDR &middot; Mix seal surfacing</option>
+            <option value="mdr-ogpc">MDR &middot; Open-graded premix carpet</option>
+            <option value="mdr-sd">MDR &middot; Surface dressing</option>
+          </optgroup>
+          <optgroup label="Rural road">
+            <option value="rural-sdbc">Rural &middot; Semi-dense bituminous concrete</option>
+            <option value="rural-mss">Rural &middot; Mix seal surfacing</option>
+            <option value="rural-ogpc">Rural &middot; Open-graded premix carpet</option>
+            <option value="rural-sd">Rural &middot; Surface dressing</option>
+          </optgroup>
+          <option value="urban">Urban (BC / SMA / SDBC)</option>
+          <option value="custom">Configured thresholds</option>
+        </select>
+        <div class="thresh" style="margin-top:12px"><span class="nm" id="cbLabel">Value</span><span class="hd" id="distressGoodHeading">good&lt;</span><span class="hd">poor&gt;</span><span></span><input id="fair" type="number" step="0.1"><input id="poor" type="number" step="0.1"></div>
+        <div class="bandkey" id="distressManualLegend">
+          <span class="bk"><span class="bksw" style="background:var(--good)"></span>Good <span id="distressGoodOperator">&lt;</span> <i id="kGood">2.55</i></span>
+          <span class="bk"><span class="bksw" style="background:var(--fair)"></span>Fair <span id="distressFairOperator"></span><i id="kFairLo">2.55</i>&ndash;<i id="kFairHi">3.3</i></span>
           <span class="bk"><span class="bksw" style="background:var(--poor)"></span>Poor &gt; <i id="kPoor">3.3</i></span>
         </div>
-        <div class="note" style="margin-top:10px">Defaults per Table 5.3, IRC:82-2023. Editable.</div>
-        <button class="btn ghost" style="margin-top:10px" data-act="resetThresholds">Reset to IRC defaults</button>
+        <table id="distressAutoLegend" style="width:100%;margin-top:12px">
+          <caption>Rating thresholds for the selected metric</caption>
+          <thead><tr><th scope="col">Road class / surface</th><th scope="col">Good</th><th scope="col">Fair</th><th scope="col">Poor</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="note" style="margin-top:10px">IRC:82-2023 Tables 5.1&ndash;5.3. Automatic mode rates each SH or MDR using its road class and surface. Manual profiles apply one set of thresholds across the view. BT (Bituminous) uses the BC limits. Unmatched road classes and IRI surfaces are shown without a rating. Potholes use equivalent counts. Texture uses configured thresholds.</div>
+        <button class="btn ghost" style="margin-top:10px" data-act="resetThresholds">Reset thresholds</button>
         <div class="statusline" id="status">Loading&hellip;</div>
       </div>
       <div class="pci-card">
@@ -1138,18 +1193,18 @@
   <script src="js/02e-active-layer.js?v=7"></script>
   <script src="js/02c-segment-data.js?v=4"></script>
   <script src="js/02d-road-index.js?v=5"></script>
-  <script src="js/03-condition-style-filter.js?v=187"></script>
+  <script src="js/03-condition-style-filter.js?v=190"></script>
   <script src="js/04-geo-helpers-boundaries.js?v=139"></script>
   <script src="js/05-road-network.js?v=197"></script>
   <script src="js/06-assets.js?v=189"></script>
-  <script src="js/07-data-loaders.js?v=190"></script>
-  <script src="js/08-condition-popup-nsv.js?v=175"></script>
+  <script src="js/07-data-loaders.js?v=192"></script>
+  <script src="js/08-condition-popup-nsv.js?v=178"></script>
   <script src="js/09-dashboard-core.js?v=128"></script>
   <script src="js/10-pci-report.js?v=127"></script>
   <script src="js/11-dashboard-charts.js?v=128"></script>
   <script src="js/12-nsv-video.js?v=183"></script>
   <script src="js/13-search.js?v=125"></script>
-  <script src="js/14-pci-engine.js?v=177"></script>
+  <script src="js/14-pci-engine.js?v=180"></script>
   <script src="js/15-main.js?v=130"></script>
   <script src="js/16-traffic.js?v=182"></script>
   <script src="js/17-measure.js?v=121"></script>

@@ -386,7 +386,9 @@ function condBandFor(param,v){
   var t=(typeof PMAP!=='undefined')?PMAP[param]:null;
   if(!t)return null;
   var gC=(typeof GOOD!=='undefined')?GOOD:'#2ba66a',fC=(typeof FAIR!=='undefined')?FAIR:'#FFC400',pC=(typeof POOR!=='undefined')?POOR:'#da4b43';
-  if(n>=t.poor)return{label:'Poor',color:pC};
+  /* IRC bands use a closed Fair interval (fair..poor) and Poor only above
+     the upper limit. Keep the exported labels/colors aligned with the legend. */
+  if(n>t.poor)return{label:'Poor',color:pC};
   if(n>=t.fair)return{label:'Fair',color:fC};
   return{label:'Good',color:gC};
 }

@@ -47,10 +47,10 @@ final class PciCalculator {
         PARAM_LABELS.put("rutting", "Rut depth");
         PARAM_LABELS.put("iri", "IRI (roughness)");
 
-        DEFAULT_WEIGHTS.put("crack", 0.16);      DEFAULT_THRESHOLDS.put("crack", new double[]{5, 15});
-        DEFAULT_WEIGHTS.put("ravelling", 0.12);  DEFAULT_THRESHOLDS.put("ravelling", new double[]{5, 10});
-        DEFAULT_WEIGHTS.put("pothole", 0.08);    DEFAULT_THRESHOLDS.put("pothole", new double[]{1, 3});
-        DEFAULT_WEIGHTS.put("patch_work", 0.10); DEFAULT_THRESHOLDS.put("patch_work", new double[]{5, 10});
+        DEFAULT_WEIGHTS.put("crack", 0.12);      DEFAULT_THRESHOLDS.put("crack", new double[]{5, 15});
+        DEFAULT_WEIGHTS.put("ravelling", 0.10);  DEFAULT_THRESHOLDS.put("ravelling", new double[]{5, 10});
+        DEFAULT_WEIGHTS.put("pothole", 0.16);    DEFAULT_THRESHOLDS.put("pothole", new double[]{1, 3});
+        DEFAULT_WEIGHTS.put("patch_work", 0.08); DEFAULT_THRESHOLDS.put("patch_work", new double[]{5, 10});
         DEFAULT_WEIGHTS.put("rutting", 0.14);    DEFAULT_THRESHOLDS.put("rutting", new double[]{5, 10});
         DEFAULT_WEIGHTS.put("iri", 0.40);        DEFAULT_THRESHOLDS.put("iri", new double[]{2.55, 3.30});
     }
@@ -108,14 +108,69 @@ final class PciCalculator {
         return 0.0;
     }
 
+    /** IRC:82-2023 Appendix 2, Table A2.1. */
+    private static Double highwayIndex(String key, Double raw) {
+        if (raw == null || !Double.isFinite(raw) || raw < 0) return null;
+        double x = raw;
+        double score = switch (key) {
+            case "crack", "rutting" -> 7231 / (x * x - 0.737 * x + 73.09);
+            case "ravelling", "patch_work" ->
+                52.92 * Math.exp(-0.02525 * x) + 44.1 * Math.exp(-0.2899 * x);
+            case "pothole" -> x >= 10 ? 0 :
+                (((-80.32 * x + 1129) * x - 3524) * x + 3566) /
+                (((x + 5.791) * x - 28.67) * x + 35.72);
+            case "iri" -> 100 / (Math.pow(x, 1.91) - 3.542 * x + 4.315);
+            default -> throw new IllegalArgumentException(key);
+        };
+        return Math.max(0, Math.min(100, score));
+    }
+
+    /** Appendix 2, Table A2.2 Part A, with the draft amendment's pothole correction. */
+    private static Double mdrIndex(String key, Double raw, String surface) {
+        if (raw == null || !Double.isFinite(raw) || raw < 0) return null;
+        double x = raw;
+        double score = switch (key) {
+            case "crack", "ravelling", "rutting" ->
+                (((-0.5662 * x + 85.14) * x - 3377) * x + 51820) / ((x - 29.31) * x + 523.4);
+            case "patch_work" -> (((-0.001723 * x - 0.08273) * x + 21.39) * x + 419.1) / (x + 4.267);
+            case "pothole" -> x >= 10 ? 0 : ((((0.0113 * x - 0.2825) * x + 2.6246) * x - 19.18) * x + 99.529);
+            case "iri" -> mdrIri(x, surface);
+            default -> throw new IllegalArgumentException(key);
+        };
+        return Double.isFinite(score) ? Math.max(0, Math.min(100, score)) : null;
+    }
+
+    private static double mdrIri(double iri, String surface) {
+        double x = Math.max(2, Math.min(20, iri));
+        return switch (surface) {
+            case "sd", "surface dressing" ->
+                (((((-0.09535 * x + 4.235) * x - 74.43) * x + 642.4) * x - 2625) * x + 4034)
+                    / ((x - 9.065) * x + 20.71);
+            case "ogpc", "open graded premix carpet", "open-graded premix carpet" ->
+                (((-4.842 * x + 121.5) * x - 875.9) * x + 2029) / ((x - 8.389) * x + 19.85);
+            case "mss", "mix seal surfacing" ->
+                ((((-2.686 * x + 64.96) * x - 437.2) * x + 1046) * x - 596.2)
+                    / (((x - 9.766) * x + 31.09) * x - 30.94);
+            case "sdbc", "semi dense bituminous concrete", "semi-dense bituminous concrete",
+                 "semi dense bituminous course", "semi-dense bituminous course" ->
+                (((-4.468 * x + 106.2) * x - 694.7) * x + 1507) / ((x - 6.778) * x + 14.51);
+            case "bc", "bt", "bituminous", "bitumious", "bituminous concrete" ->
+                ((((-2.52 * x + 55.18) * x - 292.4) * x + 476.4) * x - 5.565)
+                    / (((x - 7.458) * x + 17.77) * x - 12.09);
+            default -> Double.NaN;
+        };
+    }
+
     /** Weighted PCI from one raw distress set; null when nothing is measurable. */
-    static Double pciFrom(Map<String, Double> dist) {
+    static Double pciFrom(Map<String, Double> dist, boolean highway, boolean mdr, String surface) {
         if (dist == null) return null;
         double weighted = 0, usedWeight = 0;
         for (Map.Entry<String, Double> e : weights.entrySet()) {
             double w = e.getValue();
             if (w <= 0) continue;
-            Double idx = index(e.getKey(), dist.get(e.getKey()));
+            Double raw = dist.get(e.getKey());
+            Double idx = highway ? highwayIndex(e.getKey(), raw)
+                : mdr ? mdrIndex(e.getKey(), raw, surface) : index(e.getKey(), raw);
             if (idx == null) continue;
             weighted += w * idx;
             usedWeight += w;
@@ -129,15 +184,15 @@ final class PciCalculator {
      * stretch has no lane breakdown — the MAX columns for "worst", the avg_*
      * columns for "composite".
      */
-    static Double segPci(Map<String, Map<String, Double>> lanes, Map<String, Double> fallback, boolean worstBasis) {
+    static Double segPci(Map<String, Map<String, Double>> lanes, Map<String, Double> fallback, boolean worstBasis, boolean highway, boolean mdr, String surface) {
         List<Double> lanePcis = new ArrayList<>();
         if (lanes != null) {
             for (Map<String, Double> d : lanes.values()) {
-                Double v = pciFrom(d);
+                Double v = pciFrom(d, highway, mdr, surface);
                 if (v != null) lanePcis.add(v);
             }
         }
-        if (lanePcis.isEmpty()) return pciFrom(fallback);
+        if (lanePcis.isEmpty()) return pciFrom(fallback, highway, mdr, surface);
 
         if (worstBasis) {
             double min = lanePcis.get(0);
@@ -146,8 +201,8 @@ final class PciCalculator {
         }
 
         /* Composite — area-weighted distress average: pool the lane distresses
-           across the carriageway (equal-area lanes -> mean per parameter), then
-           compute ONE PCI from the pooled distress. */
+           across the carriageway using equal surveyed lane areas. The highway
+           pothole input is an equivalent count, so lane counts are additive. */
         Map<String, Double> pooled = new LinkedHashMap<>();
         for (String key : PARAM_KEYS) {
             double sum = 0;
@@ -156,9 +211,9 @@ final class PciCalculator {
                 Double v = d.get(key);
                 if (v != null) { sum += v; n++; }
             }
-            if (n > 0) pooled.put(key, sum / n);
+            if (n > 0) pooled.put(key, (highway || mdr) && key.equals("pothole") ? sum : sum / n);
         }
-        Double v = pciFrom(pooled);
+        Double v = pciFrom(pooled, highway, mdr, surface);
         if (v != null) return v;
         double sum = 0;
         for (double x : lanePcis) sum += x;

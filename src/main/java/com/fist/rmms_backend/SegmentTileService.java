@@ -130,7 +130,8 @@ public class SegmentTileService {
                     s.seg_id,
                     s.section_label   AS road,
                     s.iri, s.crack, s.pothole, s.rutting, s.texture, s.patch_work, s.ravelling,
-                    s.pci_def_avg, s.pci_def_worst
+                    s.pci_def_avg, s.pci_def_worst, lower(trim(s.pci_road_class::text)) AS pci_road_class,
+                    lower(trim(s.distress_surface::text)) AS distress_surface
             """
             + SegmentLaneColumns.flatSelectList("s", p)
             + """

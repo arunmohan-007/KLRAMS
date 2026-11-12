@@ -90,7 +90,7 @@ public class SegmentService {
             ),
             joined AS (
                 SELECT a.*, ST_LineMerge(r.geom) AS road_geom,
-                    %1$s AS measured_len
+                    %1$s AS measured_len, %3$s AS pci_road_class, %4$s AS distress_surface
                 FROM agg a
                 JOIN roads r ON %2$s = a.section_label
                 WHERE r.geom IS NOT NULL
@@ -100,14 +100,18 @@ public class SegmentService {
                 section_label, start_chainage, end_chainage, period_id,
                 iri, crack, pothole, rutting, texture, patch_work, ravelling,
                 avg_iri, avg_crack, avg_pothole, avg_rutting, avg_texture, avg_patch_work, avg_ravelling,
-                lane_count, xsp_list, lane_vals,
+                lane_count, xsp_list, lane_vals, pci_road_class, distress_surface,
                 ST_LineSubstring(road_geom,
                     GREATEST(LEAST(start_chainage / measured_len, 1.0), 0.0),
                     GREATEST(LEAST(end_chainage   / measured_len, 1.0), 0.0)) AS geom
             FROM joined
             WHERE measured_len IS NOT NULL AND measured_len > 0
             """.formatted(roadColumns.lenExpr("r"),
-                          roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL)));
+                          roadColumns.col("r", LayerAttributeCatalog.SECTION_LABEL),
+                          roadColumns.find(LayerAttributeCatalog.ROAD_CLASS) == null ? "NULL::text"
+                              : roadColumns.col("r", LayerAttributeCatalog.ROAD_CLASS),
+                          roadColumns.find(LayerAttributeCatalog.SURFACE_TYPE) == null ? "NULL::text"
+                              : roadColumns.col("r", LayerAttributeCatalog.SURFACE_TYPE)));
 
         jdbc.execute("DELETE FROM condition_segments WHERE geom IS NULL OR ST_IsEmpty(geom)");
         jdbc.execute("ALTER TABLE condition_segments ADD COLUMN seg_id serial PRIMARY KEY");
@@ -131,6 +135,9 @@ public class SegmentService {
      *
      * Runs inside buildSegments(), i.e. once per upload, not per request.
      */
+    private static final String PAVER_SURFACES_SQL =
+        "('pvb', 'paver block', 'paver blocks', 'interlocking concrete block pavement')";
+
     private void storeDefaultPci() {
         ensurePciColumns();
 
@@ -139,10 +146,16 @@ public class SegmentService {
         final List<Object[]> batch = new ArrayList<>();
 
         jdbc.query(
-            "SELECT seg_id, lane_vals, iri, crack, pothole, rutting, patch_work, ravelling, " +
+            "SELECT seg_id, lane_vals, pci_road_class, distress_surface, iri, crack, pothole, rutting, patch_work, ravelling, " +
             "       avg_iri, avg_crack, avg_pothole, avg_rutting, avg_patch_work, avg_ravelling " +
             "FROM condition_segments",
             (RowCallbackHandler) rs -> {
+                String roadClass = rs.getString("pci_road_class");
+                boolean highway = roadClass != null && roadClass.strip().matches(
+                    "(?i)SH|NH|State Highways?|National Highways?|Expressways?");
+                boolean mdr = roadClass != null && roadClass.strip().matches("(?i)MDR|Major District Roads?");
+                String rawSurface = rs.getString("distress_surface");
+                String surface = rawSurface == null ? "" : rawSurface.strip().toLowerCase(java.util.Locale.ROOT);
                 Map<String, Map<String, Double>> lanes = parseLaneVals(json, rs.getString("lane_vals"));
                 // Segment-level fallback when a stretch has no lane breakdown:
                 // worst -> the MAX columns, composite -> the avg_* columns.
@@ -156,9 +169,10 @@ public class SegmentService {
                     if (composite != null) avgFallback.put(key, composite);
                 }
 
+                boolean paver = surface.matches("pvb|paver blocks?|interlocking concrete block pavement");
                 batch.add(new Object[]{
-                    PciCalculator.round2(PciCalculator.segPci(lanes, avgFallback, false)),
-                    PciCalculator.round2(PciCalculator.segPci(lanes, worstFallback, true)),
+                    paver ? null : PciCalculator.round2(PciCalculator.segPci(lanes, avgFallback, false, highway, mdr, surface)),
+                    paver ? null : PciCalculator.round2(PciCalculator.segPci(lanes, worstFallback, true, highway, mdr, surface)),
                     rs.getInt("seg_id")
                 });
                 if (batch.size() >= 1000) {
@@ -184,6 +198,8 @@ public class SegmentService {
             "SELECT to_regclass('condition_segments') IS NOT NULL", Boolean.class);
         if (!Boolean.TRUE.equals(exists)) return;
         jdbc.execute("ALTER TABLE condition_segments " +
+                     "ADD COLUMN IF NOT EXISTS pci_road_class text, " +
+                     "ADD COLUMN IF NOT EXISTS distress_surface text, " +
                      "ADD COLUMN IF NOT EXISTS pci_def_avg double precision, " +
                      "ADD COLUMN IF NOT EXISTS pci_def_worst double precision");
     }
@@ -201,7 +217,8 @@ public class SegmentService {
         if (!Boolean.TRUE.equals(exists)) return;
         Long missing = jdbc.queryForObject(
             "SELECT count(*) FROM condition_segments " +
-            "WHERE pci_def_avg IS NULL OR pci_def_worst IS NULL", Long.class);
+            "WHERE (pci_def_avg IS NULL OR pci_def_worst IS NULL) " +
+            "AND lower(trim(coalesce(distress_surface::text, ''))) NOT IN " + PAVER_SURFACES_SQL, Long.class);
         if (missing != null && missing > 0) storeDefaultPci();
     }
 
@@ -313,7 +330,7 @@ public class SegmentService {
                         'avg_rutting', avg_rutting, 'avg_texture', avg_texture,
                         'avg_patch_work', avg_patch_work, 'avg_ravelling', avg_ravelling,
                         'lane_count', lane_count, 'xsp_list', xsp_list, 'lane_vals', lane_vals,
-                        'pci_def_avg', pci_def_avg, 'pci_def_worst', pci_def_worst)
+                        'pci_road_class', pci_road_class, 'distress_surface', distress_surface, 'pci_def_avg', pci_def_avg, 'pci_def_worst', pci_def_worst)
                 )), '[]'::json))::text
             FROM condition_segments s WHERE period_id = ?
             """

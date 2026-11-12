@@ -229,7 +229,10 @@ const SEG_TILE_LAYER='segments';
 const CONDWIDTH=['interpolate',['linear'],['zoom'],10,2.6,16,6.5];
 function condLaneFilter(x){return ['==',['coalesce',['get','L_'+x],0],1];}
 function laneOffset(off){return ['interpolate',['linear'],['zoom'],10,off*2.4,16,off*6];}
-function laneColorExpr(xsp){const p=cb.value,fair=+document.getElementById('fair').value,poor=+document.getElementById('poor').value,k=xsp+'_'+p;return ['case',['!',['has',k]],NONE,['step',['to-number',['get',k]],GOOD,fair,FAIR,poor,POOR]];}
+function laneColorExpr(xsp){
+  const key=xsp+'_'+cb.value;
+  return ['case',['==',['coalesce',['get',key],-1],-1],NONE,distressColorForValue(['to-number',['get',key]])];
+}
 function addCondLayers(){if(map.getLayer('seg-CC'))return;/* create the lane layers already matching the showCond toggle, so a background
    preload (toggle off) never flashes the condition colours on before
    KLLayers.syncLazyLayers() runs. */
