@@ -713,7 +713,8 @@ public class CalcRuleService {
             String k = String.valueOf(p.get("key"));
             if (!PciCalculator.PARAM_KEYS.contains(k))
                 throw new IllegalArgumentException("Unknown PCI parameter: " + k);
-            double w = dbl(p.get("weight"), "weight for " + k);
+            double w = p.containsKey("weight") ? dbl(p.get("weight"), "weight for " + k)
+                : PciCalculator.weights().get(k);
             double fair = dbl(p.get("fair"), "Good threshold for " + k);
             double poor = dbl(p.get("poor"), "Poor threshold for " + k);
             if (w < 0 || w > 1)
