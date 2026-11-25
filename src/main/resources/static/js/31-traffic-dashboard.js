@@ -3,7 +3,7 @@
    Traffic Dashboard tab — per survey period, state-wide and
    district-wise classified traffic-count figures:
      · KPIs (stations, total daily traffic, busiest station, peak hour)
-     · Top-10 stations by ADT (Station / Section / Road / Class / No.)
+     · Paginated station rankings by ADT and by commercial vehicles per day
      · Vehicle-class mix (donut) for the scope
      · 24-hour traffic profile with the network peak hour highlighted
    Backend: /api/traffic-dashboard/summary — one record per station
@@ -15,6 +15,8 @@
 let tdbData=null;        // /api/traffic-dashboard/summary payload
 let tdbPeriodId=null;    // selected period id
 let tdbDistrict=null;    // selected district or null = all (state-wide)
+const TDB_PAGE_SIZE=10;
+const tdbRankingPages=[0,0]; // ADT and commercial rankings
 
 function tdbCol(i){return (typeof DPAL!=='undefined'&&DPAL.length)?DPAL[i%DPAL.length]:'#d4a02e';}
 function tdbClsCol(label,i){return (typeof CLASS_COL!=='undefined'&&CLASS_COL[label])||tdbCol(i);}
@@ -54,8 +56,12 @@ function tdbPeriodObj(){
   const ps=(tdbData&&Array.isArray(tdbData.periods))?tdbData.periods:[];
   return ps.find(p=>p.id===tdbPeriodId)||ps[0]||null;
 }
-function tdbSetPeriod(id){tdbPeriodId=id;tdbDistrict=null;tdbPaint();}
-function tdbSetDistrict(name){tdbDistrict=(tdbDistrict===name)?null:name;tdbPaint();}
+function tdbSetPeriod(id){tdbPeriodId=id;tdbClearDistrict();}
+function tdbSetDistrict(name){
+  tdbDistrict=(tdbDistrict===name)?null:name;
+  tdbRankingPages.fill(0);
+  tdbPaint();
+}
 
 /* stations in the current scope (all, or one district) */
 function tdbScopeStations(p){
@@ -112,6 +118,48 @@ function tdbHourChart(prof){
 }
 function pad2(n){return (n<10?'0':'')+n;}
 
+function tdbSetRankingPage(ranking,page){
+  if(!Number.isInteger(page)||page<0||(ranking!==0&&ranking!==1))return;
+  const buttonId='tdbRank'+ranking+(page<tdbRankingPages[ranking]?'Prev':'Next');
+  tdbRankingPages[ranking]=page;
+  tdbPaint();
+  const button=document.getElementById(buttonId);
+  if(button){
+    const fallback=document.getElementById('tdbRank'+ranking+(buttonId.endsWith('Prev')?'Next':'Prev'));
+    (button.disabled?fallback:button)?.focus();
+  }
+}
+
+function tdbRankingCard(ranking,stns,metric,column,description,scopeLbl,countFor){
+  const ranked=stns.map(s=>({s,count:countFor(s)})).sort((a,b)=>b.count-a.count);
+  const pageCount=Math.max(1,Math.ceil(ranked.length/TDB_PAGE_SIZE));
+  const page=Math.min(tdbRankingPages[ranking],pageCount-1);
+  tdbRankingPages[ranking]=page;
+  const start=page*TDB_PAGE_SIZE;
+  const top=ranked.slice(start,start+TDB_PAGE_SIZE);
+  const rows=top.map(({s,count},i)=>'<tr>'+
+    '<td class="n"><span class="rk'+(start+i<3?' medal':'')+'" style="display:inline-block;min-width:20px">'+String(start+i+1).padStart(2,'0')+'</span></td>'+
+    '<td>'+escH(s.name||'')+'</td>'+
+    '<td>'+escH(s.section||'—')+'</td>'+
+    '<td>'+escH(s.road||'—')+'</td>'+
+    '<td>'+escH(s.road_class||'—')+'</td>'+
+    '<td>'+escH(s.road_num||'—')+'</td>'+
+    '<td class="n"><b>'+fmtN(count)+'</b></td>'+
+    '<td class="n">'+(s.peak_v?fmtN(s.peak_v):'—')+'</td>'+
+    '<td>'+escH(s.peak_t||'—')+'</td></tr>').join('');
+  const pager=pageCount>1?'<div class="svy-pills" role="group" aria-label="'+metric+' ranking pages">'+
+    '<button type="button" class="btn ghost" id="tdbRank'+ranking+'Prev" data-act="tdbSetRankingPage" '+KLAct.args(ranking,page-1)+(page===0?' disabled':'')+'>Previous</button>'+
+    '<span class="sub" role="status">Stations '+(start+1)+'–'+(start+top.length)+' of '+ranked.length+'</span>'+
+    '<button type="button" class="btn ghost" id="tdbRank'+ranking+'Next" data-act="tdbSetRankingPage" '+KLAct.args(ranking,page+1)+(page===pageCount-1?' disabled':'')+'>Next</button></div>':'';
+  return '<div class="dcard"><div class="dcard-head"><h3>Stations ranked by '+metric+'</h3>'+
+    '<span class="totchip">'+scopeLbl+'</span></div><div class="sub">'+description+'</div>'+
+    '<div class="amx-wrap"><table class="amx tdb-top"><thead>'+
+    '<tr><th class="n">#</th><th>Station Name</th><th>Section Label</th><th>Road Name</th>'+
+    '<th>Road Class</th><th>Road No.</th><th class="n">'+column+'</th><th class="n">Peak/hr</th><th>Peak time</th></tr>'+
+    '</thead><tbody>'+(rows||'<tr><td colspan="9" class="sub">No stations with counts in this scope.</td></tr>')+
+    '</tbody></table></div>'+pager+'</div>';
+}
+
 function tdbPaint(){
   const body=document.getElementById('dashBody');if(!body)return;
   const p=tdbPeriodObj();
@@ -142,31 +190,12 @@ function tdbPaint(){
     tdbKpi('','#c2603f','Network Peak Hour',peakT,peakV?(fmtN(peakV)+' veh/hr on the busiest hour'):'—')+
     '</div>';
 
-  /* ---- Top 10 by ADT ---- */
-  const top=stns.slice().sort((a,b)=>(+b.adt||0)-(+a.adt||0)).slice(0,10);
-  let trows='';
-  top.forEach((s,i)=>{
-    trows+='<tr>'+
-      '<td class="n"><span class="rk'+(i<3?' medal':'')+'" style="display:inline-block;min-width:20px">'+String(i+1).padStart(2,'0')+'</span></td>'+
-      '<td>'+escH(s.name||'')+'</td>'+
-      '<td>'+escH(s.section||'—')+'</td>'+
-      '<td>'+escH(s.road||'—')+'</td>'+
-      '<td>'+escH(s.road_class||'—')+'</td>'+
-      '<td>'+escH(s.road_num||'—')+'</td>'+
-      '<td class="n"><b>'+fmtN(s.adt)+'</b></td>'+
-      '<td class="n">'+(s.peak_v?fmtN(s.peak_v):'—')+'</td>'+
-      '<td>'+escH(s.peak_t||'—')+'</td>'+
-      '</tr>';
-  });
-  const topCard='<div class="dcard"><div class="dcard-head"><h3>Top '+top.length+' stations by ADT</h3>'+
-    '<span class="totchip">'+scopeLbl+'</span></div>'+
-    '<div class="sub">Highest average daily traffic (ADT = survey total ÷ survey days) in '+pName+
-    ' — '+scopeLbl+'. Road name, class and number come from the matched PWD road section.</div>'+
-    '<div class="amx-wrap"><table class="amx tdb-top"><thead>'+
-    '<tr><th class="n">#</th><th>Station Name</th><th>Section Label</th><th>Road Name</th>'+
-    '<th>Road Class</th><th>Road No.</th><th class="n">ADT</th><th class="n">Peak/hr</th><th>Peak time</th></tr>'+
-    '</thead><tbody>'+(trows||'<tr><td colspan="9" class="sub">No stations with counts in this scope.</td></tr>')+
-    '</tbody></table></div></div>';
+  const topCard=tdbRankingCard(0,stns,'ADT','ADT',
+    'Highest average daily traffic in '+pName+'.',scopeLbl,s=>+s.adt||0);
+  const commercialCard=tdbRankingCard(1,stns.filter(s=>Object.keys(s.by_class||{}).length),
+    'commercial vehicle count','Commercial vehicles/day',
+    'Average daily commercial vehicles in '+pName+'. Peak columns show all vehicles.',
+    scopeLbl,s=>trfCommercialPerDay({byClass:s.by_class,days:s.days}));
 
   /* ---- vehicle-class mix (donut) ---- */
   const clsRows=tdbClassRows(stns);
@@ -199,7 +228,7 @@ function tdbPaint(){
     'stations whose section is not in the road network show under <b>(unmapped)</b>. '+
     'Every figure is scoped to the selected survey period and district.</div>';
 
-  body.innerHTML=tdbPills(p,dists)+kpi+topCard+'<div class="comp-row">'+mixCard+hourCard+'</div>'+distCard+note;
+  body.innerHTML=tdbPills(p,dists)+kpi+topCard+commercialCard+'<div class="comp-row">'+mixCard+hourCard+'</div>'+distCard+note;
 }
 
 function tdbKpi(extra,col,cap,val,sub,ring){
@@ -219,4 +248,4 @@ function tdbPills(p,dists){
 }
 
 /* was onclick="tdbDistrict=null;tdbPaint()" — clears the district filter */
-function tdbClearDistrict(){ tdbDistrict=null; tdbPaint(); }
+function tdbClearDistrict(){tdbDistrict=null;tdbRankingPages.fill(0);tdbPaint();}
