@@ -631,7 +631,7 @@ function pciRow(p,prop){
   if(v>=0&&typeof pciBand==='function')o.Rating=pciBand(v).label;
   return o;
 }
-function trafficRow(p){
+function trafficRow(p,includeCombined){
   var o={Station:p.name||'',Road:p.road||'',Section:p.section||'',Chainage_m:(p.ch!=null?p.ch:''),Lane:p.xsp||''};
   var c=null;
   try{c=(typeof TRAFFIC_COUNTS!=='undefined')?TRAFFIC_COUNTS[p.name]:null;}catch(e){}
@@ -654,6 +654,19 @@ function trafficRow(p){
       o['Cls_'+k]=c.byClass[k];
       o['AvgDaily_'+k]=Math.round((+c.byClass[k]||0)/days);
     });
+  }
+  if(includeCombined&&typeof CalcRules!=='undefined'&&CalcRules.stationGroupMembers
+      &&typeof TRAFFIC_COUNTS!=='undefined'&&typeof trfMergeCounts==='function'){
+    var members=CalcRules.stationGroupMembers(p.name);
+    if(members.length>1){
+      o.Combined_station_members=members.join(' + ');
+      var combined=trfMergeCounts(members.map(function(name){return TRAFFIC_COUNTS[name];}));
+      if(combined){
+        o.Combined_ADT_veh_per_day=Math.round(combined.total/combined.days);
+        o.Combined_Commercial_veh_per_day=trfCommercialPerDay(combined);
+        o.Combined_Non_commercial_veh_per_day=trfNonCommercialPerDay(combined);
+      }
+    }
   }
   return o;
 }
@@ -911,17 +924,17 @@ var EXP={
         else go();
       });
     },
-    collect:function(){
-      if(typeof trafficComputeAdt==='function')trafficComputeAdt();
+    collect:function(param,basis,fmt){
+      if(typeof trafficComputeMetrics==='function')trafficComputeMetrics();
       var all=(typeof TRAFFIC_STN!=='undefined'&&TRAFFIC_STN.features)||[];
-      var mn=parseFloat((document.getElementById('trfMin')||{}).value);
+      var filter=(typeof trafficFilter!=='undefined')?trafficFilter:null;
       var fs=all.filter(function(f){
         var p=f.properties||{};
-        if(!isNaN(mn)&&!(+p.__adt>=0&&+p.__adt>=mn))return false;
+        if(filter&&!(p[filter.field]>=0&&p[filter.field]>=filter.min))return false;
         return inScope(p.section);
       });
-      return {feats:fs,total:all.length,filtered:(!isNaN(mn)||!!window.NET_SCOPE),
-        rowFor:function(f){return trafficRow(f.properties||{});},
+      return {feats:fs,total:all.length,filtered:(!!filter||!!window.NET_SCOPE),
+        rowFor:function(f){return trafficRow(f.properties||{},fmt==='csv');},
         nameFor:function(f){return (f.properties||{}).name||'Traffic station';}};
     }},
   soil:assetEntry('subgrade','Sub-grade soil','#8a4d1f','showSoil'),
@@ -947,7 +960,7 @@ function doExport(key,fmt,param){
      colours — a KML that is coloured by Crack must carry the Crack columns. */
   if(E.paramFor)param=E.paramFor(param,fmt);
   var basis='lane';
-  var res=E.collect(param,basis);
+  var res=E.collect(param,basis,fmt);
   var feats=res.feats;
   if(!feats.length)return 0;
   var rowFor=res.rowFor||function(f){return cleanProps(f.properties,E.layerKey);};

@@ -389,10 +389,16 @@
       <summary>Traffic</summary>
       <div class="flt-lock">The <b>Traffic stations</b> layer is off. <button class="btn ghost" data-act="enableLayer" data-args='["showTraffic"]'>Turn on layer</button></div>
       <div class="flt-body">
-        <div class="eyebrow">Minimum ADT (avg daily traffic)</div>
+        <label class="eyebrow" for="trfMetric">Traffic metric</label>
+        <select id="trfMetric" class="full">
+          <option value="__adt">Average daily traffic (ADT)</option>
+          <option value="__commercial">Commercial vehicles</option>
+          <option value="__nonCommercial">Non-commercial vehicles</option>
+        </select>
+        <label class="eyebrow" for="trfMin">Minimum vehicles per day</label>
         <input id="trfMin" type="number" class="full" placeholder="e.g. 5000">
         <div class="row2"><button class="btn ghost" data-act="applyTrafficFilter">Apply</button><button class="btn ghost" data-act="clearTrafficFilter">Clear</button></div>
-        <div class="note" style="margin:0">Shows stations whose average daily traffic is at least this value. Stations in a traffic-station group are judged on the group's combined ADT, and every station in the group is shown together.</div>
+        <div class="note" style="margin:0">Grouped carriageways are filtered together using their combined counts.</div>
       </div>
     </details>
 
@@ -1210,7 +1216,7 @@
   <script src="js/15-main.js?v=130"></script>
   <script src="js/16-traffic.js?v=182"></script>
   <script src="js/17-measure.js?v=121"></script>
-  <script src="js/18-filters.js?v=127"></script>
+  <script src="js/18-filters.js?v=128"></script>
   <script src="js/19-asset-register.js?v=123"></script>
   <script src="js/20-asset-dashboard.js?v=120"></script>
   <script src="js/21-report-hub.js?v=126"></script>
@@ -1222,7 +1228,7 @@
   <script src="js/28-fwd-dashboard.js?v=12"></script>
   <script src="js/31-traffic-dashboard.js?v=6"></script>
   <script src="js/30-condition-dashboard.js?v=9"></script>
-  <script src="js/29-export.js?v=26"></script>
+  <script src="js/29-export.js?v=28"></script>
   <script src="js/32-iri-2km.js?v=9"></script>
   <script src="js/33-user-layers.js?v=21"></script>
   <script src="js/kl-symbols.js?v=3"></script>
